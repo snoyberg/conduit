@@ -1,0 +1,31 @@
+name:            hack-handler-webkit
+version:         0.0.0
+license:         BSD3
+license-file:    LICENSE
+author:          Michael Snoyman <michael@snoyman.com>
+maintainer:      Michael Snoyman <michael@snoyman.com>
+synopsis:        Turn Hack applications into standalone GUIs using Webkit.
+description:     Currently using GtkWebkit. Runs any Hack application using
+                 the simpleserver handler and then pops up a Webkit browser
+                 to view it.
+
+                 Note: only tested on Ubuntu Jaunty. Help appreciated for
+                 other platforms. Ideally, Windows and Mac would use their
+                 own native WebKit ports (and maybe even offer a QtWebKit
+                 option as well for Linux).
+category:        Web
+stability:       unstable
+cabal-version:   >= 1.2
+build-type:      Simple
+homepage:        http://github.com/snoyberg/hack-handler-webkit/tree/master
+
+library
+    build-depends:     base >= 4 && < 5,
+                       hack >= 2009.5.19,
+                       hack-handler-simpleserver >= 0.0.1,
+                       bytestring-class
+    ghc-options:       -Wall -threaded
+    exposed-modules:   Hack.Handler.Webkit
+    other-modules:     Webkit
+    c-sources:         webkit.c
+    pkgconfig-depends: webkit-1.0
