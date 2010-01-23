@@ -6,8 +6,6 @@ module Network.Wai
     , Response (..)
     , Application
     , Middleware
-    , RequestBody (..)
-    , RequestBodyClass (..)
     , ResponseBody (..)
     , ResponseBodyClass (..)
     ) where
@@ -36,7 +34,7 @@ data Request = Request
   ,  serverPort     :: Int
   ,  httpHeaders    :: [(B.ByteString, B.ByteString)]
   ,  urlScheme      :: UrlScheme
-  ,  requestBody    :: RequestBody
+  ,  requestBody    :: IO (Maybe B.ByteString)
   ,  errorHandler   :: String -> IO ()
   ,  remoteHost     :: String
   }
@@ -51,12 +49,6 @@ data Response = Response
 type Application = Request -> IO Response
 
 type Middleware = Application -> Application
-
-data RequestBody = forall a. RequestBodyClass a => RequestBody a
-class RequestBodyClass a where
-    receiveByteString :: a -> IO (Maybe B.ByteString)
-instance RequestBodyClass RequestBody where
-    receiveByteString (RequestBody a) = receiveByteString a
 
 data ResponseBody = forall a. ResponseBodyClass a => ResponseBody a
 class ResponseBodyClass a where

@@ -29,13 +29,15 @@ import Control.Exception (bracket, finally, Exception)
 import System.IO (Handle, hClose)
 import Control.Concurrent
 import Control.Monad (unless)
-import Data.Maybe (isJust, fromJust)
+import Data.Maybe (isJust, fromJust, fromMaybe)
 
 import Control.Failure
 import Data.Typeable (Typeable)
 
 import Web.Encodings.StringLike (StringLike)
 import qualified Web.Encodings.StringLike as SL
+
+import qualified Safe
 
 run :: Port -> Application -> IO ()
 run port = withSocketsDo .
@@ -97,12 +99,11 @@ data InvalidRequest =
 instance Exception InvalidRequest
 
 -- | Parse a set of header lines and body into a 'Request'.
-parseRequest :: (MonadFailure InvalidRequest m)
-         => Port
-         -> [BS.ByteString]
-         -> Handle
-         -> String
-         -> m Request
+parseRequest :: Port
+             -> [BS.ByteString]
+             -> Handle
+             -> String
+             -> IO Request
 parseRequest port lines' handle remoteHost' = do
     case lines' of
         (_:_:_) -> return ()
@@ -116,10 +117,11 @@ parseRequest port lines' handle remoteHost' = do
     let host' = lookup (SL.pack "Host") heads
     unless (isJust host') $ failure HostNotIncluded
     let host = fromJust host'
-    {- FIXME use length somewhere?
-    let len = maybe "0" SL.unpack
-            $ lookup (SL.pack "Content-Length") heads
-    -}
+    let len = fromMaybe 0 $ do
+                bs <- lookup (SL.pack "Content-Length") heads
+                let str = SL.unpack bs
+                Safe.readMay str
+    mlen <- newMVar len
     let (serverName', _) = SL.breakChar ':' host
     return $ Request
                 { requestMethod = method
@@ -129,18 +131,19 @@ parseRequest port lines' handle remoteHost' = do
                 , serverPort = port
                 , httpHeaders = heads
                 , urlScheme = HTTP
-                , requestBody = RequestBody $ SSRequestBody handle
+                , requestBody = requestBodyHandle handle mlen
                 , errorHandler = System.IO.hPutStr System.IO.stderr
                 , remoteHost = remoteHost'
                 }
 
-newtype SSRequestBody = SSRequestBody Handle
-instance RequestBodyClass SSRequestBody where
-    receiveByteString (SSRequestBody h) = do
-        bs <- BS.hGet h 1024 -- FIXME find a good chunk size
-        if BS.null bs
-            then return Nothing
-            else return $ Just bs
+requestBodyHandle :: Handle -> MVar Int -> IO (Maybe BS.ByteString)
+requestBodyHandle h mlen = modifyMVar mlen helper where
+    helper :: Int -> IO (Int, Maybe BS.ByteString)
+    helper 0 = return (0, Nothing)
+    helper len = do
+        bs <- BS.hGet h len
+        let newLen = len - BS.length bs
+        return (newLen, Just bs)
 
 parseFirst :: (StringLike s, MonadFailure InvalidRequest m) =>
               s

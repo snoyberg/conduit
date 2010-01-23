@@ -7,5 +7,11 @@
   <body>
     <p>It works</p>
     <p>Here's some Unicode stuff: שלום</p>
+    <form method="POST" action="/post/" enctype="multipart/form-data">
+      <p>Name: <input type="text" name="name"></p>
+      <textarea name="textarea"></textarea>
+      <p>Some file: <input type="file" name="file"></p>
+      <p><input type="submit"></p>
+    </form>
   </body>
 </html>
