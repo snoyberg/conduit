@@ -84,12 +84,6 @@ stripCR bs
     | B8.last bs == '\r' = BS.init bs
     | otherwise = bs
 
-safeRead :: Read a => a -> String -> a
-safeRead d s =
-  case reads s of
-    ((x, _):_) -> x
-    [] -> d
-
 data InvalidRequest =
     NotEnoughLines [String]
     | HostNotIncluded
@@ -109,7 +103,7 @@ parseRequest port lines' handle remoteHost' = do
         (_:_:_) -> return ()
         _ -> failure $ NotEnoughLines $ map SL.unpack lines'
     (method', rpath', gets) <- parseFirst $ head lines'
-    let method = safeRead GET (SL.unpack method')
+    let method = methodFromBS method'
     let rpath = '/' : case SL.unpack rpath' of
                         ('/':x) -> x
                         _ -> SL.unpack rpath'
@@ -125,6 +119,7 @@ parseRequest port lines' handle remoteHost' = do
     let (serverName', _) = SL.breakChar ':' host
     return $ Request
                 { requestMethod = method
+                , httpVersion = Http11
                 , pathInfo = SL.pack rpath
                 , queryString = gets
                 , serverName = serverName'
