@@ -2,7 +2,7 @@
 module Network.Wai
     ( -- * Data types
       -- ** Request method
-      RequestMethod (..)
+      Method (..)
     , methodFromBS
     , methodToBS
       -- ** URL scheme (http versus https)
@@ -29,7 +29,7 @@ import Control.Monad (unless)
 -- | Please do not use the Show and Read instances for anything other than
 -- debugging purposes. Instead, the 'methodFromBS' and 'methodToBS' provide a
 -- more appropriate interface.
-data RequestMethod =
+data Method =
     OPTIONS
   | GET
   | HEAD
@@ -38,10 +38,10 @@ data RequestMethod =
   | DELETE
   | TRACE
   | CONNECT
-  | OtherMethod B.ByteString
+  | Method B.ByteString
   deriving (Show, Read, Eq)
 
-methodFromBS :: B.ByteString -> RequestMethod
+methodFromBS :: B.ByteString -> Method
 methodFromBS bs
     | B.length bs <= 7 = case B8.unpack bs of
         "OPTIONS" -> OPTIONS
@@ -52,10 +52,10 @@ methodFromBS bs
         "DELETE" -> DELETE
         "TRACE" -> TRACE
         "CONNECT" -> CONNECT
-        _ -> OtherMethod bs
-    | otherwise = OtherMethod bs
+        _ -> Method bs
+    | otherwise = Method bs
 
-methodToBS :: RequestMethod -> B.ByteString
+methodToBS :: Method -> B.ByteString
 methodToBS OPTIONS = B8.pack "OPTIONS"
 methodToBS GET = B8.pack "GET"
 methodToBS HEAD = B8.pack "HEAD"
@@ -64,7 +64,7 @@ methodToBS PUT = B8.pack "PUT"
 methodToBS DELETE = B8.pack "DELETE"
 methodToBS TRACE = B8.pack "TRACE"
 methodToBS CONNECT = B8.pack "CONNECT"
-methodToBS (OtherMethod bs) = bs
+methodToBS (Method bs) = bs
 
 data UrlScheme = HTTP | HTTPS deriving (Show, Eq)
 
@@ -91,7 +91,7 @@ httpVersionToBS Http11 = B8.pack "1.1"
 httpVersionToBS (HttpVersion bs) = bs
 
 data Request = Request
-  {  requestMethod  :: RequestMethod
+  {  requestMethod  :: Method
   ,  httpVersion    :: HttpVersion
   ,  pathInfo       :: B.ByteString
   ,  queryString    :: B.ByteString
