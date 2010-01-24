@@ -16,15 +16,10 @@ module Network.Wai
     , Response (..)
     , Application
     , Middleware
-    , ResponseBody (..)
-    , ResponseBodyClass (..)
     ) where
 
-import qualified Data.ByteString.Lazy as L
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as B8
-import System.IO (withBinaryFile, IOMode (ReadMode), hIsEOF)
-import Control.Monad (unless)
 
 -- | Please do not use the Show and Read instances for anything other than
 -- debugging purposes. Instead, the 'methodFromBS' and 'methodToBS' provide a
@@ -108,29 +103,9 @@ data Response = Response
   { status        :: Int
   , statusMessage :: B.ByteString
   , headers       :: [(B.ByteString, B.ByteString)]
-  , body          :: ResponseBody -> IO ()
+  , body          :: Either FilePath ((B.ByteString -> IO ()) -> IO ())
   }
 
 type Application = Request -> IO Response
 
 type Middleware = Application -> Application
-
-data ResponseBody = forall a. ResponseBodyClass a => ResponseBody a
-class ResponseBodyClass a where
-    sendByteString :: a -> B.ByteString -> IO ()
-
-    sendLazyByteString :: a -> L.ByteString -> IO ()
-    sendLazyByteString a bs = mapM_ (sendByteString a) $ L.toChunks bs
-
-    sendFile :: a -> FilePath -> IO ()
-    sendFile a fp = withBinaryFile fp ReadMode helper where
-        helper h = do
-            eof <- hIsEOF h
-            unless eof $ do
-                b <- B.hGet h 1024 -- FIXME determine better block size
-                sendByteString a b
-                helper h
-instance ResponseBodyClass ResponseBody where
-    sendByteString (ResponseBody a) = sendByteString a
-    sendLazyByteString (ResponseBody a) = sendLazyByteString a
-    sendFile (ResponseBody a) = sendFile a

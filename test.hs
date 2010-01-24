@@ -24,15 +24,15 @@ postResponse rb = return Response
     { status = 200
     , statusMessage = B8.pack "OK"
     , headers = [(B8.pack "Content-Type", B8.pack "text/plain")]
-    , body = postBody rb
+    , body = Right $ postBody rb
     }
 
-index :: ResponseBody -> IO ()
-index rb = sendFile rb "index.html"
+index :: Either FilePath a
+index = Left "index.html"
 
-postBody :: IO (Maybe B.ByteString) -> ResponseBody -> IO ()
+postBody :: IO (Maybe B.ByteString) -> (B.ByteString -> IO ()) -> IO ()
 postBody req res = do
     mbs <- req
     case mbs of
         Nothing -> return ()
-        Just bs -> sendByteString res bs >> postBody req res
+        Just bs -> res bs >> postBody req res

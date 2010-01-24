@@ -21,6 +21,7 @@ import Network.Wai
 import qualified System.IO
 
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Lazy as BL
 import qualified Data.ByteString.Char8 as B8
 import Network
     ( listenOn, accept, sClose, PortID(PortNumber), Socket
@@ -160,17 +161,15 @@ sendResponse h res = do
     BS.hPut h $ SL.pack "\r\n"
     mapM_ putHeader $ headers res
     BS.hPut h $ SL.pack "\r\n"
-    body res $ ResponseBody $ SSResponseBody h
+    case body res of
+        Left fp -> BL.readFile fp >>= BL.hPut h
+        Right enum -> enum $ BS.hPut h
     where
         putHeader (x, y) = do
             BS.hPut h x
             BS.hPut h $ SL.pack ": "
             BS.hPut h y
             BS.hPut h $ SL.pack "\r\n"
-
-newtype SSResponseBody = SSResponseBody Handle
-instance ResponseBodyClass SSResponseBody where
-    sendByteString (SSResponseBody h) = BS.hPut h
 
 parseHeaderNoAttr :: StringLike a => a -> (a, a)
 parseHeaderNoAttr s =
