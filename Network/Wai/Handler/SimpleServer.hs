@@ -39,6 +39,7 @@ import Web.Encodings.StringLike (StringLike)
 import qualified Web.Encodings.StringLike as SL
 
 import qualified Safe
+import Network.Socket.SendFile
 
 run :: Port -> Application -> IO ()
 run port = withSocketsDo .
@@ -162,7 +163,7 @@ sendResponse h res = do
     mapM_ putHeader $ headers res
     BS.hPut h $ SL.pack "\r\n"
     case body res of
-        Left fp -> BL.readFile fp >>= BL.hPut h
+        Left fp -> unsafeSendFile h fp
         Right enum -> enum $ BS.hPut h
     where
         putHeader (x, y) = do
