@@ -158,7 +158,8 @@ parseFirst s = do
 sendResponse :: Handle -> Response -> IO ()
 sendResponse h res = do
     BS.hPut h $ SL.pack "HTTP/1.1 "
-    BS.hPut h $ SL.pack $ show $ status res
+    BS.hPut h $ SL.pack $ show $ statusCode $ status res
+    BS.hPut h $ statusMessage $ status res
     BS.hPut h $ SL.pack "\r\n"
     mapM_ putHeader $ headers res
     BS.hPut h $ SL.pack "\r\n"

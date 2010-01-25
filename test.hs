@@ -13,16 +13,14 @@ app req = case B8.unpack $ pathInfo req of
 
 indexResponse :: IO Response
 indexResponse = return Response
-    { status = 200
-    , statusMessage = B8.pack "OK"
+    { status = Status200
     , headers = [(B8.pack "Content-Type", B8.pack "text/html")]
     , body = index
     }
 
 postResponse :: IO (Maybe B.ByteString) -> IO Response
 postResponse rb = return Response
-    { status = 200
-    , statusMessage = B8.pack "OK"
+    { status = Status200
     , headers = [(B8.pack "Content-Type", B8.pack "text/plain")]
     , body = Right $ postBody rb
     }
