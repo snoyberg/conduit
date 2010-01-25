@@ -167,8 +167,9 @@ sendResponse h res = do
     BS.hPut h $ SL.pack "\r\n"
     case body res of
         Left fp -> unsafeSendFile h fp
-        Right enum -> enum $ BS.hPut h
+        Right (Enumerator enum) -> enum myPut h >> return ()
     where
+        myPut h bs = BS.hPut h bs >> return (Right h)
         putHeader (x, y) = do
             BS.hPut h $ responseHeaderToBS x
             BS.hPut h $ SL.pack ": "

@@ -1,4 +1,4 @@
-{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE Rank2Types #-}
 module Network.Wai
     ( -- * Data types
       -- ** Request method
@@ -23,6 +23,8 @@ module Network.Wai
     , Status (..)
     , statusCode
     , statusMessage
+      -- * Enumerator
+    , Enumerator (..)
       -- * WAI interface
     , Request (..)
     , Response (..)
@@ -233,6 +235,9 @@ statusMessage Status405 = B8.pack "Method Not Allowed"
 statusMessage Status500 = B8.pack "Internal Server Error"
 statusMessage (Status _ m) = m
 
+data Enumerator = Enumerator (forall a.
+    ((a -> B.ByteString -> IO (Either a a)) -> a -> IO a))
+
 data Request = Request
   {  requestMethod  :: Method
   ,  httpVersion    :: HttpVersion
@@ -250,7 +255,7 @@ data Request = Request
 data Response = Response
   { status        :: Status
   , headers       :: [(ResponseHeader, B.ByteString)]
-  , body          :: Either FilePath ((B.ByteString -> IO ()) -> IO ())
+  , body          :: Either FilePath Enumerator
   }
 
 type Application = Request -> IO Response

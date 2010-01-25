@@ -28,9 +28,14 @@ postResponse rb = return Response
 index :: Either FilePath a
 index = Left "index.html"
 
-postBody :: IO (Maybe B.ByteString) -> (B.ByteString -> IO ()) -> IO ()
-postBody req res = do
+postBody :: IO (Maybe B.ByteString) -> Enumerator
+postBody req = Enumerator $ \f a -> helper f a where
+  helper f a = do
     mbs <- req
     case mbs of
-        Nothing -> return ()
-        Just bs -> res bs >> postBody req res
+        Nothing -> return a
+        Just bs -> do
+            res <- f a bs
+            case res of
+                Left a' -> return a'
+                Right a' -> helper f a'
