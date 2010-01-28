@@ -134,14 +134,16 @@ parseRequest port lines' handle remoteHost' = do
                 , remoteHost = B8.pack remoteHost'
                 }
 
-requestBodyHandle :: Handle -> MVar Int -> IO (Maybe BS.ByteString)
-requestBodyHandle h mlen = modifyMVar mlen helper where
-    helper :: Int -> IO (Int, Maybe BS.ByteString)
-    helper 0 = return (0, Nothing)
-    helper len = do
+requestBodyHandle :: Handle -> MVar Int -> Enumerator a
+requestBodyHandle h mlen iter accum = modifyMVar mlen (helper accum) where
+    helper a 0 = return (0, a)
+    helper a len = do
         bs <- BS.hGet h len
         let newLen = len - BS.length bs
-        return (newLen, Just bs)
+        ea' <- iter a bs
+        case ea' of
+            Left a' -> return (newLen, a')
+            Right a' -> helper a' newLen
 
 parseFirst :: (StringLike s, MonadFailure InvalidRequest m) =>
               s

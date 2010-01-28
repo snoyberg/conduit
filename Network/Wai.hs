@@ -246,7 +246,7 @@ data Request = Request
   ,  serverPort     :: Int
   ,  httpHeaders    :: [(RequestHeader, B.ByteString)]
   ,  urlScheme      :: UrlScheme
-  ,  requestBody    :: IO (Maybe B.ByteString)
+  ,  requestBody    :: forall a. Enumerator a
   ,  errorHandler   :: String -> IO ()
   ,  remoteHost     :: B.ByteString
   }
