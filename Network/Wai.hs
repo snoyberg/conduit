@@ -24,7 +24,7 @@ module Network.Wai
     , statusCode
     , statusMessage
       -- * Enumerator
-    , Enumerator (..)
+    , Enumerator
       -- * WAI interface
     , Request (..)
     , Response (..)
@@ -235,8 +235,7 @@ statusMessage Status405 = B8.pack "Method Not Allowed"
 statusMessage Status500 = B8.pack "Internal Server Error"
 statusMessage (Status _ m) = m
 
-data Enumerator = Enumerator (forall a.
-    ((a -> B.ByteString -> IO (Either a a)) -> a -> IO a))
+type Enumerator a = (a -> B.ByteString -> IO (Either a a)) -> a -> IO a
 
 data Request = Request
   {  requestMethod  :: Method
@@ -255,7 +254,7 @@ data Request = Request
 data Response = Response
   { status        :: Status
   , headers       :: [(ResponseHeader, B.ByteString)]
-  , body          :: Either FilePath Enumerator
+  , body          :: forall a. Either FilePath (Enumerator a)
   }
 
 type Application = Request -> IO Response

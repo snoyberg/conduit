@@ -21,7 +21,6 @@ import Network.Wai
 import qualified System.IO
 
 import qualified Data.ByteString as BS
-import qualified Data.ByteString.Lazy as BL
 import qualified Data.ByteString.Char8 as B8
 import Network
     ( listenOn, accept, sClose, PortID(PortNumber), Socket
@@ -167,9 +166,9 @@ sendResponse h res = do
     BS.hPut h $ SL.pack "\r\n"
     case body res of
         Left fp -> unsafeSendFile h fp
-        Right (Enumerator enum) -> enum myPut h >> return ()
+        Right enum -> enum myPut h >> return ()
     where
-        myPut h bs = BS.hPut h bs >> return (Right h)
+        myPut _ bs = BS.hPut h bs >> return (Right h)
         putHeader (x, y) = do
             BS.hPut h $ responseHeaderToBS x
             BS.hPut h $ SL.pack ": "
