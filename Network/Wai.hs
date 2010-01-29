@@ -11,6 +11,14 @@ module Network.Wai
     , HttpVersion (..)
     , httpVersionFromBS
     , httpVersionToBS
+      -- ** Request header names
+    , RequestHeader (..)
+    , requestHeaderFromBS
+    , requestHeaderToBS
+      -- ** Response header names
+    , ResponseHeader (..)
+    , responseHeaderFromBS
+    , responseHeaderToBS
       -- ** Response status code
     , Status (..)
     , statusCode
@@ -73,6 +81,7 @@ data HttpVersion =
     | Http10
     | Http11
     | HttpVersion B.ByteString
+    deriving (Show, Eq)
 
 httpVersionFromBS :: B.ByteString -> HttpVersion
 httpVersionFromBS bs
@@ -88,6 +97,92 @@ httpVersionToBS Http09 = B8.pack "0.9"
 httpVersionToBS Http10 = B8.pack "1.0"
 httpVersionToBS Http11 = B8.pack "1.1"
 httpVersionToBS (HttpVersion bs) = bs
+
+data RequestHeader =
+      Accept
+    | AcceptCharset
+    | AcceptEncoding
+    | AcceptLanguage
+    | Authorization
+    | Cookie
+    | ReqContentLength
+    | ReqContentType
+    | Host
+    | Referer
+    | RequestHeader B.ByteString
+    deriving (Show)
+
+instance Eq RequestHeader where
+    x == y = requestHeaderToBS x == requestHeaderToBS y
+
+requestHeaderFromBS :: B.ByteString -> RequestHeader
+requestHeaderFromBS bs = case B8.unpack bs of
+    "Accept" -> Accept
+    "Accept-Charset" -> AcceptCharset
+    "Accept-Encoding" -> AcceptEncoding
+    "Accept-Language" -> AcceptLanguage
+    "Authorization" -> Authorization
+    "Cookie" -> Cookie
+    "Content-Length" -> ReqContentLength
+    "Content-Type" -> ReqContentType
+    "Host" -> Host
+    "Referer" -> Referer
+    _ -> RequestHeader bs
+
+requestHeaderToBS :: RequestHeader -> B.ByteString
+requestHeaderToBS Accept = B8.pack "Accept"
+requestHeaderToBS AcceptCharset = B8.pack "Accept-Charset"
+requestHeaderToBS AcceptEncoding = B8.pack "Accept-Encoding"
+requestHeaderToBS AcceptLanguage = B8.pack "Accept-Language"
+requestHeaderToBS Authorization = B8.pack "Authorization"
+requestHeaderToBS Cookie = B8.pack "Cookie"
+requestHeaderToBS ReqContentLength = B8.pack "Content-Length"
+requestHeaderToBS ReqContentType = B8.pack "Content-Type"
+requestHeaderToBS Host = B8.pack "Host"
+requestHeaderToBS Referer = B8.pack "Referer"
+requestHeaderToBS (RequestHeader bs) = bs
+
+data ResponseHeader =
+      ContentEncoding
+    | ContentLanguage
+    | ContentLength
+    | ContentDisposition
+    | ContentType
+    | Expires
+    | Location
+    | Server
+    | SetCookie
+    | ResponseHeader B.ByteString
+     deriving (Show)
+
+instance Eq ResponseHeader where
+    x == y = responseHeaderToBS x == responseHeaderToBS y
+
+
+responseHeaderFromBS :: B.ByteString -> ResponseHeader
+responseHeaderFromBS bs = case B8.unpack bs of
+    "Content-Encoding" -> ContentEncoding
+    "Content-Language" -> ContentLanguage
+    "Content-Length" -> ContentLength
+    "Content-Disposition" -> ContentDisposition
+    "Content-Type" -> ContentType
+    "Expires" -> Expires
+    "Location" -> Location
+    "Server" -> Server
+    "Set-Cookie" -> SetCookie
+    _ -> ResponseHeader bs
+
+responseHeaderToBS :: ResponseHeader -> B.ByteString
+responseHeaderToBS ContentEncoding = B8.pack "Content-Encoding"
+responseHeaderToBS ContentLanguage = B8.pack "Content-Language"
+responseHeaderToBS ContentLength = B8.pack "Content-Length"
+responseHeaderToBS ContentDisposition = B8.pack "Content-Disposition"
+responseHeaderToBS ContentType = B8.pack "Content-Type"
+responseHeaderToBS Expires = B8.pack "Expires"
+responseHeaderToBS Location = B8.pack "Location"
+responseHeaderToBS Server = B8.pack "Server"
+responseHeaderToBS SetCookie = B8.pack "Set-Cookie"
+responseHeaderToBS (ResponseHeader bs) = bs
 
 -- | This attempts to provide the most common HTTP status codes, not all of
 -- them. Use the 'Status' constructor when you want to create a status code not
@@ -145,7 +240,7 @@ data Request = Request
   ,  queryString    :: B.ByteString
   ,  serverName     :: B.ByteString
   ,  serverPort     :: Int
-  ,  httpHeaders    :: [(B.ByteString, B.ByteString)]
+  ,  httpHeaders    :: [(RequestHeader, B.ByteString)]
   ,  urlScheme      :: UrlScheme
   ,  requestBody    :: IO (Maybe B.ByteString)
   ,  errorHandler   :: String -> IO ()
@@ -154,7 +249,7 @@ data Request = Request
 
 data Response = Response
   { status        :: Status
-  , headers       :: [(B.ByteString, B.ByteString)]
+  , headers       :: [(ResponseHeader, B.ByteString)]
   , body          :: Either FilePath ((B.ByteString -> IO ()) -> IO ())
   }
 

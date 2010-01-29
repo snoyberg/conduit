@@ -40,6 +40,7 @@ import qualified Web.Encodings.StringLike as SL
 
 import qualified Safe
 import Network.Socket.SendFile
+import Control.Arrow (first)
 
 run :: Port -> Application -> IO ()
 run port = withSocketsDo .
@@ -109,12 +110,13 @@ parseRequest port lines' handle remoteHost' = do
     let rpath = '/' : case SL.unpack rpath' of
                         ('/':x) -> x
                         _ -> SL.unpack rpath'
-    let heads = map parseHeaderNoAttr $ tail lines'
-    let host' = lookup (SL.pack "Host") heads
+    let heads = map (first requestHeaderFromBS . parseHeaderNoAttr)
+              $ tail lines'
+    let host' = lookup Host heads
     unless (isJust host') $ failure HostNotIncluded
     let host = fromJust host'
     let len = fromMaybe 0 $ do
-                bs <- lookup (SL.pack "Content-Length") heads
+                bs <- lookup ReqContentLength heads
                 let str = SL.unpack bs
                 Safe.readMay str
     mlen <- newMVar len
@@ -168,7 +170,7 @@ sendResponse h res = do
         Right enum -> enum $ BS.hPut h
     where
         putHeader (x, y) = do
-            BS.hPut h x
+            BS.hPut h $ responseHeaderToBS x
             BS.hPut h $ SL.pack ": "
             BS.hPut h y
             BS.hPut h $ SL.pack "\r\n"
