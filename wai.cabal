@@ -1,0 +1,19 @@
+Name:                wai
+Version:             0.0.0
+Synopsis:            Web Application Interface.
+Description:         Provides a common protocol for communication between web aplications and web servers.
+License:             BSD3
+License-file:        LICENSE
+Author:              Michael Snoyman
+Maintainer:          michael@snoyman.com
+Homepage:            http://github.com/snoyberg/wai
+Category:            Web
+Build-Type:          Simple
+Cabal-Version:       >=1.2
+Stability:           Stable
+
+Library
+  Build-Depends:     base >= 3 && < 5,
+                     bytestring >= 0.9 && < 0.10
+  Exposed-modules:   Network.Wai
+  ghc-options:       -Wall
