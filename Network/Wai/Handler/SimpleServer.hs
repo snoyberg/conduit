@@ -138,8 +138,10 @@ requestBodyHandle :: Handle -> MVar Int -> Enumerator a
 requestBodyHandle h mlen iter accum = modifyMVar mlen (helper accum) where
     helper a 0 = return (0, a)
     helper a len = do
-        bs <- BS.hGet h len
+        let maxChunkSize = 1024
+        bs <- BS.hGet h $ min len maxChunkSize
         let newLen = len - BS.length bs
+        putStrLn $ "reading a chunk of size " ++ show (BS.length bs)
         ea' <- iter a bs
         case ea' of
             Left a' -> return (newLen, a')
@@ -170,7 +172,10 @@ sendResponse h res = do
         Left fp -> unsafeSendFile h fp
         Right enum -> enum myPut h >> return ()
     where
-        myPut _ bs = BS.hPut h bs >> return (Right h)
+        myPut _ bs = do
+            putStrLn $ "sending a chunk of size " ++ show (BS.length bs)
+            BS.hPut h bs
+            return (Right h)
         putHeader (x, y) = do
             BS.hPut h $ responseHeaderToBS x
             BS.hPut h $ SL.pack ": "
