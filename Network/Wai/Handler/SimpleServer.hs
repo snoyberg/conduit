@@ -136,7 +136,7 @@ parseRequest port lines' handle remoteHost' = do
 
 requestBodyHandle :: Handle -> MVar Int -> Enumerator a
 requestBodyHandle h mlen iter accum = modifyMVar mlen (helper accum) where
-    helper a 0 = return (0, a)
+    helper a 0 = return (0, Right a)
     helper a len = do
         let maxChunkSize = 1024
         bs <- BS.hGet h $ min len maxChunkSize
@@ -144,7 +144,7 @@ requestBodyHandle h mlen iter accum = modifyMVar mlen (helper accum) where
         putStrLn $ "reading a chunk of size " ++ show (BS.length bs)
         ea' <- iter a bs
         case ea' of
-            Left a' -> return (newLen, a')
+            Left a' -> return (newLen, Left a')
             Right a' -> helper a' newLen
 
 parseFirst :: (StringLike s, MonadFailure InvalidRequest m) =>

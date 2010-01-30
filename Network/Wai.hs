@@ -235,7 +235,9 @@ statusMessage Status405 = B8.pack "Method Not Allowed"
 statusMessage Status500 = B8.pack "Internal Server Error"
 statusMessage (Status _ m) = m
 
-type Enumerator a = (a -> B.ByteString -> IO (Either a a)) -> a -> IO a
+type Enumerator a = (a -> B.ByteString -> IO (Either a a))
+                 -> a
+                 -> IO (Either a a)
 
 data Request = Request
   {  requestMethod  :: Method

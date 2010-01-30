@@ -6,12 +6,18 @@ module Network.Wai.Enumerator
     , fromLBS'
       -- * Source
     , toSource
+      -- * Handle
+    , fromHandle
+      -- * FilePath
+    , fromFile
+    , fromEitherFile
     ) where
 
 import Network.Wai (Enumerator)
 import qualified Data.ByteString.Lazy as L
 import qualified Data.ByteString as B
 import System.IO.Unsafe (unsafeInterleaveIO)
+import System.IO (withBinaryFile, IOMode (ReadMode), Handle, hIsEOF)
 
 -- | This uses 'unsafeInterleaveIO' to lazily read from an enumerator. All
 -- normal lazy I/O warnings apply.
@@ -27,11 +33,11 @@ toLBS e = L.fromChunks `fmap` helper where
 
 fromLBS :: L.ByteString -> Enumerator a
 fromLBS lbs iter a0 = helper a0 $ L.toChunks lbs where
-    helper a [] = return a
+    helper a [] = return $ Right a
     helper a (x:xs) = do
         ea <- iter a x
         case ea of
-            Left a' -> return a'
+            Left a' -> return $ Left a'
             Right a' -> helper a' xs
 
 fromLBS' :: IO L.ByteString -> Enumerator a
@@ -41,4 +47,26 @@ fromLBS' lbs' iter a0 = lbs' >>= \lbs -> fromLBS lbs iter a0
 -- Each time you call it, it returns the next chunk of data if available, or
 -- 'Nothing' if the data has been completely consumed.
 toSource :: Enumerator (Maybe B.ByteString) -> IO (Maybe B.ByteString)
-toSource e = e (const $ return . Left . Just) Nothing
+toSource e = fmap (either id id) $ e (const $ return . Left . Just) Nothing
+
+chunkSize :: Int
+chunkSize = 1024 -- FIXME
+
+fromHandle :: Handle -> Enumerator a
+fromHandle h iter a = do
+    eof <- hIsEOF h
+    if eof
+        then return $ Right a
+        else do
+            bs <- B.hGet h chunkSize
+            ea' <- iter a bs
+            case ea' of
+                Left a' -> return $ Left a'
+                Right a' -> fromHandle h iter a'
+
+fromFile :: FilePath -> Enumerator a
+fromFile fp iter a0 = withBinaryFile fp ReadMode $ \h -> fromHandle h iter a0
+
+fromEitherFile :: Either FilePath (Enumerator a) -> Enumerator a
+fromEitherFile (Left fp) = fromFile fp
+fromEitherFile (Right e) = e
