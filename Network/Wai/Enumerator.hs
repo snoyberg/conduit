@@ -1,14 +1,17 @@
 -- | A collection of utility functions for dealing with 'Enumerator's.
 module Network.Wai.Enumerator
-    ( -- * Lazy byte strings
+    ( -- * Utilities
+      mapE
+      -- * Conversions
+    , -- ** Lazy byte strings
       toLBS
     , fromLBS
     , fromLBS'
-      -- * Source
+      -- ** Source
     , toSource
-      -- * Handle
+      -- ** Handle
     , fromHandle
-      -- * FilePath
+      -- ** FilePath
     , fromFile
     , fromEitherFile
     ) where
@@ -18,6 +21,12 @@ import qualified Data.ByteString.Lazy as L
 import qualified Data.ByteString as B
 import System.IO.Unsafe (unsafeInterleaveIO)
 import System.IO (withBinaryFile, IOMode (ReadMode), Handle, hIsEOF)
+
+-- | Performs a specified conversion on each 'B.ByteString' output by an
+-- enumerator.
+mapE :: (B.ByteString -> B.ByteString) -> Enumerator a -> Enumerator a
+mapE f e iter = e iter' where
+    iter' a = iter a . f
 
 -- | This uses 'unsafeInterleaveIO' to lazily read from an enumerator. All
 -- normal lazy I/O warnings apply.
