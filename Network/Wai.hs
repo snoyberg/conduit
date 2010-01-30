@@ -244,7 +244,7 @@ data Request = Request
   ,  urlScheme      :: UrlScheme
   ,  requestBody    :: IO (Maybe B.ByteString)
   ,  errorHandler   :: String -> IO ()
-  ,  remoteHost     :: String
+  ,  remoteHost     :: B.ByteString
   }
 
 data Response = Response

@@ -132,7 +132,7 @@ parseRequest port lines' handle remoteHost' = do
                 , urlScheme = HTTP
                 , requestBody = requestBodyHandle handle mlen
                 , errorHandler = System.IO.hPutStr System.IO.stderr
-                , remoteHost = remoteHost'
+                , remoteHost = B8.pack remoteHost'
                 }
 
 requestBodyHandle :: Handle -> MVar Int -> IO (Maybe BS.ByteString)
