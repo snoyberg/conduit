@@ -1,3 +1,4 @@
+{-# LANGUAGE Rank2Types #-}
 -- | A collection of utility functions for dealing with 'Enumerator's.
 module Network.Wai.Enumerator
     ( -- * Utilities
@@ -40,7 +41,7 @@ toLBS e = L.fromChunks `fmap` helper where
                         xs <- helper
                         return $ x' : xs
 
-fromLBS :: L.ByteString -> Enumerator a
+fromLBS :: L.ByteString -> (forall a. Enumerator a)
 fromLBS lbs iter a0 = helper a0 $ L.toChunks lbs where
     helper a [] = return $ Right a
     helper a (x:xs) = do
@@ -49,7 +50,7 @@ fromLBS lbs iter a0 = helper a0 $ L.toChunks lbs where
             Left a' -> return $ Left a'
             Right a' -> helper a' xs
 
-fromLBS' :: IO L.ByteString -> Enumerator a
+fromLBS' :: IO L.ByteString -> (forall a. Enumerator a)
 fromLBS' lbs' iter a0 = lbs' >>= \lbs -> fromLBS lbs iter a0
 
 -- | A source is a more standard way of accessing data from an 'Enumerator'.
