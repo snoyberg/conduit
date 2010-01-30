@@ -1,0 +1,37 @@
+Name:                wai-extra
+Version:             0.0.0
+Synopsis:            Provides some basic WAI handlers and middleware.
+Description:         The goal here is to provide common features without many dependencies.
+License:             BSD3
+License-file:        LICENSE
+Author:              Michael Snoyman
+Maintainer:          michael@snoyman.com
+Homepage:            http://github.com/snoyberg/wai-extra
+Category:            Web
+Build-Type:          Simple
+Cabal-Version:       >=1.2
+Stability:           Stable
+
+Library
+  Build-Depends:     base >= 3 && < 5,
+                     bytestring >= 0.9 && < 0.10,
+                     wai >= 0.0.0 && < 0.1,
+                     split >= 0.1.2 && < 0.2,
+                     web-encodings >= 0.2.2 && < 0.3,
+                     old-locale >= 1.0 && < 1.1,
+                     time >= 1.1.4 && < 1.2,
+                     clientsession >= 0.2.0 && < 0.3,
+                     predicates >= 0.1 && < 0.2,
+                     zlib >= 0.5.2.0 && < 0.6,
+                     sendfile >= 0.6.1 && < 0.7,
+                     safe >= 0.2 && < 0.3,
+                     failure >= 0.0.0.2 && < 0.1,
+                     network >= 2.2.1.5 && < 2.3
+  Exposed-modules:   Network.Wai.Handler.CGI
+                     Network.Wai.Handler.SimpleServer
+                     Network.Wai.Middleware.CleanPath
+                     Network.Wai.Middleware.ClientSession
+                     Network.Wai.Middleware.Gzip
+                     Network.Wai.Middleware.Jsonp
+                     Network.Wai.Middleware.MethodOverride
+  ghc-options:       -Wall -Werror
