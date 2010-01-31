@@ -57,7 +57,7 @@ clientsession cnames key minutesToLive app env = do
         nonCookies :: [(RequestHeader, B.ByteString)]
         nonCookies = filter (fst `isn't` (== Cookie)) hs
         initCookies :: [(B.ByteString, B.ByteString)]
-        initCookies = decodeCookies initCookiesRaw
+        initCookies = parseCookies initCookiesRaw
         cookies, interceptCookies :: [(B.ByteString, B.ByteString)]
         (interceptCookies, cookies) = partition (fst `is` (`elem` cnames))
                                       initCookies
