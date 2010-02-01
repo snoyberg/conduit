@@ -40,6 +40,7 @@ import qualified Web.Encodings.StringLike as SL
 import qualified Safe
 import Network.Socket.SendFile
 import Control.Arrow (first)
+import Data.ByteString.Lazy.Internal (defaultChunkSize)
 
 run :: Port -> Application -> IO ()
 run port = withSocketsDo .
@@ -138,8 +139,7 @@ requestBodyHandle :: Handle -> MVar Int -> Enumerator a
 requestBodyHandle h mlen iter accum = modifyMVar mlen (helper accum) where
     helper a 0 = return (0, Right a)
     helper a len = do
-        let maxChunkSize = 1024
-        bs <- BS.hGet h $ min len maxChunkSize
+        bs <- BS.hGet h $ min len defaultChunkSize
         let newLen = len - BS.length bs
         ea' <- iter a bs
         case ea' of

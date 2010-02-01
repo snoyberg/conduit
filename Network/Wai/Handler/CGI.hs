@@ -12,6 +12,7 @@ import Control.Arrow ((***))
 import Data.Char (toLower)
 import qualified System.IO
 import Control.Concurrent
+import Data.ByteString.Lazy.Internal (defaultChunkSize)
 
 safeRead :: Read a => a -> String -> a
 safeRead d s =
@@ -80,8 +81,7 @@ requestBodyHandle :: System.IO.Handle -> MVar Int -> Enumerator a
 requestBodyHandle h mlen iter accum = modifyMVar mlen (helper accum) where
     helper a 0 = return (0, Right a)
     helper a len = do
-        let maxChunkSize = 1024
-        bs <- B.hGet h $ min len maxChunkSize
+        bs <- B.hGet h $ min len defaultChunkSize
         let newLen = len - B.length bs
         ea' <- iter a bs
         case ea' of
