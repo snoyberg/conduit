@@ -23,6 +23,8 @@ import qualified Data.ByteString as B
 import System.IO.Unsafe (unsafeInterleaveIO)
 import System.IO (withBinaryFile, IOMode (ReadMode), Handle, hIsEOF)
 import Data.ByteString.Lazy.Internal (defaultChunkSize)
+import Control.Concurrent (forkIO)
+import Control.Concurrent.MVar
 
 -- | Performs a specified conversion on each 'B.ByteString' output by an
 -- enumerator.
@@ -32,14 +34,17 @@ mapE f e iter = e iter' where
 
 -- | This uses 'unsafeInterleaveIO' to lazily read from an enumerator. All
 -- normal lazy I/O warnings apply.
-toLBS :: Enumerator (Maybe B.ByteString) -> IO L.ByteString
-toLBS e = L.fromChunks `fmap` helper where
-    helper = unsafeInterleaveIO $ do
-                x <- toSource e
+toLBS :: Enumerator () -> IO L.ByteString
+toLBS e = do
+    source <- toSource e
+    L.fromChunks `fmap` helper source
+      where
+        helper source = unsafeInterleaveIO $ do
+                x <- source
                 case x of
                     Nothing -> return []
                     Just x' -> do
-                        xs <- helper
+                        xs <- helper source
                         return $ x' : xs
 
 -- | This function safely converts a lazy bytestring into an enumerator.
@@ -61,8 +66,29 @@ fromLBS' lbs' iter a0 = lbs' >>= \lbs -> fromLBS lbs iter a0
 -- | A source is a more standard way of accessing data from an 'Enumerator'.
 -- Each time you call it, it returns the next chunk of data if available, or
 -- 'Nothing' if the data has been completely consumed.
-toSource :: Enumerator (Maybe B.ByteString) -> IO (Maybe B.ByteString)
-toSource e = fmap (either id id) $ e (const $ return . Left . Just) Nothing
+toSource :: Enumerator () -> IO (IO (Maybe B.ByteString))
+toSource e = do
+    buffer <- newEmptyMVar
+    forkIO $ e (helper buffer) () >> putMVar buffer Nothing
+    return $ source buffer
+      where
+        helper :: MVar (Maybe B.ByteString)
+               -> ()
+               -> B.ByteString
+               -> IO (Either () ())
+        helper buffer _ bs = do
+            putMVar buffer $ Just bs
+            return $ Right ()
+        source :: MVar (Maybe B.ByteString) -> IO (Maybe B.ByteString)
+        source mmbs = do
+            mbs <- takeMVar mmbs
+            case mbs of
+                Nothing -> do
+                    -- By putting Nothing back in, the source can be called
+                    -- again without causing a deadlock.
+                    putMVar mmbs Nothing
+                    return Nothing
+                Just bs -> return $ Just bs
 
 -- | Read a chunk of data from the given 'Handle' at a time. We use
 -- 'defaultChunkSize' from the bytestring package to determine the largest

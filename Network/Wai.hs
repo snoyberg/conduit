@@ -336,6 +336,11 @@ statusMessage (Status _ m) = m
 -- 'Enumerator's are used twice in the WAI: once in the 'Request' datatype to
 -- access the request body, and once in the 'Response' datatype for the
 -- application to return the body of the response.
+--
+-- 'Enumerator's are not required to be resumable. That is to say, the
+-- 'Enumerator' may only be called once. While this requirement puts a bit of a
+-- strain on the caller in some situations, it saves a large amount of
+-- complication- and thus performance- on the producer.
 type Enumerator a = (a -> B.ByteString -> IO (Either a a))
                  -> a
                  -> IO (Either a a)
