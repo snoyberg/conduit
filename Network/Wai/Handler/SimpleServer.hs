@@ -127,7 +127,7 @@ parseRequest port lines' handle remoteHost' = do
                 , queryString = gets
                 , serverName = serverName'
                 , serverPort = port
-                , httpHeaders = heads
+                , requestHeaders = heads
                 , urlScheme = HTTP
                 , requestBody = requestBodyHandle handle mlen
                 , errorHandler = System.IO.hPutStr System.IO.stderr
@@ -166,9 +166,9 @@ sendResponse h res = do
     BS.hPut h $ SL.pack $ show $ statusCode $ status res
     BS.hPut h $ statusMessage $ status res
     BS.hPut h $ SL.pack "\r\n"
-    mapM_ putHeader $ headers res
+    mapM_ putHeader $ responseHeaders res
     BS.hPut h $ SL.pack "\r\n"
-    case body res of
+    case responseBody res of
         Left fp -> unsafeSendFile h fp
         Right enum -> enum myPut h >> return ()
     where

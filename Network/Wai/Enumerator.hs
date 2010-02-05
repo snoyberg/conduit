@@ -69,7 +69,7 @@ fromLBS' lbs' iter a0 = lbs' >>= \lbs -> fromLBS lbs iter a0
 toSource :: Enumerator () -> IO (IO (Maybe B.ByteString))
 toSource e = do
     buffer <- newEmptyMVar
-    forkIO $ e (helper buffer) () >> putMVar buffer Nothing
+    _ <- forkIO $ e (helper buffer) () >> putMVar buffer Nothing
     return $ source buffer
       where
         helper :: MVar (Maybe B.ByteString)

@@ -355,10 +355,11 @@ data Request = Request
   -- all information after the domain name. In a CGI application, this would be
   -- the information following the path to the CGI executable itself.
   ,  pathInfo       :: B.ByteString
+  -- | If no query string was specified, this should be empty.
   ,  queryString    :: B.ByteString
   ,  serverName     :: B.ByteString
   ,  serverPort     :: Int
-  ,  httpHeaders    :: [(RequestHeader, B.ByteString)]
+  ,  requestHeaders :: [(RequestHeader, B.ByteString)]
   ,  urlScheme      :: UrlScheme
   ,  requestBody    :: forall a. Enumerator a
   ,  errorHandler   :: String -> IO ()
@@ -367,13 +368,13 @@ data Request = Request
   }
 
 data Response = Response
-  { status        :: Status
-  , headers       :: [(ResponseHeader, B.ByteString)]
+  { status          :: Status
+  , responseHeaders :: [(ResponseHeader, B.ByteString)]
   -- | A common optimization is to use the sendfile system call when sending
   -- files from the disk. This datatype facilitates this optimization; if
   -- 'Left' is returns, the server will send the file from the disk by whatever
   -- means it wishes. If 'Right', it will call the 'Enumerator'.
-  , body          :: forall a. Either FilePath (Enumerator a)
+  , responseBody    :: forall a. Either FilePath (Enumerator a)
   }
 
 type Application = Request -> IO Response
