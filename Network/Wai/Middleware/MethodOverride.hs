@@ -29,7 +29,7 @@ moParam = B8.pack "_method_override"
 
 methodOverride :: Middleware
 methodOverride app env = do
-    let mo1 = lookup moHeader $ httpHeaders env
+    let mo1 = lookup moHeader $ requestHeaders env
         gets = decodeUrlPairs $ queryString env
         mo2 = lookup moParam gets
     app $

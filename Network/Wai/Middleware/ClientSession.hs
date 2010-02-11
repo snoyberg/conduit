@@ -51,7 +51,7 @@ clientsession :: [B.ByteString] -- ^ list of cookies to intercept
               -> Request
               -> IO Response
 clientsession cnames key minutesToLive app env = do
-    let hs = httpHeaders env
+    let hs = requestHeaders env
         initCookiesRaw :: B.ByteString
         initCookiesRaw = fromMaybe B.empty $ lookup Cookie hs
         nonCookies :: [(RequestHeader, B.ByteString)]
@@ -68,17 +68,17 @@ clientsession cnames key minutesToLive app env = do
     let convertedCookies :: [(B.ByteString, B.ByteString)]
         convertedCookies =
             mapMaybe (decodeCookie key now remoteHost') interceptCookies
-    let env' = env { httpHeaders =
+    let env' = env { requestHeaders =
                               (Cookie, cookiesRaw)
                             -- FIXME not sure how I feel about the next line
-                            : filter (fst `equals` Cookie) (httpHeaders env)
+                            : filter (fst `equals` Cookie) (requestHeaders env)
                             ++ nonCookies
                    }
     res <- app convertedCookies env'
-    let interceptHeaders, headers' :: [(ResponseHeader, B.ByteString)]
-        (interceptHeaders, headers') =
+    let interceptHeaders, responseHeaders' :: [(ResponseHeader, B.ByteString)]
+        (interceptHeaders, responseHeaders') =
             partition ((responseHeaderToBS . fst) `is` (`elem` cnames))
-            $ headers res
+            $ responseHeaders res
         interceptHeaders' :: [(B.ByteString, B.ByteString)]
         interceptHeaders' = map (first responseHeaderToBS) interceptHeaders
     let timeToLive :: Int
@@ -91,7 +91,7 @@ clientsession cnames key minutesToLive app env = do
                         convertedCookies
     let newCookies = map (setCookie key exp formattedExp remoteHost') $
                      oldCookies ++ interceptHeaders'
-    let res' = res { headers = newCookies ++ headers' }
+    let res' = res { responseHeaders = newCookies ++ responseHeaders' }
     return res'
 
 combineCookies :: [(B.ByteString, B.ByteString)] -> [B.ByteString]
