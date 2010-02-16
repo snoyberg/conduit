@@ -28,7 +28,7 @@ import Data.Maybe (fromMaybe)
 -- callback function.
 jsonp :: Middleware
 jsonp app env = do
-    let accept = fromMaybe B8.empty $ lookup Accept $ httpHeaders env
+    let accept = fromMaybe B8.empty $ lookup Accept $ requestHeaders env
     let gets = decodeUrlPairs $ queryString env
     let callback :: Maybe B8.ByteString
         callback =
@@ -39,15 +39,15 @@ jsonp app env = do
             case callback of
                 Nothing -> env
                 Just _ -> env
-                        { httpHeaders = changeVal Accept
+                        { requestHeaders = changeVal Accept
                                            "application/json"
-                                           $ httpHeaders env
+                                           $ requestHeaders env
                         }
     res <- app env'
-    case (fmap B8.unpack $ lookup ContentType $ headers res, callback) of
+    case (fmap B8.unpack $ lookup ContentType $ responseHeaders res, callback) of
         (Just "application/json", Just c) -> return $ res
-            { headers = changeVal ContentType "text/javascript" $ headers res
-            , body = Right $ addCallback c $ fromEitherFile $ body res
+            { responseHeaders = changeVal ContentType "text/javascript" $ responseHeaders res
+            , responseBody = Right $ addCallback c $ fromEitherFile $ responseBody res
             }
         _ -> return res
 

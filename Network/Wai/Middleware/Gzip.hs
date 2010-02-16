@@ -39,18 +39,18 @@ import qualified Data.ByteString.Lazy as L
 gzip :: Middleware
 gzip app env = do
     res <- app env
-    case body res of
+    case responseBody res of
         Left _ -> return res
         Right _ -> do
             let enc = fromMaybe []
                     $ (splitOneOf "," . B.unpack)
                     `fmap` lookup AcceptEncoding
-                      (httpHeaders env)
+                      (requestHeaders env)
             if "gzip" `elem` enc
                 then return res
-                    { body = compressE $ body res
-                    , headers = (ContentEncoding, B.pack "gzip")
-                              : headers res
+                    { responseBody = compressE $ responseBody res
+                    , responseHeaders = (ContentEncoding, B.pack "gzip")
+                              : responseHeaders res
                     }
                 else return res
 

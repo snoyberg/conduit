@@ -29,7 +29,7 @@ run app = do
     run' vars System.IO.stdin System.IO.stdout app
 
 run' :: [(String, String)] -- ^ all variables
-     -> System.IO.Handle -- ^ body of input
+     -> System.IO.Handle -- ^ responseBody of input
      -> System.IO.Handle -- ^ destination for output
      -> Application
      -> IO ()
@@ -52,7 +52,7 @@ run' vars inputH outputH app = do
             , queryString = B.pack qstring
             , serverName = B.pack servername
             , serverPort = serverport
-            , httpHeaders = map (cleanupVarName *** B.pack) vars
+            , requestHeaders = map (cleanupVarName *** B.pack) vars
             , urlScheme = urlScheme'
             , requestBody = requestBodyHandle inputH mContentLength
             , errorHandler = System.IO.hPutStr System.IO.stderr
@@ -60,7 +60,7 @@ run' vars inputH outputH app = do
             , httpVersion = HttpVersion B.empty
             }
     res <- app env
-    let h = headers res
+    let h = responseHeaders res
     let h' = case lookup ContentType h of
                 Nothing -> (ContentType, B.pack "text/html; charset=utf-8")
                          : h
@@ -71,7 +71,7 @@ run' vars inputH outputH app = do
     hPut $ B.singleton '\n'
     mapM_ (printHeader hPut) h'
     hPut $ B.singleton '\n'
-    _ <- fromEitherFile (body res) (myPut outputH) ()
+    _ <- fromEitherFile (responseBody res) (myPut outputH) ()
     return ()
 
 myPut :: System.IO.Handle -> () -> B.ByteString -> IO (Either () ())

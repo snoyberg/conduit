@@ -69,8 +69,8 @@ serveConnection port app conn remoteHost' =
 
 hParseRequest :: Port -> Handle -> String -> IO Request
 hParseRequest port conn remoteHost' = do
-    headers' <- takeUntilBlank conn id
-    parseRequest port headers' conn remoteHost'
+    responseHeaders' <- takeUntilBlank conn id
+    parseRequest port responseHeaders' conn remoteHost'
 
 takeUntilBlank :: Handle
                -> ([BS.ByteString] -> [BS.ByteString])
@@ -95,7 +95,7 @@ data InvalidRequest =
     deriving (Show, Typeable)
 instance Exception InvalidRequest
 
--- | Parse a set of header lines and body into a 'Request'.
+-- | Parse a set of header lines and responseBody into a 'Request'.
 parseRequest :: Port
              -> [BS.ByteString]
              -> Handle
@@ -128,7 +128,7 @@ parseRequest port lines' handle remoteHost' = do
                 , queryString = gets
                 , serverName = serverName'
                 , serverPort = port
-                , httpHeaders = heads
+                , requestHeaders = heads
                 , urlScheme = HTTP
                 , requestBody = requestBodyHandle handle mlen
                 , errorHandler = System.IO.hPutStr System.IO.stderr
@@ -165,9 +165,9 @@ sendResponse h res = do
     BS.hPut h $ SL.pack $ show $ statusCode $ status res
     BS.hPut h $ statusMessage $ status res
     BS.hPut h $ SL.pack "\r\n"
-    mapM_ putHeader $ headers res
+    mapM_ putHeader $ responseHeaders res
     BS.hPut h $ SL.pack "\r\n"
-    case body res of
+    case responseBody res of
         Left fp -> unsafeSendFile h fp
         Right enum -> enum myPut h >> return ()
     where
