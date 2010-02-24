@@ -27,7 +27,7 @@ import Network
     , withSocketsDo)
 import Control.Exception (bracket, finally, Exception)
 import System.IO (Handle, hClose)
-import Control.Concurrent
+import Control.Concurrent (forkIO)
 import Control.Monad (unless)
 import Data.Maybe (isJust, fromJust, fromMaybe)
 
@@ -118,7 +118,6 @@ parseRequest port lines' handle remoteHost' = do
                 bs <- lookup ReqContentLength heads
                 let str = SL.unpack bs
                 Safe.readMay str
-    mlen <- newMVar len
     let (serverName', _) = SL.breakChar ':' host
     return $ Request
                 { requestMethod = method
@@ -129,24 +128,23 @@ parseRequest port lines' handle remoteHost' = do
                 , serverPort = port
                 , requestHeaders = heads
                 , urlScheme = HTTP
-                , requestBody = requestBodyHandle handle mlen
+                , requestBody = requestBodyHandle handle len
                 , errorHandler = System.IO.hPutStr System.IO.stderr
                 , remoteHost = B8.pack remoteHost'
                 }
 
-requestBodyHandle :: Handle -> MVar Int -> Enumerator
-requestBodyHandle h mlen = Enumerator $ \iter accum ->
-  modifyMVar mlen (helper iter accum) where
-    helper _ a 0 = return (0, Right a)
-    helper iter a len = do
+requestBodyHandle :: Handle -> Int -> Enumerator
+requestBodyHandle h len0 = Enumerator $ helper len0 where
+    helper 0 _ a = return $ Right a
+    helper len iter a = do
         let maxChunkSize = 1024
         bs <- BS.hGet h $ min len maxChunkSize
         let newLen = len - BS.length bs
         putStrLn $ "reading a chunk of size " ++ show (BS.length bs)
         ea' <- iter a bs
         case ea' of
-            Left a' -> return (newLen, Left a')
-            Right a' -> helper iter a' newLen
+            Left a' -> return $ Left a'
+            Right a' -> helper newLen iter a'
 
 parseFirst :: (StringLike s, MonadFailure InvalidRequest m) =>
               s
