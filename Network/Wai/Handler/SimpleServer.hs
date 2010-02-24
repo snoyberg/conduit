@@ -134,10 +134,11 @@ parseRequest port lines' handle remoteHost' = do
                 , remoteHost = B8.pack remoteHost'
                 }
 
-requestBodyHandle :: Handle -> MVar Int -> Enumerator a
-requestBodyHandle h mlen iter accum = modifyMVar mlen (helper accum) where
-    helper a 0 = return (0, Right a)
-    helper a len = do
+requestBodyHandle :: Handle -> MVar Int -> Enumerator
+requestBodyHandle h mlen = Enumerator $ \iter accum ->
+  modifyMVar mlen (helper iter accum) where
+    helper _ a 0 = return (0, Right a)
+    helper iter a len = do
         let maxChunkSize = 1024
         bs <- BS.hGet h $ min len maxChunkSize
         let newLen = len - BS.length bs
@@ -145,7 +146,7 @@ requestBodyHandle h mlen iter accum = modifyMVar mlen (helper accum) where
         ea' <- iter a bs
         case ea' of
             Left a' -> return (newLen, Left a')
-            Right a' -> helper a' newLen
+            Right a' -> helper iter a' newLen
 
 parseFirst :: (StringLike s, MonadFailure InvalidRequest m) =>
               s
@@ -170,7 +171,7 @@ sendResponse h res = do
     BS.hPut h $ SL.pack "\r\n"
     case responseBody res of
         Left fp -> unsafeSendFile h fp
-        Right enum -> enum myPut h >> return ()
+        Right (Enumerator enum) -> enum myPut h >> return ()
     where
         myPut _ bs = do
             putStrLn $ "sending a chunk of size " ++ show (BS.length bs)

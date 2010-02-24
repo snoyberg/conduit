@@ -18,7 +18,7 @@ indexResponse = return Response
     , responseBody = index
     }
 
-postResponse :: (forall a. Enumerator a) -> IO Response
+postResponse :: Enumerator -> IO Response
 postResponse rb = return Response
     { status = Status200
     , responseHeaders = [(ContentType, B8.pack "text/plain")]

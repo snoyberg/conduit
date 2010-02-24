@@ -56,7 +56,7 @@ module Network.Wai
     , statusCode
     , statusMessage
       -- * Enumerator
-    , Enumerator
+    , Enumerator (..)
       -- * WAI interface
     , Request (..)
     , Response (..)
@@ -341,9 +341,11 @@ statusMessage (Status _ m) = m
 -- 'Enumerator' may only be called once. While this requirement puts a bit of a
 -- strain on the caller in some situations, it saves a large amount of
 -- complication- and thus performance- on the producer.
-type Enumerator a = (a -> B.ByteString -> IO (Either a a))
+newtype Enumerator = Enumerator { runEnumerator :: forall a.
+              (a -> B.ByteString -> IO (Either a a))
                  -> a
                  -> IO (Either a a)
+}
 
 -- | Information on the request sent by the client. This abstracts away the
 -- details of the underlying implementation.
@@ -361,7 +363,7 @@ data Request = Request
   ,  serverPort     :: Int
   ,  requestHeaders :: [(RequestHeader, B.ByteString)]
   ,  urlScheme      :: UrlScheme
-  ,  requestBody    :: forall a. Enumerator a
+  ,  requestBody    :: Enumerator
   ,  errorHandler   :: String -> IO ()
   -- | The client\'s host information.
   ,  remoteHost     :: B.ByteString
@@ -374,7 +376,7 @@ data Response = Response
   -- files from the disk. This datatype facilitates this optimization; if
   -- 'Left' is returns, the server will send the file from the disk by whatever
   -- means it wishes. If 'Right', it will call the 'Enumerator'.
-  , responseBody    :: forall a. Either FilePath (Enumerator a)
+  , responseBody    :: Either FilePath Enumerator
   }
 
 type Application = Request -> IO Response

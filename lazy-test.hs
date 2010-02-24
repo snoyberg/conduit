@@ -15,15 +15,15 @@ app req = case B8.unpack $ pathInfo req of
 indexResponse :: IO Response
 indexResponse = return Response
     { status = Status200
-    , headers = [(ContentType, B8.pack "text/html")]
-    , body = index
+    , responseHeaders = [(ContentType, B8.pack "text/html")]
+    , responseBody = index
     }
 
-postResponse :: (forall a. Enumerator a) -> IO Response
+postResponse :: Enumerator -> IO Response
 postResponse rb = return Response
     { status = Status200
-    , headers = [(ContentType, B8.pack "text/plain")]
-    , body = Right $ fromLBS' $ toLBS rb
+    , responseHeaders = [(ContentType, B8.pack "text/plain")]
+    , responseBody = Right $ fromLBS' $ toLBS rb
     }
 
 index :: Either FilePath a
