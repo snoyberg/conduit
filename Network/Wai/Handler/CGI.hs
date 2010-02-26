@@ -40,7 +40,13 @@ run' vars inputH outputH app = do
         servername = lookup' "SERVER_NAME" vars
         serverport = safeRead 80 $ lookup' "SERVER_PORT" vars
         contentLength = safeRead 0 $ lookup' "CONTENT_LENGTH" vars
-        remoteHost' = safeRead "" $ lookup' "REMOTE_HOST" vars
+        remoteHost' =
+            case lookup "REMOTE_HOST" vars of
+                Just x -> x
+                Nothing ->
+                    case lookup "REMOTE_ADDR" vars of
+                        Just x -> x
+                        Nothing -> ""
         urlScheme' =
             case map toLower $ lookup' "SERVER_PROTOCOL" vars of
                 "https" -> HTTPS
