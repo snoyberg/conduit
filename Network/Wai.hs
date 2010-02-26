@@ -1,4 +1,5 @@
 {-# LANGUAGE Rank2Types #-}
+{-# LANGUAGE ExistentialQuantification #-}
 {-|
 
 This module defines a generic web application interface. It is a common
@@ -56,6 +57,7 @@ module Network.Wai
     , statusCode
     , statusMessage
       -- * Enumerator
+    , Source (..)
     , Enumerator (..)
       -- * WAI interface
     , Request (..)
@@ -308,6 +310,8 @@ statusMessage Status405 = B8.pack "Method Not Allowed"
 statusMessage Status500 = B8.pack "Internal Server Error"
 statusMessage (Status _ m) = m
 
+data Source = forall a. Source a (a -> IO (Maybe (B.ByteString, a)))
+
 -- | An enumerator is a data producer. It takes two arguments: a function to
 -- enumerate over (the iteratee) and an accumulating parameter. As the
 -- enumerator produces output, it calls the iteratee, thereby avoiding the need
@@ -363,7 +367,7 @@ data Request = Request
   ,  serverPort     :: Int
   ,  requestHeaders :: [(RequestHeader, B.ByteString)]
   ,  urlScheme      :: UrlScheme
-  ,  requestBody    :: Enumerator
+  ,  requestBody    :: Source
   ,  errorHandler   :: String -> IO ()
   -- | The client\'s host information.
   ,  remoteHost     :: B.ByteString

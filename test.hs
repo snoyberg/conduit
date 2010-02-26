@@ -2,13 +2,14 @@
 import Network.Wai
 import Network.Wai.Handler.SimpleServer
 import qualified Data.ByteString.Char8 as B8
+import qualified Network.Wai.Source as Source
 
 main :: IO ()
 main = putStrLn "http://localhost:3000/" >> run 3000 app
 
 app :: Application
 app req = case B8.unpack $ pathInfo req of
-    "/post/" -> postResponse $ requestBody req
+    "/post/" -> postResponse $ Source.toEnumerator $ requestBody req
     _ -> indexResponse
 
 indexResponse :: IO Response

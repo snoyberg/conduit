@@ -1,6 +1,7 @@
 {-# LANGUAGE Rank2Types #-}
 import Network.Wai
 import Network.Wai.Enumerator
+import qualified Network.Wai.Source as Source
 import Network.Wai.Handler.SimpleServer
 import qualified Data.ByteString.Char8 as B8
 
@@ -19,11 +20,11 @@ indexResponse = return Response
     , responseBody = index
     }
 
-postResponse :: Enumerator -> IO Response
+postResponse :: Source -> IO Response
 postResponse rb = return Response
     { status = Status200
     , responseHeaders = [(ContentType, B8.pack "text/plain")]
-    , responseBody = Right $ fromLBS' $ toLBS rb
+    , responseBody = Right $ fromLBS' $ Source.toLBS rb
     }
 
 index :: Either FilePath a

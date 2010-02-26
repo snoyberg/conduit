@@ -128,23 +128,19 @@ parseRequest port lines' handle remoteHost' = do
                 , serverPort = port
                 , requestHeaders = heads
                 , urlScheme = HTTP
-                , requestBody = requestBodyHandle handle len
+                , requestBody = Source len $ requestBodyHandle handle
                 , errorHandler = System.IO.hPutStr System.IO.stderr
                 , remoteHost = B8.pack remoteHost'
                 }
 
-requestBodyHandle :: Handle -> Int -> Enumerator
-requestBodyHandle h len0 = Enumerator $ helper len0 where
-    helper 0 _ a = return $ Right a
-    helper len iter a = do
-        let maxChunkSize = 1024
-        bs <- BS.hGet h $ min len maxChunkSize
-        let newLen = len - BS.length bs
-        putStrLn $ "reading a chunk of size " ++ show (BS.length bs)
-        ea' <- iter a bs
-        case ea' of
-            Left a' -> return $ Left a'
-            Right a' -> helper newLen iter a'
+requestBodyHandle :: Handle -> Int -> IO (Maybe (B8.ByteString, Int))
+requestBodyHandle _ 0 = return Nothing
+requestBodyHandle h len = do
+    let maxChunkSize = 1024
+    bs <- BS.hGet h $ min len maxChunkSize
+    let newLen = len - BS.length bs
+    putStrLn $ "reading a chunk of size " ++ show (BS.length bs)
+    return $ Just (bs, newLen)
 
 parseFirst :: (StringLike s, MonadFailure InvalidRequest m) =>
               s
