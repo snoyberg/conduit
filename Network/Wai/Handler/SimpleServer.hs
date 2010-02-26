@@ -18,6 +18,7 @@ module Network.Wai.Handler.SimpleServer
     ) where
 
 import Network.Wai
+import Network.Wai.Handler.Helper
 import qualified System.IO
 
 import qualified Data.ByteString as BS
@@ -27,7 +28,7 @@ import Network
     , withSocketsDo)
 import Control.Exception (bracket, finally, Exception)
 import System.IO (Handle, hClose)
-import Control.Concurrent
+import Control.Concurrent (forkIO)
 import Control.Monad (unless)
 import Data.Maybe (isJust, fromJust, fromMaybe)
 
@@ -40,7 +41,6 @@ import qualified Web.Encodings.StringLike as SL
 import qualified Safe
 import Network.Socket.SendFile
 import Control.Arrow (first)
-import Data.ByteString.Lazy.Internal (defaultChunkSize)
 
 run :: Port -> Application -> IO ()
 run port = withSocketsDo .
@@ -69,8 +69,8 @@ serveConnection port app conn remoteHost' =
 
 hParseRequest :: Port -> Handle -> String -> IO Request
 hParseRequest port conn remoteHost' = do
-    responseHeaders' <- takeUntilBlank conn id
-    parseRequest port responseHeaders' conn remoteHost'
+    headers' <- takeUntilBlank conn id
+    parseRequest port headers' conn remoteHost'
 
 takeUntilBlank :: Handle
                -> ([BS.ByteString] -> [BS.ByteString])
@@ -95,7 +95,7 @@ data InvalidRequest =
     deriving (Show, Typeable)
 instance Exception InvalidRequest
 
--- | Parse a set of header lines and responseBody into a 'Request'.
+-- | Parse a set of header lines and body into a 'Request'.
 parseRequest :: Port
              -> [BS.ByteString]
              -> Handle
@@ -119,7 +119,6 @@ parseRequest port lines' handle remoteHost' = do
                 bs <- lookup ReqContentLength heads
                 let str = SL.unpack bs
                 Safe.readMay str
-    mlen <- newMVar len
     let (serverName', _) = SL.breakChar ':' host
     return $ Request
                 { requestMethod = method
@@ -130,21 +129,10 @@ parseRequest port lines' handle remoteHost' = do
                 , serverPort = port
                 , requestHeaders = heads
                 , urlScheme = HTTP
-                , requestBody = requestBodyHandle handle mlen
+                , requestBody = Source len $ requestBodyHandle handle
                 , errorHandler = System.IO.hPutStr System.IO.stderr
                 , remoteHost = B8.pack remoteHost'
                 }
-
-requestBodyHandle :: Handle -> MVar Int -> Enumerator a
-requestBodyHandle h mlen iter accum = modifyMVar mlen (helper accum) where
-    helper a 0 = return (0, Right a)
-    helper a len = do
-        bs <- BS.hGet h $ min len defaultChunkSize
-        let newLen = len - BS.length bs
-        ea' <- iter a bs
-        case ea' of
-            Left a' -> return (newLen, Left a')
-            Right a' -> helper a' newLen
 
 parseFirst :: (StringLike s, MonadFailure InvalidRequest m) =>
               s
@@ -169,7 +157,7 @@ sendResponse h res = do
     BS.hPut h $ SL.pack "\r\n"
     case responseBody res of
         Left fp -> unsafeSendFile h fp
-        Right enum -> enum myPut h >> return ()
+        Right (Enumerator enum) -> enum myPut h >> return ()
     where
         myPut _ bs = do
             BS.hPut h bs

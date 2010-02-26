@@ -51,8 +51,8 @@ jsonp app env = do
             }
         _ -> return res
 
-addCallback :: B8.ByteString -> Enumerator a -> Enumerator a
-addCallback cb e iter a = do
+addCallback :: B8.ByteString -> Enumerator -> Enumerator
+addCallback cb (Enumerator e) = Enumerator $ \iter a -> do
     ea' <- iter a $ B8.snoc cb '('
     case ea' of
         Left a' -> return $ Left a'

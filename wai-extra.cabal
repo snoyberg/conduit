@@ -34,4 +34,5 @@ Library
                      Network.Wai.Middleware.Gzip
                      Network.Wai.Middleware.Jsonp
                      Network.Wai.Middleware.MethodOverride
+  Other-modules:     Network.Wai.Handler.Helper
   ghc-options:       -Wall -Werror

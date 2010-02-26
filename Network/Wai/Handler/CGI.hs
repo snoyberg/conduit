@@ -5,14 +5,13 @@ module Network.Wai.Handler.CGI
 
 import Network.Wai
 import Network.Wai.Enumerator (fromEitherFile)
+import Network.Wai.Handler.Helper
 import System.Environment (getEnvironment)
 import Data.Maybe (fromMaybe)
 import qualified Data.ByteString.Char8 as B
 import Control.Arrow ((***))
 import Data.Char (toLower)
 import qualified System.IO
-import Control.Concurrent
-import Data.ByteString.Lazy.Internal (defaultChunkSize)
 
 safeRead :: Read a => a -> String -> a
 safeRead d s =
@@ -51,7 +50,6 @@ run' vars inputH outputH app = do
             case map toLower $ lookup' "SERVER_PROTOCOL" vars of
                 "https" -> HTTPS
                 _ -> HTTP
-    mContentLength <- newMVar contentLength
     let env = Request
             { requestMethod = rmethod
             , pathInfo = B.pack pinfo
@@ -60,7 +58,7 @@ run' vars inputH outputH app = do
             , serverPort = serverport
             , requestHeaders = map (cleanupVarName *** B.pack) vars
             , urlScheme = urlScheme'
-            , requestBody = requestBodyHandle inputH mContentLength
+            , requestBody = Source contentLength $ requestBodyHandle inputH
             , errorHandler = System.IO.hPutStr System.IO.stderr
             , remoteHost = B.pack remoteHost'
             , httpVersion = HttpVersion B.empty
@@ -77,22 +75,11 @@ run' vars inputH outputH app = do
     hPut $ B.singleton '\n'
     mapM_ (printHeader hPut) h'
     hPut $ B.singleton '\n'
-    _ <- fromEitherFile (responseBody res) (myPut outputH) ()
+    _ <- runEnumerator (fromEitherFile (responseBody res)) (myPut outputH) ()
     return ()
 
 myPut :: System.IO.Handle -> () -> B.ByteString -> IO (Either () ())
 myPut outputH _ bs = B.hPut outputH bs >> return (Right ())
-
-requestBodyHandle :: System.IO.Handle -> MVar Int -> Enumerator a
-requestBodyHandle h mlen iter accum = modifyMVar mlen (helper accum) where
-    helper a 0 = return (0, Right a)
-    helper a len = do
-        bs <- B.hGet h $ min len defaultChunkSize
-        let newLen = len - B.length bs
-        ea' <- iter a bs
-        case ea' of
-            Left a' -> return (newLen, Left a')
-            Right a' -> helper a' newLen
 
 printHeader :: (B.ByteString -> IO ())
             -> (ResponseHeader, B.ByteString)

@@ -16,12 +16,11 @@
 module Network.Wai.Middleware.Gzip (gzip) where
 
 import Network.Wai
-import Network.Wai.Enumerator (mapE)
+import Network.Wai.Enumerator (fromLBS', toLBS)
 import Codec.Compression.GZip (compress)
 import Data.Maybe (fromMaybe)
 import Data.List.Split (splitOneOf)
 import qualified Data.ByteString.Char8 as B
-import qualified Data.ByteString.Lazy as L
 
 -- | Use gzip to compress the body of the response.
 --
@@ -54,10 +53,6 @@ gzip app env = do
                     }
                 else return res
 
-compressE :: Either FilePath (Enumerator a) -> Either FilePath (Enumerator a)
-compressE = either (Left . id) (Right . mapE compress')
-
--- | Note: this might lose a lot of the compression power by dealing with
--- smaller chunks, I'm not certain.
-compress' :: B.ByteString -> B.ByteString
-compress' bs = B.concat $ L.toChunks $ compress $ L.fromChunks [bs]
+compressE :: Either FilePath Enumerator -> Either FilePath Enumerator
+compressE (Left fp) = Left fp
+compressE (Right e) = Right $ fromLBS' $ fmap compress $ toLBS e

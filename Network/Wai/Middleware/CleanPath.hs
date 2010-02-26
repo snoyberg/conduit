@@ -20,8 +20,8 @@ cleanPath app env =
                    $ Right emptyEnum
         Right pieces -> app pieces env
 
-emptyEnum :: Enumerator a
-emptyEnum _ = return . Right
+emptyEnum :: Enumerator
+emptyEnum = Enumerator $ \_ -> return . Right
 
 -- | Given a certain requested path, return either a corrected path
 -- to redirect to or the tokenized path.
