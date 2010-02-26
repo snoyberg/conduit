@@ -34,7 +34,8 @@ mapE f (Enumerator e) = Enumerator $ \iter -> e (iter' iter) where
     iter' iter a = iter a . f
 
 -- | This uses 'unsafeInterleaveIO' to lazily read from an enumerator. All
--- normal lazy I/O warnings apply.
+-- normal lazy I/O warnings apply. In addition, since it is based on
+-- 'toSource', please observe all precautions for that function.
 toLBS :: Enumerator -> IO L.ByteString
 toLBS = Source.toLBS <=< toSource
 
@@ -55,6 +56,15 @@ fromLBS' :: IO L.ByteString -> Enumerator
 fromLBS' lbs' = Enumerator $ \iter a0 -> lbs' >>= \lbs ->
     runEnumerator (fromLBS lbs) iter a0
 
+-- | This function uses another thread to convert an 'Enumerator' to a
+-- 'Source'. In essence, this allows you to write code which \"pulls\" instead
+-- of code which is pushed to. While this can be a useful technique, some
+-- caveats apply:
+--
+-- * It will be more resource heavy than using the 'Enumerator' directly.
+--
+-- * You *must* consume all input. If you do not, then the other thread will be
+-- deadlocked.
 toSource :: Enumerator -> IO Source
 toSource (Enumerator e) = do
     buffer <- newEmptyMVar

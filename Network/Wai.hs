@@ -6,20 +6,20 @@ This module defines a generic web application interface. It is a common
 protocol between web servers and web applications.
 
 The overriding design principles here are performance, generality and type
-safety. To address performance, this library is built on 'Enumerator's for the
-request and response bodies. The advantages of this approach over lazy IO has
-been debated elsewhere.
+safety. To address performance, this library is built on 'Source' for the
+request body and 'Enumerator' for the response bodies. The advantages of this
+approach over lazy IO have been debated elsewhere.
 
-Nonetheless, many people find 'Enumerator's difficult to work with. For that
-reason, this library includes the "Network.Wai.Enumerator" module to provide
-more familiar abstractions, including lazy IO.
+Nonetheless, many people find these data structures difficult to work with. For
+that reason, this library includes the "Network.Wai.Enumerator" module to
+provide more familiar abstractions, including lazy IO.
 
 Generality is achieved by removing many variables commonly found in similar
 projects that are not universal to all servers. The goal is that the 'Request'
 object contains only data which is meaningful in all circumstances.
 
 Unlike other approaches, this package declares many data types to assist in
-type safety. This feels more in the general Haskell spirit.
+type safety. This feels more inline with the general Haskell spirit.
 
 A final note: please remember when using this package that, while your
 application my compile without a hitch against many different servers, there
@@ -56,8 +56,9 @@ module Network.Wai
     , Status (..)
     , statusCode
     , statusMessage
-      -- * Enumerator
+      -- ** Source
     , Source (..)
+      -- * Enumerator
     , Enumerator (..)
       -- * WAI interface
     , Request (..)
@@ -310,6 +311,18 @@ statusMessage Status405 = B8.pack "Method Not Allowed"
 statusMessage Status500 = B8.pack "Internal Server Error"
 statusMessage (Status _ m) = m
 
+-- | This is a source for 'B.ByteString's. It is composed of two pieces: a
+-- state variable, and a function to produce the output. The type of the state
+-- variable is completely unknown to the user; some examples might be an 'Int'
+-- for the remaining length of the content, or a list of 'B.ByteString's from
+-- which to generate content.
+--
+-- The function accepts that state variable as its first argument. If input has
+-- been fully consumed, it returns 'Nothing'; otherwise, it returns the next
+-- piece of data and the next state.
+--
+-- Be certain not to reuse a state variable! It might work fine with some
+-- implementations of 'Source', while causing bugs with others.
 data Source = forall a. Source a (a -> IO (Maybe (B.ByteString, a)))
 
 -- | An enumerator is a data producer. It takes two arguments: a function to
@@ -336,10 +349,6 @@ data Source = forall a. Source a (a -> IO (Maybe (B.ByteString, a)))
 -- enumerator simply passes it around. The enumerator itself also returns an
 -- 'Either' value; a 'Right' means the enumerator ran to completion, while a
 -- 'Left' indicates early termination was requested by the iteratee.
---
--- 'Enumerator's are used twice in the WAI: once in the 'Request' datatype to
--- access the request body, and once in the 'Response' datatype for the
--- application to return the body of the response.
 --
 -- 'Enumerator's are not required to be resumable. That is to say, the
 -- 'Enumerator' may only be called once. While this requirement puts a bit of a
@@ -378,14 +387,17 @@ data Response = Response
   , responseHeaders :: [(ResponseHeader, B.ByteString)]
   -- | A common optimization is to use the sendfile system call when sending
   -- files from the disk. This datatype facilitates this optimization; if
-  -- 'Left' is returns, the server will send the file from the disk by whatever
-  -- means it wishes. If 'Right', it will call the 'Enumerator'.
+  -- 'Left' is returned, the server will send the file from the disk by
+  -- whatever means it wishes. If 'Right', it will call the 'Enumerator'.
   , responseBody    :: Either FilePath Enumerator
   }
 
 type Application = Request -> IO Response
 
--- | Middleware is a component that sits between the server and application. It can do such tasks as GZIP encoding or response caching. What follows is the general definition of middleware, though a middleware author should feel free to modify this.
+-- | Middleware is a component that sits between the server and application. It
+-- can do such tasks as GZIP encoding or response caching. What follows is the
+-- general definition of middleware, though a middleware author should feel
+-- free to modify this.
 --
 -- As an example of an alternate type for middleware, suppose you write a
 -- function to load up session information. The session information is simply a
