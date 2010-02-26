@@ -17,14 +17,15 @@ module Network.Wai.Enumerator
     , fromEitherFile
     ) where
 
-import Network.Wai (Enumerator (..))
+import Network.Wai (Enumerator (..), Source (..))
+import qualified Network.Wai.Source as Source
 import qualified Data.ByteString.Lazy as L
 import qualified Data.ByteString as B
-import System.IO.Unsafe (unsafeInterleaveIO)
 import System.IO (withBinaryFile, IOMode (ReadMode), Handle, hIsEOF)
 import Data.ByteString.Lazy.Internal (defaultChunkSize)
 import Control.Concurrent (forkIO)
 import Control.Concurrent.MVar
+import Control.Monad ((<=<))
 
 -- | Performs a specified conversion on each 'B.ByteString' output by an
 -- enumerator.
@@ -35,17 +36,7 @@ mapE f (Enumerator e) = Enumerator $ \iter -> e (iter' iter) where
 -- | This uses 'unsafeInterleaveIO' to lazily read from an enumerator. All
 -- normal lazy I/O warnings apply.
 toLBS :: Enumerator -> IO L.ByteString
-toLBS e = do
-    source <- toSource e
-    L.fromChunks `fmap` helper source
-      where
-        helper source = unsafeInterleaveIO $ do
-                x <- source
-                case x of
-                    Nothing -> return []
-                    Just x' -> do
-                        xs <- helper source
-                        return $ x' : xs
+toLBS = Source.toLBS <=< toSource
 
 -- | This function safely converts a lazy bytestring into an enumerator.
 fromLBS :: L.ByteString -> Enumerator
@@ -64,14 +55,11 @@ fromLBS' :: IO L.ByteString -> Enumerator
 fromLBS' lbs' = Enumerator $ \iter a0 -> lbs' >>= \lbs ->
     runEnumerator (fromLBS lbs) iter a0
 
--- | A source is a more standard way of accessing data from an 'Enumerator'.
--- Each time you call it, it returns the next chunk of data if available, or
--- 'Nothing' if the data has been completely consumed.
-toSource :: Enumerator -> IO (IO (Maybe B.ByteString))
+toSource :: Enumerator -> IO Source
 toSource (Enumerator e) = do
     buffer <- newEmptyMVar
     _ <- forkIO $ e (helper buffer) () >> putMVar buffer Nothing
-    return $ source buffer
+    return $ Source () $ source buffer
       where
         helper :: MVar (Maybe B.ByteString)
                -> ()
@@ -80,8 +68,9 @@ toSource (Enumerator e) = do
         helper buffer _ bs = do
             putMVar buffer $ Just bs
             return $ Right ()
-        source :: MVar (Maybe B.ByteString) -> IO (Maybe B.ByteString)
-        source mmbs = do
+        source :: MVar (Maybe B.ByteString) -> ()
+               -> IO (Maybe (B.ByteString, ()))
+        source mmbs () = do
             mbs <- takeMVar mmbs
             case mbs of
                 Nothing -> do
@@ -89,7 +78,7 @@ toSource (Enumerator e) = do
                     -- again without causing a deadlock.
                     putMVar mmbs Nothing
                     return Nothing
-                Just bs -> return $ Just bs
+                Just bs -> return $ Just (bs, ())
 
 -- | Read a chunk of data from the given 'Handle' at a time. We use
 -- 'defaultChunkSize' from the bytestring package to determine the largest
