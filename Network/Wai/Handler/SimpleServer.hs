@@ -129,7 +129,7 @@ parseRequest port lines' handle remoteHost' = do
                 , serverPort = port
                 , requestHeaders = heads
                 , urlScheme = HTTP
-                , requestBody = Source len $ requestBodyHandle handle
+                , requestBody = requestBodyHandle handle len
                 , errorHandler = System.IO.hPutStr System.IO.stderr
                 , remoteHost = B8.pack remoteHost'
                 }

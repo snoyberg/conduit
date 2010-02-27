@@ -4,11 +4,12 @@ module Network.Wai.Handler.Helper
 
 import System.IO (Handle)
 import qualified Data.ByteString as B
+import Data.ByteString.Lazy.Internal (defaultChunkSize)
+import Network.Wai (Source (..))
 
-requestBodyHandle :: Handle -> Int -> IO (Maybe (B.ByteString, Int))
-requestBodyHandle _ 0 = return Nothing
-requestBodyHandle h len = do
-    let maxChunkSize = 1024
-    bs <- B.hGet h $ min len maxChunkSize
+requestBodyHandle :: Handle -> Int -> Source
+requestBodyHandle _ 0 = Source $ return Nothing
+requestBodyHandle h len = Source $ do
+    bs <- B.hGet h $ min len defaultChunkSize
     let newLen = len - B.length bs
-    return $ Just (bs, newLen)
+    return $ Just (bs, requestBodyHandle h newLen)
