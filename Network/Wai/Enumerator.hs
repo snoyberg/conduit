@@ -69,7 +69,7 @@ toSource :: Enumerator -> IO Source
 toSource (Enumerator e) = do
     buffer <- newEmptyMVar
     _ <- forkIO $ e (helper buffer) () >> putMVar buffer Nothing
-    return $ Source () $ source buffer
+    return $ source buffer
       where
         helper :: MVar (Maybe B.ByteString)
                -> ()
@@ -78,9 +78,9 @@ toSource (Enumerator e) = do
         helper buffer _ bs = do
             putMVar buffer $ Just bs
             return $ Right ()
-        source :: MVar (Maybe B.ByteString) -> ()
-               -> IO (Maybe (B.ByteString, ()))
-        source mmbs () = do
+        source :: MVar (Maybe B.ByteString)
+               -> Source
+        source mmbs = Source $ do
             mbs <- takeMVar mmbs
             case mbs of
                 Nothing -> do
@@ -88,7 +88,7 @@ toSource (Enumerator e) = do
                     -- again without causing a deadlock.
                     putMVar mmbs Nothing
                     return Nothing
-                Just bs -> return $ Just (bs, ())
+                Just bs -> return $ Just (bs, source mmbs)
 
 -- | Read a chunk of data from the given 'Handle' at a time. We use
 -- 'defaultChunkSize' from the bytestring package to determine the largest

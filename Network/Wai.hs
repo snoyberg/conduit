@@ -311,19 +311,14 @@ statusMessage Status405 = B8.pack "Method Not Allowed"
 statusMessage Status500 = B8.pack "Internal Server Error"
 statusMessage (Status _ m) = m
 
--- | This is a source for 'B.ByteString's. It is composed of two pieces: a
--- state variable, and a function to produce the output. The type of the state
--- variable is completely unknown to the user; some examples might be an 'Int'
--- for the remaining length of the content, or a list of 'B.ByteString's from
--- which to generate content.
+-- | This is a source for 'B.ByteString's. It is a function (wrapped in a
+-- newtype) that will return Nothing if the data has been completely consumed,
+-- or return the next 'B.ByteString' from the source along with a new 'Source'
+-- to continue reading from.
 --
--- The function accepts that state variable as its first argument. If input has
--- been fully consumed, it returns 'Nothing'; otherwise, it returns the next
--- piece of data and the next state.
---
--- Be certain not to reuse a state variable! It might work fine with some
+-- Be certain not to reuse a 'Source'! It might work fine with some
 -- implementations of 'Source', while causing bugs with others.
-data Source = forall a. Source a (a -> IO (Maybe (B.ByteString, a)))
+newtype Source = Source { runSource :: IO (Maybe (B.ByteString, Source)) }
 
 -- | An enumerator is a data producer. It takes two arguments: a function to
 -- enumerate over (the iteratee) and an accumulating parameter. As the
