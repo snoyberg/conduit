@@ -21,8 +21,8 @@ import Network.Wai
 import Network.Wai.Handler.Helper
 import qualified System.IO
 
-import qualified Data.ByteString as BS
-import qualified Data.ByteString.Char8 as B8
+import Data.ByteString (ByteString)
+import qualified Data.ByteString.Char8 as B
 import Network
     ( listenOn, accept, sClose, PortID(PortNumber), Socket
     , withSocketsDo)
@@ -75,10 +75,10 @@ serveConnection port app conn remoteHost' =
                             return $ shouldConnectionClose env res
 
 reqConnectionHeader :: RequestHeader
-reqConnectionHeader = RequestHeader  $ B8.pack "Connection"
+reqConnectionHeader = RequestHeader  $ B.pack "Connection"
 
 resConnectionHeader :: ResponseHeader
-resConnectionHeader = ResponseHeader $ B8.pack "Connection"
+resConnectionHeader = ResponseHeader $ B.pack "Connection"
 
 shouldConnectionClose :: Request -> Response -> Bool
 shouldConnectionClose req res = (isClose req_conn)
@@ -86,7 +86,7 @@ shouldConnectionClose req res = (isClose req_conn)
 
     where
         isClose v = case v of
-                        Just x -> (B8.unpack x) == "close"
+                        Just x -> (B.unpack x) == "close"
                         Nothing -> False
 
         req_conn = lookup reqConnectionHeader $ requestHeaders req
@@ -98,18 +98,18 @@ hParseRequest port conn remoteHost' = do
     parseRequest port headers' conn remoteHost'
 
 takeUntilBlank :: Handle
-               -> ([BS.ByteString] -> [BS.ByteString])
-               -> IO [BS.ByteString]
+               -> ([ByteString] -> [ByteString])
+               -> IO [ByteString]
 takeUntilBlank h front = do
-    l <- stripCR `fmap` BS.hGetLine h
-    if BS.null l
+    l <- stripCR `fmap` B.hGetLine h
+    if B.null l
         then return $ front []
         else takeUntilBlank h $ front . (:) l
 
-stripCR :: BS.ByteString -> BS.ByteString
+stripCR :: ByteString -> ByteString
 stripCR bs
-    | BS.null bs = bs
-    | B8.last bs == '\r' = BS.init bs
+    | B.null bs = bs
+    | B.last bs == '\r' = B.init bs
     | otherwise = bs
 
 data InvalidRequest =
@@ -122,19 +122,19 @@ instance Exception InvalidRequest
 
 -- | Parse a set of header lines and body into a 'Request'.
 parseRequest :: Port
-             -> [BS.ByteString]
+             -> [ByteString]
              -> Handle
              -> String
              -> IO Request
 parseRequest port lines' handle remoteHost' = do
     case lines' of
         (_:_:_) -> return ()
-        _ -> failure $ NotEnoughLines $ map SL.unpack lines'
+        _ -> failure $ NotEnoughLines $ map B.unpack lines'
     (method', rpath', gets, httpversion) <- parseFirst $ head lines'
     let method = methodFromBS method'
-    let rpath = '/' : case SL.unpack rpath' of
+    let rpath = '/' : case B.unpack rpath' of
                         ('/':x) -> x
-                        _ -> SL.unpack rpath'
+                        _ -> B.unpack rpath'
     let heads = map (first requestHeaderFromBS . parseHeaderNoAttr)
               $ tail lines'
     let host' = lookup Host heads
@@ -142,13 +142,13 @@ parseRequest port lines' handle remoteHost' = do
     let host = fromJust host'
     let len = fromMaybe 0 $ do
                 bs <- lookup ReqContentLength heads
-                let str = SL.unpack bs
+                let str = B.unpack bs
                 Safe.readMay str
-    let (serverName', _) = SL.breakChar ':' host
+    let (serverName', _) = B.break (== ':') host
     return $ Request
                 { requestMethod = method
                 , httpVersion = httpversion
-                , pathInfo = SL.pack rpath
+                , pathInfo = B.pack rpath
                 , queryString = gets
                 , serverName = serverName'
                 , serverPort = port
@@ -156,50 +156,46 @@ parseRequest port lines' handle remoteHost' = do
                 , urlScheme = HTTP
                 , requestBody = requestBodyHandle handle len
                 , errorHandler = System.IO.hPutStr System.IO.stderr
-                , remoteHost = B8.pack remoteHost'
+                , remoteHost = B.pack remoteHost'
                 }
 
-parseFirst :: BS.ByteString
-           -> IO (BS.ByteString, BS.ByteString, BS.ByteString, HttpVersion)
+parseFirst :: ByteString
+           -> IO (ByteString, ByteString, ByteString, HttpVersion)
 parseFirst s = do
     let pieces = SL.split ' ' s
     (method, query, http') <-
         case pieces of
             [x, y, z] -> return (x, y, z)
-            _ -> failure $ BadFirstLine $ SL.unpack s
-    print ("http", http')
-    let (hfirst, hsecond) = BS.splitAt 5 http'
-    print (hfirst, hsecond)
-    unless (hfirst == B8.pack "HTTP/") $ failure NonHttp
-    let (rpath, qstring) = SL.breakChar '?' query
-    print (httpVersionFromBS hsecond)
+            _ -> failure $ BadFirstLine $ B.unpack s
+    let (hfirst, hsecond) = B.splitAt 5 http'
+    unless (hfirst == B.pack "HTTP/") $ failure NonHttp
+    let (rpath, qstring) = B.break (== '?') query
     return (method, rpath, qstring, httpVersionFromBS hsecond)
 
 sendResponse :: HttpVersion -> Handle -> Response -> IO ()
 sendResponse httpversion h res = do
-    BS.hPut h $ B8.pack "HTTP/"
-    print $ httpVersionToBS httpversion
-    BS.hPut h $ httpVersionToBS httpversion
-    BS.hPut h $ B8.pack " "
-    BS.hPut h $ B8.pack $ show $ statusCode $ status res
-    BS.hPut h $ statusMessage $ status res
-    BS.hPut h $ B8.pack "\r\n"
+    B.hPut h $ B.pack "HTTP/"
+    B.hPut h $ httpVersionToBS httpversion
+    B.hPut h $ B.pack " "
+    B.hPut h $ B.pack $ show $ statusCode $ status res
+    B.hPut h $ statusMessage $ status res
+    B.hPut h $ B.pack "\r\n"
     mapM_ putHeader $ responseHeaders res
-    BS.hPut h $ B8.pack "\r\n"
+    B.hPut h $ B.pack "\r\n"
     case responseBody res of
         Left fp -> unsafeSendFile h fp
         Right (Enumerator enum) -> enum myPut h >> return ()
     where
         myPut _ bs = do
-            BS.hPut h bs
+            B.hPut h bs
             return (Right h)
         putHeader (x, y) = do
-            BS.hPut h $ responseHeaderToBS x
-            BS.hPut h $ SL.pack ": "
-            BS.hPut h y
-            BS.hPut h $ SL.pack "\r\n"
+            B.hPut h $ responseHeaderToBS x
+            B.hPut h $ B.pack ": "
+            B.hPut h y
+            B.hPut h $ B.pack "\r\n"
 
-parseHeaderNoAttr :: BS.ByteString -> (BS.ByteString, BS.ByteString)
+parseHeaderNoAttr :: ByteString -> (ByteString, ByteString)
 parseHeaderNoAttr s =
-    let (k, rest) = B8.span (/= ':') s
-     in (k, SL.dropPrefix' (B8.pack ": ") rest)
+    let (k, rest) = B.span (/= ':') s
+     in (k, SL.dropPrefix' (B.pack ": ") rest)
