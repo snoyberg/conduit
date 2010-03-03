@@ -35,7 +35,6 @@ import Data.Maybe (isJust, fromJust, fromMaybe)
 import Control.Failure
 import Data.Typeable (Typeable)
 
-import Web.Encodings.StringLike (StringLike)
 import qualified Web.Encodings.StringLike as SL
 
 import qualified Safe
@@ -72,7 +71,7 @@ serveConnection port app conn remoteHost' =
         serveOneRequest' =  do
                             env <- hParseRequest port conn remoteHost'
                             res <- app env
-                            sendResponse conn res
+                            sendResponse (httpVersion env) conn res
                             return $ shouldConnectionClose env res
 
 reqConnectionHeader :: RequestHeader
@@ -117,7 +116,7 @@ data InvalidRequest =
     NotEnoughLines [String]
     | HostNotIncluded
     | BadFirstLine String
-    | NonHttp11
+    | NonHttp
     deriving (Show, Typeable)
 instance Exception InvalidRequest
 
@@ -131,7 +130,7 @@ parseRequest port lines' handle remoteHost' = do
     case lines' of
         (_:_:_) -> return ()
         _ -> failure $ NotEnoughLines $ map SL.unpack lines'
-    (method', rpath', gets) <- parseFirst $ head lines'
+    (method', rpath', gets, httpversion) <- parseFirst $ head lines'
     let method = methodFromBS method'
     let rpath = '/' : case SL.unpack rpath' of
                         ('/':x) -> x
@@ -148,7 +147,7 @@ parseRequest port lines' handle remoteHost' = do
     let (serverName', _) = SL.breakChar ':' host
     return $ Request
                 { requestMethod = method
-                , httpVersion = Http11
+                , httpVersion = httpversion
                 , pathInfo = SL.pack rpath
                 , queryString = gets
                 , serverName = serverName'
@@ -160,27 +159,33 @@ parseRequest port lines' handle remoteHost' = do
                 , remoteHost = B8.pack remoteHost'
                 }
 
-parseFirst :: (StringLike s, MonadFailure InvalidRequest m) =>
-              s
-           -> m (s, s, s)
+parseFirst :: BS.ByteString
+           -> IO (BS.ByteString, BS.ByteString, BS.ByteString, HttpVersion)
 parseFirst s = do
     let pieces = SL.split ' ' s
     (method, query, http') <-
         case pieces of
             [x, y, z] -> return (x, y, z)
             _ -> failure $ BadFirstLine $ SL.unpack s
-    unless (http' == SL.pack "HTTP/1.1") $ failure NonHttp11
+    print ("http", http')
+    let (hfirst, hsecond) = BS.splitAt 5 http'
+    print (hfirst, hsecond)
+    unless (hfirst == B8.pack "HTTP/") $ failure NonHttp
     let (rpath, qstring) = SL.breakChar '?' query
-    return (method, rpath, qstring)
+    print (httpVersionFromBS hsecond)
+    return (method, rpath, qstring, httpVersionFromBS hsecond)
 
-sendResponse :: Handle -> Response -> IO ()
-sendResponse h res = do
-    BS.hPut h $ SL.pack "HTTP/1.1 "
-    BS.hPut h $ SL.pack $ show $ statusCode $ status res
+sendResponse :: HttpVersion -> Handle -> Response -> IO ()
+sendResponse httpversion h res = do
+    BS.hPut h $ B8.pack "HTTP/"
+    print $ httpVersionToBS httpversion
+    BS.hPut h $ httpVersionToBS httpversion
+    BS.hPut h $ B8.pack " "
+    BS.hPut h $ B8.pack $ show $ statusCode $ status res
     BS.hPut h $ statusMessage $ status res
-    BS.hPut h $ SL.pack "\r\n"
+    BS.hPut h $ B8.pack "\r\n"
     mapM_ putHeader $ responseHeaders res
-    BS.hPut h $ SL.pack "\r\n"
+    BS.hPut h $ B8.pack "\r\n"
     case responseBody res of
         Left fp -> unsafeSendFile h fp
         Right (Enumerator enum) -> enum myPut h >> return ()
@@ -194,7 +199,7 @@ sendResponse h res = do
             BS.hPut h y
             BS.hPut h $ SL.pack "\r\n"
 
-parseHeaderNoAttr :: StringLike a => a -> (a, a)
+parseHeaderNoAttr :: BS.ByteString -> (BS.ByteString, BS.ByteString)
 parseHeaderNoAttr s =
-    let (k, rest) = SL.span (/= ':') s
-     in (k, SL.dropPrefix' (SL.pack ": ") rest)
+    let (k, rest) = B8.span (/= ':') s
+     in (k, SL.dropPrefix' (B8.pack ": ") rest)
