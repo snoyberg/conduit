@@ -27,7 +27,7 @@ import Network
     ( listenOn, accept, sClose, PortID(PortNumber), Socket
     , withSocketsDo)
 import Control.Exception (bracket, finally, Exception)
-import System.IO (Handle, hClose)
+import System.IO (Handle, hClose, hFlush)
 import Control.Concurrent (forkIO)
 import Control.Monad (unless)
 import Data.Maybe (isJust, fromJust, fromMaybe)
@@ -62,10 +62,36 @@ serveConnection port app conn remoteHost' =
         serveConnection'
         (hClose conn)
     where
-        serveConnection' = do
-            env <- hParseRequest port conn remoteHost'
-            res <- app env
-            sendResponse conn res
+        serveConnection' =  do
+                            disconnect <- serveOneRequest'
+                            hFlush conn
+                            case disconnect of
+                                False -> serveConnection'
+                                True -> return ()
+
+        serveOneRequest' =  do
+                            env <- hParseRequest port conn remoteHost'
+                            res <- app env
+                            sendResponse conn res
+                            return $ shouldConnectionClose env res
+
+reqConnectionHeader :: RequestHeader
+reqConnectionHeader = RequestHeader  $ B8.pack "Connection"
+
+resConnectionHeader :: ResponseHeader
+resConnectionHeader = ResponseHeader $ B8.pack "Connection"
+
+shouldConnectionClose :: Request -> Response -> Bool
+shouldConnectionClose req res = (isClose req_conn)
+                                || (isClose res_conn)
+
+    where
+        isClose v = case v of
+                        Just x -> (B8.unpack x) == "close"
+                        Nothing -> False
+
+        req_conn = lookup reqConnectionHeader $ requestHeaders req
+        res_conn = lookup resConnectionHeader $ responseHeaders res
 
 hParseRequest :: Port -> Handle -> String -> IO Request
 hParseRequest port conn remoteHost' = do
