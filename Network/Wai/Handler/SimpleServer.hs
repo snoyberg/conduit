@@ -152,6 +152,7 @@ sendResponse httpversion h res = do
     B.hPut h $ httpVersionToBS httpversion
     B.hPut h $ B.pack " "
     B.hPut h $ B.pack $ show $ statusCode $ status res
+    B.hPut h $ B.pack " "
     B.hPut h $ statusMessage $ status res
     B.hPut h $ B.pack "\r\n"
     mapM_ putHeader $ responseHeaders res
