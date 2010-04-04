@@ -46,12 +46,15 @@ module Network.Wai
     , httpVersionToBS
       -- ** Request header names
     , RequestHeader (..)
+    , requestHeader
     , requestHeaderFromBS
     , requestHeaderToBS
+    , requestHeaderToLower
       -- ** Response header names
     , ResponseHeader (..)
     , responseHeaderFromBS
     , responseHeaderToBS
+    , responseHeaderToLower
       -- ** Response status code
     , Status (..)
     , statusCode
@@ -69,6 +72,7 @@ module Network.Wai
 
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as B8
+import Data.Char (toLower)
 
 -- $show_read
 --
@@ -165,8 +169,8 @@ httpVersionToBS (HttpVersion bs) = bs
 -- The naming rules are simple: removing any hyphens from the actual name, and
 -- if there is a naming conflict with a 'ResponseHeader', prefix with Req.
 --
--- Equality determined by conversion via 'requestHeaderToBS'. Remember, headers
--- are case sensitive.
+-- Equality determined by conversion via 'requestHeaderToLower'. Request
+-- headers are *not* case sensitive (a change from version 0.0 of WAI).
 data RequestHeader =
       Accept
     | AcceptCharset
@@ -178,11 +182,17 @@ data RequestHeader =
     | ReqContentType
     | Host
     | Referer
-    | RequestHeader B.ByteString
+    | RequestHeader B.ByteString B.ByteString
     deriving (Show, Read)
 
+lowerBS :: B.ByteString -> B.ByteString
+lowerBS = B8.map toLower
+
+requestHeader :: B.ByteString -> RequestHeader
+requestHeader x = RequestHeader x $ lowerBS x
+
 instance Eq RequestHeader where
-    x == y = requestHeaderToBS x == requestHeaderToBS y
+    x == y = requestHeaderToLower x == requestHeaderToLower y
 
 requestHeaderFromBS :: B.ByteString -> RequestHeader
 requestHeaderFromBS bs = case B8.unpack bs of
@@ -196,7 +206,7 @@ requestHeaderFromBS bs = case B8.unpack bs of
     "Content-Type" -> ReqContentType
     "Host" -> Host
     "Referer" -> Referer
-    _ -> RequestHeader bs
+    _ -> requestHeader bs
 
 requestHeaderToBS :: RequestHeader -> B.ByteString
 requestHeaderToBS Accept = B8.pack "Accept"
@@ -209,8 +219,20 @@ requestHeaderToBS ReqContentLength = B8.pack "Content-Length"
 requestHeaderToBS ReqContentType = B8.pack "Content-Type"
 requestHeaderToBS Host = B8.pack "Host"
 requestHeaderToBS Referer = B8.pack "Referer"
-requestHeaderToBS (RequestHeader bs) = bs
+requestHeaderToBS (RequestHeader bs _) = bs
 
+requestHeaderToLower :: RequestHeader -> B.ByteString
+requestHeaderToLower Accept = B8.pack "accept"
+requestHeaderToLower AcceptCharset = B8.pack "accept-charset"
+requestHeaderToLower AcceptEncoding = B8.pack "accept-encoding"
+requestHeaderToLower AcceptLanguage = B8.pack "accept-language"
+requestHeaderToLower Authorization = B8.pack "authorization"
+requestHeaderToLower Cookie = B8.pack "cookie"
+requestHeaderToLower ReqContentLength = B8.pack "content-Length"
+requestHeaderToLower ReqContentType = B8.pack "content-Type"
+requestHeaderToLower Host = B8.pack "host"
+requestHeaderToLower Referer = B8.pack "referer"
+requestHeaderToLower (RequestHeader _ bs) = bs
 
 -- | Headers sent from the server to the client. Clearly, this is not a
 -- complete list of all possible headers, but rather a selection of common
@@ -219,8 +241,8 @@ requestHeaderToBS (RequestHeader bs) = bs
 --
 -- if there is a naming conflict with a 'ResponseHeader', prefix with Req.
 --
--- Equality determined by conversion via 'responseHeaderToBS'. Remember,
--- headers are case sensitive.
+-- Equality determined by conversion via 'responseHeaderToLower'. Response
+-- headers are *not* case sensitive (a change from version 0.0 of WAI).
 data ResponseHeader =
       ContentEncoding
     | ContentLanguage
@@ -231,11 +253,14 @@ data ResponseHeader =
     | Location
     | Server
     | SetCookie
-    | ResponseHeader B.ByteString
+    | ResponseHeader B.ByteString B.ByteString
      deriving (Show)
 
 instance Eq ResponseHeader where
     x == y = responseHeaderToBS x == responseHeaderToBS y
+
+responseHeader :: B.ByteString -> ResponseHeader
+responseHeader x = ResponseHeader x $ lowerBS x
 
 responseHeaderFromBS :: B.ByteString -> ResponseHeader
 responseHeaderFromBS bs = case B8.unpack bs of
@@ -248,7 +273,7 @@ responseHeaderFromBS bs = case B8.unpack bs of
     "Location" -> Location
     "Server" -> Server
     "Set-Cookie" -> SetCookie
-    _ -> ResponseHeader bs
+    _ -> responseHeader bs
 
 responseHeaderToBS :: ResponseHeader -> B.ByteString
 responseHeaderToBS ContentEncoding = B8.pack "Content-Encoding"
@@ -260,7 +285,19 @@ responseHeaderToBS Expires = B8.pack "Expires"
 responseHeaderToBS Location = B8.pack "Location"
 responseHeaderToBS Server = B8.pack "Server"
 responseHeaderToBS SetCookie = B8.pack "Set-Cookie"
-responseHeaderToBS (ResponseHeader bs) = bs
+responseHeaderToBS (ResponseHeader bs _) = bs
+
+responseHeaderToLower :: ResponseHeader -> B.ByteString
+responseHeaderToLower ContentEncoding = B8.pack "content-encoding"
+responseHeaderToLower ContentLanguage = B8.pack "content-language"
+responseHeaderToLower ContentLength = B8.pack "content-length"
+responseHeaderToLower ContentDisposition = B8.pack "content-disposition"
+responseHeaderToLower ContentType = B8.pack "content-type"
+responseHeaderToLower Expires = B8.pack "expires"
+responseHeaderToLower Location = B8.pack "location"
+responseHeaderToLower Server = B8.pack "server"
+responseHeaderToLower SetCookie = B8.pack "set-cookie"
+responseHeaderToLower (ResponseHeader _ bs) = bs
 
 -- | This attempts to provide the most common HTTP status codes, not all of
 -- them. Use the Status constructor when you want to create a status code not
