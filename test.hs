@@ -1,5 +1,6 @@
 {-# LANGUAGE Rank2Types #-}
 import Network.Wai
+import Network.Wai.Enumerator (buffer)
 import Network.Wai.Handler.SimpleServer
 import qualified Data.ByteString.Char8 as B8
 import qualified Network.Wai.Source as Source
@@ -23,7 +24,7 @@ postResponse :: Enumerator -> IO Response
 postResponse rb = return Response
     { status = Status200
     , responseHeaders = [(ContentType, B8.pack "text/plain")]
-    , responseBody = Right rb
+    , responseBody = Right $ buffer rb
     }
 
 index :: Either FilePath a
