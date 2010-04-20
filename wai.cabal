@@ -9,8 +9,12 @@ Maintainer:          michael@snoyman.com
 Homepage:            http://github.com/snoyberg/wai
 Category:            Web
 Build-Type:          Simple
-Cabal-Version:       >=1.2
+Cabal-Version:       >=1.6
 Stability:           Stable
+
+Source-repository head
+    type:            git
+    location:        git://github.com/snoyberg/wai.git
 
 Library
   Build-Depends:     base >= 3 && < 5,
