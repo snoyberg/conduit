@@ -98,5 +98,5 @@ cleanupVarName ('H':'T':'T':'P':'_':a:as) =
     helper' [] = []
 cleanupVarName "CONTENT_TYPE" = ReqContentType
 cleanupVarName "CONTENT_LENGTH" = ReqContentLength
-cleanupVarName "SCRIPT_NAME" = RequestHeader $ B.pack "CGI-Script-Name"
+cleanupVarName "SCRIPT_NAME" = requestHeaderFromBS $ B.pack "CGI-Script-Name"
 cleanupVarName x = requestHeaderFromBS $ B.pack x -- FIXME remove?
