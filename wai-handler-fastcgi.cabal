@@ -1,0 +1,25 @@
+name:            wai-handler-fastcgi
+version:         0.0.0
+license:         BSD3
+license-file:    LICENSE
+author:          Michael Snoyman <michael@snoyman.com>
+maintainer:      Michael Snoyman <michael@snoyman.com>
+synopsis:        WAI wrapper around direct-fastcgi
+category:        Web
+stability:       Stable
+cabal-version:   >= 1.6
+build-type:      Simple
+homepage:        http://github.com/snoyberg/wai-handler-fastcgi
+
+library
+    build-depends:   base >= 4 && < 5,
+                     wai >= 0.0.1 && < 0.1,
+                     bytestring >= 0.9.1.4 && < 0.10,
+                     mtl >= 1.1.0.2 && < 1.2,
+                     direct-fastcgi >= 1.0.1.1 && < 1.1
+    exposed-modules: Network.Wai.Handler.FastCGI
+    ghc-options:     -Wall
+
+source-repository head
+  type:     git
+  location: git://github.com/snoyberg/wai-handler-fastcgi.git
