@@ -91,8 +91,13 @@ requestBody state len = W.Source $ do
 setHeader :: MonadFastCGI m => (W.ResponseHeader, B.ByteString) -> m ()
 setHeader (k, v) =
     setResponseHeader
-       (HttpExtensionHeader $ B.unpack $ W.responseHeaderToBS k)
+       k'
        (B.unpack v)
+  where
+    k'
+      | k == W.ContentType = HttpContentType -- avoid double-sent c-type
+      | otherwise = HttpExtensionHeader $ B.unpack $ W.responseHeaderToBS k
+
 
 myPut :: FastCGIState -> () -> B.ByteString -> IO (Either () ())
 myPut state _ bs = do
