@@ -11,7 +11,6 @@ import Prelude hiding (exp)
 import Network.Wai
 import Web.Encodings
 import Data.List (partition)
-import Data.Function.Predicate (is, isn't, equals)
 import Data.Maybe (fromMaybe, mapMaybe)
 import Web.ClientSession
 import Data.Time.Clock (getCurrentTime, UTCTime, addUTCTime)
@@ -55,15 +54,16 @@ clientsession cnames key minutesToLive app env = do
         initCookiesRaw :: B.ByteString
         initCookiesRaw = fromMaybe B.empty $ lookup Cookie hs
         nonCookies :: [(RequestHeader, B.ByteString)]
-        nonCookies = filter (fst `isn't` (== Cookie)) hs
+        nonCookies = filter (\(x, _) -> x /= Cookie) hs
         initCookies :: [(B.ByteString, B.ByteString)]
         initCookies = parseCookies initCookiesRaw
         cookies, interceptCookies :: [(B.ByteString, B.ByteString)]
-        (interceptCookies, cookies) = partition (fst `is` (`elem` cnames))
+        (interceptCookies, cookies) = partition (\(x, _) -> x `elem` cnames)
                                       initCookies
         cookiesRaw, remoteHost' :: B.ByteString
         cookiesRaw = B.concat $ combineCookies cookies
         remoteHost' = remoteHost env
+    print ("intercept", cnames, interceptCookies)
     now <- getCurrentTime
     let convertedCookies :: [(B.ByteString, B.ByteString)]
         convertedCookies =
@@ -71,13 +71,14 @@ clientsession cnames key minutesToLive app env = do
     let env' = env { requestHeaders =
                               (Cookie, cookiesRaw)
                             -- FIXME not sure how I feel about the next line
-                            : filter (fst `equals` Cookie) (requestHeaders env)
+                            : filter (\(x, _) -> x == Cookie)
+                                     (requestHeaders env)
                             ++ nonCookies
                    }
     res <- app convertedCookies env'
     let interceptHeaders, responseHeaders' :: [(ResponseHeader, B.ByteString)]
         (interceptHeaders, responseHeaders') =
-            partition ((responseHeaderToBS . fst) `is` (`elem` cnames))
+            partition (\(x, _) -> responseHeaderToBS x `elem` cnames)
             $ responseHeaders res
         interceptHeaders' :: [(B.ByteString, B.ByteString)]
         interceptHeaders' = map (first responseHeaderToBS) interceptHeaders
@@ -91,6 +92,7 @@ clientsession cnames key minutesToLive app env = do
                         convertedCookies
     let newCookies = map (setCookie key exp formattedExp remoteHost') $
                      oldCookies ++ interceptHeaders'
+    print ("cookies", oldCookies, newCookies, cookiesRaw)
     let res' = res { responseHeaders = newCookies ++ responseHeaders' }
     return res'
 

@@ -26,18 +26,16 @@ import qualified Data.ByteString.Char8 as B
 import Network
     ( listenOn, accept, sClose, PortID(PortNumber), Socket
     , withSocketsDo)
-import Control.Exception (bracket, finally, Exception)
+import Control.Exception (bracket, finally, Exception, throwIO)
 import System.IO (Handle, hClose)
 import Control.Concurrent (forkIO)
 import Control.Monad (unless)
 import Data.Maybe (isJust, fromJust, fromMaybe)
 
-import Control.Failure
 import Data.Typeable (Typeable)
 
 import qualified Web.Encodings.StringLike as SL
 
-import qualified Safe
 import Network.Socket.SendFile
 import Control.Arrow (first)
 
@@ -103,7 +101,7 @@ parseRequest :: Port
 parseRequest port lines' handle remoteHost' = do
     case lines' of
         (_:_:_) -> return ()
-        _ -> failure $ NotEnoughLines $ map B.unpack lines'
+        _ -> throwIO $ NotEnoughLines $ map B.unpack lines'
     (method', rpath', gets, httpversion) <- parseFirst $ head lines'
     let method = methodFromBS method'
     let rpath = '/' : case B.unpack rpath' of
@@ -112,12 +110,14 @@ parseRequest port lines' handle remoteHost' = do
     let heads = map (first requestHeaderFromBS . parseHeaderNoAttr)
               $ tail lines'
     let host' = lookup Host heads
-    unless (isJust host') $ failure HostNotIncluded
+    unless (isJust host') $ throwIO HostNotIncluded
     let host = fromJust host'
     let len = fromMaybe 0 $ do
                 bs <- lookup ReqContentLength heads
                 let str = B.unpack bs
-                Safe.readMay str
+                case reads str of
+                    (x, _):_ -> Just x
+                    _ -> Nothing
     let (serverName', _) = B.break (== ':') host
     return $ Request
                 { requestMethod = method
@@ -140,9 +140,9 @@ parseFirst s = do
     (method, query, http') <-
         case pieces of
             [x, y, z] -> return (x, y, z)
-            _ -> failure $ BadFirstLine $ B.unpack s
+            _ -> throwIO $ BadFirstLine $ B.unpack s
     let (hfirst, hsecond) = B.splitAt 5 http'
-    unless (hfirst == B.pack "HTTP/") $ failure NonHttp
+    unless (hfirst == B.pack "HTTP/") $ throwIO NonHttp
     let (rpath, qstring) = B.break (== '?') query
     return (method, rpath, qstring, httpVersionFromBS hsecond)
 
