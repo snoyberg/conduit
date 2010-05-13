@@ -15,9 +15,18 @@ module Network.Wai.Middleware.Jsonp (jsonp) where
 
 import Network.Wai
 import Network.Wai.Enumerator (fromEitherFile)
-import Web.Encodings (decodeUrlPairs)
 import qualified Data.ByteString.Char8 as B8
 import Data.Maybe (fromMaybe)
+
+takeCallback :: B8.ByteString -> Maybe B8.ByteString
+takeCallback bs | B8.null bs = Nothing
+takeCallback bs =
+    let (x, y) = B8.break (== '=') bs
+        (y', z) = B8.break (== '&') $ B8.drop 1 y
+     in if x == B8.pack "callback"
+            then Just y'
+            else takeCallback $ B8.drop 1 z
+
 
 -- | Wrap json responses in a jsonp callback.
 --
@@ -29,11 +38,10 @@ import Data.Maybe (fromMaybe)
 jsonp :: Middleware
 jsonp app env = do
     let accept = fromMaybe B8.empty $ lookup Accept $ requestHeaders env
-    let gets = decodeUrlPairs $ queryString env
     let callback :: Maybe B8.ByteString
         callback =
             if B8.pack "text/javascript" `B8.isInfixOf` accept
-                then lookup (B8.pack "callback") gets
+                then takeCallback $ queryString env
                 else Nothing
     let env' =
             case callback of

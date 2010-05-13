@@ -1,11 +1,11 @@
 module Network.Wai.Middleware.CleanPath (cleanPath, splitPath) where
 
 import Network.Wai
-import Web.Encodings
 import qualified Data.ByteString.Char8 as B
+import Network.URI (unEscapeString)
 
 -- | Performs redirects as per 'splitPath'.
-cleanPath :: ([B.ByteString] -> Request -> IO Response)
+cleanPath :: ([String] -> Request -> IO Response)
           -> Request
           -> IO Response
 cleanPath app env =
@@ -32,11 +32,11 @@ emptyEnum = Enumerator $ \_ -> return . Right
 -- last slash.
 --
 -- * There are any doubled slashes.
-splitPath :: B.ByteString -> Either B.ByteString [B.ByteString]
+splitPath :: B.ByteString -> Either B.ByteString [String]
 splitPath s =
     let corrected = B.pack $ ats $ rds $ B.unpack s
      in if corrected == s
-            then Right $ map decodeUrl
+            then Right $ map (unEscapeString . B.unpack)
                        $ filter (not . B.null)
                        $ B.split '/' s
             else Left corrected

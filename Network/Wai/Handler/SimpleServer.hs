@@ -34,8 +34,6 @@ import Data.Maybe (isJust, fromJust, fromMaybe)
 
 import Data.Typeable (Typeable)
 
-import qualified Web.Encodings.StringLike as SL
-
 import Network.Socket.SendFile
 import Control.Arrow (first)
 
@@ -136,7 +134,7 @@ parseRequest port lines' handle remoteHost' = do
 parseFirst :: ByteString
            -> IO (ByteString, ByteString, ByteString, HttpVersion)
 parseFirst s = do
-    let pieces = SL.split ' ' s
+    let pieces = B.words s
     (method, query, http') <-
         case pieces of
             [x, y, z] -> return (x, y, z)
@@ -173,4 +171,10 @@ sendResponse httpversion h res = do
 parseHeaderNoAttr :: ByteString -> (ByteString, ByteString)
 parseHeaderNoAttr s =
     let (k, rest) = B.span (/= ':') s
-     in (k, SL.dropPrefix' (B.pack ": ") rest)
+        rest' = if not (B.null rest) &&
+                   B.head rest == ':' &&
+                   not (B.null $ B.tail rest) &&
+                   B.head (B.tail rest) == ' '
+                    then B.drop 2 rest
+                    else rest
+     in (k, rest')
