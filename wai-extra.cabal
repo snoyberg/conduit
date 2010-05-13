@@ -15,8 +15,7 @@ Stability:           Stable
 Library
   Build-Depends:     base >= 3 && < 5,
                      bytestring >= 0.9 && < 0.10,
-                     wai >= 0.0.0 && < 0.3,
-                     split >= 0.1.2 && < 0.2,
+                     wai >= 0.0.0 && < 0.1,
                      web-encodings >= 0.2.6 && < 0.3,
                      old-locale >= 1.0 && < 1.1,
                      time >= 1.1.4 && < 1.2,

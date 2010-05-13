@@ -19,7 +19,6 @@ import Network.Wai
 import Network.Wai.Enumerator (fromLBS', toLBS)
 import Codec.Compression.GZip (compress)
 import Data.Maybe (fromMaybe)
-import Data.List.Split (splitOneOf)
 import qualified Data.ByteString.Char8 as B
 
 -- | Use gzip to compress the body of the response.
@@ -42,7 +41,7 @@ gzip app env = do
         Left _ -> return res
         Right _ -> do
             let enc = fromMaybe []
-                    $ (splitOneOf "," . B.unpack)
+                    $ (splitCommas . B.unpack)
                     `fmap` lookup AcceptEncoding
                       (requestHeaders env)
             if "gzip" `elem` enc
@@ -56,3 +55,9 @@ gzip app env = do
 compressE :: Either FilePath Enumerator -> Either FilePath Enumerator
 compressE (Left fp) = Left fp
 compressE (Right e) = Right $ fromLBS' $ fmap compress $ toLBS e
+
+splitCommas :: String -> [String]
+splitCommas [] = []
+splitCommas x =
+    let (y, z) = break (== ',') x
+     in y : splitCommas (drop 1 z)
