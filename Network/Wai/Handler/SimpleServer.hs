@@ -142,7 +142,7 @@ requestBodyHandle h len = Source $ do
     putStrLn $ "reading a chunk of size " ++ show (BS.length bs)
     return $ Just (bs, requestBodyHandle h newLen)
 
-parseFirst :: (StringLike s, MonadFailure InvalidRequest m) =>
+parseFirst :: (StringLike s, Failure InvalidRequest m) =>
               s
            -> m (s, s, s)
 parseFirst s = do

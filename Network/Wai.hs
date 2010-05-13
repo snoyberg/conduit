@@ -52,6 +52,7 @@ module Network.Wai
     , requestHeaderToLower
       -- ** Response header names
     , ResponseHeader (..)
+    , responseHeader
     , responseHeaderFromBS
     , responseHeaderToBS
     , responseHeaderToLower
