@@ -48,7 +48,7 @@ finishStream iter stream outbuff acc = do
     c_set_avail_out stream outbuff $ fromIntegral chunkSize
     status <- c_call_deflate_finish stream
     newAvail <- fromIntegral `fmap` c_get_avail_out stream
-    bs <- packCStringLen (outbuff, chunkSize - newAvail)
+    bs <- unsafePackCStringLen (outbuff, chunkSize - newAvail)
     eacc <- iter acc bs
     if status == 0 || newAvail == 0
         then case eacc of
@@ -71,7 +71,7 @@ compressIter iter stream outbuff accInit bsInput = do
         c_set_avail_out stream outbuff $ fromIntegral chunkSize
         c_call_deflate_noflush stream
         newAvail <- fromIntegral `fmap` c_get_avail_out stream
-        bs <- packCStringLen (outbuff, chunkSize - newAvail)
+        bs <- unsafePackCStringLen (outbuff, chunkSize - newAvail)
         eacc <- iter acc bs
         if newAvail == 0
             then case eacc of
