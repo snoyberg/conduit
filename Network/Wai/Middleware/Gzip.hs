@@ -16,8 +16,7 @@
 module Network.Wai.Middleware.Gzip (gzip) where
 
 import Network.Wai
-import Network.Wai.Enumerator (fromLBS', toLBS)
-import Codec.Compression.GZip (compress)
+import Network.Wai.Zlib
 import Data.Maybe (fromMaybe)
 import qualified Data.ByteString.Char8 as B
 
@@ -54,7 +53,7 @@ gzip app env = do
 
 compressE :: Either FilePath Enumerator -> Either FilePath Enumerator
 compressE (Left fp) = Left fp
-compressE (Right e) = Right $ fromLBS' $ fmap compress $ toLBS e
+compressE (Right e) = Right $ compress e
 
 splitCommas :: String -> [String]
 splitCommas [] = []
