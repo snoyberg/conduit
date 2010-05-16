@@ -3,6 +3,7 @@ import Data.ByteString.Lazy (fromChunks)
 import Network.Wai
 import Network.Wai.Enumerator
 import Network.Wai.Middleware.Gzip
+import Network.Wai.Middleware.Jsonp
 import Network.Wai.Handler.SimpleServer
 
 app :: Application
@@ -15,7 +16,11 @@ app req =
                     , show i
                     , "</p>"
                     ]
+        "/test.html" -> return $ Response Status200 [] $ Left "test.html"
+        "/json" -> return $ Response Status200
+                            [(ContentType, pack "application/json")]
+                          $ Left "json"
         _ -> return $ Response Status404 [] $ Left "../LICENSE"
 
 main :: IO ()
-main = run 3000 $ gzip app
+main = run 3000 $ jsonp $ gzip app

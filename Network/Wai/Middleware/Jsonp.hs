@@ -27,6 +27,11 @@ takeCallback bs =
             then Just y'
             else takeCallback $ B8.drop 1 z
 
+dropQM :: B8.ByteString -> B8.ByteString
+dropQM bs
+    | B8.null bs = bs
+    | B8.head bs == '?' = B8.tail bs
+    | otherwise = bs
 
 -- | Wrap json responses in a jsonp callback.
 --
@@ -41,7 +46,7 @@ jsonp app env = do
     let callback :: Maybe B8.ByteString
         callback =
             if B8.pack "text/javascript" `B8.isInfixOf` accept
-                then takeCallback $ queryString env
+                then takeCallback $ dropQM $ queryString env
                 else Nothing
     let env' =
             case callback of
