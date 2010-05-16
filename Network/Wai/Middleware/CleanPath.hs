@@ -34,7 +34,7 @@ emptyEnum = Enumerator $ \_ -> return . Right
 -- * There are any doubled slashes.
 splitPath :: B.ByteString -> Either B.ByteString [String]
 splitPath s =
-    let corrected = B.pack $ ats $ rds $ B.unpack s
+    let corrected = B.pack $ rts $ ats $ rds $ B.unpack s
      in if corrected == s
             then Right $ map (unEscapeString . B.unpack)
                        $ filter (not . B.null)
@@ -56,6 +56,14 @@ ats s =
     if last s == '/' || dbs (reverse s)
         then s
         else s ++ "/"
+
+-- | Remove a trailing slash if the last piece has a period.
+rts :: String -> String
+rts [] = []
+rts s =
+    if last s == '/' && dbs (tail $ reverse s)
+        then init s
+        else s
 
 -- | Is there a period before a slash here?
 dbs :: String -> Bool
