@@ -28,3 +28,4 @@ caseParseQueryString = do
     go [("%1", "")] "%1"
     go [("/", "")] "%2F"
     go [("/", "")] "%2f"
+    go [("foo bar", "")] "foo+bar"

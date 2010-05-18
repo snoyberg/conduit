@@ -9,18 +9,6 @@ import qualified Data.ByteString as S
 import Data.Word (Word8)
 import Data.Bits
 
-c2w :: Char -> Word8
-c2w = toEnum . fromEnum
-
-wequal :: Word8
-wequal = c2w '='
-
-wand :: Word8
-wand = c2w '&'
-
-wpercent :: Word8
-wpercent = c2w '%'
-
 type BufferedBS = ([Word8], S.ByteString)
 
 uncons :: BufferedBS -> Maybe (Word8, BufferedBS)
@@ -66,9 +54,10 @@ parseQueryString q =
             (OneChar (w, _), Nothing) ->
                 Just (wpercent, (NoPercent, cons w x))
             (NoPercent, Just (w, ws)) ->
-                if w == wpercent
-                    then go (NoChar, ws)
-                    else Just (w, (NoPercent, ws))
+                if w == wpercent then go (NoChar, ws)
+                    else if w == wplus
+                            then Just (wspace, (NoPercent, ws))
+                            else Just (w, (NoPercent, ws))
             (NoChar, Just (w, ws)) ->
                 case hexVal w of
                     Nothing -> Just (wpercent, (NoPercent, x))
@@ -78,12 +67,19 @@ parseQueryString q =
                     Nothing ->
                         Just (wpercent, (NoPercent, w1 `cons` x))
                     Just v2 -> Just (combine v1 v2, (NoPercent, ws))
+    c2w :: Char -> Word8
+    c2w = toEnum . fromEnum
+    wequal = c2w '='
+    wand = c2w '&'
+    wpercent = c2w '%'
     w0 = c2w '0'
     w9 = c2w '9'
     wa = c2w 'a'
     wf = c2w 'f'
     wA = c2w 'A'
     wF = c2w 'F'
+    wspace = c2w ' '
+    wplus = c2w '+'
     hexVal w
         | w0 <= w && w <= w9 = Just $ w - w0
         | wa <= w && w <= wf = Just $ w - wa + 10
