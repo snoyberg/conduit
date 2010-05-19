@@ -12,6 +12,7 @@ main = defaultMain [testSuite]
 testSuite :: Test
 testSuite = testGroup "Network.Wai.Parse"
     [ testCase "parseQueryString" caseParseQueryString
+    , testCase "parseCookies" caseParseCookies
     ]
 
 caseParseQueryString :: Assertion
@@ -29,3 +30,9 @@ caseParseQueryString = do
     go [("/", "")] "%2F"
     go [("/", "")] "%2f"
     go [("foo bar", "")] "foo+bar"
+
+caseParseCookies :: Assertion
+caseParseCookies = do
+    let input = B8.pack "a=a1;b=b2; c=c3"
+        expected = [("a", "a1"), ("b", "b2"), ("c", "c3")]
+    map (B8.pack *** B8.pack) expected @=? parseCookies input

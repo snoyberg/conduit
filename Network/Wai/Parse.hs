@@ -2,6 +2,7 @@
 
 module Network.Wai.Parse
     ( parseQueryString
+    , parseCookies
     ) where
 
 import qualified Data.ByteString as S
@@ -59,3 +60,17 @@ parseQueryString q =
         | otherwise = Nothing
     combine :: Word8 -> Word8 -> Word8
     combine a b = shiftL a 4 .|. b
+
+-- | Decode the value of an HTTP_COOKIE header into key/value pairs.
+parseCookies :: S.ByteString -> [(S.ByteString, S.ByteString)]
+parseCookies s
+  | S.null s = []
+  | otherwise =
+    let (first, rest) = breakDiscard 59 s -- semicolon
+     in parseCookie first : parseCookies rest
+
+parseCookie :: S.ByteString -> (S.ByteString, S.ByteString)
+parseCookie s =
+    let (key, value) = breakDiscard 61 s -- equals sign
+        key' = S.dropWhile (== 32) key -- space
+     in (key', value)
