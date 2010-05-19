@@ -4,21 +4,15 @@ module Network.Wai.Parse
     ( parseQueryString
     ) where
 
-import Network.Wai
 import qualified Data.ByteString as S
 import Data.Word (Word8)
 import Data.Bits
+import Data.Maybe (fromMaybe)
 
-type BufferedBS = ([Word8], S.ByteString)
-
-uncons :: BufferedBS -> Maybe (Word8, BufferedBS)
-uncons ((w:ws), s) = Just (w, (ws, s))
-uncons ([], s)
+uncons :: S.ByteString -> Maybe (Word8, S.ByteString)
+uncons s
     | S.null s = Nothing
-    | otherwise = Just (S.head s, ([], S.tail s))
-
-cons :: Word8 -> BufferedBS -> BufferedBS
-cons w (ws, s) = (w:ws, s)
+    | otherwise = Just (S.head s, S.tail s)
 
 breakDiscard :: Word8 -> S.ByteString -> (S.ByteString, S.ByteString)
 breakDiscard w s =
@@ -40,52 +34,28 @@ breakDiscard w s =
 parseQueryString :: S.ByteString -> [(S.ByteString, S.ByteString)]
 parseQueryString q | S.null q = []
 parseQueryString q =
-    let (x, xs) = breakDiscard wand q
+    let (x, xs) = breakDiscard 38 q -- ampersand
      in parsePair x : parseQueryString xs
   where
     parsePair x =
-        let (k, v) = breakDiscard wequal x
+        let (k, v) = breakDiscard 61 x -- equal sign
          in (decode k, decode v)
-    decode x = fst $ S.unfoldrN (S.length x) go (NoPercent, ([], x))
-    go (state, x) =
-        case (state, uncons x) of
-            (NoPercent, Nothing) -> Nothing
-            (NoChar, Nothing) -> Just (wpercent, (NoPercent, x))
-            (OneChar (w, _), Nothing) ->
-                Just (wpercent, (NoPercent, cons w x))
-            (NoPercent, Just (w, ws)) ->
-                if w == wpercent then go (NoChar, ws)
-                    else if w == wplus
-                            then Just (wspace, (NoPercent, ws))
-                            else Just (w, (NoPercent, ws))
-            (NoChar, Just (w, ws)) ->
-                case hexVal w of
-                    Nothing -> Just (wpercent, (NoPercent, x))
-                    Just v -> go (OneChar (w, v), ws)
-            (OneChar (w1, v1), Just (w2, ws)) ->
-                case hexVal w2 of
-                    Nothing ->
-                        Just (wpercent, (NoPercent, w1 `cons` x))
-                    Just v2 -> Just (combine v1 v2, (NoPercent, ws))
-    c2w :: Char -> Word8
-    c2w = toEnum . fromEnum
-    wequal = c2w '='
-    wand = c2w '&'
-    wpercent = c2w '%'
-    w0 = c2w '0'
-    w9 = c2w '9'
-    wa = c2w 'a'
-    wf = c2w 'f'
-    wA = c2w 'A'
-    wF = c2w 'F'
-    wspace = c2w ' '
-    wplus = c2w '+'
+    decode x = fst $ S.unfoldrN (S.length x) go x
+    go bs =
+        case uncons bs of
+            Nothing -> Nothing
+            Just (43, ws) -> Just (32, ws) -- plus to space
+            Just (37, ws) -> Just $ fromMaybe (37, ws) $ do -- percent
+                (x, xs) <- uncons ws
+                x' <- hexVal x
+                (y, ys) <- uncons xs
+                y' <- hexVal y
+                Just $ (combine x' y', ys)
+            Just (w, ws) -> Just (w, ws)
     hexVal w
-        | w0 <= w && w <= w9 = Just $ w - w0
-        | wa <= w && w <= wf = Just $ w - wa + 10
-        | wA <= w && w <= wF = Just $ w - wA + 10
+        | 48 <= w && w <= 57  = Just $ w - 48 -- 0 - 9
+        | 65 <= w && w <= 70  = Just $ w - 55 -- A - F
+        | 97 <= w && w <= 102 = Just $ w - 87 -- a - f
         | otherwise = Nothing
     combine :: Word8 -> Word8 -> Word8
     combine a b = shiftL a 4 .|. b
-
-data DecodeHelper = NoPercent | NoChar | OneChar (Word8, Word8)
