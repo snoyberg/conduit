@@ -3,12 +3,16 @@
 module Network.Wai.Parse
     ( parseQueryString
     , parseCookies
+    , parseHttpAccept
     ) where
 
 import qualified Data.ByteString as S
+import qualified Data.ByteString.Char8 as S8
 import Data.Word (Word8)
 import Data.Bits
 import Data.Maybe (fromMaybe)
+import Data.List (sortBy)
+import Data.Function (on)
 
 uncons :: S.ByteString -> Maybe (Word8, S.ByteString)
 uncons s
@@ -74,3 +78,24 @@ parseCookie s =
     let (key, value) = breakDiscard 61 s -- equals sign
         key' = S.dropWhile (== 32) key -- space
      in (key', value)
+
+-- | Parse the HTTP accept string to determine supported content types.
+parseHttpAccept :: S.ByteString -> [S.ByteString]
+parseHttpAccept = map fst
+                . sortBy (rcompare `on` snd)
+                . map grabQ
+                . split
+  where
+    rcompare x y = compare y x
+    grabQ s =
+        let (s', q) = breakDiscard 59 s -- semicolon
+            (_, q') = breakDiscard 61 q -- equals sign
+         in (trimWhite s', readQ $ trimWhite q')
+    readQ s = case reads $ S8.unpack s of
+                (x, _):_ -> x
+                _ -> 1.0
+    trimWhite = S.dropWhile (== 32) -- space
+    split s
+        | S.null s = []
+        | otherwise = let (x, y) = breakDiscard 44 s -- comma
+                       in x : split y
