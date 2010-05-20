@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 -- | Some helpers for parsing data out of a raw WAI 'Request'.
 
 module Network.Wai.Parse
@@ -9,6 +10,10 @@ module Network.Wai.Parse
     , lbsSink
     , tempFileSink
     , FileInfo (..)
+#if TEST
+    , Bound (..)
+    , findBound
+#endif
     ) where
 
 import qualified Data.ByteString as S
@@ -254,3 +259,25 @@ parsePieces sink bound src isFirst = do
          in (x, S.dropWhile (== 32) y) -- space
 
 dropTillBound bound (bs, msrc) = error "FIXME dropTillBound"
+
+data Bound = FoundBound S.ByteString S.ByteString
+           | NoBound
+           | PartialBound
+    deriving (Eq, Show)
+
+findBound :: S.ByteString -> S.ByteString -> Bound
+findBound b bs = go [0..S.length bs - 1]
+  where
+    go [] = NoBound
+    go (i:is)
+        | mismatch [0..S.length b - 1] [i..S.length bs - 1] = go is
+        | otherwise =
+            let endI = i + S.length b
+             in if endI > S.length bs
+                    then PartialBound
+                    else FoundBound (S.take i bs) (S.drop endI bs)
+    mismatch [] _ = False
+    mismatch _ [] = False
+    mismatch (x:xs) (y:ys)
+        | S.index b x == S.index bs y = mismatch xs ys
+        | otherwise = True
