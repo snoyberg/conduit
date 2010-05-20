@@ -4,7 +4,6 @@ import Test.HUnit hiding (Test)
 
 import Network.Wai
 import Network.Wai.Parse
-import Network.Wai.Source
 import qualified Data.ByteString.Char8 as S8
 import qualified Data.ByteString.Lazy.Char8 as L8
 import Control.Arrow
@@ -167,6 +166,7 @@ caseSinkTillBound = do
     caseSinkTillBoundHelper $ Just . toSource
     caseSinkTillBoundHelper $ Just . toSource'
 
+caseSinkTillBoundHelper :: (S8.ByteString -> Maybe Source) -> Assertion
 caseSinkTillBoundHelper tosrc = do
     let iter () _ = return ()
     let src = S8.pack "this is some text"

@@ -63,7 +63,7 @@ parseQueryString q =
 
 
 qsDecode :: S.ByteString -> S.ByteString
-qsDecode x = fst $ S.unfoldrN (S.length x) go x
+qsDecode z = fst $ S.unfoldrN (S.length z) go z
   where
     go bs =
         case uncons bs of
@@ -105,7 +105,8 @@ parseHttpAccept = map fst
                 . map grabQ
                 . S.split 44 -- comma
   where
-    rcompare x y = compare y x
+    rcompare :: Double -> Double -> Ordering
+    rcompare = flip compare
     grabQ s =
         let (s', q) = breakDiscard 59 s -- semicolon
             (_, q') = breakDiscard 61 q -- equals sign
@@ -175,7 +176,7 @@ parseRequestBody sink req = do
             return (parseQueryString bs, [])
         Just (Just bound) -> -- multi-part
             let bound' = S8.pack "--" `S.append` bound
-             in parsePieces sink bound' (S.empty, Just $ requestBody req) True
+             in parsePieces sink bound' (S.empty, Just $ requestBody req)
   where
     urlenc = S8.pack "application/x-www-form-urlencoded"
     formBound = S8.pack "multipart/form-data; boundary="
@@ -233,15 +234,15 @@ takeLines src = do
                         Nothing -> return $ Just ([l], src')
                         Just (ls, src'') -> return $ Just (l : ls, src'')
 
-parsePieces :: Sink x y -> S.ByteString -> Source' -> Bool
+parsePieces :: Sink x y -> S.ByteString -> Source'
             -> IO ([Param], [File y])
-parsePieces sink bound src isFirst = do
+parsePieces sink bound src = do
     res <- takeLine src
     src' <- case res of
                 Nothing -> return (S.empty, Nothing)
-                Just (bs, src') -> return src'
-    res <- takeLines src'
-    case res of
+                Just (_bs, src') -> return src'
+    res' <- takeLines src'
+    case res' of
         Nothing -> return ([], [])
         Just (ls, src'') -> do
             let ls' = map parsePair ls
@@ -263,7 +264,7 @@ parsePieces sink bound src isFirst = do
                     let y' = (name, fi)
                     (xs, ys) <-
                         if wasFound
-                            then parsePieces sink bound msrc''' False
+                            then parsePieces sink bound msrc'''
                             else return ([], [])
                     return (xs, y' : ys)
                 Just (_ct, name, Nothing) -> do
@@ -272,17 +273,21 @@ parsePieces sink bound src isFirst = do
                     (front, wasFound, msrc''') <-
                         sinkTillBound bound src'' iter seed
                     let bs = S.concat $ front []
-                    let x = (name, qsDecode bs)
+                    let x' = (name, qsDecode bs)
                     (xs, ys) <-
                         if wasFound
-                            then parsePieces sink bound msrc''' False
+                            then parsePieces sink bound msrc'''
                             else return ([], [])
-                    return (x : xs, ys)
+                    return (x' : xs, ys)
                 Nothing -> do
-                    (isEnd, src''') <- dropTillBound bound src''
-                    if isEnd
-                        then return ([], [])
-                        else parsePieces sink bound src''' False
+                    -- ignore this part
+                    let seed = ()
+                        iter () _ = return ()
+                    ((), wasFound, msrc''') <-
+                        sinkTillBound bound src'' iter seed
+                    if wasFound
+                        then parsePieces sink bound msrc'''
+                        else return ([], [])
   where
     contDisp = S8.pack "Content-Disposition"
     contType = S8.pack "Content-Type"
@@ -364,40 +369,6 @@ sinkTillBound bound (bs, msrc) iter seed = do
                             let bs'' = bs `S.append` bs'
                             sinkTillBound bound (bs'', Just src') iter seed
 
-dropTillBound :: S.ByteString -> Source' -> IO (Bool, Source')
-dropTillBound bound (bs, msrc) = do
-    let bound' = S.cons 10 bound
-    let (before, rest) = S.breakSubstring bound' bs
-    x <-
-        if S.null rest
-          then return Nothing
-          else do
-             let after = S.drop (S.length bound') rest
-             if S.take 2 after == S8.pack "--"
-               then return $ Just $ Right (True, (S.empty, Nothing))
-               else
-                 if S.take 2 after == S8.pack "\r\n"
-                   then return $ Just $ Right
-                            (False, (S.drop 2 after, msrc))
-                   else
-                     if S.take 1 after == S8.pack "\n"
-                       then return $ Just $ Right
-                                (False, (S.drop 1 after, msrc))
-                       else return $ Just $ Left after
-    case x :: Maybe (Either S.ByteString (Bool, Source')) of
-        Just (Right x') -> return x'
-        Just (Left bs') -> dropTillBound bound (bs', msrc)
-        Nothing -> do
-            case msrc of
-                Nothing -> return (True, (S.empty, Nothing))
-                Just (Source src) -> do
-                    res <- src
-                    case res of
-                        Nothing -> return (True, (S.empty, Nothing))
-                        Just (bs', src') -> do
-                            let msrc' = Just src'
-                            dropTillBound bound (bs `S.append` bs', msrc')
-
 parseAttrs :: S.ByteString -> [(S.ByteString, S.ByteString)]
 parseAttrs = map go . S.split 59 -- semicolon
   where
@@ -409,10 +380,12 @@ parseAttrs = map go . S.split 59 -- semicolon
         let (x, y) = breakDiscard 61 s -- equals sign
          in (tw x, dq $ tw y)
 
+killCRLF :: S.ByteString -> S.ByteString
 killCRLF bs
     | S.null bs || S8.last bs /= '\n' = bs
     | otherwise = killCR $ S.init bs
 
+killCR :: S.ByteString -> S.ByteString
 killCR bs
     | S.null bs || S8.last bs /= '\r' = bs
     | otherwise = S.init bs
