@@ -13,6 +13,7 @@ module Network.Wai.Parse
 #if TEST
     , Bound (..)
     , findBound
+    , sinkTillBound
 #endif
     ) where
 
@@ -281,3 +282,39 @@ findBound b bs = go [0..S.length bs - 1]
     mismatch (x:xs) (y:ys)
         | S.index b x == S.index bs y = mismatch xs ys
         | otherwise = True
+
+sinkTillBound :: S.ByteString
+              -> Source'
+              -> (x -> S.ByteString -> IO x)
+              -> x
+              -> IO (x, Bool, Source')
+sinkTillBound bound (bs, msrc) iter seed = do
+    case findBound bound bs of
+        NoBound -> do
+            seed' <- iter seed bs
+            case msrc of
+                Nothing -> return (seed', False, (S.empty, Nothing))
+                Just (Source src) -> do
+                    res <- src
+                    case res of
+                        Nothing -> return (seed', False, (S.empty, Nothing))
+                        Just (bs', src') ->
+                            sinkTillBound bound (bs', Just src') iter seed'
+        FoundBound before after -> do
+            seed' <- iter seed before
+            return (seed', True, (after, msrc))
+        PartialBound -> do
+            -- not so efficient, but hopefully the unusual case
+            case msrc of
+                Nothing -> do
+                    seed' <- iter seed bs
+                    return (seed', False, (S.empty, Nothing))
+                Just (Source src) -> do
+                    res <- src
+                    case res of
+                        Nothing -> do
+                            seed' <- iter seed bs
+                            return (seed', False, (S.empty, Nothing))
+                        Just (bs', src') -> do
+                            let bs'' = bs `S.append` bs'
+                            sinkTillBound bound (bs'', Just src') iter seed

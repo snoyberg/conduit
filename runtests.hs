@@ -19,6 +19,7 @@ testSuite = testGroup "Network.Wai.Parse"
     , testCase "parseHttpAccept" caseParseHttpAccept
     , testCase "parseRequestBody" caseParseRequestBody
     , testCase "findBound" caseFindBound
+    , testCase "sinkTillBound" caseSinkTillBound
     ]
 
 caseParseQueryString :: Assertion
@@ -165,3 +166,18 @@ caseFindBound = do
     findBound (S8.pack "def") (S8.pack "abcdE") @?= NoBound
     findBound (S8.pack "def") (S8.pack "abcdEdef") @?=
         FoundBound (S8.pack "abcdE") (S8.pack "")
+
+caseSinkTillBound :: Assertion
+caseSinkTillBound = do
+    caseSinkTillBoundHelper $ Just . toSource
+    caseSinkTillBoundHelper $ Just . toSource'
+
+caseSinkTillBoundHelper tosrc = do
+    let iter () _ = return ()
+    let src = S8.pack "this is some text"
+        bound1 = S8.pack "some"
+        bound2 = S8.pack "some!"
+    (_, res1, _) <- sinkTillBound bound1 (S8.empty, tosrc src) iter ()
+    res1 @?= True
+    (_, res2, _) <- sinkTillBound bound2 (S8.empty, tosrc src) iter ()
+    res2 @?= False
