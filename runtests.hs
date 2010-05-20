@@ -77,7 +77,6 @@ caseParseRequestBody = t where
         assertEqual "parsing post x-www-form-urlencoded"
                     (map (S8.pack *** S8.pack) [("foo", "bar"), ("baz", "bin")], [])
                     result1
-        putStrLn "passed 1" -- FIXME remove
 
         let ctype2 = S8.pack "multipart/form-data; boundary=AaB03x"
         result2 <- parseRequestBody lbsSink $ toRequest ctype2 content2
@@ -85,14 +84,14 @@ caseParseRequestBody = t where
               [ ("title", "A File")
               , ("summary", "This is my file\nfile test")
               ]
+        let textPlain = S8.pack $ "text/plain; charset=iso-8859-1"
         let expectedfile2 =
-              [(S8.pack "document", FileInfo (S8.pack "b.txt") (S8.pack "text/plain") $ L8.pack
+              [(S8.pack "document", FileInfo (S8.pack "b.txt") textPlain $ L8.pack
                  "This is a file.\nIt has two lines.")]
         let expected2 = (map (S8.pack *** S8.pack) expectedsmap2, expectedfile2)
         assertEqual "parsing post multipart/form-data"
                     expected2
                     result2
-        putStrLn "passed 2" -- FIXME remove
 
         let ctype3 = S8.pack "multipart/form-data; boundary=----WebKitFormBoundaryB1pWXPZ6lNr8RiLh"
         result3 <- parseRequestBody lbsSink $ toRequest ctype3 content3
@@ -103,20 +102,16 @@ caseParseRequestBody = t where
         assertEqual "parsing actual post multipart/form-data"
                     expected3
                     result3
-        putStrLn "passed 3" -- FIXME remove
 
         result2' <- parseRequestBody lbsSink $ toRequest' ctype2 content2
         assertEqual "parsing post multipart/form-data 2"
                     expected2
                     result2'
-        putStrLn "passed 4" -- FIXME remove
 
-        putStrLn "\n\n\n\n\n"
         result3' <- parseRequestBody lbsSink $ toRequest' ctype3 content3
         assertEqual "parsing actual post multipart/form-data 2"
                     expected3
                     result3'
-        putStrLn "passed 5" -- FIXME remove
 
 toRequest :: S8.ByteString -> S8.ByteString -> Request
 toRequest ctype content = Request

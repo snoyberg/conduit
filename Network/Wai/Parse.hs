@@ -59,8 +59,12 @@ parseQueryString q =
   where
     parsePair x =
         let (k, v) = breakDiscard 61 x -- equal sign
-         in (decode k, decode v)
-    decode x = fst $ S.unfoldrN (S.length x) go x
+         in (qsDecode k, qsDecode v)
+
+
+qsDecode :: S.ByteString -> S.ByteString
+qsDecode x = fst $ S.unfoldrN (S.length x) go x
+  where
     go bs =
         case uncons bs of
             Nothing -> Nothing
@@ -170,7 +174,8 @@ parseRequestBody sink req = do
             bs <- sourceToBs $ requestBody req
             return (parseQueryString bs, [])
         Just (Just bound) -> -- multi-part
-            parsePieces sink bound (S.empty, Just $ requestBody req) True
+            let bound' = S8.pack "--" `S.append` bound
+             in parsePieces sink bound' (S.empty, Just $ requestBody req) True
   where
     urlenc = S8.pack "application/x-www-form-urlencoded"
     formBound = S8.pack "multipart/form-data; boundary="
@@ -231,23 +236,49 @@ takeLines src = do
 parsePieces :: Sink x y -> S.ByteString -> Source' -> Bool
             -> IO ([Param], [File y])
 parsePieces sink bound src isFirst = do
-    print ("bound", bound)
-    src' <- if isFirst
-                then do
-                    res <- takeLine src -- first line should be bound
-                    case res of
-                        Nothing -> return (S.empty, Nothing)
-                        Just (_, x) -> return x
-                else return src
+    res <- takeLine src
+    src' <- case res of
+                Nothing -> return (S.empty, Nothing)
+                Just (bs, src') -> return src'
     res <- takeLines src'
     case res of
         Nothing -> return ([], [])
         Just (ls, src'') -> do
             let ls' = map parsePair ls
-            case (lookup contDisp ls', lookup contType ls') of
-                (Just cd, Just ct) -> do
-                    return ([], []) -- FIXME
-                _ -> do
+            let x = do
+                    cd <- lookup contDisp ls'
+                    ct <- lookup contType ls'
+                    let attrs = parseAttrs cd
+                    let nameBS = S8.pack "name"
+                    name <- lookup nameBS attrs
+                    let fnBS = S8.pack "filename"
+                    return (ct, name, lookup fnBS attrs)
+            case x of
+                Just (ct, name, Just filename) -> do
+                    seed <- sinkInit sink
+                    (seed', wasFound, msrc''') <-
+                        sinkTillBound bound src'' (sinkAppend sink) seed
+                    y <- sinkClose sink seed'
+                    let fi = FileInfo filename ct y
+                    let y' = (name, fi)
+                    (xs, ys) <-
+                        if wasFound
+                            then parsePieces sink bound msrc''' False
+                            else return ([], [])
+                    return (xs, y' : ys)
+                Just (_ct, name, Nothing) -> do
+                    let seed = id
+                    let iter front bs = return $ front . (:) bs
+                    (front, wasFound, msrc''') <-
+                        sinkTillBound bound src'' iter seed
+                    let bs = S.concat $ front []
+                    let x = (name, qsDecode bs)
+                    (xs, ys) <-
+                        if wasFound
+                            then parsePieces sink bound msrc''' False
+                            else return ([], [])
+                    return (x : xs, ys)
+                Nothing -> do
                     (isEnd, src''') <- dropTillBound bound src''
                     if isEnd
                         then return ([], [])
@@ -258,8 +289,6 @@ parsePieces sink bound src isFirst = do
     parsePair s =
         let (x, y) = breakDiscard 58 s -- colon
          in (x, S.dropWhile (== 32) y) -- space
-
-dropTillBound bound (bs, msrc) = error "FIXME dropTillBound"
 
 data Bound = FoundBound S.ByteString S.ByteString
            | NoBound
@@ -291,17 +320,33 @@ sinkTillBound :: S.ByteString
 sinkTillBound bound (bs, msrc) iter seed = do
     case findBound bound bs of
         NoBound -> do
-            seed' <- iter seed bs
             case msrc of
-                Nothing -> return (seed', False, (S.empty, Nothing))
+                Nothing -> do
+                    seed' <- iter seed bs
+                    return (seed', False, (S.empty, Nothing))
                 Just (Source src) -> do
                     res <- src
                     case res of
-                        Nothing -> return (seed', False, (S.empty, Nothing))
-                        Just (bs', src') ->
-                            sinkTillBound bound (bs', Just src') iter seed'
+                        Nothing -> do
+                            seed' <- iter seed bs
+                            return (seed', False, (S.empty, Nothing))
+                        Just (bs', src') -> do
+                            -- this funny bit is to catch when there's a
+                            -- newline at the end of the previous chunk
+                            (seed', bs'') <-
+                                if not (S8.null bs) && S8.last bs `elem` "\n\r"
+                                    then do
+                                        let (front, back) =
+                                                S.splitAt (S.length bs - 2) bs
+                                        seed' <- iter seed front
+                                        return (seed', back `S.append` bs')
+                                    else do
+                                        seed' <- iter seed bs
+                                        return (seed', bs')
+                            sinkTillBound bound (bs'', Just src') iter seed'
         FoundBound before after -> do
-            seed' <- iter seed before
+            let before' = killCRLF before
+            seed' <- iter seed before'
             return (seed', True, (after, msrc))
         PartialBound -> do
             -- not so efficient, but hopefully the unusual case
@@ -318,3 +363,56 @@ sinkTillBound bound (bs, msrc) iter seed = do
                         Just (bs', src') -> do
                             let bs'' = bs `S.append` bs'
                             sinkTillBound bound (bs'', Just src') iter seed
+
+dropTillBound :: S.ByteString -> Source' -> IO (Bool, Source')
+dropTillBound bound (bs, msrc) = do
+    let bound' = S.cons 10 bound
+    let (before, rest) = S.breakSubstring bound' bs
+    x <-
+        if S.null rest
+          then return Nothing
+          else do
+             let after = S.drop (S.length bound') rest
+             if S.take 2 after == S8.pack "--"
+               then return $ Just $ Right (True, (S.empty, Nothing))
+               else
+                 if S.take 2 after == S8.pack "\r\n"
+                   then return $ Just $ Right
+                            (False, (S.drop 2 after, msrc))
+                   else
+                     if S.take 1 after == S8.pack "\n"
+                       then return $ Just $ Right
+                                (False, (S.drop 1 after, msrc))
+                       else return $ Just $ Left after
+    case x :: Maybe (Either S.ByteString (Bool, Source')) of
+        Just (Right x') -> return x'
+        Just (Left bs') -> dropTillBound bound (bs', msrc)
+        Nothing -> do
+            case msrc of
+                Nothing -> return (True, (S.empty, Nothing))
+                Just (Source src) -> do
+                    res <- src
+                    case res of
+                        Nothing -> return (True, (S.empty, Nothing))
+                        Just (bs', src') -> do
+                            let msrc' = Just src'
+                            dropTillBound bound (bs `S.append` bs', msrc')
+
+parseAttrs :: S.ByteString -> [(S.ByteString, S.ByteString)]
+parseAttrs = map go . S.split 59 -- semicolon
+  where
+    tw = S.dropWhile (== 32) -- space
+    dq s = if S.length s > 2 && S.head s == 34 && S.last s == 34 -- quote
+                then S.tail $ S.init s
+                else s
+    go s =
+        let (x, y) = breakDiscard 61 s -- equals sign
+         in (tw x, dq $ tw y)
+
+killCRLF bs
+    | S.null bs || S8.last bs /= '\n' = bs
+    | otherwise = killCR $ S.init bs
+
+killCR bs
+    | S.null bs || S8.last bs /= '\r' = bs
+    | otherwise = S.init bs
