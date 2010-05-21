@@ -11,6 +11,9 @@ Category:            Web
 Build-Type:          Simple
 Cabal-Version:       >=1.2
 Stability:           Stable
+extra-source-files: cbits/crc32.h cbits/inffast.h cbits/inflate.h
+                    cbits/trees.h cbits/deflate.h cbits/inffixed.h
+                    cbits/inftrees.h cbits/zutil.h
 
 Library
   Build-Depends:     base >= 3 && < 5,
