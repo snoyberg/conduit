@@ -14,37 +14,20 @@
 -- Totally ripped off by Michael Snoyman to work with Hack, then WAI.
 --
 -----------------------------------------------------------------------------
-module Network.Wai.Handler.FastCGI
-    (
-    -- * Single-threaded interface
-      runFastCGIorCGI
-    , runOneFastCGIorCGI
-    , runFastCGI
-    , runOneFastCGI
-    -- * Concurrent interface
-    , runFastCGIConcurrent
-    , runFastCGIConcurrent'
-    ) where
+module Network.Wai.Handler.FastCGI (run) where
 
 import Data.Maybe
-import Data.ByteString.Lazy.Internal (defaultChunkSize)
-import Control.Concurrent ( forkOS )
-import Control.Concurrent.MVar
-import Control.Concurrent.QSem
-import Control.Exception as Exception (catch, finally)
 import Control.Monad    ( liftM )
 import Data.Word (Word8)
 import Foreign          ( Ptr, castPtr, nullPtr, peekArray0 
-                        , alloca, mallocBytes, free, throwIfNeg_)
+                        , alloca, throwIfNeg_)
 import Foreign.C        ( CInt, CString, CStringLen
                         , peekCString )
 import Foreign.Storable ( Storable (..) )
-import System.IO.Unsafe (unsafeInterleaveIO,unsafePerformIO)
+import System.IO.Unsafe (unsafeInterleaveIO)
 
 import qualified Network.Wai as W
 import qualified Network.Wai.Enumerator as WE
-import qualified Network.Wai.Source as WS
-import qualified Network.Wai.Handler.CGI as CGI
 
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as B8
@@ -57,9 +40,7 @@ import qualified Data.ByteString.Base as BSB
 #endif
 
 -- For debugging
-import Control.Concurrent ( myThreadId )
 import Prelude hiding     ( log, catch )
-import System.IO          ( hPutStrLn, stderr )
 import qualified System.IO
 import Control.Arrow ((***))
 import Data.Char (toLower)
@@ -74,46 +55,22 @@ type Environ = Ptr CString
 
 ------------------------------------------------------------------------
 
-foreign import ccall unsafe "fcgiapp.h FCGX_IsCGI" fcgx_isCGI
-    :: IO CInt
-
 foreign import ccall unsafe "fcgiapp.h FCGX_GetStr" fcgx_getStr
     :: CString -> CInt -> StreamPtr -> IO CInt
 
 foreign import ccall unsafe "fcgiapp.h FCGX_PutStr" fcgx_putStr
     :: CString -> CInt -> StreamPtr -> IO CInt
 
-foreign import ccall threadsafe "fcgiapp.h FCGX_Accept" fcgx_accept
+foreign import ccall safe "fcgiapp.h FCGX_Accept" fcgx_accept
     :: Ptr StreamPtr -> Ptr StreamPtr -> Ptr StreamPtr -> Ptr Environ -> IO CInt
 foreign import ccall unsafe "fcgiapp.h FCGX_Finish" fcgx_finish
     :: IO ()
 
 ------------------------------------------------------------------------
 
--- | Handle a single CGI request, or FastCGI requests in an infinite loop.
---   This function only returns normally if it was a CGI request.
---   This lets you use the same program
---   as either a FastCGI or CGI program, depending on what the server 
---   treats it as.
-runFastCGIorCGI :: W.Application -> IO ()
-runFastCGIorCGI f = do fcgi <- runOneFastCGIorCGI f
-                       if fcgi then runFastCGIorCGI f
-                               else return ()
-
--- | Handle a single FastCGI or CGI request. This lets you use the same program
---   as either a FastCGI or CGI program, depending on what the server 
---   treats it as.
-runOneFastCGIorCGI :: W.Application
-                   -> IO Bool -- ^ True if it was a FastCGI request, 
-                              --   False if CGI.
-runOneFastCGIorCGI f =
-    do x <- fcgx_isCGI
-       if x /= 0 then CGI.run f >> return False
-                 else runOneFastCGI f >> return True
-
 -- | Handle FastCGI requests in an infinite loop.
-runFastCGI :: W.Application -> IO ()
-runFastCGI f = runOneFastCGI f >> runFastCGI f
+run :: W.Application -> IO ()
+run f = runOneFastCGI f >> run f
 
 -- | Handle a single FastCGI request.
 runOneFastCGI :: W.Application -> IO ()
@@ -157,74 +114,8 @@ handleRequest f ins outs _errs env =
 
 data FCGX_Request
 
-foreign import ccall unsafe "fcgiapp.h FCGX_Init" fcgx_init
-    :: IO CInt
-
-foreign import ccall unsafe "fcgiapp.h FCGX_InitRequest" fcgx_initrequest
-    :: Ptr FCGX_Request -> CInt -> CInt -> IO CInt
-
-foreign import ccall threadsafe "fcgiapp.h FCGX_Accept_r" fcgx_accept_r
-    :: Ptr FCGX_Request -> IO CInt
-
-foreign import ccall unsafe "fcgiapp.h FCGX_Finish_r" fcgx_finish_r
-    :: Ptr FCGX_Request -> IO ()
-
--- | Like 'Network.CGI.runCGI', but uses the FastCGI interface
---   and forks off a new thread (using 'forkOS') for every request.
-runFastCGIConcurrent :: Int -- ^ Max number of concurrent threads.
-                     -> W.Application -> IO ()
-runFastCGIConcurrent = runFastCGIConcurrent' forkOS
-
-runFastCGIConcurrent' :: (IO () -> IO a) -- ^ How to fork a request.
-                      -> Int             -- ^ Max number of concurrent threads.
-                      -> W.Application -> IO ()
-
-runFastCGIConcurrent' fork m f
-    = do qsem <- newQSem m
-         testReturn "FCGX_Init" $ fcgx_init
-         let loop = do waitQSem qsem
-                       reqp <- acceptRequest
-                       fork (oneRequestMT f reqp
-                             `finally`
-                            (finishRequest reqp >> signalQSem qsem))
-                       loop
-         loop -- FIXME `catch` \e -> log (show e)
-
-oneRequestMT :: W.Application -> Ptr FCGX_Request -> IO ()
-oneRequestMT app r = do
-     env    <- peekEnvp r
-     vars   <- environToTable env
-     ins    <- peekIn r
-     input  <- sRead ins
-     outs   <- peekOut r
-     let hPut = sPutStr' outs
-     run' vars input hPut app
---
--- * FCGX_Reqest struct
---
-
-acceptRequest :: IO (Ptr FCGX_Request)
-acceptRequest = do
-    reqp <- mallocBytes (#size FCGX_Request)
-    initAndAccept reqp
-    return reqp
-  where initAndAccept reqp = do
-          testReturn "FCGX_InitRequest" $ fcgx_initrequest reqp 0 0
-          testReturn "FCGX_Accept_r" $ fcgx_accept_r reqp
-
-finishRequest :: Ptr FCGX_Request -> IO ()
-finishRequest reqp = do
-                     fcgx_finish_r reqp
-                     free reqp
-
-peekIn, peekOut, _peekErr :: Ptr FCGX_Request -> IO (Ptr FCGX_Stream)
-peekIn  = (#peek FCGX_Request, in)
-peekOut = (#peek FCGX_Request, out)
+_peekErr :: Ptr FCGX_Request -> IO (Ptr FCGX_Stream)
 _peekErr = (#peek FCGX_Request, err)
-
-peekEnvp :: Ptr FCGX_Request -> IO Environ
-peekEnvp = (#peek FCGX_Request, envp)
-
 
 --
 -- * Stream IO
@@ -233,10 +124,6 @@ peekEnvp = (#peek FCGX_Request, envp)
 sPutStr' :: StreamPtr -> BS.ByteString -> IO ()
 sPutStr' h str =
     BSB.unsafeUseAsCStringLen str $ fcgxPutCStringLen h
-
-sPutStr :: StreamPtr -> Lazy.ByteString -> IO ()
-sPutStr h str =
-    mapM_ (flip BSB.unsafeUseAsCStringLen (fcgxPutCStringLen h)) (Lazy.toChunks str)
 
 fcgxPutCStringLen :: StreamPtr -> CStringLen -> IO ()
 fcgxPutCStringLen h (cs,len) =
@@ -286,19 +173,6 @@ environToTable arr =
 splitBy :: Eq a => a -> [a] -> ([a],[a])
 splitBy x xs = (y, drop 1 z)
     where (y,z) = break (==x) xs
-
---
--- * Debugging
---
-
-{-# NOINLINE logMutex #-}
-logMutex :: MVar ()
-logMutex = unsafePerformIO (newMVar ())
-
-log :: String -> IO ()
-log msg = do
-          t <- myThreadId
-          withMVar logMutex (const $ hPutStrLn stderr (show t ++ ": " ++ msg))
 
 run' :: [(String, String)] -- ^ all variables
      -> Lazy.ByteString -- ^ responseBody of input
@@ -374,9 +248,10 @@ cleanupVarName "SCRIPT_NAME" = W.requestHeaderFromBS $ B8.pack "CGI-Script-Name"
 cleanupVarName x = W.requestHeaderFromBS $ B8.pack x -- FIXME remove?
 
 requestBodyLBS :: Lazy.ByteString -> Int -> W.Source
-requestBodyLBS l len = go (Lazy.toChunks l) len
+requestBodyLBS = go . Lazy.toChunks
   where
     go _ 0 = W.Source $ return Nothing
+    go [] _ = W.Source $ return Nothing
     go (l:ls) len =
         let len' = len - BS.length l
             len'' = if len' < 0 then 0 else len'
