@@ -1,0 +1,3 @@
+ghc-options: -optc@CPPFLAGS@
+cc-options:  @CPPFLAGS@
+ld-options:  @LDFLAGS@
