@@ -52,14 +52,18 @@ breakDiscard w s =
 -- * Percent decoding errors are ignored. In particular, "%Q" will be output as
 -- "%Q".
 parseQueryString :: S.ByteString -> [(S.ByteString, S.ByteString)]
-parseQueryString q | S.null q = []
-parseQueryString q =
-    let (x, xs) = breakDiscard 38 q -- ampersand
-     in parsePair x : parseQueryString xs
+parseQueryString = parseQueryString' . dropQuestion
   where
-    parsePair x =
-        let (k, v) = breakDiscard 61 x -- equal sign
-         in (qsDecode k, qsDecode v)
+    dropQuestion q | S.null q || S.head q /= 63 = q
+    dropQuestion q | otherwise = S.tail q
+    parseQueryString' q | S.null q = []
+    parseQueryString' q =
+        let (x, xs) = breakDiscard 38 q -- ampersand
+         in parsePair x : parseQueryString' xs
+      where
+        parsePair x =
+            let (k, v) = breakDiscard 61 x -- equal sign
+             in (qsDecode k, qsDecode v)
 
 
 qsDecode :: S.ByteString -> S.ByteString

@@ -14,6 +14,7 @@ main = defaultMain [testSuite]
 testSuite :: Test
 testSuite = testGroup "Network.Wai.Parse"
     [ testCase "parseQueryString" caseParseQueryString
+    , testCase "parseQueryString with question mark" caseParseQueryStringQM
     , testCase "parseCookies" caseParseCookies
     , testCase "parseHttpAccept" caseParseHttpAccept
     , testCase "parseRequestBody" caseParseRequestBody
@@ -25,6 +26,23 @@ caseParseQueryString :: Assertion
 caseParseQueryString = do
     let go l r =
             map (S8.pack *** S8.pack) l @=? parseQueryString (S8.pack r)
+
+    go [] ""
+    go [("foo", "")] "foo"
+    go [("foo", "bar")] "foo=bar"
+    go [("foo", "bar"), ("baz", "bin")] "foo=bar&baz=bin"
+    go [("%Q", "")] "%Q"
+    go [("%1Q", "")] "%1Q"
+    go [("%1", "")] "%1"
+    go [("/", "")] "%2F"
+    go [("/", "")] "%2f"
+    go [("foo bar", "")] "foo+bar"
+
+caseParseQueryStringQM :: Assertion
+caseParseQueryStringQM = do
+    let go l r =
+            map (S8.pack *** S8.pack) l
+                @=? parseQueryString (S8.pack $ '?' : r)
 
     go [] ""
     go [("foo", "")] "foo"
