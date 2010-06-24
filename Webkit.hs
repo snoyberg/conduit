@@ -2,5 +2,5 @@
 {-# CFILES webkit.c #-}
 module Webkit(startBrowser) where
 
-foreign import ccall "webkit.h start_browser"
+foreign import ccall "start_browser"
     startBrowser :: IO ()

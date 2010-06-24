@@ -27,5 +27,5 @@ library
     ghc-options:       -Wall -threaded
     exposed-modules:   Hack.Handler.Webkit
     other-modules:     Webkit
-    c-sources:         webkit.c
-    pkgconfig-depends: webkit-1.0
+    c-sources:         webkit.cpp
+    pkgconfig-depends: QtWebKit
