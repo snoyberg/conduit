@@ -3,9 +3,8 @@
 #include <QtWebKit>
 
 extern "C" {
-    int start_browser()
+    int start_browser(char *title)
     {
-        char title[80] = "My Application";
         char *argv[1];
         argv[0] = title;
         int argc = 1;
