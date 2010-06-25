@@ -1,24 +1,25 @@
-module Network.Wai.Middleware.CleanPath (cleanPath, splitPath) where
+module Network.Wai.Middleware.CleanPath (cleanPath, cleanPathRel, splitPath) where
 
 import Network.Wai
 import qualified Data.ByteString.Char8 as B
 import Network.URI (unEscapeString)
 
 -- | Performs redirects as per 'splitPath'.
-cleanPath :: ([String] -> Request -> IO Response)
-          -> Request
-          -> IO Response
-cleanPath app env =
-    case splitPath $ pathInfo env of
-        Left p -> do
-            -- include the query string if present
-            let suffix = case B.uncons $ queryString env of
-                            Nothing -> B.empty
-                            Just ('?', _) -> queryString env
-                            _ -> B.cons '?' $ queryString env
-            return $ Response Status303 [(Location, B.append p suffix)]
-                   $ Right emptyEnum
+cleanPathRel :: B.ByteString -> ([String] -> Request -> IO Response) -> Request -> IO Response
+cleanPathRel prefix app env =
+    case splitPath (prefix `B.append` (pathInfo env)) of
         Right pieces -> app pieces env
+        Left p -> return . Response Status301 [(Location, B.append p suffix)] $ Right emptyEnum
+    where
+        -- include the query string if present
+        suffix =
+            case B.uncons $ queryString env of
+                Nothing -> B.empty
+                Just ('?', _) -> queryString env
+                _ -> B.cons '?' $ queryString env
+
+cleanPath :: ([String] -> Request -> IO Response) -> Request -> IO Response
+cleanPath = cleanPathRel B.empty
 
 emptyEnum :: Enumerator
 emptyEnum = Enumerator $ \_ -> return . Right
