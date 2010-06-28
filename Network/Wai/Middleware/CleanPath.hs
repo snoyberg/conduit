@@ -7,9 +7,12 @@ import Network.URI (unEscapeString)
 -- | Performs redirects as per 'splitPath'.
 cleanPathRel :: B.ByteString -> ([String] -> Request -> IO Response) -> Request -> IO Response
 cleanPathRel prefix app env =
-    case splitPath (prefix `B.append` (pathInfo env)) of
+    case splitPath $ pathInfo env of
         Right pieces -> app pieces env
-        Left p -> return . Response Status301 [(Location, B.append p suffix)] $ Right emptyEnum
+        Left p -> return
+                . Response Status301
+                  [(Location, B.concat [prefix, p, suffix])]
+                $ Right emptyEnum
     where
         -- include the query string if present
         suffix =
