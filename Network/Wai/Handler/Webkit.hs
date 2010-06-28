@@ -3,7 +3,7 @@ module Network.Wai.Handler.Webkit (run) where
 
 import Network.Wai (Application)
 import qualified Network.Wai.Handler.SimpleServer as S
-import Control.Concurrent (forkOS, myThreadId, killThread)
+import Control.Concurrent (forkOS)
 import Control.Concurrent.MVar
 import Foreign.C.String (CString, withCString)
 import Control.Exception (finally)
