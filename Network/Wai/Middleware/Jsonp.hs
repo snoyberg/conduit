@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 ---------------------------------------------------------
 -- |
 -- Module        : Network.Wai.Middleware.Jsonp
@@ -14,7 +15,7 @@
 module Network.Wai.Middleware.Jsonp (jsonp) where
 
 import Network.Wai
-import Network.Wai.Enumerator (fromEitherFile)
+import Network.Wai.Enumerator (fromResponseBody)
 import qualified Data.ByteString.Char8 as B8
 import Data.Maybe (fromMaybe)
 
@@ -42,7 +43,7 @@ dropQM bs
 -- callback function.
 jsonp :: Middleware
 jsonp app env = do
-    let accept = fromMaybe B8.empty $ lookup Accept $ requestHeaders env
+    let accept = fromMaybe B8.empty $ lookup "Accept" $ requestHeaders env
     let callback :: Maybe B8.ByteString
         callback =
             if B8.pack "text/javascript" `B8.isInfixOf` accept
@@ -52,15 +53,15 @@ jsonp app env = do
             case callback of
                 Nothing -> env
                 Just _ -> env
-                        { requestHeaders = changeVal Accept
+                        { requestHeaders = changeVal "Accept"
                                            "application/json"
                                            $ requestHeaders env
                         }
     res <- app env'
-    case (fmap B8.unpack $ lookup ContentType $ responseHeaders res, callback) of
+    case (fmap B8.unpack $ lookup "Content-Type" $ responseHeaders res, callback) of
         (Just "application/json", Just c) -> return $ res
-            { responseHeaders = changeVal ContentType "text/javascript" $ responseHeaders res
-            , responseBody = Right $ addCallback c $ fromEitherFile $ responseBody res
+            { responseHeaders = changeVal "Content-Type" "text/javascript" $ responseHeaders res
+            , responseBody = ResponseEnumerator $ addCallback c $ fromResponseBody $ responseBody res
             }
         _ -> return res
 

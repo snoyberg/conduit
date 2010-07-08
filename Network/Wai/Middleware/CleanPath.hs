@@ -1,7 +1,9 @@
+{-# LANGUAGE OverloadedStrings #-}
 module Network.Wai.Middleware.CleanPath (cleanPath, cleanPathRel, splitPath) where
 
 import Network.Wai
 import qualified Data.ByteString.Char8 as B
+import qualified Data.ByteString.Lazy as L
 import Network.URI (unEscapeString)
 
 -- | Performs redirects as per 'splitPath'.
@@ -10,9 +12,9 @@ cleanPathRel prefix app env =
     case splitPath $ pathInfo env of
         Right pieces -> app pieces env
         Left p -> return
-                . Response Status301
-                  [(Location, B.concat [prefix, p, suffix])]
-                $ Right emptyEnum
+                . Response status301
+                  [("Location", B.concat [prefix, p, suffix])]
+                $ ResponseLBS L.empty
     where
         -- include the query string if present
         suffix =

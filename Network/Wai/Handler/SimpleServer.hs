@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE OverloadedStrings #-}
 ---------------------------------------------------------
 -- |
 -- Module        : Network.Wai.Handler.SimpleServer
@@ -23,6 +24,7 @@ import qualified System.IO
 
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as B
+import qualified Data.ByteString.Lazy as L
 import Network
     ( listenOn, accept, sClose, PortID(PortNumber), Socket
     , withSocketsDo)
@@ -100,18 +102,16 @@ parseRequest port lines' handle remoteHost' = do
     case lines' of
         (_:_:_) -> return ()
         _ -> throwIO $ NotEnoughLines $ map B.unpack lines'
-    (method', rpath', gets, httpversion) <- parseFirst $ head lines'
-    let method = methodFromBS method'
+    (method, rpath', gets, httpversion) <- parseFirst $ head lines'
     let rpath = '/' : case B.unpack rpath' of
                         ('/':x) -> x
                         _ -> B.unpack rpath'
-    let heads = map (first requestHeaderFromBS . parseHeaderNoAttr)
-              $ tail lines'
-    let host' = lookup Host heads
+    let heads = map (first mkCIByteString . parseHeaderNoAttr) $ tail lines'
+    let host' = lookup "Host" heads
     unless (isJust host') $ throwIO HostNotIncluded
     let host = fromJust host'
     let len = fromMaybe 0 $ do
-                bs <- lookup ReqContentLength heads
+                bs <- lookup "Content-Length" heads
                 let str = B.unpack bs
                 case reads str of
                     (x, _):_ -> Just x
@@ -125,7 +125,7 @@ parseRequest port lines' handle remoteHost' = do
                 , serverName = serverName'
                 , serverPort = port
                 , requestHeaders = heads
-                , urlScheme = HTTP
+                , isSecure = False
                 , requestBody = requestBodyHandle handle len
                 , errorHandler = System.IO.hPutStr System.IO.stderr
                 , remoteHost = B.pack remoteHost'
@@ -142,12 +142,12 @@ parseFirst s = do
     let (hfirst, hsecond) = B.splitAt 5 http'
     unless (hfirst == B.pack "HTTP/") $ throwIO NonHttp
     let (rpath, qstring) = B.break (== '?') query
-    return (method, rpath, qstring, httpVersionFromBS hsecond)
+    return (method, rpath, qstring, hsecond)
 
 sendResponse :: HttpVersion -> Handle -> Response -> IO ()
 sendResponse httpversion h res = do
     B.hPut h $ B.pack "HTTP/"
-    B.hPut h $ httpVersionToBS httpversion
+    B.hPut h $ httpversion
     B.hPut h $ B.pack " "
     B.hPut h $ B.pack $ show $ statusCode $ status res
     B.hPut h $ B.pack " "
@@ -156,14 +156,15 @@ sendResponse httpversion h res = do
     mapM_ putHeader $ responseHeaders res
     B.hPut h $ B.pack "\r\n"
     case responseBody res of
-        Left fp -> unsafeSendFile h fp
-        Right (Enumerator enum) -> enum myPut h >> return ()
+        ResponseFile fp -> unsafeSendFile h fp
+        ResponseEnumerator (Enumerator enum) -> enum myPut h >> return ()
+        ResponseLBS lbs -> L.hPut h lbs
     where
         myPut _ bs = do
             B.hPut h bs
             return (Right h)
         putHeader (x, y) = do
-            B.hPut h $ responseHeaderToBS x
+            B.hPut h $ ciOriginal x
             B.hPut h $ B.pack ": "
             B.hPut h y
             B.hPut h $ B.pack "\r\n"

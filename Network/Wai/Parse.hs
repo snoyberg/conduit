@@ -1,4 +1,5 @@
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE OverloadedStrings #-}
 -- | Some helpers for parsing data out of a raw WAI 'Request'.
 
 module Network.Wai.Parse
@@ -164,7 +165,7 @@ parseRequestBody :: Sink x y
                  -> IO ([Param], [File y])
 parseRequestBody sink req = do
     let ctype = do
-          ctype' <- lookup ReqContentType $ requestHeaders req
+          ctype' <- lookup "Content-Type" $ requestHeaders req
           if urlenc `S.isPrefixOf` ctype'
               then Just Nothing
               else if formBound `S.isPrefixOf` ctype'

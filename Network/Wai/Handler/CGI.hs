@@ -1,10 +1,11 @@
+{-# LANGUAGE OverloadedStrings #-}
 module Network.Wai.Handler.CGI
     ( run
     , run'
     ) where
 
 import Network.Wai
-import Network.Wai.Enumerator (fromEitherFile)
+import Network.Wai.Enumerator (fromResponseBody)
 import Network.Wai.Handler.Helper
 import System.Environment (getEnvironment)
 import Data.Maybe (fromMaybe)
@@ -12,6 +13,7 @@ import qualified Data.ByteString.Char8 as B
 import Control.Arrow ((***))
 import Data.Char (toLower)
 import qualified System.IO
+import Data.String (fromString)
 
 safeRead :: Read a => a -> String -> a
 safeRead d s =
@@ -33,7 +35,7 @@ run' :: [(String, String)] -- ^ all variables
      -> Application
      -> IO ()
 run' vars inputH outputH app = do
-    let rmethod = safeRead GET $ lookup' "REQUEST_METHOD" vars
+    let rmethod = B.pack $ lookup' "REQUEST_METHOD" vars
         pinfo = lookup' "PATH_INFO" vars
         qstring = lookup' "QUERY_STRING" vars
         servername = lookup' "SERVER_NAME" vars
@@ -46,10 +48,10 @@ run' vars inputH outputH app = do
                     case lookup "REMOTE_ADDR" vars of
                         Just x -> x
                         Nothing -> ""
-        urlScheme' =
+        isSecure' =
             case map toLower $ lookup' "SERVER_PROTOCOL" vars of
-                "https" -> HTTPS
-                _ -> HTTP
+                "https" -> True
+                _ -> False
     let env = Request
             { requestMethod = rmethod
             , pathInfo = B.pack pinfo
@@ -57,16 +59,16 @@ run' vars inputH outputH app = do
             , serverName = B.pack servername
             , serverPort = serverport
             , requestHeaders = map (cleanupVarName *** B.pack) vars
-            , urlScheme = urlScheme'
+            , isSecure = isSecure'
             , requestBody = requestBodyHandle inputH contentLength
             , errorHandler = System.IO.hPutStr System.IO.stderr
             , remoteHost = B.pack remoteHost'
-            , httpVersion = HttpVersion B.empty
+            , httpVersion = "1.1" -- FIXME
             }
     res <- app env
     let h = responseHeaders res
-    let h' = case lookup ContentType h of
-                Nothing -> (ContentType, B.pack "text/html; charset=utf-8")
+    let h' = case lookup "Content-Type" h of
+                Nothing -> ("Content-Type", "text/html; charset=utf-8")
                          : h
                 Just _ -> h
     let hPut = B.hPut outputH
@@ -75,7 +77,7 @@ run' vars inputH outputH app = do
     hPut $ B.singleton '\n'
     mapM_ (printHeader hPut) h'
     hPut $ B.singleton '\n'
-    _ <- runEnumerator (fromEitherFile (responseBody res)) (myPut outputH) ()
+    _ <- runEnumerator (fromResponseBody (responseBody res)) (myPut outputH) ()
     return ()
 
 myPut :: System.IO.Handle -> () -> B.ByteString -> IO (Either () ())
@@ -85,18 +87,19 @@ printHeader :: (B.ByteString -> IO ())
             -> (ResponseHeader, B.ByteString)
             -> IO ()
 printHeader f (x, y) = do
-    f $ responseHeaderToBS x
+    f $ ciOriginal x
     f $ B.pack ": "
     f y
     f $ B.singleton '\n'
 
 cleanupVarName :: String -> RequestHeader
 cleanupVarName ('H':'T':'T':'P':'_':a:as) =
-  requestHeaderFromBS $ B.pack $ a : helper' as where
+    fromString $ a : helper' as
+  where
     helper' ('_':x:rest) = '-' : x : helper' rest
     helper' (x:rest) = toLower x : helper' rest
     helper' [] = []
-cleanupVarName "CONTENT_TYPE" = ReqContentType
-cleanupVarName "CONTENT_LENGTH" = ReqContentLength
-cleanupVarName "SCRIPT_NAME" = requestHeaderFromBS $ B.pack "CGI-Script-Name"
-cleanupVarName x = requestHeaderFromBS $ B.pack x -- FIXME remove?
+cleanupVarName "CONTENT_TYPE" = "Content-Type"
+cleanupVarName "CONTENT_LENGTH" = "Content-Length"
+cleanupVarName "SCRIPT_NAME" = "CGI-Script-Name"
+cleanupVarName x = fromString x -- FIXME remove?

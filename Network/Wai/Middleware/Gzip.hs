@@ -1,5 +1,6 @@
 {-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE OverloadedStrings #-}
 ---------------------------------------------------------
 -- |
 -- Module        : Network.Wai.Middleware.Gzip
@@ -16,6 +17,7 @@
 module Network.Wai.Middleware.Gzip (gzip) where
 
 import Network.Wai
+import Network.Wai.Enumerator (fromResponseBody)
 import Network.Wai.Zlib
 import Data.Maybe (fromMaybe)
 import qualified Data.ByteString.Char8 as B
@@ -37,23 +39,22 @@ gzip :: Middleware
 gzip app env = do
     res <- app env
     case responseBody res of
-        Left _ -> return res
-        Right _ -> do
+        ResponseFile _ -> return res
+        _ -> do
             let enc = fromMaybe []
                     $ (splitCommas . B.unpack)
-                    `fmap` lookup AcceptEncoding
+                    `fmap` lookup "Accept-Encoding"
                       (requestHeaders env)
             if "gzip" `elem` enc
                 then return res
                     { responseBody = compressE $ responseBody res
-                    , responseHeaders = (ContentEncoding, B.pack "gzip")
+                    , responseHeaders = ("Content-Encoding", "gzip")
                               : responseHeaders res
                     }
                 else return res
 
-compressE :: Either FilePath Enumerator -> Either FilePath Enumerator
-compressE (Left fp) = Left fp
-compressE (Right e) = Right $ compress e
+compressE :: ResponseBody -> ResponseBody
+compressE = ResponseEnumerator . compress . fromResponseBody
 
 splitCommas :: String -> [String]
 splitCommas [] = []
