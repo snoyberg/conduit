@@ -15,8 +15,6 @@ module Network.Wai.Enumerator
       -- ** FilePath
     , fromFile
     , fromEitherFile
-      -- * Filters
-    , buffer
     ) where
 
 import Network.Wai (Enumerator (..), Source (..))
@@ -117,24 +115,3 @@ fromFile fp = Enumerator $ \iter a0 -> withBinaryFile fp ReadMode $ \h ->
 -- be convenient for server implementations not optimizing file sending.
 fromEitherFile :: Either FilePath Enumerator -> Enumerator
 fromEitherFile = either fromFile id
-
--- | Buffer chunks until we have a chunk of 'defaultChunkSize', and then send
--- it.
-buffer :: Enumerator -> Enumerator
-buffer (Enumerator e) =
-    Enumerator go
-  where
-    go iter seed = do
-        res <- e (iter' iter) (B.empty, seed)
-        case res of
-            Left (_, seed') -> return $ Left seed'
-            Right (buff, seed') -> iter seed' buff
-    iter' iter (buff, seed) bs = do
-        if B.length buff + B.length bs < defaultChunkSize
-            then return $ Right (buff `B.append` bs, seed)
-            else do
-                let (x, y) = B.splitAt (defaultChunkSize - B.length buff) bs
-                res <- iter seed $ buff `B.append` x
-                case res of
-                    Left seed' -> return $ Left (y, seed') -- y is ignored
-                    Right seed' -> return $ Right (y, seed')
