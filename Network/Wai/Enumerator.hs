@@ -14,10 +14,10 @@ module Network.Wai.Enumerator
     , fromHandle
       -- ** FilePath
     , fromFile
-    , fromEitherFile
+    , fromResponseBody
     ) where
 
-import Network.Wai (Enumerator (..), Source (..))
+import Network.Wai (Enumerator (..), Source (..), ResponseBody (..))
 import qualified Network.Wai.Source as Source
 import qualified Data.ByteString.Lazy as L
 import qualified Data.ByteString as B
@@ -110,8 +110,10 @@ fromFile :: FilePath -> Enumerator
 fromFile fp = Enumerator $ \iter a0 -> withBinaryFile fp ReadMode $ \h ->
     runEnumerator (fromHandle h) iter a0
 
--- | Since the response body is defined as an 'Either' 'FilePath' 'Enumerator',
--- this function simply reduces the whole operator to an enumerator. This can
--- be convenient for server implementations not optimizing file sending.
-fromEitherFile :: Either FilePath Enumerator -> Enumerator
-fromEitherFile = either fromFile id
+-- | Since the response body is defined as a 'ResponseBody', this function
+-- simply reduces the whole value to an enumerator. This can be convenient for
+-- server implementations not optimizing file sending.
+fromResponseBody :: ResponseBody -> Enumerator
+fromResponseBody (ResponseEnumerator e) = e
+fromResponseBody (ResponseLBS lbs) = fromLBS lbs
+fromResponseBody (ResponseFile fp) = fromFile fp
