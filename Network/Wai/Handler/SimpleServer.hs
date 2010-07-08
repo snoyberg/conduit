@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE OverloadedStrings #-}
 ---------------------------------------------------------
 -- |
 -- Module        : Network.Wai.Handler.SimpleServer
@@ -21,6 +22,7 @@ import Network.Wai
 import qualified System.IO
 
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Lazy as L
 import qualified Data.ByteString.Char8 as B8
 import Network
     ( listenOn, accept, sClose, PortID(PortNumber), Socket
@@ -104,30 +106,28 @@ parseRequest port lines' handle remoteHost' = do
     case lines' of
         (_:_:_) -> return ()
         _ -> failure $ NotEnoughLines $ map SL.unpack lines'
-    (method', rpath', gets) <- parseFirst $ head lines'
-    let method = methodFromBS method'
+    (method, rpath', gets) <- parseFirst $ head lines'
     let rpath = '/' : case SL.unpack rpath' of
                         ('/':x) -> x
                         _ -> SL.unpack rpath'
-    let heads = map (first requestHeaderFromBS . parseHeaderNoAttr)
-              $ tail lines'
-    let host' = lookup Host heads
+    let heads = map (first mkCIByteString . parseHeaderNoAttr) $ tail lines'
+    let host' = lookup "Host" heads
     unless (isJust host') $ failure HostNotIncluded
     let host = fromJust host'
     let len = fromMaybe 0 $ do
-                bs <- lookup ReqContentLength heads
+                bs <- lookup "Content-Length" heads
                 let str = SL.unpack bs
                 Safe.readMay str
     let (serverName', _) = SL.breakChar ':' host
     return $ Request
                 { requestMethod = method
-                , httpVersion = Http11
+                , httpVersion = http11
                 , pathInfo = SL.pack rpath
                 , queryString = gets
                 , serverName = serverName'
                 , serverPort = port
                 , requestHeaders = heads
-                , urlScheme = HTTP
+                , isSecure = False
                 , requestBody = requestBodyHandle handle len
                 , errorHandler = System.IO.hPutStr System.IO.stderr
                 , remoteHost = B8.pack remoteHost'
@@ -161,18 +161,19 @@ sendResponse h res = do
     BS.hPut h $ SL.pack $ show $ statusCode $ status res
     BS.hPut h $ statusMessage $ status res
     BS.hPut h $ SL.pack "\r\n"
-    mapM_ putHeader $ responseHeaders res
+    mapM_ putHeader $ map (first ciOriginal) $ responseHeaders res
     BS.hPut h $ SL.pack "\r\n"
     case responseBody res of
-        Left fp -> unsafeSendFile h fp
-        Right (Enumerator enum) -> enum myPut h >> return ()
+        ResponseFile fp -> unsafeSendFile h fp
+        ResponseEnumerator (Enumerator enum) -> enum myPut h >> return ()
+        ResponseLBS lbs -> L.hPutStr h lbs
     where
         myPut _ bs = do
             putStrLn $ "sending a chunk of size " ++ show (BS.length bs)
             BS.hPut h bs
             return (Right h)
         putHeader (x, y) = do
-            BS.hPut h $ responseHeaderToBS x
+            BS.hPut h x
             BS.hPut h $ SL.pack ": "
             BS.hPut h y
             BS.hPut h $ SL.pack "\r\n"

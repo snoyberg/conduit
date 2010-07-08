@@ -13,9 +13,9 @@ You want a minimal example? Here it is!
 >
 > app :: Application
 > app _ = return Response
->     { status          = Status200
->     , responseHeaders = [(ContentType, "text/plain")]
->     , responseBody    = Right $ fromLBS "Hello, Web!"
+>     { status          = status200
+>     , responseHeaders = [("Content-Type", "text/plain")]
+>     , responseBody    = ResponseLBS "Hello, Web!"
 >     }
 >
 > main :: IO ()
@@ -51,9 +51,9 @@ Now we redefine `responseBody` to refer to that file:
 > app2 _ = return index
 >
 > index = Response
->     { status          = Status200
->     , responseHeaders = [(ContentType, "text/html")]
->     , responseBody    = Left "index.html"
+>     { status          = status200
+>     , responseHeaders = [("Content-Type", "text/html")]
+>     , responseBody    = ResponseFile "index.html"
 >     }
 
 
@@ -75,15 +75,15 @@ different `Response`s:
 >     _       -> return notFound
 >
 > plainIndex = Response
->     { status          = Status200
->     , responseHeaders = [(ContentType, "text/plain")]
->     , responseBody    = Left "index.html"
+>     { status          = status200
+>     , responseHeaders = [("Content-Type", "text/plain")]
+>     , responseBody    = ResponseFile "index.html"
 >     }
 >
 > notFound = Response
->     { status          = Status404
->     , responseHeaders = [(ContentType, "text/plain")]
->     , responseBody    = Right $ fromLBS "404 - Not Found"
+>     { status          = status404
+>     , responseHeaders = [("Content-Type", "text/plain")]
+>     , responseBody    = ResponseLBS "404 - Not Found"
 >     }
 
 
@@ -100,7 +100,7 @@ works without GHC extensions:
 
     notFound = Response
         { status          = Status404
-        , responseHeaders = [(ContentType, B8.pack "text/plain")]
+        , responseHeaders = [("Content-Type", B8.pack "text/plain")]
         , responseBody    = Right $ fromLBS $ LB8.pack "404 - Not Found"
         }
 

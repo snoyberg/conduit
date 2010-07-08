@@ -35,31 +35,41 @@ module Network.Wai
 
       -- $show_read
       -- ** Request method
-      Method (..)
-    , methodFromBS
-    , methodToBS
-      -- ** URL scheme (http versus https)
-    , UrlScheme (..)
+      Method
+    , methodOPTIONS
+    , methodGET
+    , methodHEAD
+    , methodPOST
+    , methodPUT
+    , methodDELETE
+    , methodTRACE
+    , methodCONNECT
       -- ** HTTP protocol versions
-    , HttpVersion (..)
-    , httpVersionFromBS
-    , httpVersionToBS
+    , HttpVersion
+    , http09
+    , http10
+    , http11
+      -- ** Case-insensitive byte strings
+    , CIByteString (..)
+    , mkCIByteString
       -- ** Request header names
-    , RequestHeader (..)
-    , requestHeader
-    , requestHeaderFromBS
-    , requestHeaderToBS
-    , requestHeaderToLower
+    , RequestHeader
       -- ** Response header names
-    , ResponseHeader (..)
-    , responseHeader
-    , responseHeaderFromBS
-    , responseHeaderToBS
-    , responseHeaderToLower
+    , ResponseHeader
       -- ** Response status code
     , Status (..)
-    , statusCode
-    , statusMessage
+    , status200
+    , status301
+    , status302
+    , status303
+    , status400
+    , status401
+    , status403
+    , status404
+    , status405
+    , status500
+      -- ** Response body
+    , ResponseBody (..)
       -- ** Source
     , Source (..)
       -- * Enumerator
@@ -73,7 +83,9 @@ module Network.Wai
 
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as B8
+import qualified Data.ByteString.Lazy as L
 import Data.Char (toLower)
+import Data.String (IsString (..))
 
 -- $show_read
 --
@@ -85,82 +97,62 @@ import Data.Char (toLower)
 -- | HTTP request method. This data type is extensible via the Method
 -- constructor. Request methods are case-sensitive, and comparison is achieved
 -- by converting to a 'B.ByteString' via 'methodToBS'.
-data Method =
-    OPTIONS
-  | GET
-  | HEAD
-  | POST
-  | PUT
-  | DELETE
-  | TRACE
-  | CONNECT
-  | Method B.ByteString
-  deriving (Show, Read)
+type Method = B.ByteString
 
-instance Eq Method where
-    x == y = methodToBS x == methodToBS y
+methodOPTIONS :: Method
+methodOPTIONS = B8.pack "OPTIONS"
 
-methodFromBS :: B.ByteString -> Method
-methodFromBS bs
-    | B.length bs <= 7 = case B8.unpack bs of
-        "OPTIONS" -> OPTIONS
-        "GET" -> GET
-        "HEAD" -> HEAD
-        "POST" -> POST
-        "PUT" -> PUT
-        "DELETE" -> DELETE
-        "TRACE" -> TRACE
-        "CONNECT" -> CONNECT
-        _ -> Method bs
-    | otherwise = Method bs
+methodGET :: Method
+methodGET = B8.pack "GET"
 
-methodToBS :: Method -> B.ByteString
-methodToBS OPTIONS = B8.pack "OPTIONS"
-methodToBS GET = B8.pack "GET"
-methodToBS HEAD = B8.pack "HEAD"
-methodToBS POST = B8.pack "POST"
-methodToBS PUT = B8.pack "PUT"
-methodToBS DELETE = B8.pack "DELETE"
-methodToBS TRACE = B8.pack "TRACE"
-methodToBS CONNECT = B8.pack "CONNECT"
-methodToBS (Method bs) = bs
+methodHEAD :: Method
+methodHEAD = B8.pack "HEAD"
 
-data UrlScheme = HTTP | HTTPS
-    deriving (Show, Eq)
+methodPOST :: Method
+methodPOST = B8.pack "POST"
+
+methodPUT :: Method
+methodPUT = B8.pack "PUT"
+
+methodDELETE :: Method
+methodDELETE = B8.pack "DELETE"
+
+methodTRACE :: Method
+methodTRACE = B8.pack "TRACE"
+
+methodCONNECT :: Method
+methodCONNECT = B8.pack "CONNECT"
 
 -- | Version of HTTP protocol used in current request. This data type is
 -- extensible via the HttpVersion constructor. Comparison is achieved by
 -- converting to a 'B.ByteString' via 'httpVersionToBS'.
-data HttpVersion =
-      Http09
-    | Http10
-    | Http11
-    | HttpVersion B.ByteString
-    deriving (Show, Read)
+type HttpVersion = B.ByteString
 
-instance Eq HttpVersion where
-    x == y = httpVersionToBS x == httpVersionToBS y
+http09 :: HttpVersion
+http09 = B8.pack "0.9"
 
--- | This function takes the information after \"HTTP\/\". For example:
---
--- @ 'httpVersionFromBS' ('B8.pack' \"1.0\") == 'Http10' @
-httpVersionFromBS :: B.ByteString -> HttpVersion
-httpVersionFromBS bs
-    | B.length bs == 3 = case B8.unpack bs of
-        "0.9" -> Http09
-        "1.0" -> Http10
-        "1.1" -> Http11
-        _ -> HttpVersion bs
-    | otherwise = HttpVersion bs
+http10 :: HttpVersion
+http10 = B8.pack "1.0"
 
--- | Returns the version number, for example:
---
--- @ 'B8.unpack' ('httpVersionToBS' 'Http10') == \"1.0\" @
-httpVersionToBS :: HttpVersion -> B.ByteString
-httpVersionToBS Http09 = B8.pack "0.9"
-httpVersionToBS Http10 = B8.pack "1.0"
-httpVersionToBS Http11 = B8.pack "1.1"
-httpVersionToBS (HttpVersion bs) = bs
+http11 :: HttpVersion
+http11 = B8.pack "1.1"
+
+data CIByteString = CIByteString
+    { ciOriginal :: !B.ByteString
+    , ciLowerCase :: !B.ByteString
+    }
+
+mkCIByteString :: B.ByteString -> CIByteString
+mkCIByteString bs = CIByteString bs $ B8.map toLower bs
+
+instance Show CIByteString where
+    show = show . ciOriginal
+instance Eq CIByteString where
+    x == y = ciLowerCase x == ciLowerCase y
+instance Ord CIByteString where
+    x <= y = ciLowerCase x <= ciLowerCase y
+instance IsString CIByteString where
+    fromString = mkCIByteString . fromString
 
 -- | Headers sent from the client to the server. Clearly, this is not a
 -- complete list of all possible headers, but rather a selection of common
@@ -172,68 +164,7 @@ httpVersionToBS (HttpVersion bs) = bs
 --
 -- Equality determined by conversion via 'requestHeaderToLower'. Request
 -- headers are *not* case sensitive (a change from version 0.0 of WAI).
-data RequestHeader =
-      Accept
-    | AcceptCharset
-    | AcceptEncoding
-    | AcceptLanguage
-    | Authorization
-    | Cookie
-    | ReqContentLength
-    | ReqContentType
-    | Host
-    | Referer
-    | RequestHeader B.ByteString B.ByteString
-    deriving (Show, Read)
-
-lowerBS :: B.ByteString -> B.ByteString
-lowerBS = B8.map toLower
-
-requestHeader :: B.ByteString -> RequestHeader
-requestHeader x = RequestHeader x $ lowerBS x
-
-instance Eq RequestHeader where
-    x == y = requestHeaderToLower x == requestHeaderToLower y
-
-requestHeaderFromBS :: B.ByteString -> RequestHeader
-requestHeaderFromBS bs = case B8.unpack bs of
-    "Accept" -> Accept
-    "Accept-Charset" -> AcceptCharset
-    "Accept-Encoding" -> AcceptEncoding
-    "Accept-Language" -> AcceptLanguage
-    "Authorization" -> Authorization
-    "Cookie" -> Cookie
-    "Content-Length" -> ReqContentLength
-    "Content-Type" -> ReqContentType
-    "Host" -> Host
-    "Referer" -> Referer
-    _ -> requestHeader bs
-
-requestHeaderToBS :: RequestHeader -> B.ByteString
-requestHeaderToBS Accept = B8.pack "Accept"
-requestHeaderToBS AcceptCharset = B8.pack "Accept-Charset"
-requestHeaderToBS AcceptEncoding = B8.pack "Accept-Encoding"
-requestHeaderToBS AcceptLanguage = B8.pack "Accept-Language"
-requestHeaderToBS Authorization = B8.pack "Authorization"
-requestHeaderToBS Cookie = B8.pack "Cookie"
-requestHeaderToBS ReqContentLength = B8.pack "Content-Length"
-requestHeaderToBS ReqContentType = B8.pack "Content-Type"
-requestHeaderToBS Host = B8.pack "Host"
-requestHeaderToBS Referer = B8.pack "Referer"
-requestHeaderToBS (RequestHeader bs _) = bs
-
-requestHeaderToLower :: RequestHeader -> B.ByteString
-requestHeaderToLower Accept = B8.pack "accept"
-requestHeaderToLower AcceptCharset = B8.pack "accept-charset"
-requestHeaderToLower AcceptEncoding = B8.pack "accept-encoding"
-requestHeaderToLower AcceptLanguage = B8.pack "accept-language"
-requestHeaderToLower Authorization = B8.pack "authorization"
-requestHeaderToLower Cookie = B8.pack "cookie"
-requestHeaderToLower ReqContentLength = B8.pack "content-Length"
-requestHeaderToLower ReqContentType = B8.pack "content-Type"
-requestHeaderToLower Host = B8.pack "host"
-requestHeaderToLower Referer = B8.pack "referer"
-requestHeaderToLower (RequestHeader _ bs) = bs
+type RequestHeader = CIByteString
 
 -- | Headers sent from the server to the client. Clearly, this is not a
 -- complete list of all possible headers, but rather a selection of common
@@ -244,61 +175,7 @@ requestHeaderToLower (RequestHeader _ bs) = bs
 --
 -- Equality determined by conversion via 'responseHeaderToLower'. Response
 -- headers are *not* case sensitive (a change from version 0.0 of WAI).
-data ResponseHeader =
-      ContentEncoding
-    | ContentLanguage
-    | ContentLength
-    | ContentDisposition
-    | ContentType
-    | Expires
-    | Location
-    | Server
-    | SetCookie
-    | ResponseHeader B.ByteString B.ByteString
-     deriving (Show)
-
-instance Eq ResponseHeader where
-    x == y = responseHeaderToBS x == responseHeaderToBS y
-
-responseHeader :: B.ByteString -> ResponseHeader
-responseHeader x = ResponseHeader x $ lowerBS x
-
-responseHeaderFromBS :: B.ByteString -> ResponseHeader
-responseHeaderFromBS bs = case B8.unpack bs of
-    "Content-Encoding" -> ContentEncoding
-    "Content-Language" -> ContentLanguage
-    "Content-Length" -> ContentLength
-    "Content-Disposition" -> ContentDisposition
-    "Content-Type" -> ContentType
-    "Expires" -> Expires
-    "Location" -> Location
-    "Server" -> Server
-    "Set-Cookie" -> SetCookie
-    _ -> responseHeader bs
-
-responseHeaderToBS :: ResponseHeader -> B.ByteString
-responseHeaderToBS ContentEncoding = B8.pack "Content-Encoding"
-responseHeaderToBS ContentLanguage = B8.pack "Content-Language"
-responseHeaderToBS ContentLength = B8.pack "Content-Length"
-responseHeaderToBS ContentDisposition = B8.pack "Content-Disposition"
-responseHeaderToBS ContentType = B8.pack "Content-Type"
-responseHeaderToBS Expires = B8.pack "Expires"
-responseHeaderToBS Location = B8.pack "Location"
-responseHeaderToBS Server = B8.pack "Server"
-responseHeaderToBS SetCookie = B8.pack "Set-Cookie"
-responseHeaderToBS (ResponseHeader bs _) = bs
-
-responseHeaderToLower :: ResponseHeader -> B.ByteString
-responseHeaderToLower ContentEncoding = B8.pack "content-encoding"
-responseHeaderToLower ContentLanguage = B8.pack "content-language"
-responseHeaderToLower ContentLength = B8.pack "content-length"
-responseHeaderToLower ContentDisposition = B8.pack "content-disposition"
-responseHeaderToLower ContentType = B8.pack "content-type"
-responseHeaderToLower Expires = B8.pack "expires"
-responseHeaderToLower Location = B8.pack "location"
-responseHeaderToLower Server = B8.pack "server"
-responseHeaderToLower SetCookie = B8.pack "set-cookie"
-responseHeaderToLower (ResponseHeader _ bs) = bs
+type ResponseHeader = CIByteString
 
 -- | This attempts to provide the most common HTTP status codes, not all of
 -- them. Use the Status constructor when you want to create a status code not
@@ -306,48 +183,41 @@ responseHeaderToLower (ResponseHeader _ bs) = bs
 --
 -- The 'Eq' instance tests equality based only on the numeric status code
 -- value. See 'statusCode'.
-data Status =
-      Status200
-    | Status301
-    | Status302
-    | Status303
-    | Status400
-    | Status401
-    | Status403
-    | Status404
-    | Status405
-    | Status500
-    | Status Int B.ByteString
+data Status = Status { statusCode :: Int, statusMessage :: B.ByteString }
     deriving Show
 
 instance Eq Status where
     x == y = statusCode x == statusCode y
 
-statusCode :: Status -> Int
-statusCode Status200 = 200
-statusCode Status301 = 301
-statusCode Status302 = 302
-statusCode Status303 = 303
-statusCode Status400 = 400
-statusCode Status401 = 401
-statusCode Status403 = 403
-statusCode Status404 = 404
-statusCode Status405 = 405
-statusCode Status500 = 500
-statusCode (Status i _) = i
+status200 :: Status
+status200 = Status 200 $ B8.pack "OK"
 
-statusMessage :: Status -> B.ByteString
-statusMessage Status200 = B8.pack "OK"
-statusMessage Status301 = B8.pack "Moved Permanently"
-statusMessage Status302 = B8.pack "Found"
-statusMessage Status303 = B8.pack "See Other"
-statusMessage Status400 = B8.pack "Bad Request"
-statusMessage Status401 = B8.pack "Unauthorized"
-statusMessage Status403 = B8.pack "Forbidden"
-statusMessage Status404 = B8.pack "Not Found"
-statusMessage Status405 = B8.pack "Method Not Allowed"
-statusMessage Status500 = B8.pack "Internal Server Error"
-statusMessage (Status _ m) = m
+status301 :: Status
+status301 = Status 301 $ B8.pack "Moved Permanently"
+
+status302 :: Status
+status302 = Status 302 $ B8.pack "Found"
+
+status303 :: Status
+status303 = Status 303 $ B8.pack "See Other"
+
+status400 :: Status
+status400 = Status 400 $ B8.pack "Bad Request"
+
+status401 :: Status
+status401 = Status 401 $ B8.pack "Unauthorized"
+
+status403 :: Status
+status403 = Status 403 $ B8.pack "Forbidden"
+
+status404 :: Status
+status404 = Status 404 $ B8.pack "Not Found"
+
+status405 :: Status
+status405 = Status 405 $ B8.pack "Method Not Allowed"
+
+status500 :: Status
+status500 = Status 500 $ B8.pack "Internal Server Error"
 
 -- | This is a source for 'B.ByteString's. It is a function (wrapped in a
 -- newtype) that will return Nothing if the data has been completely consumed,
@@ -408,12 +278,16 @@ data Request = Request
   ,  serverName     :: B.ByteString
   ,  serverPort     :: Int
   ,  requestHeaders :: [(RequestHeader, B.ByteString)]
-  ,  urlScheme      :: UrlScheme
+  ,  isSecure       :: Bool
   ,  requestBody    :: Source
   ,  errorHandler   :: String -> IO ()
   -- | The client\'s host information.
   ,  remoteHost     :: B.ByteString
   }
+
+data ResponseBody = ResponseFile FilePath
+                  | ResponseEnumerator Enumerator
+                  | ResponseLBS L.ByteString
 
 data Response = Response
   { status          :: Status
@@ -422,7 +296,7 @@ data Response = Response
   -- files from the disk. This datatype facilitates this optimization; if
   -- 'Left' is returned, the server will send the file from the disk by
   -- whatever means it wishes. If 'Right', it will call the 'Enumerator'.
-  , responseBody    :: Either FilePath Enumerator
+  , responseBody    :: ResponseBody
   }
 
 type Application = Request -> IO Response
