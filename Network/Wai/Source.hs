@@ -3,6 +3,7 @@ module Network.Wai.Source
     -- * Conversions
       toEnumerator
     , toLBS
+    , fromLBS
     ) where
 
 import Network.Wai
@@ -35,3 +36,11 @@ toLBS source0 = L.fromChunks `fmap` helper source0 where
             Just (bs, source') -> do
                 rest <- helper source'
                 return $ bs : rest
+
+-- | Convert a lazy bytestring to a 'Source'. This operation does not request lazy I\/O.
+fromLBS :: L.ByteString -> Source
+fromLBS =
+    go . L.toChunks
+  where
+    go [] = Source $ return Nothing
+    go (x:xs) = Source $ return $ Just (x, go xs)
