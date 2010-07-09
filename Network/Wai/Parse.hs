@@ -244,6 +244,7 @@ parsePieces sink bound src = do
     res <- takeLine src
     src' <- case res of
                 Nothing -> return (S.empty, Nothing)
+                -- The _bs here should only contain boundary information
                 Just (_bs, src') -> return src'
     res' <- takeLines src'
     case res' of
@@ -252,14 +253,14 @@ parsePieces sink bound src = do
             let ls' = map parsePair ls
             let x = do
                     cd <- lookup contDisp ls'
-                    ct <- lookup contType ls'
+                    let ct = lookup contType ls'
                     let attrs = parseAttrs cd
                     let nameBS = S8.pack "name"
                     name <- lookup nameBS attrs
                     let fnBS = S8.pack "filename"
                     return (ct, name, lookup fnBS attrs)
             case x of
-                Just (ct, name, Just filename) -> do
+                Just (Just ct, name, Just filename) -> do
                     seed <- sinkInit sink
                     (seed', wasFound, msrc''') <-
                         sinkTillBound bound src'' (sinkAppend sink) seed
@@ -283,7 +284,7 @@ parsePieces sink bound src = do
                             then parsePieces sink bound msrc'''
                             else return ([], [])
                     return (x' : xs, ys)
-                Nothing -> do
+                _ -> do
                     -- ignore this part
                     let seed = ()
                         iter () _ = return ()
