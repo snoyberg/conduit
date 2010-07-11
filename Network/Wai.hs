@@ -36,14 +36,6 @@ module Network.Wai
       -- $show_read
       -- ** Request method
       Method
-    , methodOPTIONS
-    , methodGET
-    , methodHEAD
-    , methodPOST
-    , methodPUT
-    , methodDELETE
-    , methodTRACE
-    , methodCONNECT
       -- ** HTTP protocol versions
     , HttpVersion
     , http09
@@ -98,30 +90,6 @@ import Data.String (IsString (..))
 -- constructor. Request methods are case-sensitive, and comparison is achieved
 -- by converting to a 'B.ByteString' via 'methodToBS'.
 type Method = B.ByteString
-
-methodOPTIONS :: Method
-methodOPTIONS = B8.pack "OPTIONS"
-
-methodGET :: Method
-methodGET = B8.pack "GET"
-
-methodHEAD :: Method
-methodHEAD = B8.pack "HEAD"
-
-methodPOST :: Method
-methodPOST = B8.pack "POST"
-
-methodPUT :: Method
-methodPUT = B8.pack "PUT"
-
-methodDELETE :: Method
-methodDELETE = B8.pack "DELETE"
-
-methodTRACE :: Method
-methodTRACE = B8.pack "TRACE"
-
-methodCONNECT :: Method
-methodCONNECT = B8.pack "CONNECT"
 
 -- | Version of HTTP protocol used in current request. This data type is
 -- extensible via the HttpVersion constructor. Comparison is achieved by
