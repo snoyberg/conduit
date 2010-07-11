@@ -5,10 +5,10 @@
 This module defines a generic web application interface. It is a common
 protocol between web servers and web applications.
 
-The overriding design principles here are performance, generality and type
-safety. To address performance, this library is built on 'Source' for the
-request body and 'Enumerator' for the response bodies. The advantages of this
-approach over lazy IO have been debated elsewhere.
+The overriding design principles here are performance and generality . To
+address performance, this library is built on 'Source' for the request body and
+'Enumerator' for the response bodies. The advantages of this approach over lazy
+IO have been debated elsewhere.
 
 Nonetheless, many people find these data structures difficult to work with. For
 that reason, this library includes the "Network.Wai.Enumerator" module to
@@ -18,11 +18,8 @@ Generality is achieved by removing many variables commonly found in similar
 projects that are not universal to all servers. The goal is that the 'Request'
 object contains only data which is meaningful in all circumstances.
 
-Unlike other approaches, this package declares many data types to assist in
-type safety. This feels more inline with the general Haskell spirit.
-
 A final note: please remember when using this package that, while your
-application my compile without a hitch against many different servers, there
+application may compile without a hitch against many different servers, there
 are other considerations to be taken when moving to a new backend. For example,
 if you transfer from a CGI application to a FastCGI one, you might suddenly
 find you have a memory leak. Conversely, a FastCGI application would be
@@ -33,7 +30,6 @@ would kill the performance of a CGI application.
 module Network.Wai
     ( -- * Data types
 
-      -- $show_read
       -- ** Request method
       Method
       -- ** HTTP protocol versions
@@ -79,37 +75,42 @@ import qualified Data.ByteString.Lazy as L
 import Data.Char (toLower)
 import Data.String (IsString (..))
 
--- $show_read
---
--- For the data types below, you should only use the 'Show' and 'Read'
--- instances for debugging purposes. Each datatype (excepting 'UrlScheme') has
--- associated functions for converting to and from strict 'B.ByteString's;
--- these are approrpiate for generating content.
-
--- | HTTP request method. This data type is extensible via the Method
--- constructor. Request methods are case-sensitive, and comparison is achieved
--- by converting to a 'B.ByteString' via 'methodToBS'.
+-- | HTTP request method. Since the HTTP protocol allows arbitrary request
+-- methods, we leave this open as a 'B.ByteString'. Please note the request
+-- methods are case-sensitive.
 type Method = B.ByteString
 
--- | Version of HTTP protocol used in current request. This data type is
--- extensible via the HttpVersion constructor. Comparison is achieved by
--- converting to a 'B.ByteString' via 'httpVersionToBS'.
+-- | Version of HTTP protocol used in current request. The value given here
+-- should be everything following the \"HTTP/\" line in a request. In other
+-- words, HTTP\/1.1 -> \"1.1\", HTTP\/1.0 -> \"1.0\".
 type HttpVersion = B.ByteString
 
+-- | HTTP/0.9
 http09 :: HttpVersion
 http09 = B8.pack "0.9"
 
+-- | HTTP/1.0
 http10 :: HttpVersion
 http10 = B8.pack "1.0"
 
+-- | HTTP/1.1
 http11 :: HttpVersion
 http11 = B8.pack "1.1"
 
+-- | A case insensitive bytestring, where the 'Eq' and 'Ord' instances do
+-- comparisons based on the lower-cased version of this string. For efficiency,
+-- this datatype contains both the original and lower-case version of the
+-- string; this means there is no need to lower-case the bytestring for every
+-- comparison.
+--
+-- Please note that this datatype has an 'IsString' instance, which can allow
+-- for very concise code when using the OverloadedStrings language extension.
 data CIByteString = CIByteString
     { ciOriginal :: !B.ByteString
     , ciLowerCase :: !B.ByteString
     }
 
+-- | Convert a regular bytestring to a case-insensitive bytestring.
 mkCIByteString :: B.ByteString -> CIByteString
 mkCIByteString bs = CIByteString bs $ B8.map toLower bs
 
@@ -122,68 +123,59 @@ instance Ord CIByteString where
 instance IsString CIByteString where
     fromString = mkCIByteString . fromString
 
--- | Headers sent from the client to the server. Clearly, this is not a
--- complete list of all possible headers, but rather a selection of common
--- ones. If other headers are required, they can be created with the
--- RequestHeader constructor.
---
--- The naming rules are simple: removing any hyphens from the actual name, and
--- if there is a naming conflict with a 'ResponseHeader', prefix with Req.
---
--- Equality determined by conversion via 'requestHeaderToLower'. Request
--- headers are *not* case sensitive (a change from version 0.0 of WAI).
+-- | Headers sent from the client to the server. Note that this is a
+-- case-insensitive string, as the HTTP spec specifies.
 type RequestHeader = CIByteString
 
--- | Headers sent from the server to the client. Clearly, this is not a
--- complete list of all possible headers, but rather a selection of common
--- ones. If other headers are required, they can be created with the
--- ResponseHeader constructor.
---
--- if there is a naming conflict with a 'ResponseHeader', prefix with Req.
---
--- Equality determined by conversion via 'responseHeaderToLower'. Response
--- headers are *not* case sensitive (a change from version 0.0 of WAI).
+-- | Headers sent from the server to the client. Note that this is a
+-- case-insensitive string, as the HTTP spec specifies.
 type ResponseHeader = CIByteString
 
--- | This attempts to provide the most common HTTP status codes, not all of
--- them. Use the Status constructor when you want to create a status code not
--- provided.
---
--- The 'Eq' instance tests equality based only on the numeric status code
--- value. See 'statusCode'.
+-- | HTTP status code; a combination of the integral code and a status message.
+-- Equality is determined solely on the basis of the integral code.
 data Status = Status { statusCode :: Int, statusMessage :: B.ByteString }
     deriving Show
 
 instance Eq Status where
     x == y = statusCode x == statusCode y
 
+-- | OK
 status200 :: Status
 status200 = Status 200 $ B8.pack "OK"
 
+-- | Moved Permanently
 status301 :: Status
 status301 = Status 301 $ B8.pack "Moved Permanently"
 
+-- | Found
 status302 :: Status
 status302 = Status 302 $ B8.pack "Found"
 
+-- | See Other
 status303 :: Status
 status303 = Status 303 $ B8.pack "See Other"
 
+-- | Bad Request
 status400 :: Status
 status400 = Status 400 $ B8.pack "Bad Request"
 
+-- | Unauthorized
 status401 :: Status
 status401 = Status 401 $ B8.pack "Unauthorized"
 
+-- | Forbidden
 status403 :: Status
 status403 = Status 403 $ B8.pack "Forbidden"
 
+-- | Not Found
 status404 :: Status
 status404 = Status 404 $ B8.pack "Not Found"
 
+-- | Method Not Allowed
 status405 :: Status
 status405 = Status 405 $ B8.pack "Method Not Allowed"
 
+-- | Internal Server Error
 status500 :: Status
 status500 = Status 500 $ B8.pack "Internal Server Error"
 
@@ -194,6 +186,12 @@ status500 = Status 500 $ B8.pack "Internal Server Error"
 --
 -- Be certain not to reuse a 'Source'! It might work fine with some
 -- implementations of 'Source', while causing bugs with others.
+--
+-- This datatype is used by WAI to represent a request body. We choose this
+-- over an enumerator in that it gives the application power over control flow.
+-- This not only makes it easier to use in many situations, but also allows
+-- implementation of some features such as a backtracking parser which doesn't
+-- read the entire body into memory.
 newtype Source = Source { runSource :: IO (Maybe (B.ByteString, Source)) }
 
 -- | An enumerator is a data producer. It takes two arguments: a function to
@@ -225,6 +223,10 @@ newtype Source = Source { runSource :: IO (Maybe (B.ByteString, Source)) }
 -- 'Enumerator' may only be called once. While this requirement puts a bit of a
 -- strain on the caller in some situations, it saves a large amount of
 -- complication- and thus performance- on the producer.
+--
+-- In WAI, an Enumerator is used to represent the response body. We have
+-- specifically chosen one of the simplest representations of an enumerator to
+-- avoid coding complication and performance overhead.
 newtype Enumerator = Enumerator { runEnumerator :: forall a.
               (a -> B.ByteString -> IO (Either a a))
                  -> a
@@ -246,13 +248,29 @@ data Request = Request
   ,  serverName     :: B.ByteString
   ,  serverPort     :: Int
   ,  requestHeaders :: [(RequestHeader, B.ByteString)]
+  -- ^ Was this request made over an SSL connection?
   ,  isSecure       :: Bool
   ,  requestBody    :: Source
+  -- ^ Log the given line in some method; how this is accomplished is
+  -- server-dependant.
   ,  errorHandler   :: String -> IO ()
   -- | The client\'s host information.
   ,  remoteHost     :: B.ByteString
   }
 
+-- | The response body returned to the server from the application. We provide
+-- three separate constructors as optimizations:
+--
+-- * 'ResponseEnumerator' is the most general type, allowing constant-memory
+-- production of a response, even in the presence of interleaved I\/O actions.
+--
+-- * 'ResponseFile' serves a static file from the filesystem. Many servers use
+-- a sendfile system call to optimize this type of serving, making this a huge
+-- performance gain.
+--
+-- * 'ResponseLBS'. Often times, we wish to return a response that includes no
+-- interleaved I\/O. In this case, we can use Haskell's natural laziness to our
+-- advantage, and represent the response as a lazy bytestring.
 data ResponseBody = ResponseFile FilePath
                   | ResponseEnumerator Enumerator
                   | ResponseLBS L.ByteString
