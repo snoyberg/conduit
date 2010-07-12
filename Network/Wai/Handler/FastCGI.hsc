@@ -1,5 +1,6 @@
 {-# LANGUAGE ForeignFunctionInterface #-}
 {-# LANGUAGE EmptyDataDecls #-}
+{-# LANGUAGE OverloadedStrings #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Network.Wai.Handler.FastCGI
@@ -180,7 +181,7 @@ run' :: [(String, String)] -- ^ all variables
      -> W.Application
      -> IO ()
 run' vars inputH hPut app = do
-    let rmethod = safeRead W.GET $ lookup' "REQUEST_METHOD" vars
+    let rmethod = safeRead "GET" $ lookup' "REQUEST_METHOD" vars
         pinfo = lookup' "PATH_INFO" vars
         qstring = lookup' "QUERY_STRING" vars
         servername = lookup' "SERVER_NAME" vars
@@ -193,10 +194,10 @@ run' vars inputH hPut app = do
                     case lookup "REMOTE_ADDR" vars of
                         Just x -> x
                         Nothing -> ""
-        urlScheme' =
+        isSecure' =
             case map toLower $ lookup' "SERVER_PROTOCOL" vars of
-                "https" -> W.HTTPS
-                _ -> W.HTTP
+                "https" -> True
+                _ -> False
     let env = W.Request
             { W.requestMethod = rmethod
             , W.pathInfo = B8.pack pinfo
@@ -204,16 +205,16 @@ run' vars inputH hPut app = do
             , W.serverName = B8.pack servername
             , W.serverPort = serverport
             , W.requestHeaders = map (cleanupVarName *** B8.pack) vars
-            , W.urlScheme = urlScheme'
+            , W.isSecure = isSecure'
             , W.requestBody = requestBodyLBS inputH contentLength
             , W.errorHandler = System.IO.hPutStr System.IO.stderr
             , W.remoteHost = B8.pack remoteHost'
-            , W.httpVersion = W.HttpVersion BS.empty
+            , W.httpVersion = "" -- FIXME
             }
     res <- app env
     let h = W.responseHeaders res
-    let h' = case lookup W.ContentType h of
-                Nothing -> (W.ContentType, B8.pack "text/html; charset=utf-8")
+    let h' = case lookup "Content-Type" h of
+                Nothing -> ("Content-Type", "text/html; charset=utf-8")
                          : h
                 Just _ -> h
     hPut $ B8.pack $ "Status: " ++ (show $ W.statusCode $ W.status res) ++ " "
@@ -221,7 +222,8 @@ run' vars inputH hPut app = do
     hPut $ B8.singleton '\n'
     mapM_ (printHeader hPut) h'
     hPut $ B8.singleton '\n'
-    _ <- W.runEnumerator (WE.fromEitherFile (W.responseBody res)) (myPut hPut) ()
+    _ <- W.runEnumerator (WE.fromResponseBody (W.responseBody res))
+                         (myPut hPut) ()
     return ()
 
 myPut :: (BS.ByteString -> IO ()) -> () -> BS.ByteString -> IO (Either () ())
@@ -231,21 +233,21 @@ printHeader :: (BS.ByteString -> IO ())
             -> (W.ResponseHeader, BS.ByteString)
             -> IO ()
 printHeader f (x, y) = do
-    f $ W.responseHeaderToBS x
+    f $ W.ciOriginal x
     f $ B8.pack ": "
     f y
     f $ B8.singleton '\n'
 
 cleanupVarName :: String -> W.RequestHeader
 cleanupVarName ('H':'T':'T':'P':'_':a:as) =
-  W.requestHeaderFromBS $ B8.pack $ a : helper' as where
+  W.mkCIByteString $ B8.pack $ a : helper' as where
     helper' ('_':x:rest) = '-' : x : helper' rest
     helper' (x:rest) = toLower x : helper' rest
     helper' [] = []
-cleanupVarName "CONTENT_TYPE" = W.ReqContentType
-cleanupVarName "CONTENT_LENGTH" = W.ReqContentLength
-cleanupVarName "SCRIPT_NAME" = W.requestHeaderFromBS $ B8.pack "CGI-Script-Name"
-cleanupVarName x = W.requestHeaderFromBS $ B8.pack x -- FIXME remove?
+cleanupVarName "CONTENT_TYPE" = "Content-Type"
+cleanupVarName "CONTENT_LENGTH" = "Content-Length"
+cleanupVarName "SCRIPT_NAME" = "CGI-Script-Name"
+cleanupVarName x = W.mkCIByteString $ B8.pack x -- FIXME remove?
 
 requestBodyLBS :: Lazy.ByteString -> Int -> W.Source
 requestBodyLBS = go . Lazy.toChunks

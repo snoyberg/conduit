@@ -1,5 +1,5 @@
 name:            wai-handler-fastcgi
-version:         0.1.0
+version:         0.2.0
 license:         BSD3
 license-file:    LICENSE
 author:          Michael Snoyman <michael@snoyman.com>
@@ -14,8 +14,8 @@ homepage:        http://github.com/snoyberg/hack-handler-fastcgi/tree/master
 
 library
     build-depends:   base >= 4 && < 5,
-                     wai >= 0.0.0 && < 0.2.0,
-                     wai-extra >= 0.1.0 && < 0.2.0,
+                     wai >= 0.2.0 && < 0.3.0,
+                     wai-extra >= 0.2.0 && < 0.3.0,
                      bytestring >= 0.9.1.4 && < 0.10
     exposed-modules: Network.Wai.Handler.FastCGI
     ghc-options:     -Wall
