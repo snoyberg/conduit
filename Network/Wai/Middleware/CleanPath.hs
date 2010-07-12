@@ -26,9 +26,6 @@ cleanPathRel prefix app env =
 cleanPath :: ([String] -> Request -> IO Response) -> Request -> IO Response
 cleanPath = cleanPathRel B.empty
 
-emptyEnum :: Enumerator
-emptyEnum = Enumerator $ \_ -> return . Right
-
 -- | Given a certain requested path, return either a corrected path
 -- to redirect to or the tokenized path.
 --
