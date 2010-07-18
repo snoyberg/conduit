@@ -181,7 +181,7 @@ run' :: [(String, String)] -- ^ all variables
      -> W.Application
      -> IO ()
 run' vars inputH hPut app = do
-    let rmethod = safeRead "GET" $ lookup' "REQUEST_METHOD" vars
+    let rmethod = B8.pack $ lookup' "REQUEST_METHOD" vars
         pinfo = lookup' "PATH_INFO" vars
         qstring = lookup' "QUERY_STRING" vars
         servername = lookup' "SERVER_NAME" vars
