@@ -15,7 +15,10 @@
 -- Totally ripped off by Michael Snoyman to work with Hack, then WAI.
 --
 -----------------------------------------------------------------------------
-module Network.Wai.Handler.FastCGI (run) where
+module Network.Wai.Handler.FastCGI
+    ( run
+    , runSendfile
+    ) where
 
 import Data.Maybe
 import Control.Monad    ( liftM )
@@ -66,31 +69,39 @@ foreign import ccall unsafe "fcgiapp.h FCGX_Finish" fcgx_finish
 
 -- | Handle FastCGI requests in an infinite loop.
 run :: W.Application -> IO ()
-run f = runOneFastCGI f >> run f
+run f = runOneFastCGI Nothing f >> run f
+
+-- | Handle FastCGI requests in an infinite loop. For a server which supports
+-- the X-Sendfile header.
+runSendfile :: String -> W.Application -> IO ()
+runSendfile sf f = runOneFastCGI (Just sf) f >> runSendfile sf f
 
 -- | Handle a single FastCGI request.
-runOneFastCGI :: W.Application -> IO ()
-runOneFastCGI f = do
+runOneFastCGI :: Maybe String -- X-Sendfile
+              -> W.Application -> IO ()
+runOneFastCGI xsendfile f = do
     alloca (\inp ->
             alloca (\outp ->
                     alloca (\errp ->
                             alloca (\envp ->
-                                    oneRequest f inp outp errp envp))))
+                                    oneRequest f inp outp errp envp
+                                               xsendfile))))
 
 oneRequest :: W.Application
            -> Ptr StreamPtr
            -> Ptr StreamPtr
            -> Ptr StreamPtr
            -> Ptr Environ
+           -> Maybe String -- X-Sendfile
            -> IO ()
-oneRequest f inp outp errp envp =
+oneRequest f inp outp errp envp xsendfile =
     do
     testReturn "FCGX_Accept" $ fcgx_accept inp outp errp envp
     ins  <- peek inp
     outs <- peek outp
     errs <- peek errp
     env  <- peek envp
-    handleRequest f ins outs errs env
+    handleRequest f ins outs errs env xsendfile
     fcgx_finish
 
 handleRequest :: W.Application
@@ -98,13 +109,14 @@ handleRequest :: W.Application
               -> StreamPtr
               -> StreamPtr
               -> Environ
+              -> Maybe String -- sendfile
               -> IO ()
-handleRequest f ins outs _errs env =
+handleRequest f ins outs _errs env xsendfile =
     do
     vars <- environToTable env
     let input = sRead ins
     let hPut = sPutStr' outs
-    CGI.run'' vars (CGI.requestBodyFunc input) hPut f
+    CGI.run'' vars (CGI.requestBodyFunc input) hPut xsendfile f
 
 data FCGX_Request
 
