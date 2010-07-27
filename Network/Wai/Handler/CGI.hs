@@ -3,6 +3,7 @@ module Network.Wai.Handler.CGI
     ( run
     , run'
     , run''
+    , runSendfile
     ) where
 
 import Network.Wai
@@ -28,7 +29,17 @@ lookup' key pairs = fromMaybe "" $ lookup key pairs
 run :: Application -> IO ()
 run app = do
     vars <- getEnvironment
-    run' vars System.IO.stdin System.IO.stdout app
+    let input = requestBodyHandle System.IO.stdin
+        output = B.hPut System.IO.stdout
+    run'' vars input output Nothing app
+
+runSendfile :: String -- ^ sendfile header
+            -> Application -> IO ()
+runSendfile sf app = do
+    vars <- getEnvironment
+    let input = requestBodyHandle System.IO.stdin
+        output = B.hPut System.IO.stdout
+    run'' vars input output (Just sf) app
 
 run' :: [(String, String)] -- ^ all variables
      -> System.IO.Handle -- ^ responseBody of input
@@ -38,14 +49,15 @@ run' :: [(String, String)] -- ^ all variables
 run' vars inputH outputH app = do
     let input = requestBodyHandle inputH
         output = B.hPut outputH
-    run'' vars input output app
+    run'' vars input output Nothing app
 
 run'' :: [(String, String)] -- ^ all variables
      -> (Int -> Source) -- ^ responseBody of input
      -> (B.ByteString -> IO ()) -- ^ destination for output
+     -> Maybe String -- ^ does the server support the X-Sendfile header?
      -> Application
      -> IO ()
-run'' vars inputH outputH app = do
+run'' vars inputH outputH xsendfile app = do
     let rmethod = B.pack $ lookup' "REQUEST_METHOD" vars
         pinfo = lookup' "PATH_INFO" vars
         qstring = lookup' "QUERY_STRING" vars
@@ -87,9 +99,21 @@ run'' vars inputH outputH app = do
     hPut $ statusMessage $ status res
     hPut $ B.singleton '\n'
     mapM_ (printHeader hPut) h'
-    hPut $ B.singleton '\n'
-    _ <- runEnumerator (fromResponseBody (responseBody res)) (myPut outputH) ()
-    return ()
+    case (xsendfile, responseBody res) of
+        (Just sf, ResponseFile fp) ->
+            hPut $ B.pack $ concat
+                [ sf
+                , ": "
+                , fp
+                , "\n\n"
+                , sf
+                , " not supported"
+                ]
+        _ -> do
+            hPut $ B.singleton '\n'
+            _ <- runEnumerator (fromResponseBody (responseBody res))
+                               (myPut outputH) ()
+            return ()
 
 myPut :: (B.ByteString -> IO ()) -> () -> B.ByteString -> IO (Either () ())
 myPut output _ bs = output bs >> return (Right ())
