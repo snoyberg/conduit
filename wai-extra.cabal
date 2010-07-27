@@ -1,5 +1,5 @@
 Name:                wai-extra
-Version:             0.2.0
+Version:             0.2.1
 Synopsis:            Provides some basic WAI handlers and middleware.
 Description:         The goal here is to provide common features without many dependencies.
 License:             BSD3
@@ -31,7 +31,7 @@ Library
                      Network.Wai.Middleware.Jsonp
                      Network.Wai.Zlib
                      Network.Wai.Parse
-  Other-modules:     Network.Wai.Handler.Helper
+                     Network.Wai.Handler.Helper
   ghc-options:       -Wall
   c-sources:         c/helper.c
   include-dirs:      c

@@ -2,6 +2,7 @@
 module Network.Wai.Handler.CGI
     ( run
     , run'
+    , run''
     ) where
 
 import Network.Wai
@@ -35,6 +36,16 @@ run' :: [(String, String)] -- ^ all variables
      -> Application
      -> IO ()
 run' vars inputH outputH app = do
+    let input = requestBodyHandle inputH
+        output = B.hPut outputH
+    run'' vars input output app
+
+run'' :: [(String, String)] -- ^ all variables
+     -> (Int -> Source) -- ^ responseBody of input
+     -> (B.ByteString -> IO ()) -- ^ destination for output
+     -> Application
+     -> IO ()
+run'' vars inputH outputH app = do
     let rmethod = B.pack $ lookup' "REQUEST_METHOD" vars
         pinfo = lookup' "PATH_INFO" vars
         qstring = lookup' "QUERY_STRING" vars
@@ -60,7 +71,7 @@ run' vars inputH outputH app = do
             , serverPort = serverport
             , requestHeaders = map (cleanupVarName *** B.pack) vars
             , isSecure = isSecure'
-            , requestBody = requestBodyHandle inputH contentLength
+            , requestBody = inputH contentLength
             , errorHandler = System.IO.hPutStr System.IO.stderr
             , remoteHost = B.pack remoteHost'
             , httpVersion = "1.1" -- FIXME
@@ -71,7 +82,7 @@ run' vars inputH outputH app = do
                 Nothing -> ("Content-Type", "text/html; charset=utf-8")
                          : h
                 Just _ -> h
-    let hPut = B.hPut outputH
+    let hPut = outputH
     hPut $ B.pack $ "Status: " ++ (show $ statusCode $ status res) ++ " "
     hPut $ statusMessage $ status res
     hPut $ B.singleton '\n'
@@ -80,8 +91,8 @@ run' vars inputH outputH app = do
     _ <- runEnumerator (fromResponseBody (responseBody res)) (myPut outputH) ()
     return ()
 
-myPut :: System.IO.Handle -> () -> B.ByteString -> IO (Either () ())
-myPut outputH _ bs = B.hPut outputH bs >> return (Right ())
+myPut :: (B.ByteString -> IO ()) -> () -> B.ByteString -> IO (Either () ())
+myPut output _ bs = output bs >> return (Right ())
 
 printHeader :: (B.ByteString -> IO ())
             -> (ResponseHeader, B.ByteString)
