@@ -42,13 +42,14 @@ write socket bs = S.unsafeUseAsCStringLen bs $ \(s, l) -> do
     _ <- c'write socket s (fromIntegral l)
     return ()
 
-input :: CInt -> IORef Int -> IO (Maybe S.ByteString)
-input socket ilen = do
+input :: CInt -> IORef Int -> Int -> IO (Maybe S.ByteString)
+input socket ilen rlen = do
     len <- readIORef ilen
     case len of
         0 -> return Nothing
         _ -> do
-            bs <- readByteString socket $ min defaultChunkSize len
+            bs <- readByteString socket
+                $ minimum [defaultChunkSize, len, rlen]
             writeIORef ilen $ len - S.length bs
             return $ Just bs
 
