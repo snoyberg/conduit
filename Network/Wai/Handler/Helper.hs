@@ -12,12 +12,12 @@ requestBodyHandle :: Handle -> Int -> Source
 requestBodyHandle h =
     requestBodyFunc go
   where
-    go = Just `fmap` B.hGet h defaultChunkSize
+    go i = Just `fmap` B.hGet h (min i defaultChunkSize)
 
-requestBodyFunc :: IO (Maybe B.ByteString) -> Int -> Source
+requestBodyFunc :: (Int -> IO (Maybe B.ByteString)) -> Int -> Source
 requestBodyFunc _ 0 = Source $ return Nothing
 requestBodyFunc h len = Source $ do
-    mbs <- h
+    mbs <- h len
     case mbs of
         Nothing -> return Nothing
         Just bs -> do
