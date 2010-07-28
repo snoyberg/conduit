@@ -114,7 +114,7 @@ handleRequest :: W.Application
 handleRequest f ins outs _errs env xsendfile =
     do
     vars <- environToTable env
-    let input = sRead ins
+    let input = const $ sRead ins
     let hPut = sPutStr' outs
     CGI.run'' vars (CGI.requestBodyFunc input) hPut xsendfile f
 
