@@ -1,15 +1,23 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Network.Wai.Middleware.CleanPath (cleanPath, cleanPathRel, splitPath) where
+module Network.Wai.Middleware.CleanPath
+    ( cleanPath
+    , cleanPathRel
+    , cleanPathFunc
+    , splitPath
+    ) where
 
 import Network.Wai
 import qualified Data.ByteString.Char8 as B
 import qualified Data.ByteString.Lazy as L
 import Network.URI (unEscapeString)
 
--- | Performs redirects as per 'splitPath'.
-cleanPathRel :: B.ByteString -> ([String] -> Request -> IO Response) -> Request -> IO Response
-cleanPathRel prefix app env =
-    case splitPath $ pathInfo env of
+cleanPathFunc :: (B.ByteString -> Either B.ByteString [String])
+              -> B.ByteString
+              -> ([String] -> Request -> IO Response)
+              -> Request
+              -> IO Response
+cleanPathFunc splitter prefix app env =
+    case splitter $ pathInfo env of
         Right pieces -> app pieces env
         Left p -> return
                 . Response status301
@@ -22,6 +30,11 @@ cleanPathRel prefix app env =
                 Nothing -> B.empty
                 Just ('?', _) -> queryString env
                 _ -> B.cons '?' $ queryString env
+
+-- | Performs redirects as per 'splitPath'.
+cleanPathRel :: B.ByteString -> ([String] -> Request -> IO Response)
+             -> Request -> IO Response
+cleanPathRel = cleanPathFunc splitPath
 
 cleanPath :: ([String] -> Request -> IO Response) -> Request -> IO Response
 cleanPath = cleanPathRel B.empty
