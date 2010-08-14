@@ -10,6 +10,7 @@ import Network.Wai
 import qualified Data.ByteString.Char8 as B
 import qualified Data.ByteString.Lazy as L
 import Network.URI (unEscapeString)
+import qualified Data.ByteString.UTF8 as BSU
 
 cleanPathFunc :: (B.ByteString -> Either B.ByteString [String])
               -> B.ByteString
@@ -52,7 +53,7 @@ splitPath :: B.ByteString -> Either B.ByteString [String]
 splitPath s =
     let corrected = B.pack $ rts $ ats $ rds $ B.unpack s
      in if corrected == s
-            then Right $ map (unEscapeString . B.unpack)
+            then Right $ map (BSU.toString . B.pack . unEscapeString . B.unpack)
                        $ filter (not . B.null)
                        $ B.split '/' s
             else Left corrected
