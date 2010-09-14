@@ -1,5 +1,6 @@
 {-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE DeriveDataTypeable #-}
 {-|
 
 This module defines a generic web application interface. It is a common
@@ -74,6 +75,7 @@ import qualified Data.ByteString.Char8 as B8
 import qualified Data.ByteString.Lazy as L
 import Data.Char (toLower)
 import Data.String (IsString (..))
+import Data.Typeable (Typeable)
 
 -- | HTTP request method. Since the HTTP protocol allows arbitrary request
 -- methods, we leave this open as a 'B.ByteString'. Please note the request
@@ -257,6 +259,7 @@ data Request = Request
   -- | The client\'s host information.
   ,  remoteHost     :: B.ByteString
   }
+  deriving Typeable
 
 -- | The response body returned to the server from the application. We provide
 -- three separate constructors as optimizations:
@@ -274,6 +277,7 @@ data Request = Request
 data ResponseBody = ResponseFile FilePath
                   | ResponseEnumerator Enumerator
                   | ResponseLBS L.ByteString
+  deriving Typeable
 
 data Response = Response
   { status          :: Status
@@ -284,6 +288,7 @@ data Response = Response
   -- whatever means it wishes. If 'Right', it will call the 'Enumerator'.
   , responseBody    :: ResponseBody
   }
+  deriving Typeable
 
 type Application = Request -> IO Response
 
