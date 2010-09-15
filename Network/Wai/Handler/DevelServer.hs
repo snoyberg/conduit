@@ -15,7 +15,8 @@ import qualified Data.ByteString.Lazy.Char8 as L8
 import Network
     ( listenOn, accept, sClose, PortID(PortNumber), Socket
     , withSocketsDo)
-import Control.Exception (bracket, finally, Exception, throwIO)
+import Control.Exception (bracket, finally, Exception, throwIO,
+                          handle, SomeException, toException)
 import System.IO (Handle, hClose)
 import Control.Concurrent (forkIO, threadDelay)
 import Control.Monad (unless, forM)
@@ -26,18 +27,38 @@ import Data.Typeable (Typeable)
 import Network.Socket.SendFile
 import Control.Arrow (first)
 import qualified Control.Concurrent.MVar as M
+import qualified Control.Concurrent.Chan as C
 import System.Directory (getModificationTime)
 
 type FunctionName = String
 
 run :: Port -> ModuleName -> FunctionName -> IO ()
 run port modu func = do
-    app <- M.newMVar $ loadingApp Nothing
-    _ <- forkIO $ fillApp modu func app
-    run' port app
+    queue <- C.newChan
+    mqueue <- M.newMVar queue
+    mmqueue <- M.newMVar mqueue
+    startApp mqueue $ loadingApp Nothing
+    _ <- forkIO $ fillApp modu func mmqueue
+    run' port queue
 
-fillApp :: String -> String -> M.MVar Application -> IO ()
-fillApp modu func mapp =
+startApp :: M.MVar Queue -> Handler -> IO ()
+startApp mqueue withApp =
+    forkIO (withApp go) >> return ()
+  where
+    go app = do
+        queue' <- M.tryTakeMVar mqueue
+        case queue' of
+            Nothing -> return ()
+            Just queue -> do
+                M.putMVar mqueue queue
+                (req, onRes) <- C.readChan queue
+                res <- app req
+                -- FIXME exceptions?
+                onRes res
+                go app
+
+fillApp :: String -> String -> M.MVar (M.MVar Queue) -> IO ()
+fillApp modu func mmqueue =
     go Nothing []
   where
     go prevError prevFiles = do
@@ -55,27 +76,39 @@ fillApp modu func mapp =
         go newError newFiles
     reload prevError = do
         putStrLn "Attempting to interpret your app..."
-        _ <- M.swapMVar mapp $ loadingApp prevError
+        loadingApp' prevError mmqueue
         res <- theapp modu func
         case res of
             Left err -> do
                 putStrLn $ "Compile failed: " ++ show err
-                _ <- M.swapMVar mapp $ loadingApp $ Just err
-                return (Just err, [])
+                loadingApp' (Just $ toException err) mmqueue
+                return (Just $ toException err, [])
             Right (app, files) -> do
                 putStrLn "Interpreting success, new app loaded"
-                app $ \app' -> (forkIO $ do
-                    _ <- M.swapMVar mapp app'
-                    return ()) >> return ()
-                files' <- forM files $ \f -> do
-                    t <- getModificationTime f
-                    return (f, t)
-                return (Nothing, files')
+                handle onInitErr $ do
+                    swapApp app mmqueue
+                    files' <- forM files $ \f -> do
+                        t <- getModificationTime f
+                        return (f, t)
+                    return (Nothing, files')
+    onInitErr e = do
+        putStrLn $ "Error initializing application: " ++ show e
+        loadingApp' (Just e) mmqueue
+        return (Just e, [])
 
+loadingApp' :: Maybe SomeException -> M.MVar (M.MVar Queue) -> IO ()
+loadingApp' err mmqueue = swapApp (loadingApp err) mmqueue
 
-loadingApp :: Maybe InterpreterError -> Application
-loadingApp err _ =
-    return $ Response status200
+swapApp app mmqueue = do
+    oldmqueue <- M.takeMVar mmqueue
+    queue <- M.takeMVar oldmqueue
+    mqueue <- M.newMVar queue
+    M.putMVar mmqueue mqueue
+    startApp mqueue app
+
+loadingApp :: Maybe SomeException -> Handler
+loadingApp err f =
+    f $ const $ return $ Response status200
         [ ("Content-Type", "text/plain")
         , ("Refresh", "1")
         ] $ ResponseLBS $ L8.pack $ toMessage err
@@ -99,7 +132,7 @@ theapp modu func =
     toSlash '.' = '/'
     toSlash c   = c
 
-run' :: Port -> MHandler -> IO ()
+run' :: Port -> Queue -> IO ()
 run' port = withSocketsDo .
     bracket
         (listenOn $ PortNumber $ fromIntegral port)
@@ -107,26 +140,22 @@ run' port = withSocketsDo .
         serveConnections port
 type Port = Int
 
-serveConnections :: Port -> MHandler -> Socket -> IO ()
-serveConnections port app socket = do
+serveConnections :: Port -> Queue -> Socket -> IO ()
+serveConnections port queue socket = do
     (conn, remoteHost', _) <- accept socket
-    _ <- forkIO $ serveConnection port app conn remoteHost'
-    serveConnections port app socket
+    _ <- forkIO $ serveConnection port queue conn remoteHost'
+    serveConnections port queue socket
 
-serveConnection :: Port -> MHandler -> Handle -> String -> IO ()
-serveConnection port handler conn remoteHost' =
-    finally
-        serveConnection'
-        (hClose conn)
-    where
-        serveConnection' = do
-            env <- hParseRequest port conn remoteHost'
-            putStrLn "reading handler"
-            app <- M.readMVar handler
-            putStrLn "done reading handler"
-            res <- app env
-            putStrLn "got result"
-            sendResponse (httpVersion env) conn res
+type Queue = C.Chan (Request, Response -> IO ())
+
+serveConnection :: Port -> Queue -> Handle -> String -> IO ()
+serveConnection port queue conn remoteHost' = do
+    env <- hParseRequest port conn remoteHost'
+    let onRes res =
+            finally
+                (sendResponse (httpVersion env) conn res)
+                (hClose conn)
+    C.writeChan queue (env, onRes)
 
 hParseRequest :: Port -> Handle -> String -> IO Request
 hParseRequest port conn remoteHost' = do
