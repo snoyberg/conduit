@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 import Network.Wai.Handler.DevelServer (run)
 import System.Console.CmdArgs
+import Control.Concurrent (forkIO)
 
 data Devel = Devel
     { port :: Int
@@ -16,4 +17,11 @@ main = do
         , moduleName = "" &= argPos 1 &= typ "MODULE"
         , function = "" &= argPos 2 &= typ "FUNCTION"
         } &= summary "WAI development web server"
-    run p m f
+    forkIO $ run p m f
+    go
+  where
+    go = do
+        x <- getLine
+        case x of
+            'q':_ -> putStrLn "Quitting, goodbye!"
+            _ -> go
