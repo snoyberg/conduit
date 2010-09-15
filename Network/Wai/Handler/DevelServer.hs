@@ -25,7 +25,7 @@ import Data.Typeable (Typeable)
 
 import Network.Socket.SendFile
 import Control.Arrow (first)
-import Control.Concurrent.MVar as M
+import qualified Control.Concurrent.MVar as M
 import System.Directory (getModificationTime)
 
 type FunctionName = String
@@ -36,7 +36,7 @@ run port modu func = do
     _ <- forkIO $ fillApp modu func app
     run' port app
 
-fillApp :: String -> String -> MVar Handler -> IO ()
+fillApp :: String -> String -> M.MVar Application -> IO ()
 fillApp modu func mapp =
     go Nothing []
   where
@@ -55,25 +55,27 @@ fillApp modu func mapp =
         go newError newFiles
     reload prevError = do
         putStrLn "Attempting to interpret your app..."
-        _ <- swapMVar mapp $ loadingApp prevError
+        _ <- M.swapMVar mapp $ loadingApp prevError
         res <- theapp modu func
         case res of
             Left err -> do
                 putStrLn $ "Compile failed: " ++ show err
-                _ <- swapMVar mapp $ loadingApp $ Just err
+                _ <- M.swapMVar mapp $ loadingApp $ Just err
                 return (Just err, [])
             Right (app, files) -> do
                 putStrLn "Interpreting success, new app loaded"
-                _ <- swapMVar mapp app
+                app $ \app' -> (forkIO $ do
+                    _ <- M.swapMVar mapp app'
+                    return ()) >> return ()
                 files' <- forM files $ \f -> do
                     t <- getModificationTime f
                     return (f, t)
                 return (Nothing, files')
 
 
-loadingApp :: Maybe InterpreterError -> Handler
-loadingApp err f =
-    f $ const $ return $ Response status200
+loadingApp :: Maybe InterpreterError -> Application
+loadingApp err _ =
+    return $ Response status200
         [ ("Content-Type", "text/plain")
         , ("Refresh", "1")
         ] $ ResponseLBS $ L8.pack $ toMessage err
@@ -82,7 +84,7 @@ loadingApp err f =
     toMessage (Just err') = "Error loading code: " ++ show err'
 
 type Handler = (Application -> IO ()) -> IO ()
-type MHandler = M.MVar Handler
+type MHandler = M.MVar Application
 
 theapp :: String -> String -> IO (Either InterpreterError (Handler, [FilePath]))
 theapp modu func =
@@ -119,10 +121,12 @@ serveConnection port handler conn remoteHost' =
     where
         serveConnection' = do
             env <- hParseRequest port conn remoteHost'
-            handler' <- M.readMVar handler
-            handler' $ \app -> do
-                res <- app env
-                sendResponse (httpVersion env) conn res
+            putStrLn "reading handler"
+            app <- M.readMVar handler
+            putStrLn "done reading handler"
+            res <- app env
+            putStrLn "got result"
+            sendResponse (httpVersion env) conn res
 
 hParseRequest :: Port -> Handle -> String -> IO Request
 hParseRequest port conn remoteHost' = do
