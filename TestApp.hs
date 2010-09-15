@@ -22,11 +22,16 @@ testApp handler = do
     when exi $ removeFile db
     withSqlitePool db 10 $ \pool -> do
         flip runSqlPool pool $ runMigration $ migrate $ Dummy ""
-        handler $ const $ do
-            x <- flip runSqlPool pool $ do
-                insert $ Dummy ""
-                count ([] :: [Filter Dummy])
-            return $ Response status200
-                [("Content-Type", "text/plain")]
-                $ ResponseLBS $ pack $ "Counter: " ++ show x
+        handler $ \req -> do
+            if pathInfo req == "/favicon.ico"
+                then return $ Response status301 [("Location", "http://docs.yesodweb.com/favicon.ico")]
+                            $ ResponseLBS $ pack ""
+                else do
+                    print $ pathInfo req
+                    x <- flip runSqlPool pool $ do
+                        insert $ Dummy ""
+                        count ([] :: [Filter Dummy])
+                    return $ Response status200
+                        [("Content-Type", "text/plain")]
+                        $ ResponseLBS $ pack $ "Counter: " ++ show x
         putStrLn "handler completed, this should only happen at the beginning of a reload"

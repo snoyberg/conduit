@@ -36,29 +36,26 @@ run :: Port -> ModuleName -> FunctionName -> IO ()
 run port modu func = do
     queue <- C.newChan
     mqueue <- M.newMVar queue
-    mmqueue <- M.newMVar mqueue
-    startApp mqueue $ loadingApp Nothing
-    _ <- forkIO $ fillApp modu func mmqueue
-    run' port queue
+    startApp queue $ loadingApp Nothing
+    _ <- forkIO $ fillApp modu func mqueue
+    run' port mqueue
 
-startApp :: M.MVar Queue -> Handler -> IO ()
-startApp mqueue withApp =
+startApp :: Queue -> Handler -> IO ()
+startApp queue withApp = do
     forkIO (withApp go) >> return ()
   where
     go app = do
-        queue' <- M.tryTakeMVar mqueue
-        case queue' of
+        msession <- C.readChan queue
+        case msession of
             Nothing -> return ()
-            Just queue -> do
-                M.putMVar mqueue queue
-                (req, onRes) <- C.readChan queue
+            Just (req, onRes) -> do
                 res <- app req
                 -- FIXME exceptions?
                 onRes res
                 go app
 
-fillApp :: String -> String -> M.MVar (M.MVar Queue) -> IO ()
-fillApp modu func mmqueue =
+fillApp :: String -> String -> M.MVar Queue -> IO ()
+fillApp modu func mqueue =
     go Nothing []
   where
     go prevError prevFiles = do
@@ -76,35 +73,35 @@ fillApp modu func mmqueue =
         go newError newFiles
     reload prevError = do
         putStrLn "Attempting to interpret your app..."
-        loadingApp' prevError mmqueue
+        loadingApp' prevError mqueue
         res <- theapp modu func
         case res of
             Left err -> do
                 putStrLn $ "Compile failed: " ++ show err
-                loadingApp' (Just $ toException err) mmqueue
+                loadingApp' (Just $ toException err) mqueue
                 return (Just $ toException err, [])
             Right (app, files) -> do
                 putStrLn "Interpreting success, new app loaded"
                 handle onInitErr $ do
-                    swapApp app mmqueue
+                    swapApp app mqueue
                     files' <- forM files $ \f -> do
                         t <- getModificationTime f
                         return (f, t)
                     return (Nothing, files')
     onInitErr e = do
         putStrLn $ "Error initializing application: " ++ show e
-        loadingApp' (Just e) mmqueue
+        loadingApp' (Just e) mqueue
         return (Just e, [])
 
-loadingApp' :: Maybe SomeException -> M.MVar (M.MVar Queue) -> IO ()
-loadingApp' err mmqueue = swapApp (loadingApp err) mmqueue
+loadingApp' :: Maybe SomeException -> M.MVar Queue -> IO ()
+loadingApp' err mqueue = swapApp (loadingApp err) mqueue
 
-swapApp app mmqueue = do
-    oldmqueue <- M.takeMVar mmqueue
-    queue <- M.takeMVar oldmqueue
-    mqueue <- M.newMVar queue
-    M.putMVar mmqueue mqueue
-    startApp mqueue app
+swapApp app mqueue = do
+    oldqueue <- M.takeMVar mqueue
+    C.writeChan oldqueue Nothing
+    queue <- C.newChan
+    M.putMVar mqueue queue
+    startApp queue app
 
 loadingApp :: Maybe SomeException -> Handler
 loadingApp err f =
@@ -132,7 +129,7 @@ theapp modu func =
     toSlash '.' = '/'
     toSlash c   = c
 
-run' :: Port -> Queue -> IO ()
+run' :: Port -> M.MVar Queue -> IO ()
 run' port = withSocketsDo .
     bracket
         (listenOn $ PortNumber $ fromIntegral port)
@@ -140,22 +137,23 @@ run' port = withSocketsDo .
         serveConnections port
 type Port = Int
 
-serveConnections :: Port -> Queue -> Socket -> IO ()
-serveConnections port queue socket = do
+serveConnections :: Port -> M.MVar Queue -> Socket -> IO ()
+serveConnections port mqueue socket = do
     (conn, remoteHost', _) <- accept socket
-    _ <- forkIO $ serveConnection port queue conn remoteHost'
-    serveConnections port queue socket
+    _ <- forkIO $ serveConnection port mqueue conn remoteHost'
+    serveConnections port mqueue socket
 
-type Queue = C.Chan (Request, Response -> IO ())
+type Queue = C.Chan (Maybe (Request, Response -> IO ()))
 
-serveConnection :: Port -> Queue -> Handle -> String -> IO ()
-serveConnection port queue conn remoteHost' = do
+serveConnection :: Port -> M.MVar Queue -> Handle -> String -> IO ()
+serveConnection port mqueue conn remoteHost' = do
     env <- hParseRequest port conn remoteHost'
     let onRes res =
             finally
                 (sendResponse (httpVersion env) conn res)
                 (hClose conn)
-    C.writeChan queue (env, onRes)
+    queue <- M.readMVar mqueue
+    C.writeChan queue $ Just (env, onRes)
 
 hParseRequest :: Port -> Handle -> String -> IO Request
 hParseRequest port conn remoteHost' = do
