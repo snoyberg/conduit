@@ -100,9 +100,11 @@ swapApp app mqueue = do
 loadingApp :: Maybe SomeException -> Handler
 loadingApp err f =
     f $ const $ return $ Response status200
-        [ ("Content-Type", "text/plain")
-        , ("Refresh", "1")
-        ] $ ResponseLBS $ L8.pack $ toMessage err
+        ( ("Content-Type", "text/plain")
+        : case err of
+            Nothing -> [("Refresh", "1")]
+            Just _ -> []
+        ) $ ResponseLBS $ L8.pack $ toMessage err
   where
     toMessage Nothing = "Loading code changes, please wait"
     toMessage (Just err') = "Error loading code: " ++ show err'
