@@ -7,6 +7,7 @@ import Data.ByteString.Lazy.Char8 (pack)
 import Database.Persist.Sqlite
 import System.Directory
 import Control.Monad (when)
+import Helper
 
 mkPersist [$persist|
 Dummy
@@ -15,7 +16,6 @@ Dummy
 
 testApp handler = do
     putStrLn "testApp called, this should happen only once per reload"
-    let db = "test.db3"
     -- Swap between the following two lines as necessary to generate errors
     exi <- doesFileExist db
     --let exi = True

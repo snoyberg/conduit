@@ -50,12 +50,15 @@ fillApp :: String -> String -> M.MVar Queue -> IO ()
 fillApp modu func mqueue =
     go Nothing []
   where
+    constSE :: x -> SomeException -> x
+    constSE = const
+    getTimes = handle (constSE $ return []) . mapM getModificationTime
     go prevError prevFiles = do
         toReload <-
             if null prevFiles
                 then return True
                 else do
-                    times <- mapM (getModificationTime . fst) prevFiles
+                    times <- getTimes $ map fst prevFiles
                     return $ times /= map snd prevFiles
         (newError, newFiles) <-
             if toReload
@@ -76,10 +79,8 @@ fillApp modu func mqueue =
                 putStrLn "Interpreting success, new app loaded"
                 E.handle onInitErr $ do
                     swapApp app mqueue
-                    files' <- forM files $ \f -> do
-                        t <- getModificationTime f
-                        return (f, t)
-                    return (Nothing, files')
+                    times <- getTimes files
+                    return (Nothing, zip files times)
     onInitErr e = do
         putStrLn $ "Error initializing application: " ++ show e
         loadingApp' (Just e) mqueue
