@@ -21,15 +21,21 @@ import qualified Control.Concurrent.MVar as M
 import qualified Control.Concurrent.Chan as C
 import System.Directory (getModificationTime)
 import Network.Wai.Handler.SimpleServer (parseRequest, sendResponse)
+import Control.Monad (filterM)
+
+import Control.Arrow ((&&&))
+import System.Directory (doesDirectoryExist,
+                         doesFileExist, getDirectoryContents)
+import Control.Applicative ((<$>))
 
 type FunctionName = String
 
-run :: Port -> ModuleName -> FunctionName -> IO ()
-run port modu func = do
+run :: Port -> ModuleName -> FunctionName -> [FilePath] -> IO ()
+run port modu func dirs = do
     queue <- C.newChan
     mqueue <- M.newMVar queue
     startApp queue $ loadingApp Nothing
-    _ <- forkIO $ fillApp modu func mqueue
+    _ <- forkIO $ fillApp modu func mqueue dirs
     run' port mqueue
 
 startApp :: Queue -> Handler -> IO ()
@@ -41,7 +47,7 @@ startApp queue withApp = do
         case msession of
             Nothing -> return ()
             Just (req, onRes) -> do
-                void $ forkIO $ (handle onErr $ app req) >>= onRes
+                void $ forkIO $ (E.handle onErr $ app req) >>= onRes
                 go app
     onErr :: SomeException -> IO Response
     onErr e = return
@@ -50,13 +56,13 @@ startApp queue withApp = do
             $ "Exception thrown while running application\n\n" ++ show e
     void x = x >> return ()
 
-fillApp :: String -> String -> M.MVar Queue -> IO ()
-fillApp modu func mqueue =
+fillApp :: String -> String -> M.MVar Queue -> [FilePath] -> IO ()
+fillApp modu func mqueue dirs =
     go Nothing []
   where
     constSE :: x -> SomeException -> x
     constSE = const
-    getTimes = handle (constSE $ return []) . mapM getModificationTime
+    getTimes = E.handle (constSE $ return []) . mapM getModificationTime
     go prevError prevFiles = do
         toReload <-
             if null prevFiles
@@ -79,7 +85,9 @@ fillApp modu func mqueue =
                 putStrLn $ "Compile failed: " ++ show err
                 loadingApp' (Just $ toException err) mqueue
                 return (Just $ toException err, [])
-            Right (app, files) -> do
+            Right (app, files') -> E.handle onInitErr $ do
+                files'' <- mapM fileList dirs
+                let files = concat $ files' : files''
                 putStrLn "Interpreting success, new app loaded"
                 E.handle onInitErr $ do
                     swapApp app mqueue
@@ -89,6 +97,26 @@ fillApp modu func mqueue =
         putStrLn $ "Error initializing application: " ++ show e
         loadingApp' (Just e) mqueue
         return (Just e, [])
+
+fileList :: FilePath -> IO [FilePath]
+fileList top = do
+    ex <- doesDirectoryExist top
+    if ex then fileList' top "" else return []
+
+fileList' :: FilePath -> FilePath -> IO [FilePath]
+fileList' realTop top = do
+    let prefix1 = top ++ "/"
+        prefix2 = realTop ++ prefix1
+    allContents <- filter notHidden <$> getDirectoryContents prefix2
+    let all' = map ((++) prefix1 &&& (++) prefix2) allContents
+    files <- map snd <$> filterM (doesFileExist . snd) all'
+    dirs <- filterM (doesDirectoryExist . snd) all' >>=
+            mapM (fileList' realTop . fst)
+    return $ concat $ files : dirs
+
+notHidden :: FilePath -> Bool
+notHidden ('.':_) = False
+notHidden _ = True
 
 loadingApp' :: Maybe SomeException -> M.MVar Queue -> IO ()
 loadingApp' err mqueue = swapApp (loadingApp err) mqueue
