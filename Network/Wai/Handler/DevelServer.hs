@@ -6,6 +6,7 @@ module Network.Wai.Handler.DevelServer (run) where
 import Language.Haskell.Interpreter
 import Network.Wai
 
+import qualified Data.ByteString.Lazy.UTF8 as U
 import qualified Data.ByteString.Lazy.Char8 as L8
 import Network
     ( listenOn, accept, sClose, PortID(PortNumber), Socket
@@ -41,10 +42,14 @@ startApp queue withApp = do
         case msession of
             Nothing -> return ()
             Just (req, onRes) -> do
-                res <- app req
-                -- FIXME exceptions?
-                onRes res
+                void $ forkIO $ (handle onErr $ app req) >>= onRes
                 go app
+    onErr :: SomeException -> IO Response
+    onErr e = return
+            $ Response status500 [("Content-Type", "text/plain; charset=utf-8")]
+            $ ResponseLBS $ U.fromString
+            $ "Exception thrown while running application\n\n" ++ show e
+    void x = x >> return ()
 
 fillApp :: String -> String -> M.MVar Queue -> IO ()
 fillApp modu func mqueue =
