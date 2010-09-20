@@ -16,7 +16,6 @@ import Control.Exception (bracket, finally, Exception,
 import qualified Control.Exception as E
 import System.IO (Handle, hClose)
 import Control.Concurrent (forkIO, threadDelay)
-import Control.Monad (forM)
 
 import qualified Control.Concurrent.MVar as M
 import qualified Control.Concurrent.Chan as C

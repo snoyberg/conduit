@@ -17,7 +17,7 @@ main = do
         , moduleName = "" &= argPos 1 &= typ "MODULE"
         , function = "" &= argPos 2 &= typ "FUNCTION"
         } &= summary "WAI development web server"
-    forkIO $ run p m f
+    _ <- forkIO $ run p m f
     go
   where
     go = do
