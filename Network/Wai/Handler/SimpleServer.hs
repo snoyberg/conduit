@@ -38,6 +38,7 @@ import Data.Typeable (Typeable)
 
 import Network.Socket.SendFile
 import Control.Arrow (first)
+import Numeric (showHex)
 
 run :: Port -> Application -> IO ()
 run port = withSocketsDo .
@@ -154,14 +155,23 @@ sendResponse httpversion h res = do
     B.hPut h $ statusMessage $ status res
     B.hPut h $ B.pack "\r\n"
     mapM_ putHeader $ responseHeaders res
+    case responseBody res of
+        ResponseFile _ -> return ()
+        _ -> B.hPut h $ B.pack "Transfer-Encoding: chunked\r\n"
     B.hPut h $ B.pack "\r\n"
     case responseBody res of
         ResponseFile fp -> unsafeSendFile h fp
-        ResponseEnumerator (Enumerator enum) -> enum myPut h >> return ()
-        ResponseLBS lbs -> L.hPut h lbs
+        ResponseEnumerator (Enumerator enum) ->
+            enum (const myPut) h >> return ()
+        ResponseLBS lbs -> mapM_ myPut $ L.toChunks lbs
+    case responseBody res of
+        ResponseFile _ -> return ()
+        _ -> B.hPut h $ B.pack "0\r\n"
     where
-        myPut _ bs = do
+        myPut bs = do
+            B.hPut h $ B.pack $ showHex (B.length bs) "\r\n"
             B.hPut h bs
+            B.hPut h $ B.pack "\r\n"
             return (Right h)
         putHeader (x, y) = do
             B.hPut h $ ciOriginal x
