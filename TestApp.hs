@@ -32,6 +32,6 @@ testApp handler = do
                         insert $ Dummy ""
                         count ([] :: [Filter Dummy])
                     return $ Response status200
-                        [("Content-Type", "text/plain")]
+                        [("Content-Type", "text/plain; charset=utf-8")]
                         $ ResponseLBS $ pack $ "Counter: " ++ show x
         putStrLn "handler completed, this should only happen at the beginning of a reload"
