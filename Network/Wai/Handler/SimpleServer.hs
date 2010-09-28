@@ -16,6 +16,8 @@
 ---------------------------------------------------------
 module Network.Wai.Handler.SimpleServer
     ( run
+    , sendResponse
+    , parseRequest
     ) where
 
 import Network.Wai
@@ -36,7 +38,6 @@ import Data.Maybe (isJust, fromJust, fromMaybe)
 
 import Data.Typeable (Typeable)
 
-import Network.Socket.SendFile
 import Control.Arrow (first)
 import Numeric (showHex)
 
@@ -61,14 +62,14 @@ serveConnection port app conn remoteHost' =
         (hClose conn)
     where
         serveConnection' = do
-            env <- hParseRequest port conn remoteHost'
+            env <- parseRequest port conn remoteHost'
             res <- app env
             sendResponse (httpVersion env) conn res
 
-hParseRequest :: Port -> Handle -> String -> IO Request
-hParseRequest port conn remoteHost' = do
+parseRequest :: Port -> Handle -> String -> IO Request
+parseRequest port conn remoteHost' = do
     headers' <- takeUntilBlank conn id
-    parseRequest port headers' conn remoteHost'
+    parseRequest' port headers' conn remoteHost'
 
 takeUntilBlank :: Handle
                -> ([ByteString] -> [ByteString])
@@ -94,12 +95,12 @@ data InvalidRequest =
 instance Exception InvalidRequest
 
 -- | Parse a set of header lines and body into a 'Request'.
-parseRequest :: Port
-             -> [ByteString]
-             -> Handle
-             -> String
-             -> IO Request
-parseRequest port lines' handle remoteHost' = do
+parseRequest' :: Port
+              -> [ByteString]
+              -> Handle
+              -> String
+              -> IO Request
+parseRequest' port lines' handle remoteHost' = do
     case lines' of
         (_:_:_) -> return ()
         _ -> throwIO $ NotEnoughLines $ map B.unpack lines'
@@ -155,21 +156,19 @@ sendResponse httpversion h res = do
     B.hPut h $ statusMessage $ status res
     B.hPut h $ B.pack "\r\n"
     mapM_ putHeader $ responseHeaders res
+    B.hPut h $ B.pack "Transfer-Encoding: chunked\r\n\r\n"
     case responseBody res of
-        ResponseFile _ -> return ()
-        _ -> B.hPut h $ B.pack "Transfer-Encoding: chunked\r\n"
-    B.hPut h $ B.pack "\r\n"
-    case responseBody res of
-        ResponseFile fp -> unsafeSendFile h fp
+        ResponseFile fp -> do
+            -- FIXME this is lazy I/O
+            lbs <- L.readFile fp
+            mapM_ myPut $ L.toChunks lbs
         ResponseEnumerator (Enumerator enum) ->
             enum (const myPut) h >> return ()
         ResponseLBS lbs -> mapM_ myPut $ L.toChunks lbs
-    case responseBody res of
-        ResponseFile _ -> return ()
-        _ -> B.hPut h $ B.pack "0\r\n"
+    B.hPut h $ B.pack "0\r\n\r\n"
     where
         myPut bs = do
-            B.hPut h $ B.pack $ showHex (B.length bs) "\r\n"
+            B.hPut h $ B.pack $ showHex (B.length bs) " \r\n"
             B.hPut h bs
             B.hPut h $ B.pack "\r\n"
             return (Right h)
