@@ -1,5 +1,5 @@
 Name:                wai-extra
-Version:             0.2.3
+Version:             0.2.4
 Synopsis:            Provides some basic WAI handlers and middleware.
 Description:         The goal here is to provide common features without many dependencies.
 License:             BSD3
@@ -9,11 +9,8 @@ Maintainer:          michael@snoyman.com
 Homepage:            http://github.com/snoyberg/wai-extra
 Category:            Web
 Build-Type:          Simple
-Cabal-Version:       >=1.2
+Cabal-Version:       >=1.6
 Stability:           Stable
-extra-source-files: cbits/crc32.h cbits/inffast.h cbits/inflate.h
-                    cbits/trees.h cbits/deflate.h cbits/inffixed.h
-                    cbits/inftrees.h cbits/zutil.h
 
 Library
   Build-Depends:     base >= 3 && < 5,
@@ -23,7 +20,8 @@ Library
                      time >= 1.1.4 && < 1.3,
                      network >= 2.2.1.5 && < 2.3,
                      directory >= 1.0.1 && < 1.2,
-                     utf8-string >= 0.3.4 && < 0.4
+                     utf8-string >= 0.3.4 && < 0.4,
+                     zlib-bindings >= 0.0 && < 0.1
   Exposed-modules:   Network.Wai.Handler.CGI
                      Network.Wai.Handler.SimpleServer
                      Network.Wai.Middleware.CleanPath
@@ -33,18 +31,7 @@ Library
                      Network.Wai.Parse
                      Network.Wai.Handler.Helper
   ghc-options:       -Wall
-  c-sources:         c/helper.c
-  include-dirs:      c
-  -- Following lines and cbits folder taken from zlib package.
-  if !os(windows)
-    -- Normally we use the the standard system zlib:
-    extra-libraries: z
-  else
-    -- However for the benefit of users of Windows (which does not have zlib
-    -- by default) we bundle a complete copy of the C sources of zlib-1.2.3
-    c-sources:     cbits/adler32.c cbits/compress.c cbits/crc32.c
-                   cbits/deflate.c cbits/gzio.c cbits/infback.c
-                   cbits/inffast.c cbits/inflate.c cbits/inftrees.c
-                   cbits/trees.c cbits/uncompr.c cbits/zutil.c
-    include-dirs:  cbits
-    install-includes: zlib.h zconf.h
+
+source-repository head
+  type:     git
+  location: git://github.com/snoyberg/wai-extra.git
