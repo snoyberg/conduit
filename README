@@ -1,1 +1,9 @@
 Turn WAI applications into standalone GUIs using QT Webkit.
+
+You'll need the appropriate system libraries, on Ubuntu:
+
+    apt-get install libqtwebkit-dev
+
+On Lucid, this required adding a PPA:
+
+    sudo add-apt-repository ppa:kubuntu-ppa/backports 
