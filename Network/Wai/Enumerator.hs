@@ -12,8 +12,11 @@ module Network.Wai.Enumerator
     , toSource
       -- ** Handle
     , fromHandle
+    , fromHandleFinally
       -- ** FilePath
     , fromFile
+    , fromFileFinally
+    , fromTempFile
     , fromResponseBody
     ) where
 
@@ -21,10 +24,12 @@ import Network.Wai (Enumerator (..), Source (..), ResponseBody (..))
 import qualified Network.Wai.Source as Source
 import qualified Data.ByteString.Lazy as L
 import qualified Data.ByteString as B
+import System.Directory (removeFile)
 import System.IO (withBinaryFile, IOMode (ReadMode), Handle, hIsEOF)
 import Data.ByteString.Lazy.Internal (defaultChunkSize)
 import Control.Concurrent (forkIO)
 import Control.Concurrent.MVar
+import Control.Exception
 import Control.Monad ((<=<))
 
 -- | Performs a specified conversion on each 'B.ByteString' output by an
@@ -105,10 +110,26 @@ fromHandle h = Enumerator $ \iter a -> do
                 Left a' -> return $ Left a'
                 Right a' -> runEnumerator (fromHandle h) iter a'
 
+-- | Wrapper around fromHandle to perform an action after EOF or an exception
+fromHandleFinally :: Handle -> IO a -> Enumerator
+fromHandleFinally h onEOF = Enumerator $ \iter a0 -> 
+                            finally (runEnumerator (fromHandle h) iter a0) 
+                                    onEOF
+
 -- | A little wrapper around 'fromHandle' which first opens a file for reading.
 fromFile :: FilePath -> Enumerator
 fromFile fp = Enumerator $ \iter a0 -> withBinaryFile fp ReadMode $ \h ->
     runEnumerator (fromHandle h) iter a0
+
+-- | Wrapper around fromFile to perform an action after the file is closed.
+fromFileFinally :: FilePath -> IO a -> Enumerator
+fromFileFinally fp onClose = Enumerator $ \iter a0 -> 
+                             finally (runEnumerator (fromFile fp) iter a0) 
+                                     onClose
+
+-- | Enumerator to read and remove a file
+fromTempFile :: FilePath -> Enumerator
+fromTempFile fp = fromFileFinally fp $ removeFile fp
 
 -- | Since the response body is defined as a 'ResponseBody', this function
 -- simply reduces the whole value to an enumerator. This can be convenient for
