@@ -110,10 +110,10 @@ fromHandle h = Enumerator $ \iter a -> do
                 Left a' -> return $ Left a'
                 Right a' -> runEnumerator (fromHandle h) iter a'
 
--- | Wrapper around fromHandle to perform an action after EOF or an exception
+-- | Wrapper around fromHandle to perform an action after EOF or an exception.
 fromHandleFinally :: Handle -> IO a -> Enumerator
-fromHandleFinally h onEOF = Enumerator $ \iter a0 -> 
-                            finally (runEnumerator (fromHandle h) iter a0) 
+fromHandleFinally h onEOF = Enumerator $ \iter a0 ->
+                            finally (runEnumerator (fromHandle h) iter a0)
                                     onEOF
 
 -- | A little wrapper around 'fromHandle' which first opens a file for reading.
@@ -123,11 +123,12 @@ fromFile fp = Enumerator $ \iter a0 -> withBinaryFile fp ReadMode $ \h ->
 
 -- | Wrapper around fromFile to perform an action after the file is closed.
 fromFileFinally :: FilePath -> IO a -> Enumerator
-fromFileFinally fp onClose = Enumerator $ \iter a0 -> 
-                             finally (runEnumerator (fromFile fp) iter a0) 
+fromFileFinally fp onClose = Enumerator $ \iter a0 ->
+                             finally (runEnumerator (fromFile fp) iter a0)
                                      onClose
 
--- | Enumerator to read and remove a file
+-- | Enumerator to read and remove a file. Being based on 'fromFileFinally', it
+-- ensures the file is removed, even in the presence of exceptions.
 fromTempFile :: FilePath -> Enumerator
 fromTempFile fp = fromFileFinally fp $ removeFile fp
 

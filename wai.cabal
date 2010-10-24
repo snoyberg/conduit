@@ -1,5 +1,5 @@
 Name:                wai
-Version:             0.2.1
+Version:             0.2.2
 Synopsis:            Web Application Interface.
 Description:         Provides a common protocol for communication between web aplications and web servers.
 License:             BSD3
@@ -19,7 +19,7 @@ Source-repository head
 Library
   Build-Depends:     base >= 3 && < 5,
                      bytestring >= 0.9 && < 0.10,
-                     directory
+                     directory >= 1.0 && < 1.1
   Exposed-modules:   Network.Wai
                      Network.Wai.Enumerator
                      Network.Wai.Source
