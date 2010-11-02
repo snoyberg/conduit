@@ -82,7 +82,7 @@ fillApp modu func mqueue dirs =
         res <- theapp modu func
         case res of
             Left err -> do
-                putStrLn $ "Compile failed: " ++ show err
+                putStrLn $ "Compile failed: " ++ showInterpError err
                 loadingApp' (Just $ toException err) mqueue
                 return (Just $ toException err, [])
             Right (app, files') -> E.handle onInitErr $ do
@@ -97,6 +97,11 @@ fillApp modu func mqueue dirs =
         putStrLn $ "Error initializing application: " ++ show e
         loadingApp' (Just e) mqueue
         return (Just e, [])
+
+showInterpError :: InterpreterError -> String
+showInterpError (WontCompile errs) =
+    concat $ map (\(GhcError msg) -> '\n':'\n':msg) errs
+showInterpError err = show err
 
 fileList :: FilePath -> IO [FilePath]
 fileList top = do
