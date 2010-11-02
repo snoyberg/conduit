@@ -28,6 +28,8 @@ import System.Directory (doesDirectoryExist,
                          doesFileExist, getDirectoryContents)
 import Control.Applicative ((<$>))
 
+import Data.List (nub)
+
 type FunctionName = String
 
 run :: Port -> ModuleName -> FunctionName -> [FilePath] -> IO ()
@@ -77,12 +79,16 @@ fillApp modu func mqueue dirs =
         threadDelay 1000000
         go newError newFiles
     reload prevError = do
-        putStrLn "Attempting to interpret your app..."
+        case prevError of
+             Nothing -> putStrLn "Attempting to interpret your app..."
+             _       -> return ()
         loadingApp' prevError mqueue
         res <- theapp modu func
         case res of
             Left err -> do
-                putStrLn $ "Compile failed: " ++ showInterpError err
+                if show (Just err) /= show prevError
+                   then putStrLn $ "Compile failed: " ++ showInterpError err
+                   else return ()
                 loadingApp' (Just $ toException err) mqueue
                 return (Just $ toException err, [])
             Right (app, files') -> E.handle onInitErr $ do
@@ -100,7 +106,7 @@ fillApp modu func mqueue dirs =
 
 showInterpError :: InterpreterError -> String
 showInterpError (WontCompile errs) =
-    concat $ map (\(GhcError msg) -> '\n':'\n':msg) errs
+    concat . nub $ map (\(GhcError msg) -> '\n':'\n':msg) errs
 showInterpError err = show err
 
 fileList :: FilePath -> IO [FilePath]
