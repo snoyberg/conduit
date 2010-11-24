@@ -261,7 +261,8 @@ parsePieces sink bound src = do
                     let fnBS = S8.pack "filename"
                     return (ct, name, lookup fnBS attrs)
             case x of
-                Just (Just ct, name, Just filename) -> do
+                Just (mct, name, Just filename) -> do
+                    let ct = fromMaybe "application/octet-stream" mct
                     seed <- sinkInit sink
                     (seed', wasFound, msrc''') <-
                         sinkTillBound bound src'' (sinkAppend sink) seed
