@@ -41,6 +41,12 @@ import Data.Typeable (Typeable)
 import Control.Arrow (first)
 import Numeric (showHex)
 
+import Data.Enumerator (($$))
+import qualified Data.Enumerator as E
+import Data.Enumerator.IO (enumFile)
+import Control.Monad.IO.Class (liftIO)
+import Blaze.ByteString.Builder.Enumerator (builderToByteString)
+
 run :: Port -> Application -> IO ()
 run port = withSocketsDo .
     bracket
@@ -158,15 +164,17 @@ sendResponse httpversion h res = do
     mapM_ putHeader $ responseHeaders res
     B.hPut h $ B.pack "Transfer-Encoding: chunked\r\n\r\n"
     case responseBody res of
-        ResponseFile fp -> do
-            -- FIXME this is lazy I/O
-            lbs <- L.readFile fp
-            mapM_ myPut $ L.toChunks lbs
-        ResponseEnumerator (Enumerator enum) ->
-            enum (const myPut) h >> return ()
+        ResponseFile fp -> E.run_ $ enumFile fp $$ myIter
+        ResponseEnumerator enum ->
+            enum $ E.joinI $ builderToByteString $$ myIter
         ResponseLBS lbs -> mapM_ myPut $ L.toChunks lbs
     B.hPut h $ B.pack "0\r\n\r\n"
     where
+        myIter = do
+            mbs <- E.head
+            case mbs of
+                Nothing -> return ()
+                Just bs -> liftIO (myPut bs) >> myIter
         myPut bs = do
             B.hPut h $ B.pack $ showHex (B.length bs) " \r\n"
             B.hPut h bs

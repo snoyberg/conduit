@@ -6,20 +6,25 @@ module Network.Wai.Handler.Helper
 import System.IO (Handle)
 import qualified Data.ByteString as B
 import Data.ByteString.Lazy.Internal (defaultChunkSize)
-import Network.Wai (Source (..))
+import qualified Data.Enumerator as E
+import Data.Enumerator ((>>==))
+import Control.Monad.IO.Class (liftIO)
 
-requestBodyHandle :: Handle -> Int -> Source
+requestBodyHandle :: Handle -> Int -> E.Enumerator B.ByteString IO a
 requestBodyHandle h =
     requestBodyFunc go
   where
     go i = Just `fmap` B.hGet h (min i defaultChunkSize)
 
-requestBodyFunc :: (Int -> IO (Maybe B.ByteString)) -> Int -> Source
-requestBodyFunc _ 0 = Source $ return Nothing
-requestBodyFunc h len = Source $ do
-    mbs <- h len
+requestBodyFunc :: (Int -> IO (Maybe B.ByteString))
+                -> Int
+                -> E.Enumerator B.ByteString IO a
+requestBodyFunc _ 0 step = E.returnI step
+requestBodyFunc h len (E.Continue k) = do
+    mbs <- liftIO $ h len
     case mbs of
-        Nothing -> return Nothing
+        Nothing -> E.continue k
         Just bs -> do
             let newLen = len - B.length bs
-            return $ Just (bs, requestBodyFunc h $ max 0 newLen)
+            k (E.Chunks [bs]) >>== requestBodyFunc h newLen
+requestBodyFunc _ _ step = E.returnI step
