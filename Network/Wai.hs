@@ -43,8 +43,10 @@ module Network.Wai
     , mkCIByteString
       -- ** Request header names
     , RequestHeader
+    , RequestHeaders
       -- ** Response header names
     , ResponseHeader
+    , ResponseHeaders
       -- ** Response status code
     , Status (..)
     , status200
@@ -57,11 +59,11 @@ module Network.Wai
     , status404
     , status405
     , status500
-      -- ** Response body
-    , ResponseBody (..)
       -- * WAI interface
     , Request (..)
     , Response (..)
+    , ResponseEnumerator
+    , responseEnumerator
     , Application
     , Middleware
     ) where
@@ -72,8 +74,11 @@ import qualified Data.ByteString.Lazy as L
 import Data.Char (toLower)
 import Data.String (IsString (..))
 import Data.Typeable (Typeable)
-import Data.Enumerator (Enumerator, Iteratee)
-import Blaze.ByteString.Builder (Builder)
+import Data.Enumerator (Enumerator, Iteratee, ($$), joinI, enumList, run_)
+import qualified Data.Enumerator as E
+import Data.Enumerator.IO (enumFile)
+import Blaze.ByteString.Builder (Builder, fromByteString, fromLazyByteString)
+import Data.Data (Data)
 
 -- | HTTP request method. Since the HTTP protocol allows arbitrary request
 -- methods, we leave this open as a 'B.ByteString'. Please note the request
@@ -109,6 +114,7 @@ data CIByteString = CIByteString
     { ciOriginal :: !B.ByteString
     , ciLowerCase :: !B.ByteString
     }
+    deriving (Data, Typeable)
 
 -- | Convert a regular bytestring to a case-insensitive bytestring.
 mkCIByteString :: B.ByteString -> CIByteString
@@ -116,6 +122,8 @@ mkCIByteString bs = CIByteString bs $ B8.map toLower bs
 
 instance Show CIByteString where
     show = show . ciOriginal
+instance Read CIByteString where
+    readsPrec i = map (\(x, y) -> (mkCIByteString x, y)) . readsPrec i
 instance Eq CIByteString where
     x == y = ciLowerCase x == ciLowerCase y
 instance Ord CIByteString where
@@ -126,10 +134,12 @@ instance IsString CIByteString where
 -- | Headers sent from the client to the server. Note that this is a
 -- case-insensitive string, as the HTTP spec specifies.
 type RequestHeader = CIByteString
+type RequestHeaders = [(RequestHeader, B.ByteString)]
 
 -- | Headers sent from the server to the client. Note that this is a
 -- case-insensitive string, as the HTTP spec specifies.
 type ResponseHeader = CIByteString
+type ResponseHeaders = [(ResponseHeader, B.ByteString)]
 
 -- | HTTP status code; a combination of the integral code and a status message.
 -- Equality is determined solely on the basis of the integral code.
@@ -205,35 +215,20 @@ data Request = Request
   }
   deriving Typeable
 
--- | The response body returned to the server from the application. We provide
--- three separate constructors as optimizations:
---
--- * 'ResponseEnumerator' is the most general type, allowing constant-memory
--- production of a response, even in the presence of interleaved I\/O actions.
---
--- * 'ResponseFile' serves a static file from the filesystem. Many servers use
--- a sendfile system call to optimize this type of serving, making this a huge
--- performance gain.
---
--- * 'ResponseLBS'. Often times, we wish to return a response that includes no
--- interleaved I\/O. In this case, we can use Haskell's natural laziness to our
--- advantage, and represent the response as a lazy bytestring.
-data ResponseBody
-    = ResponseFile FilePath
-    | ResponseEnumerator (Iteratee Builder IO () -> IO ())
-    | ResponseLBS L.ByteString
-  deriving Typeable
+data Response
+    = ResponseFile Status ResponseHeaders FilePath
+    | ResponseLBS Status ResponseHeaders L.ByteString
+    | ResponseEnumerator (forall a. ResponseEnumerator a)
 
-data Response = Response
-  { status          :: Status
-  , responseHeaders :: [(ResponseHeader, B.ByteString)]
-  -- | A common optimization is to use the sendfile system call when sending
-  -- files from the disk. This datatype facilitates this optimization; if
-  -- 'Left' is returned, the server will send the file from the disk by
-  -- whatever means it wishes. If 'Right', it will call the 'Enumerator'.
-  , responseBody    :: ResponseBody
-  }
-  deriving Typeable
+type ResponseEnumerator a =
+    (Status -> ResponseHeaders -> Iteratee Builder IO a) -> IO a
+
+responseEnumerator :: Response -> ResponseEnumerator a
+responseEnumerator (ResponseEnumerator e) f = e f
+responseEnumerator (ResponseFile s h fp) f =
+    run_ $ enumFile fp $$ joinI $ E.map fromByteString $$ f s h
+responseEnumerator (ResponseLBS s h lbs) f =
+    run_ $ enumList 1 [fromLazyByteString lbs] $$ f s h
 
 type Application = Request -> IO Response
 
