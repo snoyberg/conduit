@@ -29,8 +29,7 @@ import Data.Function (on)
 import System.Directory (removeFile, getTemporaryDirectory)
 import System.IO (hClose, openBinaryTempFile, Handle)
 import Network.Wai
-import Control.Applicative ((<$>))
-import Data.Enumerator (($$), Iteratee)
+import Data.Enumerator (Iteratee, yield)
 import qualified Data.Enumerator as E
 import Control.Monad.IO.Class (liftIO)
 
@@ -166,29 +165,29 @@ type File y = (S.ByteString, FileInfo y)
 
 parseRequestBody :: Sink x y
                  -> Request
-                 -> IO ([Param], [File y])
+                 -> Iteratee S.ByteString IO ([Param], [File y])
 parseRequestBody sink req = do
-    let ctype = do
-          ctype' <- lookup "Content-Type" $ requestHeaders req
-          if urlenc `S.isPrefixOf` ctype'
-              then Just Nothing
-              else if formBound `S.isPrefixOf` ctype'
-                      then Just $ Just $ S.drop (S.length formBound) ctype'
-                      else Nothing
     case ctype of
         Nothing -> return ([], [])
         Just Nothing -> do -- url-encoded
             -- NOTE: in general, url-encoded data will be in a single chunk.
             -- Therefore, I'm optimizing for the usual case by sticking with
             -- strict byte strings here.
-            bs <- E.run_ $ requestBody req $$ E.consume
+            bs <- E.consume
             return (parseQueryString $ S.concat bs, [])
         Just (Just bound) -> -- multi-part
             let bound' = S8.pack "--" `S.append` bound
-             in error "FIXME" parsePieces sink bound' (S.empty, Just $ requestBody req)
+             in parsePieces sink bound'
   where
     urlenc = S8.pack "application/x-www-form-urlencoded"
     formBound = S8.pack "multipart/form-data; boundary="
+    ctype = do
+      ctype' <- lookup "Content-Type" $ requestHeaders req
+      if urlenc `S.isPrefixOf` ctype'
+          then Just Nothing
+          else if formBound `S.isPrefixOf` ctype'
+                  then Just $ Just $ S.drop (S.length formBound) ctype'
+                  else Nothing
 
 takeLine :: Iteratee S.ByteString IO (Maybe S.ByteString)
 takeLine = do
@@ -305,54 +304,55 @@ sinkTillBound :: S.ByteString
               -> (x -> S.ByteString -> IO x)
               -> x
               -> Iteratee S.ByteString IO (x, Bool)
-sinkTillBound bound iter seed = error "FIXME"
-{-
-    case findBound bound bs of
+sinkTillBound bound iter seed = do
+    mbs <- E.head
+    case mbs of
+        Nothing -> return (seed, False)
+        Just bs -> go bs
+  where
+    go bs =
+        case findBound bound bs of
+            FoundBound before after -> do
+                let before' = killCRLF before
+                seed' <- liftIO $ iter seed before'
+                yield () $ E.Chunks [after]
+                return (seed', True)
+            PartialBound -> do
+                mbs <- E.head
+                case mbs of
+                    Nothing -> do
+                        seed' <- liftIO $ iter seed bs
+                        return (seed', False)
+                    Just bs2 -> do
+                        let bs' = bs `S.append` bs2
+                        yield () $ E.Chunks [bs']
+                        sinkTillBound bound iter seed
+            NoBound -> do
+                mbs <- E.head
+                case mbs of
+                    Nothing -> do
+                        seed' <- liftIO $ iter seed bs
+                        sinkTillBound bound iter seed'
+                    Just bs' -> do
+                        -- this funny bit is to catch when there's a
+                        -- newline at the end of the previous chunk
+                        (seed', bs'') <-
+                            if not (S8.null bs) && S8.last bs `elem` "\n\r"
+                                then do
+                                    let (front, back) =
+                                            S.splitAt (S.length bs - 2) bs
+                                    seed' <- liftIO $ iter seed front
+                                    return (seed', back `S.append` bs')
+                                else do
+                                    seed' <- liftIO $ iter seed bs
+                                    return (seed', bs')
+                        yield () $ E.Chunks [bs'']
+                        sinkTillBound bound iter seed'
+        {-
         NoBound -> do
             case msrc of
-                Nothing -> do
-                    seed' <- iter seed bs
-                    return (seed', False, (S.empty, Nothing))
-                Just (Source src) -> do
-                    res <- src
-                    case res of
-                        Nothing -> do
-                            seed' <- iter seed bs
-                            return (seed', False, (S.empty, Nothing))
                         Just (bs', src') -> do
-                            -- this funny bit is to catch when there's a
-                            -- newline at the end of the previous chunk
-                            (seed', bs'') <-
-                                if not (S8.null bs) && S8.last bs `elem` "\n\r"
-                                    then do
-                                        let (front, back) =
-                                                S.splitAt (S.length bs - 2) bs
-                                        seed' <- iter seed front
-                                        return (seed', back `S.append` bs')
-                                    else do
-                                        seed' <- iter seed bs
-                                        return (seed', bs')
-                            sinkTillBound bound (bs'', Just src') iter seed'
-        FoundBound before after -> do
-            let before' = killCRLF before
-            seed' <- iter seed before'
-            return (seed', True, (after, msrc))
-        PartialBound -> do
-            -- not so efficient, but hopefully the unusual case
-            case msrc of
-                Nothing -> do
-                    seed' <- iter seed bs
-                    return (seed', False, (S.empty, Nothing))
-                Just (Source src) -> do
-                    res <- src
-                    case res of
-                        Nothing -> do
-                            seed' <- iter seed bs
-                            return (seed', False, (S.empty, Nothing))
-                        Just (bs', src') -> do
-                            let bs'' = bs `S.append` bs'
-                            sinkTillBound bound (bs'', Just src') iter seed
--}
+        -}
 
 parseAttrs :: S.ByteString -> [(S.ByteString, S.ByteString)]
 parseAttrs = map go . S.split 59 -- semicolon
