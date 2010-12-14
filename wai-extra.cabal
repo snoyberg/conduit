@@ -24,7 +24,7 @@ Library
                      blaze-builder-enumerator >= 0.2 && < 0.3,
                      transformers >= 0.2 && < 0.3,
                      enumerator >= 0.4 && < 0.5,
-                     blaze-builder >= 0.2.1 && < 0.3
+                     blaze-builder >= 0.2.1.1 && < 0.3
   Exposed-modules:   Network.Wai.Handler.CGI
                      Network.Wai.Handler.SimpleServer
                      Network.Wai.Middleware.CleanPath

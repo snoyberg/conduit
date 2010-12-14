@@ -41,11 +41,14 @@ import Data.Typeable (Typeable)
 import Control.Arrow (first)
 import Numeric (showHex)
 
-import Data.Enumerator (($$))
+import Data.Enumerator (($$), Enumerator, enumList)
 import qualified Data.Enumerator as E
-import Data.Enumerator.IO (enumFile)
+import Data.Enumerator.IO (iterHandle)
 import Control.Monad.IO.Class (liftIO)
 import Blaze.ByteString.Builder.Enumerator (builderToByteString)
+import Blaze.ByteString.Builder (fromByteString, Builder, toLazyByteString)
+import Blaze.ByteString.Builder.Char8 (fromChar)
+import Data.Monoid (mconcat)
 
 run :: Port -> Application -> IO ()
 run port = withSocketsDo .
@@ -152,48 +155,40 @@ parseFirst s = do
     let (rpath, qstring) = B.break (== '?') query
     return (method, rpath, qstring, hsecond)
 
-sendResponsePrelude :: Handle -> HttpVersion -> Status -> ResponseHeaders -> IO ()
-sendResponsePrelude h httpversion status responseHeaders = do
-    B.hPut h $ B.pack "HTTP/"
-    B.hPut h $ httpversion
-    B.hPut h $ B.pack " "
-    B.hPut h $ B.pack $ show $ statusCode status
-    B.hPut h $ B.pack " "
-    B.hPut h $ statusMessage status
-    B.hPut h $ B.pack "\r\n"
-    mapM_ putHeader responseHeaders
-    B.hPut h $ B.pack "Transfer-Encoding: chunked\r\n\r\n"
+headers :: HttpVersion -> Status -> ResponseHeaders -> Builder
+headers httpversion status responseHeaders = mconcat
+    [ fromByteString "HTTP/"
+    , fromByteString httpversion
+    , fromChar ' '
+    , fromByteString $ B.pack $ show $ statusCode status
+    , fromChar ' '
+    , fromByteString $ statusMessage status
+    , fromByteString "\r\n"
+    , mconcat $ map go responseHeaders
+    , fromByteString "Transfer-Encoding: chunked\r\n\r\n"
+    ]
   where
-    putHeader (x, y) = do
-        B.hPut h $ ciOriginal x
-        B.hPut h $ B.pack ": "
-        B.hPut h y
-        B.hPut h $ B.pack "\r\n"
+    go (x, y) = mconcat
+        [ fromByteString $ ciOriginal x
+        , fromByteString ": "
+        , fromByteString y
+        , fromByteString "\r\n"
+        ]
 
 sendResponse :: HttpVersion -> Handle -> Response -> IO ()
-sendResponse httpversion h res = do
-    case res of
-        ResponseFile s hs fp -> do
-            sendResponsePrelude h httpversion s hs
-            E.run_ $ enumFile fp $$ myIter
-        ResponseLBS s hs lbs -> do
-            sendResponsePrelude h httpversion s hs
-            mapM_ myPut $ L.toChunks lbs
-        ResponseEnumerator enum -> enum myIter'
-    B.hPut h $ B.pack "0\r\n\r\n"
-    where
-        myIter' s hs = do
-            liftIO $ sendResponsePrelude h httpversion s hs
-            E.joinI $ builderToByteString $$ myIter
-        myIter = do
-            mbs <- E.head
-            case mbs of
-                Nothing -> return ()
-                Just bs -> liftIO (myPut bs) >> myIter
-        myPut bs = do
-            B.hPut h $ B.pack $ showHex (B.length bs) " \r\n"
-            B.hPut h bs
-            B.hPut h $ B.pack "\r\n"
+sendResponse hv handle res = do
+    responseEnumerator res $ \s hs -> do
+        liftIO $ L.hPutStr handle $ toLazyByteString $ headers hv s hs
+        i <- E.joinI $ builderToByteString $$ E.joinI $ chunk $$ iterHandle handle
+        liftIO $ B.hPutStr handle "0\r\n\r\n"
+        return i
+  where
+    chunk :: E.Enumeratee ByteString ByteString IO ()
+    chunk = E.concatMap $ \bs ->
+        [ B.pack $ showHex (B.length bs) " \r\n"
+        , bs
+        , "\r\n"
+        ]
 
 parseHeaderNoAttr :: ByteString -> (ByteString, ByteString)
 parseHeaderNoAttr s =
