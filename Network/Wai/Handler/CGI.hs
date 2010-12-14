@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes #-}
 module Network.Wai.Handler.CGI
     ( run
     , run'
@@ -7,7 +8,6 @@ module Network.Wai.Handler.CGI
     ) where
 
 import Network.Wai
-import Network.Wai.Enumerator (fromResponseBody)
 import Network.Wai.Handler.Helper
 import System.Environment (getEnvironment)
 import Data.Maybe (fromMaybe)
@@ -16,6 +16,7 @@ import Control.Arrow ((***))
 import Data.Char (toLower)
 import qualified System.IO
 import Data.String (fromString)
+import Data.Enumerator (Enumerator)
 
 safeRead :: Read a => a -> String -> a
 safeRead d s =
@@ -52,7 +53,7 @@ run' vars inputH outputH app = do
     run'' vars input output Nothing app
 
 run'' :: [(String, String)] -- ^ all variables
-     -> (Int -> Source) -- ^ responseBody of input
+     -> (forall a. Int -> Enumerator B.ByteString IO a) -- ^ responseBody of input
      -> (B.ByteString -> IO ()) -- ^ destination for output
      -> Maybe String -- ^ does the server support the X-Sendfile header?
      -> Application
@@ -89,15 +90,11 @@ run'' vars inputH outputH xsendfile app = do
             , httpVersion = "1.1" -- FIXME
             }
     res <- app env
-    let h = responseHeaders res
-    let h' = case lookup "Content-Type" h of
-                Nothing -> ("Content-Type", "text/html; charset=utf-8")
-                         : h
-                Just _ -> h
-    let hPut = outputH
-    hPut $ B.pack $ "Status: " ++ (show $ statusCode $ status res) ++ " "
-    hPut $ statusMessage $ status res
-    hPut $ B.singleton '\n'
+    error "FIXME"
+    {-
+    outputH $ B.pack $ "Status: " ++ (show $ statusCode $ status res) ++ " "
+    outputH $ statusMessage $ status res
+    outputH $ B.singleton '\n'
     mapM_ (printHeader hPut) h'
     case (xsendfile, responseBody res) of
         (Just sf, ResponseFile fp) ->
@@ -114,6 +111,12 @@ run'' vars inputH outputH xsendfile app = do
             _ <- runEnumerator (fromResponseBody (responseBody res))
                                (myPut outputH) ()
             return ()
+    -}
+
+fixHeaders h =
+    case lookup "content-type" h of
+        Nothing -> ("Content-Type", "text/html; charset=utf-8") : h
+        Just _ -> h
 
 myPut :: (B.ByteString -> IO ()) -> () -> B.ByteString -> IO (Either () ())
 myPut output _ bs = output bs >> return (Right ())

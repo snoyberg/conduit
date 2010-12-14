@@ -3,11 +3,14 @@ module Network.Wai.Zlib (compress) where
 import Prelude
 import Network.Wai
 import Data.ByteString (ByteString)
+import Data.Enumerator (Enumeratee)
+import Blaze.ByteString.Builder (Builder)
 
 import Codec.Zlib
 
-compress :: Enumerator -> Enumerator
-compress enum =
+compress :: Enumeratee Builder Builder IO a
+compress = undefined
+    {-
     Enumerator $ \iter acc -> do
         def <- initDeflate 7 $ WindowBits 31
         compressInner iter acc enum def
@@ -49,3 +52,4 @@ drain iter acc pop = do
             case eacc' of
                 Left acc' -> return $ Left acc'
                 Right acc' -> drain iter acc' pop
+    -}

@@ -29,6 +29,10 @@ import Data.Function (on)
 import System.Directory (removeFile, getTemporaryDirectory)
 import System.IO (hClose, openBinaryTempFile, Handle)
 import Network.Wai
+import Control.Applicative ((<$>))
+import Data.Enumerator (($$), Iteratee)
+import qualified Data.Enumerator as E
+import Control.Monad.IO.Class (liftIO)
 
 uncons :: S.ByteString -> Maybe (Word8, S.ByteString)
 uncons s
@@ -177,80 +181,54 @@ parseRequestBody sink req = do
             -- NOTE: in general, url-encoded data will be in a single chunk.
             -- Therefore, I'm optimizing for the usual case by sticking with
             -- strict byte strings here.
-            bs <- sourceToBs $ requestBody req
-            return (parseQueryString bs, [])
+            bs <- E.run_ $ requestBody req $$ E.consume
+            return (parseQueryString $ S.concat bs, [])
         Just (Just bound) -> -- multi-part
             let bound' = S8.pack "--" `S.append` bound
-             in parsePieces sink bound' (S.empty, Just $ requestBody req)
+             in error "FIXME" parsePieces sink bound' (S.empty, Just $ requestBody req)
   where
     urlenc = S8.pack "application/x-www-form-urlencoded"
     formBound = S8.pack "multipart/form-data; boundary="
 
-sourceToBs :: Source -> IO S.ByteString
-sourceToBs = fmap S.concat . go id
-  where
-    go front (Source src) = do
-        res <- src
-        case res of
-            Nothing -> return $ front []
-            Just (bs, src') -> go (front . (:) bs) src'
-
-type Source' = (S.ByteString, Maybe Source)
-
-takeLine :: Source' -> IO (Maybe (S.ByteString, Source'))
-takeLine (s, msrc)
-    | S.null s = case msrc of
-                    Nothing -> return Nothing
-                    Just (Source src) -> do
-                        res <- src
-                        case res of
-                            Nothing -> return Nothing
-                            Just (x, y) -> takeLine (x, Just y)
-takeLine (s, msrc) =
-    let (x, y) = S.break (== 10) s -- newline
-     in if S.null y
-            then do
-                case msrc of
-                    Nothing -> return $ Just (x, (y, msrc))
-                    Just (Source src) -> do
-                        res <- src
-                        case res of
-                            Nothing -> return $ Just (x, (y, Nothing))
-                            Just (s', src') ->
-                                takeLine (s `S.append` s', Just src')
-            else return $ Just (killCarriage x, (S.drop 1 y, msrc))
+takeLine :: Iteratee S.ByteString IO (Maybe S.ByteString)
+takeLine = do
+    mbs <- E.head
+    case mbs of
+        Nothing -> return Nothing
+        Just bs ->
+            let (x, y) = S.break (== 10) bs -- LF
+             in if S.null y
+                    then do
+                        x' <- takeLine
+                        case x' of
+                            Nothing -> return $ Just x
+                            Just x'' -> return $ Just $ S.append x x''
+                    else do
+                        E.yield () $ E.Chunks [S.drop 1 y]
+                        return $ Just $ killCarriage x
   where
     killCarriage bs
       | S.null bs = bs
       | S.last bs == 13 = S.init bs -- carriage return
       | otherwise = bs
 
-takeLines :: Source' -> IO (Maybe ([S.ByteString], Source'))
-takeLines src = do
-    res <- takeLine src
+takeLines :: Iteratee S.ByteString IO [S.ByteString]
+takeLines = do
+    res <- takeLine
     case res of
-        Nothing -> return Nothing
-        Just (l, src') ->
-            if S.null l
-                then return $ Just ([], src')
-                else do
-                    res' <- takeLines src'
-                    case res' of
-                        Nothing -> return $ Just ([l], src')
-                        Just (ls, src'') -> return $ Just (l : ls, src'')
+        Nothing -> return []
+        Just l -> do
+            ls <- takeLines
+            return $ l : ls
 
-parsePieces :: Sink x y -> S.ByteString -> Source'
-            -> IO ([Param], [File y])
-parsePieces sink bound src = do
-    res <- takeLine src
-    src' <- case res of
-                Nothing -> return (S.empty, Nothing)
-                -- The _bs here should only contain boundary information
-                Just (_bs, src') -> return src'
-    res' <- takeLines src'
+parsePieces :: Sink x y -> S.ByteString
+            -> Iteratee S.ByteString IO ([Param], [File y])
+parsePieces sink bound = do
+    _boundLine <- takeLine
+    res' <- takeLines
     case res' of
-        Nothing -> return ([], [])
-        Just (ls, src'') -> do
+        [] -> return ([], [])
+        ls -> do
             let ls' = map parsePair ls
             let x = do
                     cd <- lookup contDisp ls'
@@ -263,37 +241,36 @@ parsePieces sink bound src = do
             case x of
                 Just (mct, name, Just filename) -> do
                     let ct = fromMaybe "application/octet-stream" mct
-                    seed <- sinkInit sink
-                    (seed', wasFound, msrc''') <-
-                        sinkTillBound bound src'' (sinkAppend sink) seed
-                    y <- sinkClose sink seed'
+                    seed <- liftIO $ sinkInit sink
+                    (seed', wasFound) <-
+                        sinkTillBound bound (sinkAppend sink) seed
+                    y <- liftIO $ sinkClose sink seed'
                     let fi = FileInfo filename ct y
                     let y' = (name, fi)
                     (xs, ys) <-
                         if wasFound
-                            then parsePieces sink bound msrc'''
+                            then parsePieces sink bound
                             else return ([], [])
                     return (xs, y' : ys)
                 Just (_ct, name, Nothing) -> do
                     let seed = id
                     let iter front bs = return $ front . (:) bs
-                    (front, wasFound, msrc''') <-
-                        sinkTillBound bound src'' iter seed
+                    (front, wasFound) <-
+                        sinkTillBound bound iter seed
                     let bs = S.concat $ front []
                     let x' = (name, qsDecode bs)
                     (xs, ys) <-
                         if wasFound
-                            then parsePieces sink bound msrc'''
+                            then parsePieces sink bound
                             else return ([], [])
                     return (x' : xs, ys)
                 _ -> do
                     -- ignore this part
                     let seed = ()
                         iter () _ = return ()
-                    ((), wasFound, msrc''') <-
-                        sinkTillBound bound src'' iter seed
+                    ((), wasFound) <- sinkTillBound bound iter seed
                     if wasFound
-                        then parsePieces sink bound msrc'''
+                        then parsePieces sink bound
                         else return ([], [])
   where
     contDisp = S8.pack "Content-Disposition"
@@ -325,11 +302,11 @@ findBound b bs = go [0..S.length bs - 1]
         | otherwise = True
 
 sinkTillBound :: S.ByteString
-              -> Source'
               -> (x -> S.ByteString -> IO x)
               -> x
-              -> IO (x, Bool, Source')
-sinkTillBound bound (bs, msrc) iter seed = do
+              -> Iteratee S.ByteString IO (x, Bool)
+sinkTillBound bound iter seed = error "FIXME"
+{-
     case findBound bound bs of
         NoBound -> do
             case msrc of
@@ -375,6 +352,7 @@ sinkTillBound bound (bs, msrc) iter seed = do
                         Just (bs', src') -> do
                             let bs'' = bs `S.append` bs'
                             sinkTillBound bound (bs'', Just src') iter seed
+-}
 
 parseAttrs :: S.ByteString -> [(S.ByteString, S.ByteString)]
 parseAttrs = map go . S.split 59 -- semicolon

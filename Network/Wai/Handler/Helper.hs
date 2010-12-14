@@ -1,3 +1,4 @@
+{-# LANGUAGE RankNTypes #-}
 module Network.Wai.Handler.Helper
     ( requestBodyHandle
     , requestBodyFunc
@@ -10,7 +11,7 @@ import qualified Data.Enumerator as E
 import Data.Enumerator ((>>==))
 import Control.Monad.IO.Class (liftIO)
 
-requestBodyHandle :: Handle -> Int -> E.Enumerator B.ByteString IO a
+requestBodyHandle :: Handle -> Int -> forall a. E.Enumerator B.ByteString IO a
 requestBodyHandle h =
     requestBodyFunc go
   where
@@ -18,7 +19,7 @@ requestBodyHandle h =
 
 requestBodyFunc :: (Int -> IO (Maybe B.ByteString))
                 -> Int
-                -> E.Enumerator B.ByteString IO a
+                -> forall a. E.Enumerator B.ByteString IO a
 requestBodyFunc _ 0 step = E.returnI step
 requestBodyFunc h len (E.Continue k) = do
     mbs <- liftIO $ h len

@@ -152,24 +152,39 @@ parseFirst s = do
     let (rpath, qstring) = B.break (== '?') query
     return (method, rpath, qstring, hsecond)
 
-sendResponse :: HttpVersion -> Handle -> Response -> IO ()
-sendResponse httpversion h res = do
+sendResponsePrelude :: Handle -> HttpVersion -> Status -> ResponseHeaders -> IO ()
+sendResponsePrelude h httpversion status responseHeaders = do
     B.hPut h $ B.pack "HTTP/"
     B.hPut h $ httpversion
     B.hPut h $ B.pack " "
-    B.hPut h $ B.pack $ show $ statusCode $ status res
+    B.hPut h $ B.pack $ show $ statusCode status
     B.hPut h $ B.pack " "
-    B.hPut h $ statusMessage $ status res
+    B.hPut h $ statusMessage status
     B.hPut h $ B.pack "\r\n"
-    mapM_ putHeader $ responseHeaders res
+    mapM_ putHeader responseHeaders
     B.hPut h $ B.pack "Transfer-Encoding: chunked\r\n\r\n"
-    case responseBody res of
-        ResponseFile fp -> E.run_ $ enumFile fp $$ myIter
-        ResponseEnumerator enum ->
-            enum $ E.joinI $ builderToByteString $$ myIter
-        ResponseLBS lbs -> mapM_ myPut $ L.toChunks lbs
+  where
+    putHeader (x, y) = do
+        B.hPut h $ ciOriginal x
+        B.hPut h $ B.pack ": "
+        B.hPut h y
+        B.hPut h $ B.pack "\r\n"
+
+sendResponse :: HttpVersion -> Handle -> Response -> IO ()
+sendResponse httpversion h res = do
+    case res of
+        ResponseFile s hs fp -> do
+            sendResponsePrelude h httpversion s hs
+            E.run_ $ enumFile fp $$ myIter
+        ResponseLBS s hs lbs -> do
+            sendResponsePrelude h httpversion s hs
+            mapM_ myPut $ L.toChunks lbs
+        ResponseEnumerator enum -> enum myIter'
     B.hPut h $ B.pack "0\r\n\r\n"
     where
+        myIter' s hs = do
+            liftIO $ sendResponsePrelude h httpversion s hs
+            E.joinI $ builderToByteString $$ myIter
         myIter = do
             mbs <- E.head
             case mbs of
@@ -178,12 +193,6 @@ sendResponse httpversion h res = do
         myPut bs = do
             B.hPut h $ B.pack $ showHex (B.length bs) " \r\n"
             B.hPut h bs
-            B.hPut h $ B.pack "\r\n"
-            return (Right h)
-        putHeader (x, y) = do
-            B.hPut h $ ciOriginal x
-            B.hPut h $ B.pack ": "
-            B.hPut h y
             B.hPut h $ B.pack "\r\n"
 
 parseHeaderNoAttr :: ByteString -> (ByteString, ByteString)

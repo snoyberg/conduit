@@ -15,7 +15,6 @@
 module Network.Wai.Middleware.Jsonp (jsonp) where
 
 import Network.Wai
-import Network.Wai.Enumerator (fromResponseBody)
 import qualified Data.ByteString.Char8 as B8
 import Data.Maybe (fromMaybe)
 
@@ -58,13 +57,28 @@ jsonp app env = do
                                            $ requestHeaders env
                         }
     res <- app env'
-    case (fmap B8.unpack $ lookup "Content-Type" $ responseHeaders res, callback) of
-        (Just "application/json", Just c) -> return $ res
-            { responseHeaders = changeVal "Content-Type" "text/javascript" $ responseHeaders res
-            , responseBody = ResponseEnumerator $ addCallback c $ fromResponseBody $ responseBody res
-            }
-        _ -> return res
+    case callback of
+        Nothing -> return res
+        Just c -> go c res
+  where
+    go c r@(ResponseLBS _ hs _) = go' c r hs
+    go c r@(ResponseFile _ hs _) = go' c r hs
+    go c (ResponseEnumerator e) = go'' c e
+    go' c r hs =
+        case checkJSON hs of
+            Just _ -> go'' c $ enumResponse r
+            Nothing -> return r
+    go'' e = undefined
+    checkJSON hs =
+        case fmap B8.unpack $ lookup "Content-Type" hs of
+            Just "application/json" -> Just $ fixHeaders hs
+            Nothing -> Nothing
+    fixHeaders = changeVal "Content-Type" "text/javascript"
 
+enumResponse :: Response -> ResponseEnumerator a
+enumResponse = undefined
+
+{-
 addCallback :: B8.ByteString -> Enumerator -> Enumerator
 addCallback cb (Enumerator e) = Enumerator $ \iter a -> do
     ea' <- iter a $ B8.snoc cb '('
@@ -75,6 +89,7 @@ addCallback cb (Enumerator e) = Enumerator $ \iter a -> do
             case ea'' of
                 Left a'' -> return $ Left a''
                 Right a'' -> iter a'' $ B8.singleton ')'
+-}
 
 changeVal :: Eq a
           => a

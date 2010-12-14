@@ -17,7 +17,6 @@
 module Network.Wai.Middleware.Gzip (gzip) where
 
 import Network.Wai
-import Network.Wai.Enumerator (fromResponseBody)
 import Network.Wai.Zlib
 import Data.Maybe (fromMaybe)
 import qualified Data.ByteString.Char8 as B
@@ -38,9 +37,10 @@ import qualified Data.ByteString.Char8 as B
 gzip :: Middleware
 gzip app env = do
     res <- app env
-    case responseBody res of
-        ResponseFile _ -> return res
-        _ -> do
+    case res of
+        ResponseFile{} -> return res
+        _ -> error "FIXME"
+        {-
             let enc = fromMaybe []
                     $ (splitCommas . B.unpack)
                     `fmap` lookup "Accept-Encoding"
@@ -52,9 +52,12 @@ gzip app env = do
                               : responseHeaders res
                     }
                 else return res
+                    -}
 
+{-
 compressE :: ResponseBody -> ResponseBody
 compressE = ResponseEnumerator . compress . fromResponseBody
+-}
 
 splitCommas :: String -> [String]
 splitCommas [] = []
