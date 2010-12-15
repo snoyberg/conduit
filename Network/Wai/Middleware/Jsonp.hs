@@ -17,6 +17,9 @@ module Network.Wai.Middleware.Jsonp (jsonp) where
 import Network.Wai
 import qualified Data.ByteString.Char8 as B8
 import Data.Maybe (fromMaybe)
+import Data.Enumerator (($$), enumList, Step (..), Enumerator, Iteratee, Enumeratee, joinI, checkDone, continue, Stream (..), (>>==))
+import Blaze.ByteString.Builder (fromByteString, Builder)
+import Blaze.ByteString.Builder.Char8 (fromChar)
 
 takeCallback :: B8.ByteString -> Maybe B8.ByteString
 takeCallback bs | B8.null bs = Nothing
@@ -63,33 +66,37 @@ jsonp app env = do
   where
     go c r@(ResponseLBS _ hs _) = go' c r hs
     go c r@(ResponseFile _ hs _) = go' c r hs
-    go c (ResponseEnumerator e) = go'' c e
+    go c (ResponseEnumerator e) = addCallback c e
     go' c r hs =
         case checkJSON hs of
-            Just _ -> go'' c $ enumResponse r
+            Just _ -> addCallback c $ responseEnumerator r
             Nothing -> return r
-    go'' e = undefined
     checkJSON hs =
         case fmap B8.unpack $ lookup "Content-Type" hs of
             Just "application/json" -> Just $ fixHeaders hs
-            Nothing -> Nothing
+            _ -> Nothing
     fixHeaders = changeVal "Content-Type" "text/javascript"
-
-enumResponse :: Response a -> ResponseEnumerator a
-enumResponse = error "FIXME"
-
-{-
-addCallback :: B8.ByteString -> Enumerator -> Enumerator
-addCallback cb (Enumerator e) = Enumerator $ \iter a -> do
-    ea' <- iter a $ B8.snoc cb '('
-    case ea' of
-        Left a' -> return $ Left a'
-        Right a' -> do
-            ea'' <- e iter a'
-            case ea'' of
-                Left a'' -> return $ Left a''
-                Right a'' -> iter a'' $ B8.singleton ')'
--}
+    addCallback :: B8.ByteString -> ResponseEnumerator a -> IO (Response a)
+    addCallback cb e =
+        return $ ResponseEnumerator $ helper
+      where
+        helper f =
+            e helper'
+          where
+            helper' s hs =
+                case checkJSON hs of
+                    Just hs' -> wrap $$ f s hs'
+                    Nothing -> f s hs
+        wrap :: Step Builder IO b -> Iteratee Builder IO b
+        wrap step = joinI $ after (enumList 1 [fromChar ')'])
+                 $$ enumList 1 [fromByteString cb, fromChar '('] step
+        after :: Enumerator Builder IO b -> Enumeratee Builder Builder IO b
+        after enum =
+            loop
+          where
+            loop = checkDone $ continue . step
+            step k EOF = enum (Continue k) >>== return
+            step k s = k s >>== loop
 
 changeVal :: Eq a
           => a
