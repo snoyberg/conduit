@@ -46,6 +46,7 @@ import qualified Data.Enumerator as E
 import Data.Enumerator.IO (iterHandle)
 import Control.Monad.IO.Class (liftIO)
 import Blaze.ByteString.Builder.Enumerator (builderToByteString)
+import Blaze.ByteString.Builder.HTTP (chunkedTransferEncoding)
 import Blaze.ByteString.Builder (fromByteString, Builder, toLazyByteString)
 import Blaze.ByteString.Builder.Char8 (fromChar)
 import Data.Monoid (mconcat)
@@ -179,16 +180,12 @@ sendResponse :: HttpVersion -> Handle -> Response -> IO ()
 sendResponse hv handle res = do
     responseEnumerator res $ \s hs -> do
         liftIO $ L.hPutStr handle $ toLazyByteString $ headers hv s hs
-        i <- E.joinI $ builderToByteString $$ E.joinI $ chunk $$ iterHandle handle
+        i <- E.joinI $ chunk $$ E.joinI $ builderToByteString $$ iterHandle handle
         liftIO $ B.hPutStr handle "0\r\n\r\n"
         return i
   where
-    chunk :: E.Enumeratee ByteString ByteString IO ()
-    chunk = E.concatMap $ \bs ->
-        [ B.pack $ showHex (B.length bs) " \r\n"
-        , bs
-        , "\r\n"
-        ]
+    chunk :: E.Enumeratee Builder Builder IO ()
+    chunk = E.map chunkedTransferEncoding -- FIXME some extra mconcat
 
 parseHeaderNoAttr :: ByteString -> (ByteString, ByteString)
 parseHeaderNoAttr s =
