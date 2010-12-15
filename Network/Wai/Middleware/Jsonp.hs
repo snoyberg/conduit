@@ -40,7 +40,7 @@ dropQM bs
 -- \"application/json\" response, then convern that into a JSONP response,
 -- having a content type of \"text\/javascript\" and calling the specified
 -- callback function.
-jsonp :: Middleware
+jsonp :: Middleware a
 jsonp app env = do
     let accept = fromMaybe B8.empty $ lookup "Accept" $ requestHeaders env
     let callback :: Maybe B8.ByteString
@@ -75,8 +75,8 @@ jsonp app env = do
             Nothing -> Nothing
     fixHeaders = changeVal "Content-Type" "text/javascript"
 
-enumResponse :: Response -> ResponseEnumerator a
-enumResponse = undefined
+enumResponse :: Response a -> ResponseEnumerator a
+enumResponse = error "FIXME"
 
 {-
 addCallback :: B8.ByteString -> Enumerator -> Enumerator

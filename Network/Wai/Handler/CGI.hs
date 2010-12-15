@@ -27,7 +27,7 @@ safeRead d s =
 lookup' :: String -> [(String, String)] -> String
 lookup' key pairs = fromMaybe "" $ lookup key pairs
 
-run :: Application -> IO ()
+run :: Application () -> IO ()
 run app = do
     vars <- getEnvironment
     let input = requestBodyHandle System.IO.stdin
@@ -35,7 +35,7 @@ run app = do
     run'' vars input output Nothing app
 
 runSendfile :: String -- ^ sendfile header
-            -> Application -> IO ()
+            -> Application () -> IO ()
 runSendfile sf app = do
     vars <- getEnvironment
     let input = requestBodyHandle System.IO.stdin
@@ -45,7 +45,7 @@ runSendfile sf app = do
 run' :: [(String, String)] -- ^ all variables
      -> System.IO.Handle -- ^ responseBody of input
      -> System.IO.Handle -- ^ destination for output
-     -> Application
+     -> Application ()
      -> IO ()
 run' vars inputH outputH app = do
     let input = requestBodyHandle inputH
@@ -56,7 +56,7 @@ run'' :: [(String, String)] -- ^ all variables
      -> (forall a. Int -> Enumerator B.ByteString IO a) -- ^ responseBody of input
      -> (B.ByteString -> IO ()) -- ^ destination for output
      -> Maybe String -- ^ does the server support the X-Sendfile header?
-     -> Application
+     -> Application ()
      -> IO ()
 run'' vars inputH outputH xsendfile app = do
     let rmethod = B.pack $ lookup' "REQUEST_METHOD" vars

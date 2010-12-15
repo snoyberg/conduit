@@ -30,29 +30,31 @@ import qualified Data.ByteString.Char8 as B
 --
 -- * Only compress if the response is above a certain size.
 --
--- * Add Content-Length.
---
--- * I read somewhere that \"the beast\" (MSIE) can\'t support compression
--- for Javascript files..
-gzip :: Middleware
-gzip app env = do
+-- * I've read that IE can\'t support compression for Javascript files.
+gzip :: Bool -- ^ should we gzip files?
+     -> Middleware a
+gzip files app env = do
     res <- app env
-    case res of
-        ResponseFile{} -> return res
-        _ -> error "FIXME"
-        {-
-            let enc = fromMaybe []
-                    $ (splitCommas . B.unpack)
-                    `fmap` lookup "Accept-Encoding"
-                      (requestHeaders env)
-            if "gzip" `elem` enc
-                then return res
-                    { responseBody = compressE $ responseBody res
-                    , responseHeaders = ("Content-Encoding", "gzip")
-                              : responseHeaders res
-                    }
-                else return res
-                    -}
+    case shouldGzip res of
+        Nothing -> return res
+        Just enum -> return $ ResponseEnumerator $ compressE enum
+  where
+    shouldGzip (ResponseFile _ hs _)
+        | not files = Nothing
+    shouldGzip res =
+        if "gzip" `elem` enc
+            then Just $ responseEnumerator res
+            else Nothing
+    enc = fromMaybe [] $ (splitCommas . B.unpack)
+                    `fmap` lookup "Accept-Encoding" (requestHeaders env)
+
+compressE :: ResponseEnumerator a -> ResponseEnumerator a
+compressE re f =
+    re f'
+    --e s hs'
+  where
+    f' = undefined
+    --hs' = ("Content-Encoding", "gzip") : hs
 
 {-
 compressE :: ResponseBody -> ResponseBody
