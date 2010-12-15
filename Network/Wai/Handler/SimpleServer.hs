@@ -41,12 +41,13 @@ import Data.Typeable (Typeable)
 import Control.Arrow (first)
 import Numeric (showHex)
 
-import Data.Enumerator (($$), Enumerator, enumList)
+import Data.Enumerator (($$), Enumerator, enumList, (>>==))
 import qualified Data.Enumerator as E
 import Data.Enumerator.IO (iterHandle)
 import Control.Monad.IO.Class (liftIO)
 import Blaze.ByteString.Builder.Enumerator (builderToByteString)
-import Blaze.ByteString.Builder.HTTP (chunkedTransferEncoding)
+import Blaze.ByteString.Builder.HTTP
+    (chunkedTransferEncoding, chunkedTransferTerminator)
 import Blaze.ByteString.Builder (fromByteString, Builder, toLazyByteString)
 import Blaze.ByteString.Builder.Char8 (fromChar)
 import Data.Monoid (mconcat)
@@ -181,11 +182,17 @@ sendResponse hv handle res = do
     responseEnumerator res $ \s hs -> do
         liftIO $ L.hPutStr handle $ toLazyByteString $ headers hv s hs
         i <- E.joinI $ chunk $$ E.joinI $ builderToByteString $$ iterHandle handle
-        liftIO $ B.hPutStr handle "0\r\n\r\n"
+        liftIO $ B.hPutStr handle "\r\n"
         return i
   where
     chunk :: E.Enumeratee Builder Builder IO ()
-    chunk = E.map chunkedTransferEncoding -- FIXME some extra mconcat
+    chunk = E.checkDone $ E.continue . step
+    step k E.EOF = k (E.Chunks [chunkedTransferTerminator]) >>== return
+    step k (E.Chunks []) = E.continue $ step k
+    step k (E.Chunks builders) =
+        k (E.Chunks [chunked]) >>== chunk
+      where
+        chunked = chunkedTransferEncoding $ mconcat builders
 
 parseHeaderNoAttr :: ByteString -> (ByteString, ByteString)
 parseHeaderNoAttr s =

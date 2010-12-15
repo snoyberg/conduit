@@ -11,7 +11,7 @@ import qualified Data.Enumerator as E
 main :: IO ()
 main = run 3000 app
 
-app :: W.Application
+app :: W.Application a
 app W.Request { W.pathInfo = path } =
     case H.parseUrl $ "http://wiki.yesodweb.com" ++ S8.unpack path of
         Nothing -> return notFound
@@ -20,5 +20,5 @@ app W.Request { W.pathInfo = path } =
     go f s h = joinI $ E.map fromByteString $$ f s $ filter safe h
     safe (x, _) = not $ x `elem` ["Content-Encoding", "Transfer-Encoding"]
 
-notFound :: W.Response
+notFound :: W.Response a
 notFound = W.ResponseLBS W.status404 [("Content-Type", "text/plain")] "Not found"
