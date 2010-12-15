@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 import qualified Network.HTTP.Enumerator as H
 import qualified Network.Wai as W
+import Network.Wai.Middleware.Gzip (gzip)
 import Network.Wai.Handler.SimpleServer (run)
 import qualified Data.ByteString.Char8 as S8
 import qualified Data.ByteString.Lazy.Char8 ()
@@ -9,7 +10,7 @@ import Blaze.ByteString.Builder (fromByteString)
 import qualified Data.Enumerator as E
 
 main :: IO ()
-main = run 3000 app
+main = run 3000 $ gzip False app
 
 app :: W.Application a
 app W.Request { W.pathInfo = path } =

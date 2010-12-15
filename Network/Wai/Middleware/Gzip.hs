@@ -20,6 +20,7 @@ import Network.Wai
 import Network.Wai.Zlib
 import Data.Maybe (fromMaybe)
 import qualified Data.ByteString.Char8 as B
+import Data.Enumerator (($$), joinI)
 
 -- | Use gzip to compress the body of the response.
 --
@@ -39,8 +40,7 @@ gzip files app env = do
         Nothing -> return res
         Just enum -> return $ ResponseEnumerator $ compressE enum
   where
-    shouldGzip (ResponseFile _ hs _)
-        | not files = Nothing
+    shouldGzip ResponseFile{} | not files = Nothing
     shouldGzip res =
         if "gzip" `elem` enc
             then Just $ responseEnumerator res
@@ -53,13 +53,10 @@ compressE re f =
     re f'
     --e s hs'
   where
-    f' = undefined
-    --hs' = ("Content-Encoding", "gzip") : hs
-
-{-
-compressE :: ResponseBody -> ResponseBody
-compressE = ResponseEnumerator . compress . fromResponseBody
--}
+    f' s hs =
+        joinI $ compress $$ f s hs'
+      where
+        hs' = ("Content-Encoding", "gzip") : hs
 
 splitCommas :: String -> [String]
 splitCommas [] = []
