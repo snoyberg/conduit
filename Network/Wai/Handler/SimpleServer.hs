@@ -26,7 +26,6 @@ import qualified System.IO
 
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as B
-import qualified Data.ByteString.Lazy as L
 import Network
     ( listenOn, accept, sClose, PortID(PortNumber), Socket
     , withSocketsDo)
@@ -39,17 +38,15 @@ import Data.Maybe (isJust, fromJust, fromMaybe)
 import Data.Typeable (Typeable)
 
 import Control.Arrow (first)
-import Numeric (showHex)
 
 import Data.Enumerator (($$), Enumerator, enumList, (>>==))
 import qualified Data.Enumerator as E
 import Data.Enumerator.IO (iterHandle)
-import Control.Monad.IO.Class (liftIO)
 import Blaze.ByteString.Builder.Enumerator (builderToByteString)
 import Blaze.ByteString.Builder.HTTP
     (chunkedTransferEncoding, chunkedTransferTerminator)
-import Blaze.ByteString.Builder (fromByteString, Builder, toLazyByteString)
-import Blaze.ByteString.Builder.Char8 (fromChar)
+import Blaze.ByteString.Builder (fromByteString, Builder)
+import Blaze.ByteString.Builder.Char8 (fromChar, fromString)
 import Data.Monoid (mconcat)
 
 run :: Port -> Application () -> IO ()
@@ -162,7 +159,7 @@ headers httpversion status responseHeaders = mconcat
     [ fromByteString "HTTP/"
     , fromByteString httpversion
     , fromChar ' '
-    , fromByteString $ B.pack $ show $ statusCode status
+    , fromString $ show $ statusCode status
     , fromChar ' '
     , fromByteString $ statusMessage status
     , fromByteString "\r\n"
@@ -179,11 +176,12 @@ headers httpversion status responseHeaders = mconcat
 
 sendResponse :: HttpVersion -> Handle -> Response () -> IO ()
 sendResponse hv handle res = do
-    responseEnumerator res $ \s hs -> do
-        liftIO $ L.hPutStr handle $ toLazyByteString $ headers hv s hs
-        i <- E.joinI $ chunk $$ E.joinI $ builderToByteString $$ iterHandle handle
-        liftIO $ B.hPutStr handle "\r\n"
-        return i
+    responseEnumerator res $ \s hs ->
+        enumList 1 [headers hv s hs]
+     $$ E.joinI $ after (enumList 1 [fromByteString "\r\n"])
+     $$ E.joinI $ chunk
+     $$ E.joinI $ builderToByteString
+     $$ iterHandle handle
   where
     chunk :: E.Enumeratee Builder Builder IO ()
     chunk = E.checkDone $ E.continue . step
@@ -204,3 +202,11 @@ parseHeaderNoAttr s =
                     then B.drop 2 rest
                     else rest
      in (k, rest')
+
+after :: Enumerator Builder IO b -> E.Enumeratee Builder Builder IO b
+after enum =
+    loop
+  where
+    loop = E.checkDone $ E.continue . step
+    step k E.EOF = enum (E.Continue k) >>== return
+    step k s = k s >>== loop
