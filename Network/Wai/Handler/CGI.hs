@@ -12,11 +12,20 @@ import Network.Wai.Handler.Helper
 import System.Environment (getEnvironment)
 import Data.Maybe (fromMaybe)
 import qualified Data.ByteString.Char8 as B
+import qualified Data.ByteString.Lazy as L
 import Control.Arrow ((***))
 import Data.Char (toLower)
 import qualified System.IO
-import Data.String (fromString)
-import Data.Enumerator (Enumerator)
+import qualified Data.String as String
+import Data.Enumerator
+    ( Enumerator, Step (..), Stream (..), continue, yield
+    , enumList, ($$), joinI
+    )
+import Data.Monoid (mconcat)
+import Blaze.ByteString.Builder (fromByteString, toLazyByteString)
+import Blaze.ByteString.Builder.Char8 (fromChar, fromString)
+import Blaze.ByteString.Builder.Enumerator (builderToByteString)
+import Control.Monad.IO.Class (liftIO)
 
 safeRead :: Read a => a -> String -> a
 safeRead d s =
@@ -34,7 +43,7 @@ run app = do
         output = B.hPut System.IO.stdout
     run'' vars input output Nothing app
 
-runSendfile :: String -- ^ sendfile header
+runSendfile :: B.ByteString -- ^ sendfile header
             -> Application () -> IO ()
 runSendfile sf app = do
     vars <- getEnvironment
@@ -54,8 +63,8 @@ run' vars inputH outputH app = do
 
 run'' :: [(String, String)] -- ^ all variables
      -> (forall a. Int -> Enumerator B.ByteString IO a) -- ^ responseBody of input
-     -> (B.ByteString -> IO ()) -- ^ destination for output
-     -> Maybe String -- ^ does the server support the X-Sendfile header?
+     -> (B.ByteString -> IO ()) -- ^ destination for output FIXME use an iteratee
+     -> Maybe B.ByteString -- ^ does the server support the X-Sendfile header?
      -> Application ()
      -> IO ()
 run'' vars inputH outputH xsendfile app = do
@@ -90,49 +99,45 @@ run'' vars inputH outputH xsendfile app = do
             , httpVersion = "1.1" -- FIXME
             }
     res <- app env
-    error "FIXME"
-    {-
-    outputH $ B.pack $ "Status: " ++ (show $ statusCode $ status res) ++ " "
-    outputH $ statusMessage $ status res
-    outputH $ B.singleton '\n'
-    mapM_ (printHeader hPut) h'
-    case (xsendfile, responseBody res) of
-        (Just sf, ResponseFile fp) ->
-            hPut $ B.pack $ concat
-                [ sf
-                , ": "
-                , fp
-                , "\n\n"
-                , sf
-                , " not supported"
-                ]
-        _ -> do
-            hPut $ B.singleton '\n'
-            _ <- runEnumerator (fromResponseBody (responseBody res))
-                               (myPut outputH) ()
-            return ()
-    -}
-
-fixHeaders h =
-    case lookup "content-type" h of
-        Nothing -> ("Content-Type", "text/html; charset=utf-8") : h
-        Just _ -> h
-
-myPut :: (B.ByteString -> IO ()) -> () -> B.ByteString -> IO (Either () ())
-myPut output _ bs = output bs >> return (Right ())
-
-printHeader :: (B.ByteString -> IO ())
-            -> (ResponseHeader, B.ByteString)
-            -> IO ()
-printHeader f (x, y) = do
-    f $ ciOriginal x
-    f $ B.pack ": "
-    f y
-    f $ B.singleton '\n'
+    case (xsendfile, res) of
+        (Just sf, ResponseFile s hs fp) ->
+            mapM_ outputH $ L.toChunks $ toLazyByteString $ sfBuilder s hs sf fp
+        _ -> responseEnumerator res $ \s hs ->
+            joinI $ enumList 1 [headers s hs, fromChar '\n'] $$ builderIter
+  where
+    headers s hs = mconcat (map header $ status s : map header' (fixHeaders hs))
+    status (Status i m) = (fromByteString "Status", mconcat
+        [ fromString $ show i
+        , fromChar ' '
+        , fromByteString m
+        ])
+    header' (x, y) = (fromByteString $ ciOriginal x, fromByteString y)
+    header (x, y) = mconcat
+        [ x
+        , fromByteString ": "
+        , y
+        , fromChar '\n'
+        ]
+    sfBuilder s hs sf fp = mconcat
+        [ headers s hs
+        , header $ (fromByteString sf, fromString fp)
+        , fromChar '\n'
+        , fromByteString sf
+        , fromByteString " not supported"
+        ]
+    bsStep = Continue bsStep'
+    bsStep' EOF = yield () EOF
+    bsStep' (Chunks []) = continue bsStep'
+    bsStep' (Chunks bss) = liftIO (mapM_ outputH bss) >> continue bsStep'
+    builderIter = builderToByteString bsStep
+    fixHeaders h =
+        case lookup "content-type" h of
+            Nothing -> ("Content-Type", "text/html; charset=utf-8") : h
+            Just _ -> h
 
 cleanupVarName :: String -> RequestHeader
 cleanupVarName ('H':'T':'T':'P':'_':a:as) =
-    fromString $ a : helper' as
+    String.fromString $ a : helper' as
   where
     helper' ('_':x:rest) = '-' : x : helper' rest
     helper' (x:rest) = toLower x : helper' rest
@@ -140,4 +145,4 @@ cleanupVarName ('H':'T':'T':'P':'_':a:as) =
 cleanupVarName "CONTENT_TYPE" = "Content-Type"
 cleanupVarName "CONTENT_LENGTH" = "Content-Length"
 cleanupVarName "SCRIPT_NAME" = "CGI-Script-Name"
-cleanupVarName x = fromString x -- FIXME remove?
+cleanupVarName x = String.fromString x -- FIXME remove?
