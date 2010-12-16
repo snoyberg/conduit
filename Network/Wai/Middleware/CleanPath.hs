@@ -9,9 +9,9 @@ import qualified Data.ByteString.Lazy as L
 
 cleanPath :: (B.ByteString -> Either B.ByteString [String])
           -> B.ByteString
-          -> ([String] -> Request -> IO (Response a))
+          -> ([String] -> Request -> IO Response)
           -> Request
-          -> IO (Response a)
+          -> IO Response
 cleanPath splitter prefix app env =
     case splitter $ pathInfo env of
         Right pieces -> app pieces env

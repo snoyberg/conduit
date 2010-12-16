@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes #-}
 ---------------------------------------------------------
 -- |
 -- Module        : Network.Wai.Middleware.Jsonp
@@ -43,7 +44,7 @@ dropQM bs
 -- \"application/json\" response, then convern that into a JSONP response,
 -- having a content type of \"text\/javascript\" and calling the specified
 -- callback function.
-jsonp :: Middleware a
+jsonp :: Middleware
 jsonp app env = do
     let accept = fromMaybe B8.empty $ lookup "Accept" $ requestHeaders env
     let callback :: Maybe B8.ByteString
@@ -76,7 +77,7 @@ jsonp app env = do
             Just "application/json" -> Just $ fixHeaders hs
             _ -> Nothing
     fixHeaders = changeVal "Content-Type" "text/javascript"
-    addCallback :: B8.ByteString -> ResponseEnumerator a -> IO (Response a)
+    addCallback :: B8.ByteString -> (forall a. ResponseEnumerator a) -> IO Response
     addCallback cb e =
         return $ ResponseEnumerator $ helper
       where

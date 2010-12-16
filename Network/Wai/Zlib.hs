@@ -1,10 +1,8 @@
 module Network.Wai.Zlib (compress) where
 
 import Prelude hiding (head)
-import Network.Wai
-import Data.ByteString (ByteString)
 import Data.Enumerator
-    ( Enumeratee, checkDone, Stream (..), continue
+    ( Enumeratee, checkDone, Stream (..)
     , (>>==), head, ($$), joinI
     )
 import Blaze.ByteString.Builder (Builder, fromByteString)
@@ -32,36 +30,11 @@ compress step0 = joinI $ builderToByteString $$ do
                 case bss of
                     [] -> step def k
                     _ -> k (Chunks bss) >>== loop def
-
-drain =
-    go id
-  where
-    go front mbs' = do
-        mbs <- mbs'
-        case mbs of
-            Nothing -> return $ map fromByteString $ front []
-            Just bs -> go (front . (:) bs) mbs'
-
-    {-
-
-compressIter :: (acc -> ByteString -> IO (Either acc acc))
-             -> Deflate
-             -> acc
-             -> ByteString
-             -> IO (Either acc acc)
-compressIter iter def acc bsI = withDeflateInput def bsI $ drain iter acc
-
-drain :: (acc -> ByteString -> IO (Either acc acc))
-      -> acc
-      -> IO (Maybe ByteString)
-      -> IO (Either acc acc)
-drain iter acc pop = do
-    mbs <- pop
-    case mbs of
-        Nothing -> return $ Right acc
-        Just bs -> do
-            eacc' <- iter acc bs
-            case eacc' of
-                Left acc' -> return $ Left acc'
-                Right acc' -> drain iter acc' pop
-    -}
+    drain =
+        go id
+      where
+        go front mbs' = do
+            mbs <- mbs'
+            case mbs of
+                Nothing -> return $ map fromByteString $ front []
+                Just bs -> go (front . (:) bs) mbs'

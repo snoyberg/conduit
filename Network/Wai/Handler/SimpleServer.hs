@@ -49,7 +49,7 @@ import Blaze.ByteString.Builder (fromByteString, Builder)
 import Blaze.ByteString.Builder.Char8 (fromChar, fromString)
 import Data.Monoid (mconcat)
 
-run :: Port -> Application () -> IO ()
+run :: Port -> Application -> IO ()
 run port = withSocketsDo .
     bracket
         (listenOn $ PortNumber $ fromIntegral port)
@@ -57,13 +57,13 @@ run port = withSocketsDo .
         serveConnections port
 type Port = Int
 
-serveConnections :: Port -> Application () -> Socket -> IO ()
+serveConnections :: Port -> Application -> Socket -> IO ()
 serveConnections port app socket = do
     (conn, remoteHost', _) <- accept socket
     _ <- forkIO $ serveConnection port app conn remoteHost'
     serveConnections port app socket
 
-serveConnection :: Port -> Application () -> Handle -> String -> IO ()
+serveConnection :: Port -> Application -> Handle -> String -> IO ()
 serveConnection port app conn remoteHost' =
     finally
         serveConnection'
@@ -174,7 +174,7 @@ headers httpversion status responseHeaders = mconcat
         , fromByteString "\r\n"
         ]
 
-sendResponse :: HttpVersion -> Handle -> Response () -> IO ()
+sendResponse :: HttpVersion -> Handle -> Response -> IO ()
 sendResponse hv handle res = do
     responseEnumerator res $ \s hs ->
         enumList 1 [headers hv s hs]
