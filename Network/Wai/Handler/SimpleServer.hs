@@ -30,7 +30,8 @@ import Network
     ( listenOn, accept, sClose, PortID(PortNumber), Socket
     , withSocketsDo)
 import Control.Exception (bracket, finally, Exception, throwIO)
-import System.IO (Handle, hClose)
+import System.IO (Handle, hClose, hFlush)
+import System.IO.Error (isEOFError, ioeGetHandle)
 import Control.Concurrent (forkIO)
 import Control.Monad (unless)
 import Data.Maybe (isJust, fromJust, fromMaybe)
@@ -64,15 +65,24 @@ serveConnections port app socket = do
     serveConnections port app socket
 
 serveConnection :: Port -> Application -> Handle -> String -> IO ()
-serveConnection port app conn remoteHost' =
-    finally
-        serveConnection'
-        (hClose conn)
-    where
-        serveConnection' = do
-            env <- parseRequest port conn remoteHost'
-            res <- app env
-            sendResponse (httpVersion env) conn res
+serveConnection port app conn remoteHost' = do
+  catch
+    (finally
+      serveConnection'
+      (hClose conn))
+    catchEOFError
+  where serveConnection' = do
+          env <- parseRequest port conn remoteHost'
+          res <- app env
+          sendResponse (httpVersion env) conn res
+          hFlush conn
+          serveConnection'
+
+        catchEOFError :: IOError -> IO ()
+        catchEOFError e | isEOFError e = case ioeGetHandle e of
+                                              Just h  -> unless (h == conn) (ioError e)
+                                              Nothing -> ioError e
+                        | otherwise = ioError e
 
 parseRequest :: Port -> Handle -> String -> IO Request
 parseRequest port conn remoteHost' = do
@@ -110,16 +120,14 @@ parseRequest' :: Port
               -> IO Request
 parseRequest' port lines' handle remoteHost' = do
     case lines' of
-        (_:_:_) -> return ()
+        (_:_) -> return ()
         _ -> throwIO $ NotEnoughLines $ map B.unpack lines'
     (method, rpath', gets, httpversion) <- parseFirst $ head lines'
     let rpath = '/' : case B.unpack rpath' of
                         ('/':x) -> x
                         _ -> B.unpack rpath'
     let heads = map (first mkCIByteString . parseHeaderNoAttr) $ tail lines'
-    let host' = lookup "Host" heads
-    unless (isJust host') $ throwIO HostNotIncluded
-    let host = fromJust host'
+    host <- maybe (throwIO HostNotIncluded) return $ lookup "host" heads
     let len = fromMaybe 0 $ do
                 bs <- lookup "Content-Length" heads
                 let str = B.unpack bs
@@ -177,9 +185,8 @@ headers httpversion status responseHeaders = mconcat
 sendResponse :: HttpVersion -> Handle -> Response -> IO ()
 sendResponse hv handle res = do
     responseEnumerator res $ \s hs ->
-        enumList 1 [headers hv s hs]
-     $$ E.joinI $ after (enumList 1 [fromByteString "\r\n"])
-     $$ E.joinI $ chunk
+        E.joinI $ chunk
+     $$ E.enumList 1 [headers hv s hs]
      $$ E.joinI $ builderToByteString
      $$ iterHandle handle
   where
