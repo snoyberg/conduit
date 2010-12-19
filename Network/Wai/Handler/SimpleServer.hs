@@ -75,6 +75,7 @@ serveConnection port app conn remoteHost' = do
           env <- parseRequest port conn remoteHost'
           res <- app env
           sendResponse (httpVersion env) conn res
+          -- FIXME drain request body
           hFlush conn
           serveConnection'
 
@@ -106,7 +107,6 @@ stripCR bs
 
 data InvalidRequest =
     NotEnoughLines [String]
-    | HostNotIncluded
     | BadFirstLine String
     | NonHttp
     deriving (Show, Typeable)
@@ -119,15 +119,16 @@ parseRequest' :: Port
               -> String
               -> IO Request
 parseRequest' port lines' handle remoteHost' = do
-    case lines' of
-        (_:_) -> return ()
-        _ -> throwIO $ NotEnoughLines $ map B.unpack lines'
-    (method, rpath', gets, httpversion) <- parseFirst $ head lines'
+    (firstLine, otherLines) <-
+        case lines' of
+            x:xs -> return (x, xs)
+            [] -> throwIO $ NotEnoughLines $ map B.unpack lines'
+    (method, rpath', gets, httpversion) <- parseFirst firstLine
     let rpath = '/' : case B.unpack rpath' of
                         ('/':x) -> x
                         _ -> B.unpack rpath'
-    let heads = map (first mkCIByteString . parseHeaderNoAttr) $ tail lines'
-    host <- maybe (throwIO HostNotIncluded) return $ lookup "host" heads
+    let heads = map (first mkCIByteString . parseHeaderNoAttr) otherLines
+    let host = fromMaybe "" $ lookup "host" heads
     let len = fromMaybe 0 $ do
                 bs <- lookup "Content-Length" heads
                 let str = B.unpack bs
@@ -172,7 +173,7 @@ headers httpversion status responseHeaders = mconcat
     , fromByteString $ statusMessage status
     , fromByteString "\r\n"
     , mconcat $ map go responseHeaders
-    , fromByteString "Transfer-Encoding: chunked\r\n\r\n"
+    , fromByteString "Transfer-Encoding: chunked\r\n\r\n" -- FIXME perhaps put in non-chunked for HTTP 1.0 clients?
     ]
   where
     go (x, y) = mconcat
