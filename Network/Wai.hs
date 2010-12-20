@@ -66,6 +66,9 @@ module Network.Wai
     , responseEnumerator
     , Application
     , Middleware
+      -- * Response body smart constructors
+    , responseBuilder
+    , responseLBS
     ) where
 
 import qualified Data.ByteString as B
@@ -217,7 +220,6 @@ data Request = Request
 
 data Response
     = ResponseFile Status ResponseHeaders FilePath
-    | ResponseLBS Status ResponseHeaders L.ByteString
     | ResponseEnumerator (forall a. ResponseEnumerator a)
 
 type ResponseEnumerator a =
@@ -227,8 +229,12 @@ responseEnumerator :: Response -> ResponseEnumerator a
 responseEnumerator (ResponseEnumerator e) f = e f
 responseEnumerator (ResponseFile s h fp) f =
     run_ $ enumFile fp $$ joinI $ E.map fromByteString $$ f s h
-responseEnumerator (ResponseLBS s h lbs) f =
-    run_ $ enumList 1 [fromLazyByteString lbs] $$ f s h
+
+responseBuilder :: Status -> ResponseHeaders -> Builder -> Response
+responseBuilder s h b = ResponseEnumerator $ \f -> run_ $ enumList 1 [b] $$ f s h
+
+responseLBS :: Status -> ResponseHeaders -> L.ByteString -> Response
+responseLBS s h = responseBuilder s h . fromLazyByteString
 
 type Application = Request -> IO Response
 
