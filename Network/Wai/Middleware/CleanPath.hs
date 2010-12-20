@@ -16,7 +16,7 @@ cleanPath splitter prefix app env =
     case splitter $ pathInfo env of
         Right pieces -> app pieces env
         Left p -> return
-                $ ResponseLBS status301
+                $ responseLBS status301
                   [("Location", B.concat [prefix, p, suffix])]
                 $ L.empty
     where

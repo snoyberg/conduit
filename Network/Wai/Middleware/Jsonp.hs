@@ -65,7 +65,6 @@ jsonp app env = do
         Nothing -> return res
         Just c -> go c res
   where
-    go c r@(ResponseLBS _ hs _) = go' c r hs
     go c r@(ResponseFile _ hs _) = go' c r hs
     go c (ResponseEnumerator e) = addCallback c e
     go' c r hs =

@@ -34,13 +34,13 @@ import System.IO (Handle, hClose, hFlush)
 import System.IO.Error (isEOFError, ioeGetHandle)
 import Control.Concurrent (forkIO)
 import Control.Monad (unless)
-import Data.Maybe (isJust, fromJust, fromMaybe)
+import Data.Maybe (fromMaybe)
 
 import Data.Typeable (Typeable)
 
 import Control.Arrow (first)
 
-import Data.Enumerator (($$), Enumerator, enumList, (>>==))
+import Data.Enumerator (($$), (>>==))
 import qualified Data.Enumerator as E
 import Data.Enumerator.IO (iterHandle)
 import Blaze.ByteString.Builder.Enumerator (builderToByteString)
@@ -210,11 +210,3 @@ parseHeaderNoAttr s =
                     then B.drop 2 rest
                     else rest
      in (k, rest')
-
-after :: Enumerator Builder IO b -> E.Enumeratee Builder Builder IO b
-after enum =
-    loop
-  where
-    loop = E.checkDone $ E.continue . step
-    step k E.EOF = enum (E.Continue k) >>== return
-    step k s = k s >>== loop
