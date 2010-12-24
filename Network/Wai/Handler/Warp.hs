@@ -32,7 +32,7 @@ import Control.Exception (bracket, finally, Exception, throwIO)
 import System.IO (Handle, hClose, hFlush)
 import System.IO.Error (isEOFError, ioeGetHandle)
 import Control.Concurrent (forkIO)
-import Control.Monad (unless)
+import Control.Monad (unless, when)
 import Data.Maybe (fromMaybe)
 
 import Data.Typeable (Typeable)
@@ -79,7 +79,7 @@ serveConnection port app conn remoteHost' = do
           sendResponse (httpVersion env) conn res
           -- FIXME drain request body
           hFlush conn
-          serveConnection'
+          when (isChunked $ httpVersion env) serveConnection'
 
         catchEOFError :: IOError -> IO ()
         catchEOFError e | isEOFError e = case ioeGetHandle e of
@@ -175,7 +175,9 @@ headers httpversion status responseHeaders = mconcat
     , fromByteString $ statusMessage status
     , fromByteString "\r\n"
     , mconcat $ map go responseHeaders
-    , fromByteString "Transfer-Encoding: chunked\r\n\r\n" -- FIXME perhaps put in non-chunked for HTTP 1.0 clients?
+    , if isChunked httpversion
+        then fromByteString "Transfer-Encoding: chunked\r\n\r\n"
+        else fromByteString "\r\n"
     ]
   where
     go (x, y) = mconcat
@@ -184,6 +186,9 @@ headers httpversion status responseHeaders = mconcat
         , fromByteString y
         , fromByteString "\r\n"
         ]
+
+isChunked :: HttpVersion -> Bool
+isChunked = (==) http11
 
 sendResponse :: HttpVersion -> Handle -> Response -> IO ()
 sendResponse hv handle res = do
