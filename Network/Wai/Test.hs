@@ -9,6 +9,9 @@ module Network.Wai.Test
       -- * Assertions
     , assertStatus
     , assertContentType
+    , assertBody
+    , assertHeader
+    , assertNoHeader
     ) where
 import Network.Wai
 import qualified Test.HUnit.Base as H
@@ -23,6 +26,7 @@ import qualified Data.ByteString.Char8 as S8
 import Data.Enumerator (joinI, consume, ($$))
 import Blaze.ByteString.Builder.Enumerator (builderToByteString)
 import qualified Data.ByteString.Lazy as L
+import qualified Data.ByteString.Lazy.Char8 as L8
 
 type Session = ReaderT Application (StateT ClientState IO)
 
@@ -89,3 +93,41 @@ assertStatus i SResponse{simpleStatus = s} = assertBool (concat
     ]) $ i == sc
   where
     sc = statusCode s
+
+assertBody :: L.ByteString -> SResponse -> Session ()
+assertBody lbs SResponse{simpleBody = lbs'} = assertBool (concat
+    [ "Expected response body "
+    , show $ L8.unpack lbs
+    , ", but received "
+    , show $ L8.unpack lbs'
+    ]) $ lbs == lbs'
+
+assertHeader :: CIByteString -> S.ByteString -> SResponse -> Session ()
+assertHeader header value SResponse{simpleHeaders = h} =
+    case lookup header h of
+        Nothing -> assertString $ concat
+            [ "Expected header "
+            , show header
+            , " to be "
+            , show value
+            , ", but it was not present"
+            ]
+        Just value' -> assertBool (concat
+            [ "Expected header "
+            , show header
+            , " to be "
+            , show value
+            , ", but received "
+            , show value'
+            ]) (value == value')
+
+assertNoHeader :: CIByteString -> SResponse -> Session ()
+assertNoHeader header SResponse{simpleHeaders = h} =
+    case lookup header h of
+        Nothing -> return ()
+        Just s -> assertString $ concat
+            [ "Unexpected header "
+            , show header
+            , " containing "
+            , show s
+            ]
