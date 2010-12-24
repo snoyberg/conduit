@@ -14,6 +14,9 @@ module Network.Wai.Parse
     , Bound (..)
     , findBound
     , sinkTillBound
+    , killCR
+    , killCRLF
+    , takeLine
 #endif
     ) where
 
@@ -28,7 +31,7 @@ import Data.Function (on)
 import System.Directory (removeFile, getTemporaryDirectory)
 import System.IO (hClose, openBinaryTempFile, Handle)
 import Network.Wai
-import Data.Enumerator (Iteratee, yield)
+import Data.Enumerator (Iteratee, yield, ($$))
 import qualified Data.Enumerator as E
 import Control.Monad.IO.Class (liftIO)
 
@@ -154,7 +157,7 @@ parseRequestBody :: Sink x y
 parseRequestBody sink req = do
     case ctype of
         Nothing -> return ([], [])
-        Just Nothing -> do -- url-encoded
+        Just Nothing -> requestBody req $$ do -- url-encoded
             -- NOTE: in general, url-encoded data will be in a single chunk.
             -- Therefore, I'm optimizing for the usual case by sticking with
             -- strict byte strings here.
@@ -162,7 +165,7 @@ parseRequestBody sink req = do
             return (parseQueryString $ S.concat bs, [])
         Just (Just bound) -> -- multi-part
             let bound' = S8.pack "--" `S.append` bound
-             in parsePieces sink bound'
+             in requestBody req $$ parsePieces sink bound'
   where
     urlenc = S8.pack "application/x-www-form-urlencoded"
     formBound = S8.pack "multipart/form-data; boundary="
@@ -185,25 +188,22 @@ takeLine = do
                     then do
                         x' <- takeLine
                         case x' of
-                            Nothing -> return $ Just x
-                            Just x'' -> return $ Just $ S.append x x''
+                            Nothing -> return $ Just $ killCR x
+                            Just x'' -> return $ Just $ killCR $ S.append x x''
                     else do
                         E.yield () $ E.Chunks [S.drop 1 y]
-                        return $ Just $ killCarriage x
-  where
-    killCarriage bs
-      | S.null bs = bs
-      | S.last bs == 13 = S.init bs -- carriage return
-      | otherwise = bs
+                        return $ Just $ killCR x
 
 takeLines :: Iteratee S.ByteString IO [S.ByteString]
 takeLines = do
     res <- takeLine
     case res of
         Nothing -> return []
-        Just l -> do
-            ls <- takeLines
-            return $ l : ls
+        Just l
+            | S.null l -> return []
+            | otherwise -> do
+                ls <- takeLines
+                return $ l : ls
 
 parsePieces :: Sink x y -> S.ByteString
             -> Iteratee S.ByteString IO ([Param], [File y])
@@ -212,16 +212,14 @@ parsePieces sink bound = do
     res' <- takeLines
     case res' of
         [] -> return ([], [])
-        ls -> do
-            let ls' = map parsePair ls
+        _ -> do
+            let ls' = map parsePair res'
             let x = do
                     cd <- lookup contDisp ls'
                     let ct = lookup contType ls'
                     let attrs = parseAttrs cd
-                    let nameBS = S8.pack "name"
-                    name <- lookup nameBS attrs
-                    let fnBS = S8.pack "filename"
-                    return (ct, name, lookup fnBS attrs)
+                    name <- lookup "name" attrs
+                    return (ct, name, lookup "filename" attrs)
             case x of
                 Just (mct, name, Just filename) -> do
                     let ct = fromMaybe "application/octet-stream" mct
@@ -352,10 +350,10 @@ parseAttrs = map go . S.split 59 -- semicolon
 
 killCRLF :: S.ByteString -> S.ByteString
 killCRLF bs
-    | S.null bs || S8.last bs /= '\n' = bs
+    | S.null bs || S.last bs /= 10 = bs -- line feed
     | otherwise = killCR $ S.init bs
 
 killCR :: S.ByteString -> S.ByteString
 killCR bs
-    | S.null bs || S8.last bs /= '\r' = bs
+    | S.null bs || S.last bs /= 13 = bs -- carriage return
     | otherwise = S.init bs

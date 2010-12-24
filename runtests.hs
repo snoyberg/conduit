@@ -1,12 +1,17 @@
+{-# LANGUAGE OverloadedStrings #-}
 import Test.Framework (defaultMain, testGroup, Test)
 import Test.Framework.Providers.HUnit
 import Test.HUnit hiding (Test)
 
 import Network.Wai
 import Network.Wai.Parse
+import qualified Data.ByteString as S
 import qualified Data.ByteString.Char8 as S8
 import qualified Data.ByteString.Lazy.Char8 as L8
 import Control.Arrow
+
+import Data.Enumerator (run_, enumList, ($$))
+import Control.Monad.IO.Class (liftIO)
 
 main :: IO ()
 main = defaultMain [testSuite]
@@ -15,11 +20,13 @@ testSuite :: Test
 testSuite = testGroup "Network.Wai.Parse"
     [ testCase "parseQueryString" caseParseQueryString
     , testCase "parseQueryString with question mark" caseParseQueryStringQM
-    , testCase "parseCookies" caseParseCookies
     , testCase "parseHttpAccept" caseParseHttpAccept
     , testCase "parseRequestBody" caseParseRequestBody
     , testCase "findBound" caseFindBound
     , testCase "sinkTillBound" caseSinkTillBound
+    , testCase "killCR" caseKillCR
+    , testCase "killCRLF" caseKillCRLF
+    , testCase "takeLine" caseTakeLine
     ]
 
 caseParseQueryString :: Assertion
@@ -55,12 +62,6 @@ caseParseQueryStringQM = do
     go [("/", "")] "%2f"
     go [("foo bar", "")] "foo+bar"
 
-caseParseCookies :: Assertion
-caseParseCookies = do
-    let input = S8.pack "a=a1;b=b2; c=c3"
-        expected = [("a", "a1"), ("b", "b2"), ("c", "c3")]
-    map (S8.pack *** S8.pack) expected @=? parseCookies input
-
 caseParseHttpAccept :: Assertion
 caseParseHttpAccept = do
     let input =
@@ -69,7 +70,7 @@ caseParseHttpAccept = do
     map S8.pack expected @=? parseHttpAccept input
 
 caseParseRequestBody :: Assertion
-caseParseRequestBody = t where
+caseParseRequestBody = run_ t where
     content2 = S8.pack $
         "--AaB03x\n" ++
         "Content-Disposition: form-data; name=\"document\"; filename=\"b.txt\"\n" ++
@@ -91,7 +92,7 @@ caseParseRequestBody = t where
         let content1 = S8.pack "foo=bar&baz=bin"
         let ctype1 = S8.pack "application/x-www-form-urlencoded"
         result1 <- parseRequestBody lbsSink $ toRequest ctype1 content1
-        assertEqual "parsing post x-www-form-urlencoded"
+        liftIO $ assertEqual "parsing post x-www-form-urlencoded"
                     (map (S8.pack *** S8.pack) [("foo", "bar"), ("baz", "bin")], [])
                     result1
 
@@ -106,7 +107,7 @@ caseParseRequestBody = t where
               [(S8.pack "document", FileInfo (S8.pack "b.txt") textPlain $ L8.pack
                  "This is a file.\nIt has two lines.")]
         let expected2 = (map (S8.pack *** S8.pack) expectedsmap2, expectedfile2)
-        assertEqual "parsing post multipart/form-data"
+        liftIO $ assertEqual "parsing post multipart/form-data"
                     expected2
                     result2
 
@@ -116,58 +117,31 @@ caseParseRequestBody = t where
         let expectedfile3 = [(S8.pack "yaml", FileInfo (S8.pack "README") (S8.pack "application/octet-stream") $
                                 L8.pack "Photo blog using Hack.\n")]
         let expected3 = (expectedsmap3, expectedfile3)
-        assertEqual "parsing actual post multipart/form-data"
+        liftIO $ assertEqual "parsing actual post multipart/form-data"
                     expected3
                     result3
 
         result2' <- parseRequestBody lbsSink $ toRequest' ctype2 content2
-        assertEqual "parsing post multipart/form-data 2"
+        liftIO $ assertEqual "parsing post multipart/form-data 2"
                     expected2
                     result2'
 
         result3' <- parseRequestBody lbsSink $ toRequest' ctype3 content3
-        assertEqual "parsing actual post multipart/form-data 2"
+        liftIO $ assertEqual "parsing actual post multipart/form-data 2"
                     expected3
                     result3'
 
 toRequest :: S8.ByteString -> S8.ByteString -> Request
 toRequest ctype content = Request
-    { requestHeaders = [(ReqContentType, ctype)]
-    , requestBody = toSource content
-    , requestMethod = undefined
-    , httpVersion = undefined
-    , pathInfo = undefined
-    , queryString = undefined
-    , serverName = undefined
-    , serverPort = undefined
-    , urlScheme = undefined
-    , errorHandler = undefined
-    , remoteHost = undefined
+    { requestHeaders = [("Content-Type", ctype)]
+    , requestBody = enumList 1 [content]
     }
 
 toRequest' :: S8.ByteString -> S8.ByteString -> Request
 toRequest' ctype content = Request
-    { requestHeaders = [(ReqContentType, ctype)]
-    , requestBody = toSource' content
-    , requestMethod = undefined
-    , httpVersion = undefined
-    , pathInfo = undefined
-    , queryString = undefined
-    , serverName = undefined
-    , serverPort = undefined
-    , urlScheme = undefined
-    , errorHandler = undefined
-    , remoteHost = undefined
+    { requestHeaders = [("Content-Type", ctype)]
+    , requestBody = enumList 1 $ map S.singleton $ S.unpack content
     }
-
-toSource :: S8.ByteString -> Source
-toSource bs = Source $
-    case S8.uncons bs of
-        Nothing -> return Nothing
-        Just (x, xs) -> return $ Just (S8.singleton x, toSource xs)
-
-toSource' :: S8.ByteString -> Source
-toSource' bs = Source $ return $ Just (bs, Source $ return Nothing)
 
 caseFindBound :: Assertion
 caseFindBound = do
@@ -181,16 +155,39 @@ caseFindBound = do
 
 caseSinkTillBound :: Assertion
 caseSinkTillBound = do
-    caseSinkTillBoundHelper $ Just . toSource
-    caseSinkTillBoundHelper $ Just . toSource'
-
-caseSinkTillBoundHelper :: (S8.ByteString -> Maybe Source) -> Assertion
-caseSinkTillBoundHelper tosrc = do
     let iter () _ = return ()
     let src = S8.pack "this is some text"
         bound1 = S8.pack "some"
         bound2 = S8.pack "some!"
-    (_, res1, _) <- sinkTillBound bound1 (S8.empty, tosrc src) iter ()
+    let enum = enumList 1 [src]
+    let helper _ _ = return ()
+    (_, res1) <- run_ $ enum $$ sinkTillBound bound1 helper ()
     res1 @?= True
-    (_, res2, _) <- sinkTillBound bound2 (S8.empty, tosrc src) iter ()
+    (_, res2) <- run_ $ enum $$ sinkTillBound bound2 helper ()
     res2 @?= False
+
+caseKillCR :: Assertion
+caseKillCR = do
+    "foo" @=? killCR "foo"
+    "foo" @=? killCR "foo\r"
+    "foo\r\n" @=? killCR "foo\r\n"
+    "foo\r'" @=? killCR "foo\r'"
+
+caseKillCRLF :: Assertion
+caseKillCRLF = do
+    "foo" @=? killCRLF "foo"
+    "foo\r" @=? killCRLF "foo\r"
+    "foo" @=? killCRLF "foo\r\n"
+    "foo\r'" @=? killCRLF "foo\r'"
+    "foo" @=? killCRLF "foo\n"
+
+caseTakeLine :: Assertion
+caseTakeLine = do
+    helper "foo\nbar\nbaz" "foo"
+    helper "foo\r\nbar\nbaz" "foo"
+    helper "foo\nbar\r\nbaz" "foo"
+    helper "foo\rbar\r\nbaz" "foo\rbar"
+  where
+    helper haystack needle = do
+        x <- run_ $ enumList 1 [haystack] $$ takeLine
+        Just needle @=? x
