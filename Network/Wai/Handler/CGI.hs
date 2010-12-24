@@ -8,7 +8,6 @@ module Network.Wai.Handler.CGI
     ) where
 
 import Network.Wai
-import Network.Wai.Handler.Helper
 import System.Environment (getEnvironment)
 import Data.Maybe (fromMaybe)
 import qualified Data.ByteString.Char8 as B
@@ -19,13 +18,15 @@ import qualified System.IO
 import qualified Data.String as String
 import Data.Enumerator
     ( Enumerator, Step (..), Stream (..), continue, yield
-    , enumList, ($$), joinI
+    , enumList, ($$), joinI, returnI, (>>==)
     )
 import Data.Monoid (mconcat)
 import Blaze.ByteString.Builder (fromByteString, toLazyByteString)
 import Blaze.ByteString.Builder.Char8 (fromChar, fromString)
 import Blaze.ByteString.Builder.Enumerator (builderToByteString)
 import Control.Monad.IO.Class (liftIO)
+import Data.ByteString.Lazy.Internal (defaultChunkSize)
+import System.IO (Handle)
 
 safeRead :: Read a => a -> String -> a
 safeRead d s =
@@ -146,3 +147,22 @@ cleanupVarName "CONTENT_TYPE" = "Content-Type"
 cleanupVarName "CONTENT_LENGTH" = "Content-Length"
 cleanupVarName "SCRIPT_NAME" = "CGI-Script-Name"
 cleanupVarName x = String.fromString x -- FIXME remove?
+
+requestBodyHandle :: Handle -> Int -> Enumerator B.ByteString IO a
+requestBodyHandle h =
+    requestBodyFunc go
+  where
+    go i = Just `fmap` B.hGet h (min i defaultChunkSize)
+
+requestBodyFunc :: (Int -> IO (Maybe B.ByteString))
+                -> Int
+                -> Enumerator B.ByteString IO a
+requestBodyFunc _ 0 step = returnI step
+requestBodyFunc h len (Continue k) = do
+    mbs <- liftIO $ h len
+    case mbs of
+        Nothing -> continue k
+        Just bs -> do
+            let newLen = len - B.length bs
+            k (Chunks [bs]) >>== requestBodyFunc h newLen
+requestBodyFunc _ _ step = returnI step
