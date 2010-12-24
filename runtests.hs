@@ -4,11 +4,14 @@ import Test.Framework.Providers.HUnit
 import Test.HUnit hiding (Test)
 
 import Network.Wai
+import Network.Wai.Test
 import Network.Wai.Parse
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Char8 as S8
 import qualified Data.ByteString.Lazy.Char8 as L8
 import Control.Arrow
+
+import Network.Wai.Middleware.Jsonp
 
 import Data.Enumerator (run_, enumList, ($$))
 import Control.Monad.IO.Class (liftIO)
@@ -27,6 +30,7 @@ testSuite = testGroup "Network.Wai.Parse"
     , testCase "killCR" caseKillCR
     , testCase "killCRLF" caseKillCRLF
     , testCase "takeLine" caseTakeLine
+    , testCase "jsonp" caseJsonp
     ]
 
 caseParseQueryString :: Assertion
@@ -191,3 +195,31 @@ caseTakeLine = do
     helper haystack needle = do
         x <- run_ $ enumList 1 [haystack] $$ takeLine
         Just needle @=? x
+
+jsonpApp = jsonp $ const $ return $ responseLBS
+    status200
+    [("Content-Type", "application/json")]
+    "{\"foo\":\"bar\"}"
+
+caseJsonp :: Assertion
+caseJsonp = flip runSession jsonpApp $ do
+    sres1 <- request Request
+                { queryString = "callback=test"
+                , requestHeaders = [("Accept", "text/javascript")]
+                }
+    assertContentType "text/javascript" sres1
+    assertBody "test({\"foo\":\"bar\"})" sres1
+
+    sres2 <- request Request
+                { queryString = "call_back=test"
+                , requestHeaders = [("Accept", "text/javascript")]
+                }
+    assertContentType "application/json" sres2
+    assertBody "{\"foo\":\"bar\"}" sres2
+
+    sres3 <- request Request
+                { queryString = "callback=test"
+                , requestHeaders = [("Accept", "text/html")]
+                }
+    assertContentType "application/json" sres3
+    assertBody "{\"foo\":\"bar\"}" sres3
