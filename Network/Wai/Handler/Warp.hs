@@ -197,11 +197,15 @@ isChunked = (==) http11
 sendResponse :: HttpVersion -> Handle -> Response -> IO ()
 sendResponse hv handle res = do
     responseEnumerator res $ \s hs ->
-        E.joinI $ chunk
-     $$ E.enumList 1 [headers hv s hs]
+        chunk'
+      $ E.enumList 1 [headers hv s hs]
      $$ E.joinI $ builderToByteString
      $$ iterHandle handle
   where
+    chunk' i =
+        if isChunked hv
+            then E.joinI $ chunk $$ i
+            else i
     chunk :: E.Enumeratee Builder Builder IO ()
     chunk = E.checkDone $ E.continue . step
     step k E.EOF = k (E.Chunks [chunkedTransferTerminator]) >>== return
