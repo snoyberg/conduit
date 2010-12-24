@@ -12,6 +12,8 @@ import qualified Data.ByteString.Lazy.Char8 as L8
 import Control.Arrow
 
 import Network.Wai.Middleware.Jsonp
+import Network.Wai.Middleware.Gzip
+import Codec.Compression.GZip (decompress)
 
 import Data.Enumerator (run_, enumList, ($$))
 import Control.Monad.IO.Class (liftIO)
@@ -31,6 +33,7 @@ testSuite = testGroup "Network.Wai.Parse"
     , testCase "killCRLF" caseKillCRLF
     , testCase "takeLine" caseTakeLine
     , testCase "jsonp" caseJsonp
+    , testCase "gzip" caseGzip
     ]
 
 caseParseQueryString :: Assertion
@@ -223,3 +226,19 @@ caseJsonp = flip runSession jsonpApp $ do
                 }
     assertContentType "application/json" sres3
     assertBody "{\"foo\":\"bar\"}" sres3
+
+gzipApp = gzip True $ const $ return $ responseLBS status200 [] "test"
+
+caseGzip :: Assertion
+caseGzip = flip runSession gzipApp $ do
+    sres1 <- request Request
+                { requestHeaders = [("Accept-Encoding", "gzip")]
+                }
+    assertHeader "Content-Encoding" "gzip" sres1
+    liftIO $ decompress (simpleBody sres1) @?= "test"
+
+    sres2 <- request Request
+                { requestHeaders = []
+                }
+    assertNoHeader "Content-Encoding" sres2
+    assertBody "test" sres2
