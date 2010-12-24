@@ -52,6 +52,8 @@ import Data.Monoid (mconcat)
 import Control.Monad.IO.Class (liftIO)
 import Data.ByteString.Lazy.Internal (defaultChunkSize)
 
+import Data.IORef (IORef, writeIORef, readIORef, newIORef)
+
 run :: Port -> Application -> IO ()
 run port = withSocketsDo .
     bracket
@@ -74,10 +76,11 @@ serveConnection port app conn remoteHost' = do
       (hClose conn))
     catchEOFError
   where serveConnection' = do
-          env <- parseRequest port conn remoteHost'
+          (ilen, env) <- parseRequest port conn remoteHost'
           res <- app env
+          remaining <- readIORef ilen
+          _ <- B.hGet conn remaining -- FIXME just skip, don't read
           sendResponse (httpVersion env) conn res
-          -- FIXME drain request body
           hFlush conn
           when (isChunked $ httpVersion env) serveConnection'
 
@@ -87,7 +90,7 @@ serveConnection port app conn remoteHost' = do
                                               Nothing -> ioError e
                         | otherwise = ioError e
 
-parseRequest :: Port -> Handle -> String -> IO Request
+parseRequest :: Port -> Handle -> String -> IO (IORef Int, Request)
 parseRequest port conn remoteHost' = do
     headers' <- takeUntilBlank conn id
     parseRequest' port headers' conn remoteHost'
@@ -119,7 +122,7 @@ parseRequest' :: Port
               -> [ByteString]
               -> Handle
               -> String
-              -> IO Request
+              -> IO (IORef Int, Request)
 parseRequest' port lines' handle remoteHost' = do
     (firstLine, otherLines) <-
         case lines' of
@@ -138,7 +141,8 @@ parseRequest' port lines' handle remoteHost' = do
                     (x, _):_ -> Just x
                     _ -> Nothing
     let (serverName', _) = B.break (== ':') host
-    return $ Request
+    ilen <- newIORef len
+    return (ilen, Request
                 { requestMethod = method
                 , httpVersion = httpversion
                 , pathInfo = B.pack rpath
@@ -147,10 +151,10 @@ parseRequest' port lines' handle remoteHost' = do
                 , serverPort = port
                 , requestHeaders = heads
                 , isSecure = False
-                , requestBody = requestBodyHandle handle len
+                , requestBody = requestBodyHandle handle ilen len
                 , errorHandler = System.IO.hPutStr System.IO.stderr
                 , remoteHost = B.pack remoteHost'
-                }
+                })
 
 parseFirst :: ByteString
            -> IO (ByteString, ByteString, ByteString, HttpVersion)
@@ -218,21 +222,17 @@ parseHeaderNoAttr s =
                     else rest
      in (k, rest')
 
-requestBodyHandle :: Handle -> Int -> E.Enumerator B.ByteString IO a
-requestBodyHandle h =
-    requestBodyFunc go
+requestBodyHandle :: Handle
+                  -> IORef Int
+                  -> Int
+                  -> E.Enumerator B.ByteString IO a
+requestBodyHandle handle ilen initLen =
+    go initLen
   where
-    go i = Just `fmap` B.hGet h (min i defaultChunkSize)
-
-requestBodyFunc :: (Int -> IO (Maybe B.ByteString))
-                -> Int
-                -> E.Enumerator B.ByteString IO a
-requestBodyFunc _ 0 step = E.returnI step
-requestBodyFunc h len (E.Continue k) = do
-    mbs <- liftIO $ h len
-    case mbs of
-        Nothing -> E.continue k
-        Just bs -> do
-            let newLen = len - B.length bs
-            k (E.Chunks [bs]) >>== requestBodyFunc h newLen
-requestBodyFunc _ _ step = E.returnI step
+    go 0 step = E.returnI step
+    go len (E.Continue k) = do
+        bs <- liftIO $ B.hGet handle (min len defaultChunkSize) -- FIXME play with defaultChunkSize
+        let newLen = len - B.length bs
+        liftIO $ writeIORef ilen newLen
+        k (E.Chunks [bs]) >>== go newLen
+    go _ step = E.returnI step
