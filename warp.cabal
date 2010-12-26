@@ -26,7 +26,7 @@ Library
 
 Executable           warp
   Main-is:           warp.hs
-  ghc-options:       -Wall -O2
+  ghc-options:       -Wall -O2 -threaded
   Build-Depends:     text                          >= 0.8      && < 0.12
                    , directory                     >= 1.0      && < 1.2
 

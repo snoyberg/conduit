@@ -29,6 +29,7 @@ app prefix Request { requestMethod = m, pathInfo = p }
                 let ext = reverse $ takeWhile (/= '.') $ reverse file
                 let ct = getCT ext
                 e <- doesFileExist file
+                -- FIXME check file size
                 if e
                     then return $ ResponseFile status200 [("Content-Type", ct)] file
                     else return $ responseLBS status404 [("Content-Type", "text/plain")] "File not found"

@@ -201,9 +201,7 @@ sendResponse :: HttpVersion -> Handle -> Response -> IO Bool
 sendResponse hv handle (ResponseFile s hs fp) = do
     mapM_ (S.hPut handle) $ L.toChunks $ toLazyByteString $ headers hv s hs False
     unsafeSendFile handle fp
-    if lookup "content-length" hs == Nothing
-        then return False
-        else S.hPut handle "\r\n\r\n" >> return True
+    return $ lookup "content-length" hs /= Nothing
 sendResponse hv handle (ResponseEnumerator res) =
     res go
   where
@@ -219,10 +217,7 @@ sendResponse hv handle (ResponseEnumerator res) =
         chunk' i =
             if isChunked'
                 then E.joinI $ chunk $$ i
-                else
-                    (if isKeepAlive
-                        then E.joinI $ after $$ i
-                        else i)
+                else i
         chunk :: E.Enumeratee Builder Builder IO Bool
         chunk = E.checkDone $ E.continue . step
         step k E.EOF = k (E.Chunks [chunkedTransferTerminator]) >>== return
@@ -231,9 +226,6 @@ sendResponse hv handle (ResponseEnumerator res) =
             k (E.Chunks [chunked]) >>== chunk
           where
             chunked = chunkedTransferEncoding $ mconcat builders
-        after = E.checkDone $ E.continue . after'
-        after' k E.EOF = k (E.Chunks [fromByteString "\r\n\r\n"]) >>== return
-        after' k chunks = k chunks >>== after
 
 parseHeaderNoAttr :: ByteString -> (ByteString, ByteString)
 parseHeaderNoAttr s =
