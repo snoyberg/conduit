@@ -80,9 +80,9 @@ serveConnection port app conn remoteHost' = do
           res <- app env
           remaining <- readIORef ilen
           _ <- B.hGet conn remaining -- FIXME just skip, don't read
-          sendResponse (httpVersion env) conn res
+          keepAlive <- sendResponse (httpVersion env) conn res
           hFlush conn
-          when (isChunked $ httpVersion env) serveConnection'
+          when keepAlive serveConnection'
 
         catchEOFError :: IOError -> IO ()
         catchEOFError e | isEOFError e = case ioeGetHandle e of
@@ -169,8 +169,8 @@ parseFirst s = do
     let (rpath, qstring) = B.break (== '?') query
     return (method, rpath, qstring, hsecond)
 
-headers :: HttpVersion -> Status -> ResponseHeaders -> Builder
-headers httpversion status responseHeaders = mconcat
+headers :: HttpVersion -> Status -> ResponseHeaders -> Bool -> Builder
+headers httpversion status responseHeaders isChunked' = mconcat
     [ fromByteString "HTTP/"
     , fromByteString httpversion
     , fromChar ' '
@@ -179,7 +179,7 @@ headers httpversion status responseHeaders = mconcat
     , fromByteString $ statusMessage status
     , fromByteString "\r\n"
     , mconcat $ map go responseHeaders
-    , if isChunked httpversion
+    , if isChunked'
         then fromByteString "Transfer-Encoding: chunked\r\n\r\n"
         else fromByteString "\r\n"
     ]
@@ -194,26 +194,37 @@ headers httpversion status responseHeaders = mconcat
 isChunked :: HttpVersion -> Bool
 isChunked = (==) http11
 
-sendResponse :: HttpVersion -> Handle -> Response -> IO ()
-sendResponse hv handle res = do
-    responseEnumerator res $ \s hs ->
-        chunk'
-      $ E.enumList 1 [headers hv s hs]
-     $$ E.joinI $ builderToByteString
-     $$ iterHandle handle
+sendResponse :: HttpVersion -> Handle -> Response -> IO Bool
+sendResponse hv handle res =
+    responseEnumerator res go
   where
-    chunk' i =
-        if isChunked hv
-            then E.joinI $ chunk $$ i
-            else i
-    chunk :: E.Enumeratee Builder Builder IO ()
-    chunk = E.checkDone $ E.continue . step
-    step k E.EOF = k (E.Chunks [chunkedTransferTerminator]) >>== return
-    step k (E.Chunks []) = E.continue $ step k
-    step k (E.Chunks builders) =
-        k (E.Chunks [chunked]) >>== chunk
+    go s hs =
+            chunk'
+          $ E.enumList 1 [headers hv s hs isChunked']
+         $$ E.joinI $ builderToByteString
+         $$ (iterHandle handle >> return isKeepAlive)
       where
-        chunked = chunkedTransferEncoding $ mconcat builders
+        hasLength = lookup "content-length" hs /= Nothing
+        isChunked' = isChunked hv && not hasLength
+        isKeepAlive = isChunked' || hasLength
+        chunk' i =
+            if isChunked'
+                then E.joinI $ chunk $$ i
+                else
+                    (if isKeepAlive
+                        then E.joinI $ after $$ i
+                        else i)
+        chunk :: E.Enumeratee Builder Builder IO Bool
+        chunk = E.checkDone $ E.continue . step
+        step k E.EOF = k (E.Chunks [chunkedTransferTerminator]) >>== return
+        step k (E.Chunks []) = E.continue $ step k
+        step k (E.Chunks builders) =
+            k (E.Chunks [chunked]) >>== chunk
+          where
+            chunked = chunkedTransferEncoding $ mconcat builders
+        after = E.checkDone $ E.continue . after'
+        after' k E.EOF = k (E.Chunks [fromByteString "\r\n\r\n"]) >>== return
+        after' k chunks = k chunks >>== after
 
 parseHeaderNoAttr :: ByteString -> (ByteString, ByteString)
 parseHeaderNoAttr s =

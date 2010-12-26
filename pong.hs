@@ -5,5 +5,7 @@ import Blaze.ByteString.Builder (fromByteString)
 
 main = run 3000 $ const $ return $ responseBuilder
     status200
-    [("Content-Type", "text/plain")]
+    [ ("Content-Type", "text/plain")
+    , ("Content-Length", "4")
+    ]
     $ fromByteString "PONG"
