@@ -20,6 +20,7 @@ Library
                    , transformers                  >= 0.2      && < 0.3
                    , enumerator                    >= 0.4      && < 0.5
                    , blaze-builder                 >= 0.2.1.3  && < 0.3
+                   , sendfile                      >= 0.7.2    && < 0.8
   Exposed-modules:   Network.Wai.Handler.Warp
   ghc-options:       -Wall
 

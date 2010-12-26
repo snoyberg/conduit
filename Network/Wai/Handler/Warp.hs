@@ -25,6 +25,8 @@ import qualified System.IO
 
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as B
+import qualified Data.ByteString as S
+import qualified Data.ByteString.Lazy as L
 import Network
     ( listenOn, accept, sClose, PortID(PortNumber), Socket
     , withSocketsDo)
@@ -45,9 +47,10 @@ import Data.Enumerator.IO (iterHandle)
 import Blaze.ByteString.Builder.Enumerator (builderToByteString)
 import Blaze.ByteString.Builder.HTTP
     (chunkedTransferEncoding, chunkedTransferTerminator)
-import Blaze.ByteString.Builder (fromByteString, Builder)
+import Blaze.ByteString.Builder (fromByteString, Builder, toLazyByteString)
 import Blaze.ByteString.Builder.Char8 (fromChar, fromString)
 import Data.Monoid (mconcat)
+import Network.Socket.SendFile (unsafeSendFile)
 
 import Control.Monad.IO.Class (liftIO)
 import Data.ByteString.Lazy.Internal (defaultChunkSize)
@@ -195,8 +198,14 @@ isChunked :: HttpVersion -> Bool
 isChunked = (==) http11
 
 sendResponse :: HttpVersion -> Handle -> Response -> IO Bool
-sendResponse hv handle res =
-    responseEnumerator res go
+sendResponse hv handle (ResponseFile s hs fp) = do
+    mapM_ (S.hPut handle) $ L.toChunks $ toLazyByteString $ headers hv s hs False
+    unsafeSendFile handle fp
+    if lookup "content-length" hs == Nothing
+        then return False
+        else S.hPut handle "\r\n\r\n" >> return True
+sendResponse hv handle (ResponseEnumerator res) =
+    res go
   where
     go s hs =
             chunk'
