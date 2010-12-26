@@ -23,6 +23,12 @@ Library
   Exposed-modules:   Network.Wai.Handler.Warp
   ghc-options:       -Wall
 
+Executable           warp
+  Main-is:           warp.hs
+  ghc-options:       -Wall -O2
+  Build-Depends:     text                          >= 0.8      && < 0.12
+                   , directory                     >= 1.0      && < 1.2
+
 source-repository head
   type:     git
   location: git://github.com/snoyberg/warp.git
