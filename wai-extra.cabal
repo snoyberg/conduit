@@ -26,9 +26,11 @@ Library
                      enumerator >= 0.4 && < 0.5,
                      blaze-builder >= 0.2.1.3 && < 0.3
   Exposed-modules:   Network.Wai.Handler.CGI
+                     Network.Wai.Middleware.Autohead
                      Network.Wai.Middleware.CleanPath
                      Network.Wai.Middleware.Gzip
                      Network.Wai.Middleware.Jsonp
+                     Network.Wai.Middleware.Vhost
                      Network.Wai.Zlib
                      Network.Wai.Parse
   ghc-options:       -Wall

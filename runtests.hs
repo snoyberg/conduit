@@ -14,6 +14,7 @@ import Control.Arrow
 import Network.Wai.Middleware.Jsonp
 import Network.Wai.Middleware.Gzip
 import Network.Wai.Middleware.Vhost
+import Network.Wai.Middleware.Autohead
 import Codec.Compression.GZip (decompress)
 
 import Data.Enumerator (run_, enumList, ($$))
@@ -36,6 +37,7 @@ testSuite = testGroup "Network.Wai.Parse"
     , testCase "jsonp" caseJsonp
     , testCase "gzip" caseGzip
     , testCase "vhost" caseVhost
+    , testCase "autohead" caseAutohead
     ]
 
 caseParseQueryString :: Assertion
@@ -262,3 +264,19 @@ caseVhost = flip runSession vhostApp $ do
                 { serverName = "bar.com"
                 }
     assertBody "app2" sres2
+
+autoheadApp = autohead $ const $ return $ responseLBS status200
+    [("Foo", "Bar")] "body"
+
+caseAutohead = flip runSession autoheadApp $ do
+    sres1 <- request Request
+                { requestMethod = "GET"
+                }
+    assertHeader "Foo" "Bar" sres1
+    assertBody "body" sres1
+
+    sres1 <- request Request
+                { requestMethod = "HEAD"
+                }
+    assertHeader "Foo" "Bar" sres1
+    assertBody "" sres1
