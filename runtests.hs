@@ -13,6 +13,7 @@ import Control.Arrow
 
 import Network.Wai.Middleware.Jsonp
 import Network.Wai.Middleware.Gzip
+import Network.Wai.Middleware.Vhost
 import Codec.Compression.GZip (decompress)
 
 import Data.Enumerator (run_, enumList, ($$))
@@ -34,6 +35,7 @@ testSuite = testGroup "Network.Wai.Parse"
     , testCase "takeLine" caseTakeLine
     , testCase "jsonp" caseJsonp
     , testCase "gzip" caseGzip
+    , testCase "vhost" caseVhost
     ]
 
 caseParseQueryString :: Assertion
@@ -242,3 +244,21 @@ caseGzip = flip runSession gzipApp $ do
                 }
     assertNoHeader "Content-Encoding" sres2
     assertBody "test" sres2
+
+vhostApp1 = const $ return $ responseLBS status200 [] "app1"
+vhostApp2 = const $ return $ responseLBS status200 [] "app2"
+vhostApp = vhost
+    [ ((== "foo.com") . serverName, vhostApp1)
+    ]
+    vhostApp2
+
+caseVhost = flip runSession vhostApp $ do
+    sres1 <- request Request
+                { serverName = "foo.com"
+                }
+    assertBody "app1" sres1
+
+    sres2 <- request Request
+                { serverName = "bar.com"
+                }
+    assertBody "app2" sres2
