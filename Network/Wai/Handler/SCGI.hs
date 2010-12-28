@@ -5,11 +5,11 @@ module Network.Wai.Handler.SCGI
     ) where
 
 import Network.Wai
-import Network.Wai.Handler.CGI (run'')
-import Network.Wai.Handler.Helper (requestBodyFunc)
+import Network.Wai.Handler.CGI (run'', requestBodyFunc)
 import Foreign.Ptr
 import Foreign.Marshal.Alloc
 import Foreign.C
+import Data.ByteString (ByteString)
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Unsafe as S
 import qualified Data.ByteString.Char8 as S8
@@ -19,10 +19,10 @@ import Data.ByteString.Lazy.Internal (defaultChunkSize)
 run :: Application -> IO ()
 run app = runOne Nothing app >> run app
 
-runSendfile :: String -> Application -> IO ()
+runSendfile :: ByteString -> Application -> IO ()
 runSendfile sf app = runOne (Just sf) app >> runSendfile sf app
 
-runOne :: Maybe String -> Application -> IO ()
+runOne :: Maybe ByteString -> Application -> IO ()
 runOne sf app = do
     socket <- c'accept 0 nullPtr nullPtr
     headersBS <- readNetstring socket
