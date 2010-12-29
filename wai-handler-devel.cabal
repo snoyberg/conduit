@@ -36,3 +36,8 @@ Executable           wai-handler-devel
   Build-Depends:     cmdargs >= 0.4 && < 0.7
   ghc-options:       -Wall -O2 -threaded
   main-is:           wai-handler-devel.hs
+
+Executable           wai-handler-devel-unwatched
+  Build-Depends:     cmdargs >= 0.4 && < 0.7
+  ghc-options:       -Wall -O2 -threaded
+  main-is:           wai-handler-devel-unwatched.hs

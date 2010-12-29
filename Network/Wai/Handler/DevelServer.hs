@@ -1,7 +1,7 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
-module Network.Wai.Handler.DevelServer (run) where
+module Network.Wai.Handler.DevelServer (run, runNoWatch) where
 
 import Language.Haskell.Interpreter
 import Network.Wai
@@ -32,6 +32,14 @@ import Data.List (nub)
 
 type FunctionName = String
 
+runNoWatch :: Port -> ModuleName -> FunctionName -> [FilePath] -> IO ()
+runNoWatch port modu func dirs = do
+    queue <- C.newChan
+    mqueue <- M.newMVar queue
+    startApp queue $ loadingApp Nothing
+    reload modu func mqueue dirs Nothing
+    run' port mqueue
+
 run :: Port -> ModuleName -> FunctionName -> [FilePath] -> IO ()
 run port modu func dirs = do
     queue <- C.newChan
@@ -58,13 +66,14 @@ startApp queue withApp = do
             $ "Exception thrown while running application\n\n" ++ show e
     void x = x >> return ()
 
+getTimes = E.handle (constSE $ return []) . mapM getModificationTime
+constSE :: x -> SomeException -> x
+constSE = const
+
 fillApp :: String -> String -> M.MVar Queue -> [FilePath] -> IO ()
 fillApp modu func mqueue dirs =
     go Nothing []
   where
-    constSE :: x -> SomeException -> x
-    constSE = const
-    getTimes = E.handle (constSE $ return []) . mapM getModificationTime
     go prevError prevFiles = do
         toReload <-
             if null prevFiles
@@ -74,35 +83,38 @@ fillApp modu func mqueue dirs =
                     return $ times /= map snd prevFiles
         (newError, newFiles) <-
             if toReload
-                then reload prevError
+                then reload modu func mqueue dirs prevError
                 else return (prevError, prevFiles)
         threadDelay 1000000
         go newError newFiles
-    reload prevError = do
-        case prevError of
-             Nothing -> putStrLn "Attempting to interpret your app..."
-             _       -> return ()
-        loadingApp' prevError mqueue
-        res <- theapp modu func
-        case res of
-            Left err -> do
-                if show (Just err) /= show prevError
-                   then putStrLn $ "Compile failed: " ++ showInterpError err
-                   else return ()
-                loadingApp' (Just $ toException err) mqueue
-                return (Just $ toException err, [])
-            Right (app, files') -> E.handle onInitErr $ do
-                files'' <- mapM fileList dirs
-                let files = concat $ files' : files''
-                putStrLn "Interpreting success, new app loaded"
-                E.handle onInitErr $ do
-                    swapApp app mqueue
-                    times <- getTimes files
-                    return (Nothing, zip files times)
-    onInitErr e = do
-        putStrLn $ "Error initializing application: " ++ show e
-        loadingApp' (Just e) mqueue
-        return (Just e, [])
+
+-- reload :: String -> String -> M.MVar Queue -> [FilePath] -> Maybe SomeException -> IO (Maybe SomeException, [ClockTime])
+reload modu func mqueue dirs prevError = do
+    case prevError of
+         Nothing -> putStrLn "Attempting to interpret your app..."
+         _       -> return ()
+    loadingApp' prevError mqueue
+    res <- theapp modu func
+    case res of
+        Left err -> do
+            if show (Just err) /= show prevError
+               then putStrLn $ "Compile failed: " ++ showInterpError err
+               else return ()
+            loadingApp' (Just $ toException err) mqueue
+            return (Just $ toException err, [])
+        Right (app, files') -> E.handle onInitErr $ do
+            files'' <- mapM fileList dirs
+            let files = concat $ files' : files''
+            putStrLn "Interpreting success, new app loaded"
+            E.handle onInitErr $ do
+                swapApp app mqueue
+                times <- getTimes files
+                return (Nothing, zip files times)
+    where
+        onInitErr e = do
+            putStrLn $ "Error initializing application: " ++ show e
+            loadingApp' (Just e) mqueue
+            return (Just e, [])
 
 showInterpError :: InterpreterError -> String
 showInterpError (WontCompile errs) =
