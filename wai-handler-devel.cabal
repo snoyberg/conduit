@@ -21,14 +21,14 @@ Source-repository head
     location:        git://github.com/snoyberg/wai-handler-devel.git
 
 Library
-  Build-Depends:     base >= 3 && < 5
-                   , wai >= 0.2.1 && < 0.3
-                   , wai-extra >= 0.2.3 && < 0.3
-                   , directory >= 1.0 && < 1.2
-                   , network >= 2.2 && < 2.4
-                   , bytestring >= 0.9 && < 0.10
-                   , hint >= 0.3.2.3 && < 0.4
-                   , utf8-string >= 0.3 && < 0.4
+  Build-Depends:     base                  >= 4             && < 5
+                   , wai                   >= 0.2.1         && < 0.3
+                   , wai-extra             >= 0.2.3         && < 0.3
+                   , directory             >= 1.0           && < 1.2
+                   , network               >= 2.2           && < 2.4
+                   , bytestring            >= 0.9           && < 0.10
+                   , hint                  >= 0.3.2.3       && < 0.4
+                   , text                  >= 0.7           && < 0.12
   Exposed-modules:   Network.Wai.Handler.DevelServer
   ghc-options:       -Wall
 

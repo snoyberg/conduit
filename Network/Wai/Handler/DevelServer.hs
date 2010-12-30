@@ -6,7 +6,8 @@ module Network.Wai.Handler.DevelServer (run, runNoWatch) where
 import Language.Haskell.Interpreter
 import Network.Wai
 
-import qualified Data.ByteString.Lazy.UTF8 as U
+import Data.Text.Lazy (pack)
+import Data.Text.Lazy.Encoding (encodeUtf8)
 import qualified Data.ByteString.Lazy.Char8 as L8
 import Network
     ( listenOn, accept, sClose, PortID(PortNumber), Socket
@@ -62,7 +63,7 @@ startApp queue withApp = do
     onErr :: SomeException -> IO Response
     onErr e = return
             $ Response status500 [("Content-Type", "text/plain; charset=utf-8")]
-            $ ResponseLBS $ U.fromString
+            $ ResponseLBS $ encodeUtf8 $ pack
             $ "Exception thrown while running application\n\n" ++ show e
     void x = x >> return ()
 
