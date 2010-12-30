@@ -18,6 +18,7 @@ module Network.Wai.Handler.Warp
     ( run
     , sendResponse
     , parseRequest
+    , drainRequestBody
     ) where
 
 import Network.Wai
@@ -81,8 +82,7 @@ serveConnection port app conn remoteHost' = do
   where serveConnection' = do
           (ilen, env) <- parseRequest port conn remoteHost'
           res <- app env
-          remaining <- readIORef ilen
-          _ <- B.hGet conn remaining -- FIXME just skip, don't read
+          drainRequestBody conn ilen
           keepAlive <- sendResponse env (httpVersion env) conn res
           hFlush conn
           when keepAlive serveConnection'
@@ -92,6 +92,12 @@ serveConnection port app conn remoteHost' = do
                                               Just h  -> unless (h == conn) (ioError e)
                                               Nothing -> ioError e
                         | otherwise = ioError e
+
+drainRequestBody :: Handle -> IORef Int -> IO ()
+drainRequestBody conn ilen = do
+    remaining <- readIORef ilen
+    _ <- B.hGet conn remaining -- FIXME just skip, don't read
+    return ()
 
 parseRequest :: Port -> Handle -> String -> IO (IORef Int, Request)
 parseRequest port conn remoteHost' = do
