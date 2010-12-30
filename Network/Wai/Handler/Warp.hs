@@ -69,10 +69,15 @@ type Port = Int
 
 serveConnections :: Port -> Application -> Socket -> IO ()
 serveConnections port app socket = do
-    (conn, _) <- accept socket
-    let remoteHost' = undefined
+    (conn, sa) <- accept socket
+    let remoteHost' = stripPort $ show sa -- FIXME
     _ <- forkIO $ serveConnection port app conn remoteHost'
     serveConnections port app socket
+  where
+    stripPort s =
+        case break (== ':') $ reverse s of
+            (_, ':' : rest) -> reverse rest
+            _ -> s
 
 serveConnection :: Port -> Application -> Socket -> String -> IO ()
 serveConnection port app conn remoteHost' = do
@@ -84,7 +89,7 @@ serveConnection port app conn remoteHost' = do
   where
     ignoreAll :: SomeException -> IO ()
     ignoreAll _ = return ()
-    fromClient = enumSocket 4096 conn
+    fromClient = enumSocket bytesPerRead conn
     serveConnection' = do
         (enumeratee, env) <- parseRequest port remoteHost'
         res <- E.joinI $ enumeratee $$ app env
@@ -97,9 +102,10 @@ parseRequest port remoteHost' = do
     parseRequest' port headers' remoteHost'
 
 -- FIXME come up with good values here
-maxHeaders, maxHeaderLength :: Int
+maxHeaders, maxHeaderLength, bytesPerRead :: Int
 maxHeaders = 30
 maxHeaderLength = 1024
+bytesPerRead = 4096
 
 takeUntilBlank :: Int
                -> ([ByteString] -> [ByteString])
