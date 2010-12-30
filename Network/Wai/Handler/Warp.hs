@@ -18,20 +18,19 @@ module Network.Wai.Handler.Warp
     ( run
     , sendResponse
     , parseRequest
-    , drainRequestBody
     ) where
 
 import Network.Wai
 import qualified System.IO
 
 import Data.ByteString (ByteString)
-import qualified Data.ByteString.Char8 as B
 import qualified Data.ByteString as S
+import qualified Data.ByteString.Char8 as B
 import qualified Data.ByteString.Lazy as L
 import Network
     ( listenOn, accept, sClose, PortID(PortNumber), Socket
     , withSocketsDo)
-import Control.Exception (bracket, finally, Exception, throwIO)
+import Control.Exception (bracket, finally, Exception)
 import System.IO (Handle, hClose, hFlush)
 import System.IO.Error (isEOFError, ioeGetHandle)
 import Control.Concurrent (forkIO)
@@ -44,7 +43,7 @@ import Control.Arrow (first)
 
 import Data.Enumerator (($$), (>>==))
 import qualified Data.Enumerator as E
-import Data.Enumerator.IO (iterHandle)
+import Data.Enumerator.IO (iterHandle, enumHandle)
 import Blaze.ByteString.Builder.Enumerator (builderToByteString)
 import Blaze.ByteString.Builder.HTTP
     (chunkedTransferEncoding, chunkedTransferTerminator)
@@ -54,9 +53,6 @@ import Data.Monoid (mconcat)
 import Network.Socket.SendFile (unsafeSendFile)
 
 import Control.Monad.IO.Class (liftIO)
-import Data.ByteString.Lazy.Internal (defaultChunkSize)
-
-import Data.IORef (IORef, writeIORef, readIORef, newIORef)
 
 run :: Port -> Application -> IO ()
 run port = withSocketsDo .
@@ -69,74 +65,96 @@ type Port = Int
 serveConnections :: Port -> Application -> Socket -> IO ()
 serveConnections port app socket = do
     (conn, remoteHost', _) <- accept socket -- FIXME use sockets directly instead of Handlers?
+    -- FIXME disable buffering
     _ <- forkIO $ serveConnection port app conn remoteHost'
     serveConnections port app socket
 
 serveConnection :: Port -> Application -> Handle -> String -> IO ()
 serveConnection port app conn remoteHost' = do
-  catch
-    (finally
-      serveConnection'
-      (hClose conn))
-    catchEOFError
-  where serveConnection' = do
-          (ilen, env) <- parseRequest port conn remoteHost'
-          res <- app env
-          drainRequestBody conn ilen
-          keepAlive <- sendResponse env (httpVersion env) conn res
-          hFlush conn
-          when keepAlive serveConnection'
+    catch
+        (finally
+          (E.run_ $ fromClient $$ serveConnection')
+          (hClose conn))
+        catchEOFError
+  where
+    fromClient = enumHandle 4096 conn
+    serveConnection' = do
+        (enumeratee, env) <- parseRequest port remoteHost'
+        res <- E.joinI $ enumeratee $$ app env
+        keepAlive <- liftIO $ sendResponse env (httpVersion env) conn res
+        liftIO $ hFlush conn
+        when keepAlive serveConnection'
 
-        catchEOFError :: IOError -> IO ()
-        catchEOFError e | isEOFError e = case ioeGetHandle e of
-                                              Just h  -> unless (h == conn) (ioError e)
-                                              Nothing -> ioError e
-                        | otherwise = ioError e
+    catchEOFError :: IOError -> IO ()
+    catchEOFError e
+        | isEOFError e =
+            case ioeGetHandle e of
+                Just h -> unless (h == conn) (ioError e)
+                Nothing -> ioError e
+        | otherwise = ioError e
 
-drainRequestBody :: Handle -> IORef Int -> IO ()
-drainRequestBody conn ilen = do
-    remaining <- readIORef ilen
-    _ <- B.hGet conn remaining -- FIXME just skip, don't read
-    return ()
+parseRequest :: Port -> String -> E.Iteratee S.ByteString IO (E.Enumeratee ByteString ByteString IO a, Request)
+parseRequest port remoteHost' = do
+    headers' <- takeUntilBlank 0 id
+    parseRequest' port headers' remoteHost'
 
-parseRequest :: Port -> Handle -> String -> IO (IORef Int, Request)
-parseRequest port conn remoteHost' = do
-    headers' <- takeUntilBlank conn id
-    parseRequest' port headers' conn remoteHost'
+-- FIXME come up with good values here
+maxHeaders, maxHeaderLength :: Int
+maxHeaders = 30
+maxHeaderLength = 1024
 
-takeUntilBlank :: Handle
+takeUntilBlank :: Int
                -> ([ByteString] -> [ByteString])
-               -> IO [ByteString]
-takeUntilBlank h front = do
-    l <- stripCR `fmap` B.hGetLine h
+               -> E.Iteratee S.ByteString IO [ByteString]
+takeUntilBlank count _
+    | count > maxHeaders = E.throwError TooManyHeaders
+takeUntilBlank count front = do
+    l <- takeLine 0 id
     if B.null l
         then return $ front []
-        else takeUntilBlank h $ front . (:) l
+        else takeUntilBlank (count + 1) $ front . (:) l
 
-stripCR :: ByteString -> ByteString
-stripCR bs
-    | B.null bs = bs
-    | B.last bs == '\r' = B.init bs
-    | otherwise = bs
+takeLine :: Int
+         -> ([ByteString] -> [ByteString])
+         -> E.Iteratee ByteString IO ByteString
+takeLine len front = do
+    mbs <- E.head
+    case mbs of
+        Nothing -> E.throwError IncompleteHeaders
+        Just bs -> do
+            let (x, y) = S.breakByte 10 bs
+                x' = if S.length x > 0 && S.last x == 13
+                        then S.init x
+                        else x
+            let len' = len + B.length x
+            case () of
+                ()
+                    | len' > maxHeaderLength -> E.throwError OverLargeHeader
+                    | B.null y -> takeLine len' $ front . (:) x
+                    | otherwise -> do
+                        E.yield () $ E.Chunks [B.drop 1 y]
+                        return $ B.concat $ front [x']
 
 data InvalidRequest =
     NotEnoughLines [String]
     | BadFirstLine String
     | NonHttp
+    | TooManyHeaders
+    | IncompleteHeaders
+    | OverLargeHeader
     deriving (Show, Typeable)
 instance Exception InvalidRequest
 
 -- | Parse a set of header lines and body into a 'Request'.
 parseRequest' :: Port
               -> [ByteString]
-              -> Handle
               -> String
-              -> IO (IORef Int, Request)
-parseRequest' port lines' handle remoteHost' = do
+              -> E.Iteratee S.ByteString IO (E.Enumeratee S.ByteString S.ByteString IO a, Request)
+parseRequest' port lines' remoteHost' = do
     (firstLine, otherLines) <-
         case lines' of
             x:xs -> return (x, xs)
-            [] -> throwIO $ NotEnoughLines $ map B.unpack lines'
+            [] -> E.throwError $ NotEnoughLines $ map B.unpack lines'
     (method, rpath', gets, httpversion) <- parseFirst firstLine
     let rpath = '/' : case B.unpack rpath' of
                         ('/':x) -> x
@@ -150,8 +168,7 @@ parseRequest' port lines' handle remoteHost' = do
                     (x, _):_ -> Just x
                     _ -> Nothing
     let (serverName', _) = B.break (== ':') host
-    ilen <- newIORef len
-    return (ilen, Request
+    return (requestBodyHandle len, Request
                 { requestMethod = method
                 , httpVersion = httpversion
                 , pathInfo = B.pack rpath
@@ -160,21 +177,20 @@ parseRequest' port lines' handle remoteHost' = do
                 , serverPort = port
                 , requestHeaders = heads
                 , isSecure = False
-                , requestBody = requestBodyHandle handle ilen len
                 , errorHandler = System.IO.hPutStr System.IO.stderr
                 , remoteHost = B.pack remoteHost'
                 })
 
 parseFirst :: ByteString
-           -> IO (ByteString, ByteString, ByteString, HttpVersion)
+           -> E.Iteratee S.ByteString IO (ByteString, ByteString, ByteString, HttpVersion)
 parseFirst s = do
     let pieces = B.words s
     (method, query, http') <-
         case pieces of
             [x, y, z] -> return (x, y, z)
-            _ -> throwIO $ BadFirstLine $ B.unpack s
+            _ -> E.throwError $ BadFirstLine $ B.unpack s
     let (hfirst, hsecond) = B.splitAt 5 http'
-    unless (hfirst == B.pack "HTTP/") $ throwIO NonHttp
+    unless (hfirst == "HTTP/") $ E.throwError NonHttp
     let (rpath, qstring) = B.break (== '?') query
     return (method, rpath, qstring, hsecond)
 
@@ -256,17 +272,29 @@ parseHeaderNoAttr s =
                     else rest
      in (k, rest')
 
-requestBodyHandle :: Handle
-                  -> IORef Int
-                  -> Int
-                  -> E.Enumerator B.ByteString IO a
-requestBodyHandle handle ilen initLen =
+requestBodyHandle :: Int
+                  -> E.Enumeratee ByteString ByteString IO a
+requestBodyHandle initLen =
     go initLen
   where
-    go 0 step = E.returnI step
+    go 0 step = return step
     go len (E.Continue k) = do
-        bs <- liftIO $ B.hGet handle (min len defaultChunkSize) -- FIXME play with defaultChunkSize
-        let newLen = len - B.length bs
-        liftIO $ writeIORef ilen newLen
-        k (E.Chunks [bs]) >>== go newLen
-    go _ step = E.returnI step
+        x <- E.head
+        case x of
+            Nothing -> return $ E.Continue k
+            Just bs -> do
+                let newlen = max 0 $ len - B.length bs
+                k (E.Chunks [bs]) >>== go newlen
+    go len step = do
+        drain len
+        return step
+    drain 0 = return ()
+    drain len = do
+        mbs <- E.head
+        case mbs of
+            Nothing -> return ()
+            Just bs -> do
+                let newlen = len - B.length bs
+                if newlen <= 0
+                    then return ()
+                    else drain newlen
