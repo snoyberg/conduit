@@ -26,16 +26,15 @@ testApp handler = do
         flip runSqlPool pool $ runMigration $ migrate $ Dummy ""
         handler $ \req -> do
             if pathInfo req == "/favicon.ico"
-                then return $ Response status301 [("Location", "http://docs.yesodweb.com/favicon.ico")]
-                            $ ResponseLBS $ pack ""
+                then return $ responseLBS status301 [("Location", "http://docs.yesodweb.com/favicon.ico")]
+                            $ pack ""
                 else do
                     print $ pathInfo req
                     x <- flip runSqlPool pool $ do
                         insert $ Dummy ""
                         count ([] :: [Filter Dummy])
-                    return $ Response status200
+                    return $ responseLBS status200
                         [("Content-Type", "text/html; charset=utf-8")]
-                        $ ResponseLBS
                         $ renderHamlet id
-                        $(hamletFileDebug "hamlet/testapp.hamlet")
+                        $(hamletFile "hamlet/testapp.hamlet")
         putStrLn "handler completed, this should only happen at the beginning of a reload"

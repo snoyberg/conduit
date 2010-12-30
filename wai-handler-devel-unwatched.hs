@@ -7,23 +7,19 @@ data Devel = Devel
     { port :: Int
     , moduleName :: String
     , function :: String
-    , yesod :: Bool
     }
     deriving (Show, Data, Typeable)
 
 main :: IO ()
 main = do
-    Devel p m f y <- cmdArgs Devel
+    Devel p m f <- cmdArgs Devel
         { port = 3000 &= argPos 0 &= typ "PORT"
         , moduleName = "" &= argPos 1 &= typ "MODULE"
         , function = "" &= argPos 2 &= typ "FUNCTION"
-        , yesod = False &= help "Monitor typical Yesod folders (hamlet, etc)"
         } &= summary "WAI development web server"
-    _ <- forkIO $ runNoWatch p m f $ folders y
+    _ <- forkIO $ runNoWatch p m f $ const $ return []
     go
   where
-    folders False = []
-    folders True = ["hamlet", "cassius", "julius"]
     go = do
         x <- getLine
         case x of

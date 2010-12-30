@@ -29,6 +29,7 @@ Library
                    , bytestring            >= 0.9           && < 0.10
                    , hint                  >= 0.3.2.3       && < 0.4
                    , text                  >= 0.7           && < 0.12
+                   , old-time              >= 1.0           && < 1.1
   Exposed-modules:   Network.Wai.Handler.DevelServer
   ghc-options:       -Wall
 

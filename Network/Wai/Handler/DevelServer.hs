@@ -1,7 +1,11 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
-module Network.Wai.Handler.DevelServer (run, runNoWatch) where
+module Network.Wai.Handler.DevelServer
+    ( run
+    , runQuit
+    , runNoWatch
+    ) where
 
 import Language.Haskell.Interpreter
 import Network.Wai
@@ -22,31 +26,40 @@ import qualified Control.Concurrent.MVar as M
 import qualified Control.Concurrent.Chan as C
 import System.Directory (getModificationTime)
 import Network.Wai.Handler.Warp (parseRequest, sendResponse, drainRequestBody)
-import Control.Monad (filterM)
 
-import Control.Arrow ((&&&))
-import System.Directory (doesDirectoryExist,
-                         doesFileExist, getDirectoryContents)
-import Control.Applicative ((<$>))
-
-import Data.List (nub)
+import Data.List (nub, group, sort)
+import System.Time (ClockTime)
 
 type FunctionName = String
 
-runNoWatch :: Port -> ModuleName -> FunctionName -> [FilePath] -> IO ()
-runNoWatch port modu func dirs = do
+runNoWatch :: Port -> ModuleName -> FunctionName
+           -> (FilePath -> IO [FilePath]) -> IO ()
+runNoWatch port modu func extras = do
     queue <- C.newChan
     mqueue <- M.newMVar queue
     startApp queue $ loadingApp Nothing
-    reload modu func mqueue dirs Nothing
+    _ <- reload modu func mqueue extras Nothing
     run' port mqueue
 
-run :: Port -> ModuleName -> FunctionName -> [FilePath] -> IO ()
-run port modu func dirs = do
+runQuit :: Port -> ModuleName -> FunctionName -> (FilePath -> IO [FilePath])
+        -> IO ()
+runQuit port modu func extras = do
+    _ <- forkIO $ run port modu func extras
+    go
+  where
+    go = do
+        x <- getLine
+        case x of
+            'q':_ -> putStrLn "Quitting, goodbye!"
+            _ -> go
+
+run :: Port -> ModuleName -> FunctionName -> (FilePath -> IO [FilePath])
+    -> IO ()
+run port modu func extras = do
     queue <- C.newChan
     mqueue <- M.newMVar queue
     startApp queue $ loadingApp Nothing
-    _ <- forkIO $ fillApp modu func mqueue dirs
+    _ <- forkIO $ fillApp modu func mqueue extras
     run' port mqueue
 
 startApp :: Queue -> Handler -> IO ()
@@ -69,11 +82,14 @@ startApp queue withApp = do
             $ "Exception thrown while running application\n\n" ++ show e
     void x = x >> return ()
 
+getTimes :: [FilePath] -> IO [ClockTime]
 getTimes = E.handle (constSE $ return []) . mapM getModificationTime
+
 constSE :: x -> SomeException -> x
 constSE = const
 
-fillApp :: String -> String -> M.MVar Queue -> [FilePath] -> IO ()
+fillApp :: String -> String -> M.MVar Queue
+        -> (FilePath -> IO [FilePath]) -> IO ()
 fillApp modu func mqueue dirs =
     go Nothing []
   where
@@ -91,8 +107,11 @@ fillApp modu func mqueue dirs =
         threadDelay 1000000
         go newError newFiles
 
--- reload :: String -> String -> M.MVar Queue -> [FilePath] -> Maybe SomeException -> IO (Maybe SomeException, [ClockTime])
-reload modu func mqueue dirs prevError = do
+reload :: String -> String -> M.MVar Queue
+       -> (FilePath -> IO [FilePath])
+       -> Maybe SomeException
+       -> IO (Maybe SomeException, [(FilePath, ClockTime)])
+reload modu func mqueue extras prevError = do
     case prevError of
          Nothing -> putStrLn "Attempting to interpret your app..."
          _       -> return ()
@@ -106,8 +125,8 @@ reload modu func mqueue dirs prevError = do
             loadingApp' (Just $ toException err) mqueue
             return (Just $ toException err, [])
         Right (app, files') -> E.handle onInitErr $ do
-            files'' <- mapM fileList dirs
-            let files = concat $ files' : files''
+            files'' <- mapM extras files'
+            let files = map head $ group $ sort $ concat $ files' : files''
             putStrLn "Interpreting success, new app loaded"
             E.handle onInitErr $ do
                 swapApp app mqueue
@@ -123,26 +142,6 @@ showInterpError :: InterpreterError -> String
 showInterpError (WontCompile errs) =
     concat . nub $ map (\(GhcError msg) -> '\n':'\n':msg) errs
 showInterpError err = show err
-
-fileList :: FilePath -> IO [FilePath]
-fileList top = do
-    ex <- doesDirectoryExist top
-    if ex then fileList' top "" else return []
-
-fileList' :: FilePath -> FilePath -> IO [FilePath]
-fileList' realTop top = do
-    let prefix1 = top ++ "/"
-        prefix2 = realTop ++ prefix1
-    allContents <- filter notHidden <$> getDirectoryContents prefix2
-    let all' = map ((++) prefix1 &&& (++) prefix2) allContents
-    files <- map snd <$> filterM (doesFileExist . snd) all'
-    dirs <- filterM (doesDirectoryExist . snd) all' >>=
-            mapM (fileList' realTop . fst)
-    return $ concat $ files : dirs
-
-notHidden :: FilePath -> Bool
-notHidden ('.':_) = False
-notHidden _ = True
 
 loadingApp' :: Maybe SomeException -> M.MVar Queue -> IO ()
 loadingApp' err mqueue = swapApp (loadingApp err) mqueue
