@@ -8,6 +8,7 @@ import System.Environment (getArgs)
 import Data.Text (unpack)
 import Data.Text.Encoding (decodeUtf8With)
 import Data.Text.Encoding.Error (lenientDecode)
+import Control.Monad.IO.Class (liftIO)
 
 main :: IO ()
 main = do
@@ -28,7 +29,7 @@ app prefix Request { requestMethod = m, pathInfo = p }
                 let file = join $ prefix pieces
                 let ext = reverse $ takeWhile (/= '.') $ reverse file
                 let ct = getCT ext
-                e <- doesFileExist file
+                e <- liftIO $ doesFileExist file
                 -- FIXME check file size
                 if e
                     then return $ ResponseFile status200 [("Content-Type", ct)] file
