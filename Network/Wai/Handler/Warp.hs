@@ -20,6 +20,7 @@ module Network.Wai.Handler.Warp
     , parseRequest
     ) where
 
+import Prelude hiding (catch)
 import Network.Wai
 import qualified System.IO
 
@@ -34,7 +35,7 @@ import Network.Socket
     ( accept
     )
 import qualified Network.Socket.ByteString as Sock
-import Control.Exception (bracket, finally, Exception)
+import Control.Exception (bracket, finally, Exception, SomeException, catch)
 import System.IO (Handle, hClose, hFlush)
 import System.IO.Error (isEOFError, ioeGetHandle)
 import Control.Concurrent (forkIO)
@@ -79,8 +80,10 @@ serveConnection port app conn remoteHost' = do
         (finally
           (E.run_ $ fromClient $$ serveConnection')
           (sClose conn))
-        undefined
+        ignoreAll
   where
+    ignoreAll :: SomeException -> IO ()
+    ignoreAll _ = return ()
     fromClient = enumSocket 4096 conn
     serveConnection' = do
         (enumeratee, env) <- parseRequest port remoteHost'
