@@ -11,18 +11,29 @@ Build-Type:          Simple
 Cabal-Version:       >=1.6
 Stability:           Stable
 
+flag timeout-protection
+    Description: Use timeouts (very performance-costly) to protect against DOS attacks.
+    Default: True
+flag network-bytestring
+
 Library
   Build-Depends:     base                          >= 3        && < 5
                    , bytestring                    >= 0.9      && < 0.10
                    , wai                           >= 0.3.0    && < 0.4
-                   , network                       >= 2.3      && < 2.4
                    , blaze-builder-enumerator      >= 0.2      && < 0.3
                    , transformers                  >= 0.2      && < 0.3
                    , enumerator                    >= 0.4      && < 0.5
                    , blaze-builder                 >= 0.2.1.3  && < 0.3
                    , sendfile                      >= 0.7.2    && < 0.8
+  if flag(network-bytestring)
+      build-depends: network               >= 2.2.1   && < 2.2.3
+                   , network-bytestring    >= 0.1.3   && < 0.1.4
+  else
+      build-depends: network               >= 2.3     && < 2.4
   Exposed-modules:   Network.Wai.Handler.Warp
   ghc-options:       -Wall
+  if !flag(timeout-protection)
+      Cpp-options: -DNO_TIMEOUT_PROTECTION
 
 Executable           warp
   Main-is:           warp.hs

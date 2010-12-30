@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE CPP #-}
 ---------------------------------------------------------
 -- |
 -- Module        : Network.Wai.Handler.Warp
@@ -58,6 +59,7 @@ import Data.Monoid (mconcat)
 import Network.Socket.SendFile (sendFile)
 
 import Control.Monad.IO.Class (liftIO)
+import System.Timeout (timeout)
 
 run :: Port -> Application -> IO ()
 run port = withSocketsDo .
@@ -102,10 +104,11 @@ parseRequest port remoteHost' = do
     parseRequest' port headers' remoteHost'
 
 -- FIXME come up with good values here
-maxHeaders, maxHeaderLength, bytesPerRead :: Int
+maxHeaders, maxHeaderLength, bytesPerRead, readTimeout :: Int
 maxHeaders = 30
 maxHeaderLength = 1024
 bytesPerRead = 4096
+readTimeout = 3000000
 
 takeUntilBlank :: Int
                -> ([ByteString] -> [ByteString])
@@ -146,6 +149,7 @@ data InvalidRequest =
     | TooManyHeaders
     | IncompleteHeaders
     | OverLargeHeader
+    | SocketTimeout
     deriving (Show, Typeable)
 instance Exception InvalidRequest
 
@@ -310,8 +314,17 @@ iterSocket socket =
     go (E.Chunks cs) = liftIO (Sock.sendMany socket cs) >> E.continue go
 
 enumSocket len socket (E.Continue k) = do
+#if NO_TIMEOUT_PROTECTION
     bs <- liftIO $ Sock.recv socket len
-    if S.length bs == 0
-        then E.continue k
-        else k (E.Chunks [bs]) >>== enumSocket len socket
+    go bs
+#else
+    mbs <- liftIO $ timeout readTimeout $ Sock.recv socket len
+    case mbs of
+        Nothing -> E.throwError SocketTimeout
+        Just bs -> go bs
+#endif
+  where
+    go bs
+        | S.length bs == 0 = E.continue k
+        | otherwise = k (E.Chunks [bs]) >>== enumSocket len socket
 enumSocket _ _ step = E.returnI step
