@@ -83,7 +83,7 @@ serveConnection port app conn remoteHost' = do
           res <- app env
           remaining <- readIORef ilen
           _ <- B.hGet conn remaining -- FIXME just skip, don't read
-          keepAlive <- sendResponse (httpVersion env) conn res
+          keepAlive <- sendResponse env (httpVersion env) conn res
           hFlush conn
           when keepAlive serveConnection'
 
@@ -197,14 +197,26 @@ headers httpversion status responseHeaders isChunked' = mconcat
 isChunked :: HttpVersion -> Bool
 isChunked = (==) http11
 
-sendResponse :: HttpVersion -> Handle -> Response -> IO Bool
-sendResponse hv handle (ResponseFile s hs fp) = do
+hasBody :: Status -> Request -> Bool
+hasBody s req = s /= (Status 204 "") && requestMethod req /= "HEAD"
+
+sendResponse :: Request -> HttpVersion -> Handle -> Response -> IO Bool
+sendResponse req hv handle (ResponseFile s hs fp) = do
     mapM_ (S.hPut handle) $ L.toChunks $ toLazyByteString $ headers hv s hs False
-    unsafeSendFile handle fp
-    return $ lookup "content-length" hs /= Nothing
-sendResponse hv handle (ResponseEnumerator res) =
+    if hasBody s req
+        then do
+            unsafeSendFile handle fp
+            return $ lookup "content-length" hs /= Nothing
+        else return True
+sendResponse req hv handle (ResponseEnumerator res) =
     res go
   where
+    go s hs
+        | not (hasBody s req) = do
+            liftIO $ mapM_ (S.hPut handle)
+                   $ L.toChunks $ toLazyByteString
+                   $ headers hv s hs False
+            return True
     go s hs =
             chunk'
           $ E.enumList 1 [headers hv s hs isChunked']
