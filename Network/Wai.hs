@@ -77,7 +77,7 @@ import qualified Data.ByteString.Lazy as L
 import Data.Char (toLower)
 import Data.String (IsString (..))
 import Data.Typeable (Typeable)
-import Data.Enumerator (Enumerator, Iteratee, ($$), joinI, enumList, run_)
+import Data.Enumerator (Iteratee, ($$), joinI, enumList, run_)
 import qualified Data.Enumerator as E
 import Data.Enumerator.IO (enumFile)
 import Blaze.ByteString.Builder (Builder, fromByteString, fromLazyByteString)
@@ -209,7 +209,6 @@ data Request = Request
   ,  requestHeaders :: [(RequestHeader, B.ByteString)]
   -- ^ Was this request made over an SSL connection?
   ,  isSecure       :: Bool
-  ,  requestBody    :: forall a. Enumerator B.ByteString IO a
   -- ^ Log the given line in some method; how this is accomplished is
   -- server-dependant.
   ,  errorHandler   :: String -> IO ()
@@ -221,6 +220,7 @@ data Request = Request
 data Response
     = ResponseFile Status ResponseHeaders FilePath
     | ResponseEnumerator (forall a. ResponseEnumerator a)
+  deriving Typeable
 
 type ResponseEnumerator a =
     (Status -> ResponseHeaders -> Iteratee Builder IO a) -> IO a
@@ -236,7 +236,7 @@ responseBuilder s h b = ResponseEnumerator $ \f -> run_ $ enumList 1 [b] $$ f s 
 responseLBS :: Status -> ResponseHeaders -> L.ByteString -> Response
 responseLBS s h = responseBuilder s h . fromLazyByteString
 
-type Application = Request -> IO Response
+type Application = Request -> Iteratee B.ByteString IO Response
 
 -- | Middleware is a component that sits between the server and application. It
 -- can do such tasks as GZIP encoding or response caching. What follows is the
