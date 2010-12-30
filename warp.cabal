@@ -15,7 +15,7 @@ Library
   Build-Depends:     base                          >= 3        && < 5
                    , bytestring                    >= 0.9      && < 0.10
                    , wai                           >= 0.3.0    && < 0.4
-                   , network                       >= 2.2.1.5  && < 2.4
+                   , network                       >= 2.3      && < 2.4
                    , blaze-builder-enumerator      >= 0.2      && < 0.3
                    , transformers                  >= 0.2      && < 0.3
                    , enumerator                    >= 0.4      && < 0.5

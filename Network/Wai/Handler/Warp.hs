@@ -28,8 +28,12 @@ import qualified Data.ByteString as S
 import qualified Data.ByteString.Char8 as B
 import qualified Data.ByteString.Lazy as L
 import Network
-    ( listenOn, accept, sClose, PortID(PortNumber), Socket
+    ( listenOn, sClose, PortID(PortNumber), Socket
     , withSocketsDo)
+import Network.Socket
+    ( accept
+    )
+import qualified Network.Socket.ByteString as Sock
 import Control.Exception (bracket, finally, Exception)
 import System.IO (Handle, hClose, hFlush)
 import System.IO.Error (isEOFError, ioeGetHandle)
@@ -50,7 +54,7 @@ import Blaze.ByteString.Builder.HTTP
 import Blaze.ByteString.Builder (fromByteString, Builder, toLazyByteString)
 import Blaze.ByteString.Builder.Char8 (fromChar, fromString)
 import Data.Monoid (mconcat)
-import Network.Socket.SendFile (unsafeSendFile)
+import Network.Socket.SendFile (sendFile)
 
 import Control.Monad.IO.Class (liftIO)
 
@@ -64,34 +68,25 @@ type Port = Int
 
 serveConnections :: Port -> Application -> Socket -> IO ()
 serveConnections port app socket = do
-    (conn, remoteHost', _) <- accept socket -- FIXME use sockets directly instead of Handlers?
-    -- FIXME disable buffering
+    (conn, _) <- accept socket
+    let remoteHost' = undefined
     _ <- forkIO $ serveConnection port app conn remoteHost'
     serveConnections port app socket
 
-serveConnection :: Port -> Application -> Handle -> String -> IO ()
+serveConnection :: Port -> Application -> Socket -> String -> IO ()
 serveConnection port app conn remoteHost' = do
     catch
         (finally
           (E.run_ $ fromClient $$ serveConnection')
-          (hClose conn))
-        catchEOFError
+          (sClose conn))
+        undefined
   where
-    fromClient = enumHandle 4096 conn
+    fromClient = enumSocket 4096 conn
     serveConnection' = do
         (enumeratee, env) <- parseRequest port remoteHost'
         res <- E.joinI $ enumeratee $$ app env
         keepAlive <- liftIO $ sendResponse env (httpVersion env) conn res
-        liftIO $ hFlush conn
         when keepAlive serveConnection'
-
-    catchEOFError :: IOError -> IO ()
-    catchEOFError e
-        | isEOFError e =
-            case ioeGetHandle e of
-                Just h -> unless (h == conn) (ioError e)
-                Nothing -> ioError e
-        | otherwise = ioError e
 
 parseRequest :: Port -> String -> E.Iteratee S.ByteString IO (E.Enumeratee ByteString ByteString IO a, Request)
 parseRequest port remoteHost' = do
@@ -222,20 +217,20 @@ isChunked = (==) http11
 hasBody :: Status -> Request -> Bool
 hasBody s req = s /= (Status 204 "") && requestMethod req /= "HEAD"
 
-sendResponse :: Request -> HttpVersion -> Handle -> Response -> IO Bool
-sendResponse req hv handle (ResponseFile s hs fp) = do
-    mapM_ (S.hPut handle) $ L.toChunks $ toLazyByteString $ headers hv s hs False
+sendResponse :: Request -> HttpVersion -> Socket -> Response -> IO Bool
+sendResponse req hv socket (ResponseFile s hs fp) = do
+    Sock.sendMany socket $ L.toChunks $ toLazyByteString $ headers hv s hs False
     if hasBody s req
         then do
-            unsafeSendFile handle fp
+            sendFile socket fp
             return $ lookup "content-length" hs /= Nothing
         else return True
-sendResponse req hv handle (ResponseEnumerator res) =
+sendResponse req hv socket (ResponseEnumerator res) =
     res go
   where
     go s hs
         | not (hasBody s req) = do
-            liftIO $ mapM_ (S.hPut handle)
+            liftIO $ Sock.sendMany socket
                    $ L.toChunks $ toLazyByteString
                    $ headers hv s hs False
             return True
@@ -243,7 +238,7 @@ sendResponse req hv handle (ResponseEnumerator res) =
             chunk'
           $ E.enumList 1 [headers hv s hs isChunked']
          $$ E.joinI $ builderToByteString
-         $$ (iterHandle handle >> return isKeepAlive)
+         $$ (iterSocket socket >> return isKeepAlive)
       where
         hasLength = lookup "content-length" hs /= Nothing
         isChunked' = isChunked hv && not hasLength
@@ -298,3 +293,16 @@ requestBodyHandle initLen =
                 if newlen <= 0
                     then return ()
                     else drain newlen
+
+iterSocket socket =
+    E.continue go
+  where
+    go E.EOF = E.yield () E.EOF
+    go (E.Chunks cs) = liftIO (Sock.sendMany socket cs) >> E.continue go
+
+enumSocket len socket (E.Continue k) = do
+    bs <- liftIO $ Sock.recv socket len
+    if S.length bs == 0
+        then E.continue k
+        else k (E.Chunks [bs]) >>== enumSocket len socket
+enumSocket _ _ step = E.returnI step
