@@ -31,7 +31,7 @@ import Data.Function (on)
 import System.Directory (removeFile, getTemporaryDirectory)
 import System.IO (hClose, openBinaryTempFile, Handle)
 import Network.Wai
-import Data.Enumerator (Iteratee, yield, ($$))
+import Data.Enumerator (Iteratee, yield)
 import qualified Data.Enumerator as E
 import Control.Monad.IO.Class (liftIO)
 
@@ -157,7 +157,7 @@ parseRequestBody :: Sink x y
 parseRequestBody sink req = do
     case ctype of
         Nothing -> return ([], [])
-        Just Nothing -> requestBody req $$ do -- url-encoded
+        Just Nothing -> do -- url-encoded
             -- NOTE: in general, url-encoded data will be in a single chunk.
             -- Therefore, I'm optimizing for the usual case by sticking with
             -- strict byte strings here.
@@ -165,7 +165,7 @@ parseRequestBody sink req = do
             return (parseQueryString $ S.concat bs, [])
         Just (Just bound) -> -- multi-part
             let bound' = S8.pack "--" `S.append` bound
-             in requestBody req $$ parsePieces sink bound'
+             in parsePieces sink bound'
   where
     urlenc = S8.pack "application/x-www-form-urlencoded"
     formBound = S8.pack "multipart/form-data; boundary="

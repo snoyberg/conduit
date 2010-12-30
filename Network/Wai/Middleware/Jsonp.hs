@@ -76,7 +76,8 @@ jsonp app env = do
             Just "application/json" -> Just $ fixHeaders hs
             _ -> Nothing
     fixHeaders = changeVal "Content-Type" "text/javascript"
-    addCallback :: B8.ByteString -> (forall a. ResponseEnumerator a) -> IO Response
+    addCallback :: B8.ByteString -> (forall a. ResponseEnumerator a)
+                -> Iteratee B8.ByteString IO Response
     addCallback cb e =
         return $ ResponseEnumerator $ helper
       where

@@ -28,6 +28,7 @@ Library
   Exposed-modules:   Network.Wai.Handler.CGI
                      Network.Wai.Middleware.Autohead
                      Network.Wai.Middleware.CleanPath
+                     Network.Wai.Middleware.Debug
                      Network.Wai.Middleware.Gzip
                      Network.Wai.Middleware.Jsonp
                      Network.Wai.Middleware.Vhost

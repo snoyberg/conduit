@@ -18,7 +18,7 @@ import qualified System.IO
 import qualified Data.String as String
 import Data.Enumerator
     ( Enumerator, Step (..), Stream (..), continue, yield
-    , enumList, ($$), joinI, returnI, (>>==)
+    , enumList, ($$), joinI, returnI, (>>==), run_
     )
 import Data.Monoid (mconcat)
 import Blaze.ByteString.Builder (fromByteString, toLazyByteString)
@@ -94,12 +94,12 @@ run'' vars inputH outputH xsendfile app = do
             , serverPort = serverport
             , requestHeaders = map (cleanupVarName *** B.pack) vars
             , isSecure = isSecure'
-            , requestBody = inputH contentLength
             , errorHandler = System.IO.hPutStr System.IO.stderr
             , remoteHost = B.pack remoteHost'
             , httpVersion = "1.1" -- FIXME
             }
-    res <- app env
+    -- FIXME worry about exception?
+    res <- run_ $ inputH contentLength $$ app env
     case (xsendfile, res) of
         (Just sf, ResponseFile s hs fp) ->
             mapM_ outputH $ L.toChunks $ toLazyByteString $ sfBuilder s hs sf fp
