@@ -21,7 +21,7 @@ import Control.Concurrent (forkIO, threadDelay)
 import qualified Control.Concurrent.MVar as M
 import qualified Control.Concurrent.Chan as C
 import System.Directory (getModificationTime)
-import Network.Wai.Handler.SimpleServer (parseRequest, sendResponse)
+import Network.Wai.Handler.Warp (parseRequest, sendResponse, drainRequestBody)
 import Control.Monad (filterM)
 
 import Control.Arrow ((&&&))
@@ -62,8 +62,10 @@ startApp queue withApp = do
                 go app
     onErr :: SomeException -> IO Response
     onErr e = return
-            $ Response status500 [("Content-Type", "text/plain; charset=utf-8")]
-            $ ResponseLBS $ encodeUtf8 $ pack
+            $ responseLBS
+                status500
+                [("Content-Type", "text/plain; charset=utf-8")]
+            $ charsToLBS
             $ "Exception thrown while running application\n\n" ++ show e
     void x = x >> return ()
 
@@ -155,15 +157,18 @@ swapApp app mqueue = do
 
 loadingApp :: Maybe SomeException -> Handler
 loadingApp err f =
-    f $ const $ return $ Response status200
+    f $ const $ return $ responseLBS status200
         ( ("Content-Type", "text/plain")
         : case err of
             Nothing -> [("Refresh", "1")]
             Just _ -> []
-        ) $ ResponseLBS $ L8.pack $ toMessage err
+        ) $ toMessage err
   where
     toMessage Nothing = "Loading code changes, please wait"
-    toMessage (Just err') = "Error loading code: " ++ show err'
+    toMessage (Just err') = charsToLBS $ "Error loading code: " ++ show err'
+
+charsToLBS :: String -> L8.ByteString
+charsToLBS = encodeUtf8 . pack
 
 type Handler = (Application -> IO ()) -> IO ()
 
@@ -198,10 +203,13 @@ type Queue = C.Chan (Maybe (Request, Response -> IO ()))
 
 serveConnection :: Port -> M.MVar Queue -> Handle -> String -> IO ()
 serveConnection port mqueue conn remoteHost' = do
-    env <- parseRequest port conn remoteHost'
+    (ilen, env) <- parseRequest port conn remoteHost'
     let onRes res =
             finally
-                (sendResponse (httpVersion env) conn res)
+                (do
+                    _ <- sendResponse env (httpVersion env) conn res
+                    drainRequestBody conn ilen
+                    return ())
                 (hClose conn)
     queue <- M.readMVar mqueue
     C.writeChan queue $ Just (env, onRes)
