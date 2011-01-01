@@ -291,8 +291,8 @@ requestBodyHandle initLen =
         case x of
             Nothing -> return $ E.Continue k
             Just bs -> do
-                let newlen = max 0 $ len - B.length bs
-                k (E.Chunks [bs]) >>== go newlen
+                (bs', newlen) <- yieldExtra len bs
+                k (E.Chunks [bs']) >>== go newlen
     go len step = do
         drain len
         return step
@@ -302,10 +302,15 @@ requestBodyHandle initLen =
         case mbs of
             Nothing -> return ()
             Just bs -> do
-                let newlen = len - B.length bs
-                if newlen <= 0
-                    then return ()
-                    else drain newlen
+                (bs', newlen) <- yieldExtra len bs
+                drain newlen
+    yieldExtra len bs
+        | B.length bs == len = return (bs, 0)
+        | B.length bs < len = return (bs, len - B.length bs)
+        | otherwise = do
+            let (x, y) = B.splitAt len bs
+            E.yield () $ E.Chunks [y]
+            return (x, 0)
 
 iterSocket socket =
     E.continue go
