@@ -184,7 +184,7 @@ parseRequest' port lines' remoteHost' = do
 parseFirst :: ByteString
            -> E.Iteratee S.ByteString IO (ByteString, ByteString, ByteString, HttpVersion)
 parseFirst s = do
-    let pieces = B.words s
+    let pieces = S.split 32 s  -- ' '
     (method, query, http') <-
         case pieces of
             [x, y, z] -> return (x, y, z)
