@@ -67,7 +67,6 @@ module Network.Wai
     , Application
     , Middleware
       -- * Response body smart constructors
-    , responseBuilder
     , responseLBS
     ) where
 
@@ -77,7 +76,7 @@ import qualified Data.ByteString.Lazy as L
 import Data.Char (toLower)
 import Data.String (IsString (..))
 import Data.Typeable (Typeable)
-import Data.Enumerator (Iteratee, ($$), joinI, enumList, run_)
+import Data.Enumerator (Iteratee, ($$), joinI, run_)
 import qualified Data.Enumerator as E
 import Data.Enumerator.IO (enumFile)
 import Blaze.ByteString.Builder (Builder, fromByteString, fromLazyByteString)
@@ -220,6 +219,7 @@ data Request = Request
 
 data Response
     = ResponseFile Status ResponseHeaders FilePath
+    | ResponseBuilder Status ResponseHeaders Builder
     | ResponseEnumerator (forall a. ResponseEnumerator a)
   deriving Typeable
 
@@ -230,12 +230,12 @@ responseEnumerator :: Response -> ResponseEnumerator a
 responseEnumerator (ResponseEnumerator e) f = e f
 responseEnumerator (ResponseFile s h fp) f =
     run_ $ enumFile fp $$ joinI $ E.map fromByteString $$ f s h
-
-responseBuilder :: Status -> ResponseHeaders -> Builder -> Response
-responseBuilder s h b = ResponseEnumerator $ \f -> run_ $ enumList 1 [b] $$ f s h
+responseEnumerator (ResponseBuilder s h b) f = run_ $ do
+    E.yield () $ E.Chunks [b]
+    f s h
 
 responseLBS :: Status -> ResponseHeaders -> L.ByteString -> Response
-responseLBS s h = responseBuilder s h . fromLazyByteString
+responseLBS s h = ResponseBuilder s h . fromLazyByteString
 
 type Application = Request -> Iteratee B.ByteString IO Response
 
