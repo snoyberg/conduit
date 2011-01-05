@@ -9,6 +9,9 @@ import Data.Text (unpack)
 import Data.Text.Encoding (decodeUtf8With)
 import Data.Text.Encoding.Error (lenientDecode)
 import Control.Monad.IO.Class (liftIO)
+import Network.Wai.Handler.Warp.Util (mimeTypes, getFileSize)
+import qualified Data.Map as Map
+import qualified Data.ByteString.Char8 as S8
 
 main :: IO ()
 main = do
@@ -30,9 +33,13 @@ app prefix Request { requestMethod = m, pathInfo = p }
                 let ext = reverse $ takeWhile (/= '.') $ reverse file
                 let ct = getCT ext
                 e <- liftIO $ doesFileExist file
-                -- FIXME check file size
                 if e
-                    then return $ ResponseFile status200 [("Content-Type", ct)] file
+                    then do
+                        size <- liftIO $ getFileSize file
+                        return $ ResponseFile status200
+                            [ ("Content-Type", ct)
+                            , ("Content-Length", S8.pack $ show size)
+                            ] file
                     else return $ responseLBS status404 [("Content-Type", "text/plain")] "File not found"
     | otherwise =
         return $ responseLBS status405 [("Content-Type", "text/plain")] "Bad method"
@@ -58,14 +65,7 @@ join [x] = x
 join (x:xs) = x ++ '/' : join xs
 
 getCT :: String -> ByteString
-getCT "jpg" = "image/jpeg"
-getCT "jpeg" = "image/jpeg"
-getCT "js" = "text/javascript"
-getCT "css" = "text/css"
-getCT "html" = "text/html"
-getCT "png" = "image/png"
-getCT "gif" = "image/gif"
-getCT "txt" = "text/plain"
-getCT "flv" = "video/x-flv"
-getCT "ogv" = "video/ogg"
-getCT _ = "application/octet-stream"
+getCT s =
+    case Map.lookup (S8.pack s) mimeTypes of
+        Just ct -> ct
+        Nothing -> "application/octet-stream"
