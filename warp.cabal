@@ -10,6 +10,7 @@ Category:            Web, Yesod
 Build-Type:          Simple
 Cabal-Version:       >=1.6
 Stability:           Stable
+Extra-source-files:  mime.types
 
 flag timeout-protection
     Description: Use timeouts (very performance-costly) to protect against DOS attacks.
@@ -25,6 +26,8 @@ Library
                    , enumerator                    >= 0.4      && < 0.5
                    , blaze-builder                 >= 0.2.1.3  && < 0.3
                    , sendfile                      >= 0.7.2    && < 0.8
+                   , containers                    >= 0.2      && < 0.5
+                   , template-haskell
   if flag(network-bytestring)
       build-depends: network               >= 2.2.1   && < 2.2.3
                    , network-bytestring    >= 0.1.3   && < 0.1.4
@@ -36,6 +39,7 @@ Library
       Build-Depends: unix                          >= 2.4      && < 2.5
   Exposed-modules:   Network.Wai.Handler.Warp
                      Network.Wai.Handler.Warp.Util
+  Other-modules:     UtilHelper
   ghc-options:       -Wall
   if !flag(timeout-protection)
       Cpp-options: -DNO_TIMEOUT_PROTECTION
