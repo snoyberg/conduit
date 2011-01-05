@@ -33,7 +33,7 @@ import Network
     ( listenOn, sClose, PortID(PortNumber), Socket
     , withSocketsDo)
 import Network.Socket
-    ( accept
+    ( accept, SockAddr
     )
 import qualified Network.Socket.ByteString as Sock
 import Control.Exception (bracket, finally, Exception, SomeException, catch)
@@ -72,16 +72,10 @@ type Port = Int
 serveConnections :: Port -> Application -> Socket -> IO ()
 serveConnections port app socket = do
     (conn, sa) <- accept socket
-    let remoteHost' = stripPort $ show sa -- FIXME
-    _ <- forkIO $ serveConnection port app conn remoteHost'
+    _ <- forkIO $ serveConnection port app conn sa
     serveConnections port app socket
-  where
-    stripPort s =
-        case break (== ':') $ reverse s of
-            (_, ':' : rest) -> reverse rest
-            _ -> s
 
-serveConnection :: Port -> Application -> Socket -> String -> IO ()
+serveConnection :: Port -> Application -> Socket -> SockAddr -> IO ()
 serveConnection port app conn remoteHost' = do
     catch
         (finally
@@ -98,7 +92,7 @@ serveConnection port app conn remoteHost' = do
         keepAlive <- liftIO $ sendResponse env (httpVersion env) conn res
         when keepAlive serveConnection'
 
-parseRequest :: Port -> String -> E.Iteratee S.ByteString IO (E.Enumeratee ByteString ByteString IO a, Request)
+parseRequest :: Port -> SockAddr -> E.Iteratee S.ByteString IO (E.Enumeratee ByteString ByteString IO a, Request)
 parseRequest port remoteHost' = do
     headers' <- takeUntilBlank 0 id
     parseRequest' port headers' remoteHost'
@@ -156,7 +150,7 @@ instance Exception InvalidRequest
 -- | Parse a set of header lines and body into a 'Request'.
 parseRequest' :: Port
               -> [ByteString]
-              -> String
+              -> SockAddr
               -> E.Iteratee S.ByteString IO (E.Enumeratee S.ByteString S.ByteString IO a, Request)
 parseRequest' port lines' remoteHost' = do
     (firstLine, otherLines) <-
@@ -186,7 +180,7 @@ parseRequest' port lines' remoteHost' = do
                 , requestHeaders = heads
                 , isSecure = False
                 , errorHandler = System.IO.hPutStr System.IO.stderr
-                , remoteHost = B.pack remoteHost'
+                , remoteHost = remoteHost'
                 })
 
 parseFirst :: ByteString
