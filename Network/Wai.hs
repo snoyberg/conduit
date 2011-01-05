@@ -82,6 +82,7 @@ import qualified Data.Enumerator as E
 import Data.Enumerator.IO (enumFile)
 import Blaze.ByteString.Builder (Builder, fromByteString, fromLazyByteString)
 import Data.Data (Data)
+import Network.Socket (SockAddr)
 
 -- | HTTP request method. Since the HTTP protocol allows arbitrary request
 -- methods, we leave this open as a 'B.ByteString'. Please note the request
@@ -213,7 +214,7 @@ data Request = Request
   -- server-dependant.
   ,  errorHandler   :: String -> IO ()
   -- | The client\'s host information.
-  ,  remoteHost     :: B.ByteString
+  ,  remoteHost     :: SockAddr
   }
   deriving Typeable
 
