@@ -8,8 +8,8 @@ mimeTypes' :: IO [(String, String)]
 mimeTypes' = do
     s <- readFile "mime.types"
     let go ('#':_) = Nothing
-        go s =
-            case words s of
+        go x =
+            case words x of
                 [a, b] -> Just (b, a)
                 _ -> Nothing
     let pairs = mapMaybe go $ lines s

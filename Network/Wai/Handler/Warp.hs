@@ -53,9 +53,10 @@ import Data.Enumerator.IO (iterHandle, enumHandle)
 import Blaze.ByteString.Builder.Enumerator (builderToByteString)
 import Blaze.ByteString.Builder.HTTP
     (chunkedTransferEncoding, chunkedTransferTerminator)
-import Blaze.ByteString.Builder (fromByteString, Builder, toLazyByteString)
+import Blaze.ByteString.Builder
+    (fromByteString, Builder, toLazyByteString, toByteStringIO)
 import Blaze.ByteString.Builder.Char8 (fromChar, fromString)
-import Data.Monoid (mconcat)
+import Data.Monoid (mconcat, mappend)
 import Network.Socket.SendFile (sendFile)
 
 import Control.Monad.IO.Class (liftIO)
@@ -232,6 +233,19 @@ sendResponse req hv socket (ResponseFile s hs fp) = do
             sendFile socket fp
             return $ lookup "content-length" hs /= Nothing
         else return True
+sendResponse req hv socket (ResponseBuilder s hs b) = do
+    toByteStringIO (Sock.sendAll socket) b'
+    return isKeepAlive
+  where
+    b' =
+        if isChunked'
+            then headers hv s hs True
+                     `mappend` chunkedTransferEncoding b
+                     `mappend` chunkedTransferTerminator
+            else headers hv s hs False `mappend` b
+    hasLength = lookup "content-length" hs /= Nothing
+    isChunked' = isChunked hv && not hasLength
+    isKeepAlive = isChunked' || hasLength
 sendResponse req hv socket (ResponseEnumerator res) =
     res go
   where
