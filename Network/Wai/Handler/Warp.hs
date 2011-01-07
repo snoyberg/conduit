@@ -54,7 +54,7 @@ import Blaze.ByteString.Builder.Enumerator (builderToByteString)
 import Blaze.ByteString.Builder.HTTP
     (chunkedTransferEncoding, chunkedTransferTerminator)
 import Blaze.ByteString.Builder
-    (fromByteString, Builder, toLazyByteString, toByteStringIO)
+    (copyByteString, Builder, toLazyByteString, toByteStringIO)
 import Blaze.ByteString.Builder.Char8 (fromChar, fromString)
 import Data.Monoid (mconcat, mappend)
 import Network.Socket.SendFile (sendFile)
@@ -199,24 +199,24 @@ parseFirst s = do
 
 headers :: HttpVersion -> Status -> ResponseHeaders -> Bool -> Builder
 headers httpversion status responseHeaders isChunked' = mconcat
-    [ fromByteString "HTTP/"
-    , fromByteString httpversion
+    [ copyByteString "HTTP/"
+    , copyByteString httpversion
     , fromChar ' '
     , fromString $ show $ statusCode status
     , fromChar ' '
-    , fromByteString $ statusMessage status
-    , fromByteString "\r\n"
+    , copyByteString $ statusMessage status
+    , copyByteString "\r\n"
     , mconcat $ map go responseHeaders
     , if isChunked'
-        then fromByteString "Transfer-Encoding: chunked\r\n\r\n"
-        else fromByteString "\r\n"
+        then copyByteString "Transfer-Encoding: chunked\r\n\r\n"
+        else copyByteString "\r\n"
     ]
   where
     go (x, y) = mconcat
-        [ fromByteString $ ciOriginal x
-        , fromByteString ": "
-        , fromByteString y
-        , fromByteString "\r\n"
+        [ copyByteString $ ciOriginal x
+        , copyByteString ": "
+        , copyByteString y
+        , copyByteString "\r\n"
         ]
 
 isChunked :: HttpVersion -> Bool
