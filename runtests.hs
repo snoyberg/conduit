@@ -9,6 +9,7 @@ import Network.Wai.Parse
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Char8 as S8
 import qualified Data.ByteString.Lazy.Char8 as L8
+import qualified Data.ByteString.Lazy as L
 import Control.Arrow
 
 import Network.Wai.Middleware.Jsonp
@@ -17,7 +18,7 @@ import Network.Wai.Middleware.Vhost
 import Network.Wai.Middleware.Autohead
 import Codec.Compression.GZip (decompress)
 
-import Data.Enumerator (run_, enumList, ($$))
+import Data.Enumerator (run_, enumList, ($$), Iteratee)
 import Control.Monad.IO.Class (liftIO)
 
 main :: IO ()
@@ -80,6 +81,12 @@ caseParseHttpAccept = do
         expected = ["text/html", "text/x-c", "text/x-dvi", "text/plain"]
     map S8.pack expected @=? parseHttpAccept input
 
+parseRequestBody' :: Sink ([S8.ByteString] -> [S8.ByteString]) L.ByteString
+                  -> SRequest
+                  -> Iteratee S.ByteString IO ([(S.ByteString, S.ByteString)], [(S.ByteString, FileInfo L.ByteString)])
+parseRequestBody' sink (SRequest req bod) =
+    enumList 1 (L.toChunks bod) $$ parseRequestBody sink req
+
 caseParseRequestBody :: Assertion
 caseParseRequestBody = run_ t where
     content2 = S8.pack $
@@ -102,13 +109,13 @@ caseParseRequestBody = run_ t where
     t = do
         let content1 = S8.pack "foo=bar&baz=bin"
         let ctype1 = S8.pack "application/x-www-form-urlencoded"
-        result1 <- parseRequestBody lbsSink $ toRequest ctype1 content1
+        result1 <- parseRequestBody' lbsSink $ toRequest ctype1 content1
         liftIO $ assertEqual "parsing post x-www-form-urlencoded"
                     (map (S8.pack *** S8.pack) [("foo", "bar"), ("baz", "bin")], [])
                     result1
 
         let ctype2 = S8.pack "multipart/form-data; boundary=AaB03x"
-        result2 <- parseRequestBody lbsSink $ toRequest ctype2 content2
+        result2 <- parseRequestBody' lbsSink $ toRequest ctype2 content2
         let expectedsmap2 =
               [ ("title", "A File")
               , ("summary", "This is my file\nfile test")
@@ -123,7 +130,7 @@ caseParseRequestBody = run_ t where
                     result2
 
         let ctype3 = S8.pack "multipart/form-data; boundary=----WebKitFormBoundaryB1pWXPZ6lNr8RiLh"
-        result3 <- parseRequestBody lbsSink $ toRequest ctype3 content3
+        result3 <- parseRequestBody' lbsSink $ toRequest ctype3 content3
         let expectedsmap3 = []
         let expectedfile3 = [(S8.pack "yaml", FileInfo (S8.pack "README") (S8.pack "application/octet-stream") $
                                 L8.pack "Photo blog using Hack.\n")]
@@ -132,27 +139,25 @@ caseParseRequestBody = run_ t where
                     expected3
                     result3
 
-        result2' <- parseRequestBody lbsSink $ toRequest' ctype2 content2
+        result2' <- parseRequestBody' lbsSink $ toRequest' ctype2 content2
         liftIO $ assertEqual "parsing post multipart/form-data 2"
                     expected2
                     result2'
 
-        result3' <- parseRequestBody lbsSink $ toRequest' ctype3 content3
+        result3' <- parseRequestBody' lbsSink $ toRequest' ctype3 content3
         liftIO $ assertEqual "parsing actual post multipart/form-data 2"
                     expected3
                     result3'
 
-toRequest :: S8.ByteString -> S8.ByteString -> Request
-toRequest ctype content = Request
+toRequest :: S8.ByteString -> S8.ByteString -> SRequest
+toRequest ctype content = SRequest (Request
     { requestHeaders = [("Content-Type", ctype)]
-    , requestBody = enumList 1 [content]
-    }
+    }) (L.fromChunks [content])
 
-toRequest' :: S8.ByteString -> S8.ByteString -> Request
-toRequest' ctype content = Request
+toRequest' :: S8.ByteString -> S8.ByteString -> SRequest
+toRequest' ctype content = SRequest (Request
     { requestHeaders = [("Content-Type", ctype)]
-    , requestBody = enumList 1 $ map S.singleton $ S.unpack content
-    }
+    }) (L.fromChunks $ map S.singleton $ S.unpack content)
 
 caseFindBound :: Assertion
 caseFindBound = do
