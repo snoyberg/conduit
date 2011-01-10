@@ -19,8 +19,9 @@ import Network.Wai
 import qualified Data.ByteString.Char8 as B8
 import Data.Maybe (fromMaybe)
 import Data.Enumerator (($$), enumList, Step (..), Enumerator, Iteratee, Enumeratee, joinI, checkDone, continue, Stream (..), (>>==))
-import Blaze.ByteString.Builder (fromByteString, Builder)
+import Blaze.ByteString.Builder (copyByteString, Builder)
 import Blaze.ByteString.Builder.Char8 (fromChar)
+import Data.Monoid (mappend)
 
 takeCallback :: B8.ByteString -> Maybe B8.ByteString
 takeCallback bs | B8.null bs = Nothing
@@ -66,6 +67,14 @@ jsonp app env = do
         Just c -> go c res
   where
     go c r@(ResponseFile _ hs _) = go' c r hs
+    go c r@(ResponseBuilder s hs b) =
+        case checkJSON hs of
+            Nothing -> return r
+            Just hs' -> return $ ResponseBuilder s hs' $
+                copyByteString c
+                `mappend` fromChar '('
+                `mappend` b
+                `mappend` fromChar ')'
     go c (ResponseEnumerator e) = addCallback c e
     go' c r hs =
         case checkJSON hs of
@@ -90,7 +99,7 @@ jsonp app env = do
                     Nothing -> f s hs
         wrap :: Step Builder IO b -> Iteratee Builder IO b
         wrap step = joinI $ after (enumList 1 [fromChar ')'])
-                 $$ enumList 1 [fromByteString cb, fromChar '('] step
+                 $$ enumList 1 [copyByteString cb, fromChar '('] step
         after :: Enumerator Builder IO b -> Enumeratee Builder Builder IO b
         after enum =
             loop

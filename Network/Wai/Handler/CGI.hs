@@ -8,6 +8,7 @@ module Network.Wai.Handler.CGI
     ) where
 
 import Network.Wai
+import Network.Socket (getAddrInfo, addrAddress)
 import System.Environment (getEnvironment)
 import Data.Maybe (fromMaybe)
 import qualified Data.ByteString.Char8 as B
@@ -76,16 +77,21 @@ run'' vars inputH outputH xsendfile app = do
         serverport = safeRead 80 $ lookup' "SERVER_PORT" vars
         contentLength = safeRead 0 $ lookup' "CONTENT_LENGTH" vars
         remoteHost' =
-            case lookup "REMOTE_HOST" vars of
+            case lookup "REMOTE_ADDR" vars of
                 Just x -> x
                 Nothing ->
-                    case lookup "REMOTE_ADDR" vars of
+                    case lookup "REMOTE_HOST" vars of
                         Just x -> x
                         Nothing -> ""
         isSecure' =
             case map toLower $ lookup' "SERVER_PROTOCOL" vars of
                 "https" -> True
                 _ -> False
+    addrs <- getAddrInfo Nothing (Just remoteHost') Nothing
+    let addr =
+            case addrs of
+                a:_ -> addrAddress a
+                [] -> error $ "Invalid REMOTE_ADDR or REMOTE_HOST: " ++ remoteHost'
     let env = Request
             { requestMethod = rmethod
             , pathInfo = B.pack pinfo
@@ -95,7 +101,7 @@ run'' vars inputH outputH xsendfile app = do
             , requestHeaders = map (cleanupVarName *** B.pack) vars
             , isSecure = isSecure'
             , errorHandler = System.IO.hPutStr System.IO.stderr
-            , remoteHost = B.pack remoteHost'
+            , remoteHost = addr
             , httpVersion = "1.1" -- FIXME
             }
     -- FIXME worry about exception?
