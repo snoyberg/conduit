@@ -5,6 +5,8 @@ module Network.Wai.Test
     , runSession
       -- * Requests
     , request
+    , srequest
+    , SRequest (..)
     , SResponse (..)
       -- * Assertions
     , assertStatus
@@ -16,6 +18,7 @@ module Network.Wai.Test
 import Network.Wai
 import qualified Test.HUnit.Base as H
 import Control.Monad.IO.Class (liftIO)
+import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.State (StateT, evalStateT, get, put)
 import Control.Monad.Trans.Reader (ReaderT, runReaderT, ask)
 import Data.Map (Map)
@@ -23,7 +26,7 @@ import qualified Data.Map as Map
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Char8 as S8
-import Data.Enumerator (joinI, consume, ($$))
+import Data.Enumerator (joinI, consume, ($$), run_, enumList)
 import Blaze.ByteString.Builder.Enumerator (builderToByteString)
 import qualified Data.ByteString.Lazy as L
 import qualified Data.ByteString.Lazy.Char8 as L8
@@ -40,6 +43,10 @@ initState = ClientState Map.empty
 runSession :: Session a -> Application -> IO a
 runSession session app = evalStateT (runReaderT session app) initState
 
+data SRequest = SRequest
+    { simpleRequest :: Request
+    , simpleRequestBody :: L.ByteString
+    }
 data SResponse = SResponse
     { simpleStatus :: Status
     , simpleHeaders :: [(CIByteString, ByteString)]
@@ -47,9 +54,13 @@ data SResponse = SResponse
     }
     deriving (Show, Eq)
 request :: Request -> Session SResponse
-request req = do
+request = srequest . flip SRequest L.empty
+
+srequest :: SRequest -> Session SResponse
+srequest (SRequest req bod) = do
     app <- ask
-    sres <- liftIO $ app req >>= runResponse
+    res <- liftIO $ run_ $ enumList 4 (L.toChunks bod) $$ app req
+    sres <- liftIO $ runResponse res
     -- FIXME cookie processing
     return sres
 
