@@ -5,6 +5,7 @@ module Network.Wai.Handler.CGI
     , run'
     , run''
     , runSendfile
+    , requestBodyFunc
     ) where
 
 import Network.Wai
@@ -65,7 +66,7 @@ run' vars inputH outputH app = do
 
 run'' :: [(String, String)] -- ^ all variables
      -> (forall a. Int -> Enumerator B.ByteString IO a) -- ^ responseBody of input
-     -> (B.ByteString -> IO ()) -- ^ destination for output FIXME use an iteratee
+     -> (B.ByteString -> IO ()) -- ^ destination for output
      -> Maybe B.ByteString -- ^ does the server support the X-Sendfile header?
      -> Application
      -> IO ()
