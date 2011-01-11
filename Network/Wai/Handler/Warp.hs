@@ -37,8 +37,6 @@ import Network.Socket
     )
 import qualified Network.Socket.ByteString as Sock
 import Control.Exception (bracket, finally, Exception, SomeException, catch)
-import System.IO (Handle, hClose, hFlush)
-import System.IO.Error (isEOFError, ioeGetHandle)
 import Control.Concurrent (forkIO)
 import Control.Monad (unless, when)
 import Data.Maybe (fromMaybe)
@@ -49,7 +47,6 @@ import Control.Arrow (first)
 
 import Data.Enumerator (($$), (>>==))
 import qualified Data.Enumerator as E
-import Data.Enumerator.IO (iterHandle, enumHandle)
 import Blaze.ByteString.Builder.Enumerator (builderToByteString)
 import Blaze.ByteString.Builder.HTTP
     (chunkedTransferEncoding, chunkedTransferTerminator)
@@ -234,12 +231,16 @@ sendResponse req hv socket (ResponseFile s hs fp) = do
             return $ lookup "content-length" hs /= Nothing
         else return True
 sendResponse req hv socket (ResponseBuilder s hs b) = do
-    toByteStringIO (Sock.sendAll socket) b'
+    toByteStringIO (Sock.sendAll socket) $
+        if hasBody s req
+            then b'
+            else headers'
     return isKeepAlive
   where
+    headers' = headers hv s hs True
     b' =
         if isChunked'
-            then headers hv s hs True
+            then headers'
                      `mappend` chunkedTransferEncoding b
                      `mappend` chunkedTransferTerminator
             else headers hv s hs False `mappend` b
@@ -310,7 +311,7 @@ requestBodyHandle initLen =
         case mbs of
             Nothing -> return ()
             Just bs -> do
-                (bs', newlen) <- yieldExtra len bs
+                (_, newlen) <- yieldExtra len bs
                 drain newlen
     yieldExtra len bs
         | B.length bs == len = return (bs, 0)
@@ -320,12 +321,14 @@ requestBodyHandle initLen =
             E.yield () $ E.Chunks [y]
             return (x, 0)
 
+iterSocket :: Socket -> E.Iteratee ByteString IO ()
 iterSocket socket =
     E.continue go
   where
     go E.EOF = E.yield () E.EOF
     go (E.Chunks cs) = liftIO (Sock.sendMany socket cs) >> E.continue go
 
+enumSocket :: Int -> Socket -> E.Enumerator ByteString IO a
 enumSocket len socket (E.Continue k) = do
 #if NO_TIMEOUT_PROTECTION
     bs <- liftIO $ Sock.recv socket len
