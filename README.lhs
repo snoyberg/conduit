@@ -8,15 +8,14 @@ You want a minimal example? Here it is!
 
 > {-# LANGUAGE OverloadedStrings #-}
 > import Network.Wai
-> import Network.Wai.Enumerator (fromLBS)
-> import Network.Wai.Handler.SimpleServer (run)
+> import Network.Wai.Handler.Warp (run)
+> import Data.ByteString.Lazy.Char8 () -- Just for an orphan instance
 >
 > app :: Application
-> app _ = return Response
->     { status          = status200
->     , responseHeaders = [("Content-Type", "text/plain")]
->     , responseBody    = ResponseLBS "Hello, Web!"
->     }
+> app _ = return $ responseLBS
+>     status200
+>     [("Content-Type", "text/plain")]
+>     "Hello, Web!"
 >
 > main :: IO ()
 > main = do
@@ -26,7 +25,7 @@ You want a minimal example? Here it is!
 Put that code into a file named _hello.hs_ and install [wai] and
 [wai-extra] from Hackage:
 
-    cabal install wai wai-extra
+    cabal install wai warp
 
 Run it:
 
@@ -50,11 +49,10 @@ Now we redefine `responseBody` to refer to that file:
 > app2 :: Application
 > app2 _ = return index
 >
-> index = Response
->     { status          = status200
->     , responseHeaders = [("Content-Type", "text/html")]
->     , responseBody    = ResponseFile "index.html"
->     }
+> index = ResponseFile
+>     status200
+>     [("Content-Type", "text/html")]
+>     "index.html"
 
 
 Basic dispatching
@@ -74,17 +72,15 @@ different `Response`s:
 >     "/raw/" -> return plainIndex
 >     _       -> return notFound
 >
-> plainIndex = Response
->     { status          = status200
->     , responseHeaders = [("Content-Type", "text/plain")]
->     , responseBody    = ResponseFile "index.html"
->     }
+> plainIndex = ResponseFile
+>     status200
+>     [("Content-Type", "text/plain")]
+>     "index.html"
 >
-> notFound = Response
->     { status          = status404
->     , responseHeaders = [("Content-Type", "text/plain")]
->     , responseBody    = ResponseLBS "404 - Not Found"
->     }
+> notFound = responseLBS
+>     status404
+>     [("Content-Type", "text/plain")]
+>     "404 - Not Found"
 
 
 Doing without overloaded strings
@@ -98,11 +94,10 @@ works without GHC extensions:
     import qualified Data.ByteString.Char8 as B8
     import qualified Data.ByteString.Lazy.Char8 as LB8
 
-    notFound = Response
-        { status          = Status404
-        , responseHeaders = [("Content-Type", B8.pack "text/plain")]
-        , responseBody    = Right $ fromLBS $ LB8.pack "404 - Not Found"
-        }
+    notFound = responseLBS
+        status404
+        [("Content-Type", B8.pack "text/plain")]
+        (LB8.pack "404 - Not Found")
 
 
  [wai]: http://hackage.haskell.org/package/wai
