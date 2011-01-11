@@ -10,27 +10,11 @@ import qualified Data.Map as Map
 import Data.ByteString (ByteString)
 import Language.Haskell.TH.Syntax (qRunIO, lift)
 import qualified Data.ByteString.Char8 as S8
+import System.PosixCompat.Files (getFileStatus, fileSize)
+import System.Posix.Types (FileOffset)
 
-#if defined(mingw32_HOST_OS) || defined(__MINGW32__)
-
-import System.Win32.File
-
-getFileSize :: FilePath -> IO Integer
-getFileSize path = do
-  hnd <- createFile path
-           gENERIC_READ fILE_SHARE_READ Nothing oPEN_EXISTING 0 Nothing
-  size <- fmap bhfiSize $ getFileInformationByHandle hnd
-  closeHandle hnd
-  return $ fromIntegral size
-
-#else
-
-import System.Posix.Files
-
-getFileSize :: FilePath -> IO Integer
-getFileSize = fmap (fromIntegral . fileSize) . getFileStatus
-
-#endif
+getFileSize :: FilePath -> IO FileOffset
+getFileSize = fmap fileSize . getFileStatus
 
 mimeTypes :: Map.Map ByteString ByteString
 mimeTypes =
