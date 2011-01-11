@@ -24,18 +24,20 @@ import Control.Monad    ( liftM, forever )
 import Data.Word (Word8)
 import Foreign          ( Ptr, castPtr, nullPtr, peekArray0
                         , throwIfNeg_, mallocBytes, free )
-import Foreign.C        ( CInt, CString, CStringLen
-                        , peekCString )
+import Foreign.C        (CInt, CString, CStringLen)
 import Control.Exception (finally)
 import Foreign.Storable ( Storable (..) )
 
 import qualified Network.Wai as W
 import qualified Network.Wai.Handler.CGI as CGI
-import qualified Network.Wai.Handler.Helper as CGI
 
+import qualified Data.ByteString as S
+import qualified Data.ByteString.Char8 as S8
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Internal as BSB
 import qualified Data.ByteString.Unsafe   as BSB
+
+import Control.Arrow ((***))
 
 #include <fcgiapp.h>
 
@@ -59,7 +61,7 @@ foreign import ccall unsafe "fcgiapp.h FCGX_PutStr" fcgx_putStr
 foreign import ccall unsafe "fcgiapp.h FCGX_Init" fcgx_init
     :: IO CInt
 
-runFork :: Maybe String -> (IO () -> IO a) -> Int -> W.Application -> IO ()
+runFork :: Maybe S.ByteString -> (IO () -> IO a) -> Int -> W.Application -> IO ()
 runFork sf fork threads app = do
     testReturn "FCGX_Init" $ fcgx_init
     let oneThread = forever $ oneRequest app sf
@@ -72,11 +74,11 @@ run = runFork Nothing id 1
 
 -- | Handle FastCGI requests in an infinite loop. For a server which supports
 -- the X-Sendfile header.
-runSendfile :: String -> W.Application -> IO ()
+runSendfile :: S.ByteString -> W.Application -> IO ()
 runSendfile sf = runFork (Just sf) id 1
 
 oneRequest :: W.Application
-           -> Maybe String -- X-Sendfile
+           -> Maybe S.ByteString -- X-Sendfile
            -> IO ()
 oneRequest app xsendfile = withRequest $ \r -> do
     putStrLn "Received 1 request"
@@ -124,13 +126,14 @@ handleRequest :: W.Application
               -> StreamPtr
               -> StreamPtr
               -> Environ
-              -> Maybe String -- sendfile
+              -> Maybe S.ByteString -- sendfile
               -> IO ()
 handleRequest f ins outs env xsendfile = do
     vars <- environToTable env
+    let vars' = map (S8.unpack *** S8.unpack) vars
     let input = const $ sRead ins
     let hPut = sPutStr' outs
-    CGI.run'' vars (CGI.requestBodyFunc input) hPut xsendfile f
+    CGI.run'' vars' (CGI.requestBodyFunc input) hPut xsendfile f
 
 data FCGX_Request
 
@@ -173,16 +176,12 @@ buildByteString f k = do
 testReturn :: String -> IO CInt -> IO ()
 testReturn e = throwIfNeg_ (\n -> e ++ " failed with error code: "++ show n)
 
-environToTable :: Environ -> IO [(String,String)]
-environToTable arr =
-    do css <- peekArray0 nullPtr arr
-       ss <- mapM peekCString css
-       return $ map (splitBy '=') ss
-
--- | Split a list at the first occurence of a marker.
---   Do not include the marker in any of the resulting lists.
---   If the marker does not occur in the list, the entire
---   input with be in the first list.
-splitBy :: Eq a => a -> [a] -> ([a],[a])
-splitBy x xs = (y, drop 1 z)
-    where (y,z) = break (==x) xs
+environToTable :: Environ -> IO [(S.ByteString, S.ByteString)]
+environToTable arr = do
+    css <- peekArray0 nullPtr arr
+    ss <- mapM S.packCString css
+    return $ map splitEq ss
+  where
+    splitEq s =
+        let (a, b) = S.breakByte 61 s
+         in (a, S.drop 1 b)
