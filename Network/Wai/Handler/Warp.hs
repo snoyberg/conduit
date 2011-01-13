@@ -52,7 +52,7 @@ import Blaze.ByteString.Builder.HTTP
     (chunkedTransferEncoding, chunkedTransferTerminator)
 import Blaze.ByteString.Builder
     (copyByteString, Builder, toLazyByteString, toByteStringIO)
-import Blaze.ByteString.Builder.Char8 (fromChar, fromString)
+import Blaze.ByteString.Builder.Char8 (fromChar, fromShow)
 import Data.Monoid (mconcat, mappend)
 import Network.Socket.SendFile (sendFile)
 
@@ -190,18 +190,20 @@ parseFirst s = do
             [x, y, z] -> return (x, y, z)
             _ -> E.throwError $ BadFirstLine $ B.unpack s
     let (hfirst, hsecond) = B.splitAt 5 http'
-    unless (hfirst == "HTTP/") $ E.throwError NonHttp
-    let (rpath, qstring) = B.break (== '?') query
-    return (method, rpath, qstring, hsecond)
+    if (hfirst == "HTTP/")
+        then
+            let (rpath, qstring) = B.break (== '?') query
+             in return (method, rpath, qstring, hsecond)
+        else E.throwError NonHttp
 
 headers :: HttpVersion -> Status -> ResponseHeaders -> Bool -> Builder
 headers httpversion status responseHeaders isChunked' =
     copyByteString "HTTP/"
     `mappend` copyByteString httpversion
     `mappend` fromChar ' '
-    `mappend` fromString $ show $ statusCode status
+    `mappend` fromShow (statusCode status)
     `mappend` fromChar ' '
-    `mappend` copyByteString $ statusMessage status
+    `mappend` copyByteString (statusMessage status)
     `mappend` copyByteString "\r\n"
     `mappend` mconcat (map go responseHeaders)
     `mappend`
@@ -210,7 +212,7 @@ headers httpversion status responseHeaders isChunked' =
             else copyByteString "\r\n"
   where
     go (x, y) =
-        copyByteString $ ciOriginal x
+        copyByteString (ciOriginal x)
         `mappend` copyByteString ": "
         `mappend` copyByteString y
         `mappend` copyByteString "\r\n"
