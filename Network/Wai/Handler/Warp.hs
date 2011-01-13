@@ -38,7 +38,6 @@ import Network.Socket
 import qualified Network.Socket.ByteString as Sock
 import Control.Exception (bracket, finally, Exception, SomeException, catch)
 import Control.Concurrent (forkIO)
-import Control.Monad (unless, when)
 import Data.Maybe (fromMaybe)
 
 import Data.Typeable (Typeable)
@@ -88,7 +87,7 @@ serveConnection port app conn remoteHost' = do
         (enumeratee, env) <- parseRequest port remoteHost'
         res <- E.joinI $ enumeratee $$ app env
         keepAlive <- liftIO $ sendResponse env (httpVersion env) conn res
-        when keepAlive serveConnection'
+        if keepAlive then serveConnection' else return ()
 
 parseRequest :: Port -> SockAddr -> E.Iteratee S.ByteString IO (E.Enumeratee ByteString ByteString IO a, Request)
 parseRequest port remoteHost' = do
