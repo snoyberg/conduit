@@ -10,7 +10,6 @@ Category:            Web, Yesod
 Build-Type:          Simple
 Cabal-Version:       >=1.6
 Stability:           Stable
-Extra-source-files:  mime.types
 
 flag timeout-protection
     Description: Use timeouts (very performance-costly) to protect against DOS attacks.
