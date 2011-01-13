@@ -195,26 +195,25 @@ parseFirst s = do
     return (method, rpath, qstring, hsecond)
 
 headers :: HttpVersion -> Status -> ResponseHeaders -> Bool -> Builder
-headers httpversion status responseHeaders isChunked' = mconcat
-    [ copyByteString "HTTP/"
-    , copyByteString httpversion
-    , fromChar ' '
-    , fromString $ show $ statusCode status
-    , fromChar ' '
-    , copyByteString $ statusMessage status
-    , copyByteString "\r\n"
-    , mconcat $ map go responseHeaders
-    , if isChunked'
-        then copyByteString "Transfer-Encoding: chunked\r\n\r\n"
-        else copyByteString "\r\n"
-    ]
+headers httpversion status responseHeaders isChunked' =
+    copyByteString "HTTP/"
+    `mappend` copyByteString httpversion
+    `mappend` fromChar ' '
+    `mappend` fromString $ show $ statusCode status
+    `mappend` fromChar ' '
+    `mappend` copyByteString $ statusMessage status
+    `mappend` copyByteString "\r\n"
+    `mappend` mconcat (map go responseHeaders)
+    `mappend`
+        if isChunked'
+            then copyByteString "Transfer-Encoding: chunked\r\n\r\n"
+            else copyByteString "\r\n"
   where
-    go (x, y) = mconcat
-        [ copyByteString $ ciOriginal x
-        , copyByteString ": "
-        , copyByteString y
-        , copyByteString "\r\n"
-        ]
+    go (x, y) =
+        copyByteString $ ciOriginal x
+        `mappend` copyByteString ": "
+        `mappend` copyByteString y
+        `mappend` copyByteString "\r\n"
 
 isChunked :: HttpVersion -> Bool
 isChunked = (==) http11
@@ -273,10 +272,8 @@ sendResponse req hv socket (ResponseEnumerator res) =
         chunk = E.checkDone $ E.continue . step
         step k E.EOF = k (E.Chunks [chunkedTransferTerminator]) >>== return
         step k (E.Chunks []) = E.continue $ step k
-        step k (E.Chunks builders) =
-            k (E.Chunks [chunked]) >>== chunk
-          where
-            chunked = chunkedTransferEncoding $ mconcat builders
+        -- FIXME ensure that the mconcat on the concents here is unnecessary
+        step k x = k x >>== chunk
 
 parseHeaderNoAttr :: ByteString -> (ByteString, ByteString)
 parseHeaderNoAttr s =
