@@ -59,7 +59,7 @@ import Blaze.ByteString.Builder.HTTP
 import Blaze.ByteString.Builder
     (copyByteString, Builder, toLazyByteString, toByteStringIO)
 import Blaze.ByteString.Builder.Char8 (fromChar, fromShow)
-import Data.Monoid (mappend)
+import Data.Monoid (mappend, mconcat)
 import Network.Socket.SendFile (sendFile)
 import Network.Socket.Enumerator (iterSocket)
 
@@ -133,9 +133,7 @@ parseRequest' port (firstLine:otherLines) remoteHost' = do
     let rpath =
             if S.null rpath'
                 then "/"
-                else if '/' == B.head rpath'
-                        then "/"
-                        else B.cons '/' rpath'
+                else rpath'
     let heads = map parseHeaderNoAttr otherLines
     let host = fromMaybe "" $ lookup "host" heads
     let len =
@@ -276,8 +274,8 @@ sendResponse req hv socket (ResponseEnumerator res) =
         chunk = E.checkDone $ E.continue . step
         step k E.EOF = k (E.Chunks [chunkedTransferTerminator]) >>== return
         step k (E.Chunks []) = E.continue $ step k
-        -- FIXME ensure that the mconcat on the concents here is unnecessary
-        step k x = k x >>== chunk
+        step k (E.Chunks [x]) = k (E.Chunks [chunkedTransferEncoding x]) >>== chunk
+        step k (E.Chunks xs) = k (E.Chunks [chunkedTransferEncoding $ mconcat xs]) >>== chunk
 
 parseHeaderNoAttr :: ByteString -> (CIByteString, ByteString)
 parseHeaderNoAttr s =
