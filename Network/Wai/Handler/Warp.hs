@@ -46,6 +46,7 @@ import Data.Typeable (Typeable)
 
 import Data.Enumerator (($$), (>>==))
 import qualified Data.Enumerator as E
+import qualified Data.Enumerator.List as EL
 import Blaze.ByteString.Builder.Enumerator (builderToByteString)
 import Blaze.ByteString.Builder.HTTP
     (chunkedTransferEncoding, chunkedTransferTerminator)
@@ -117,7 +118,7 @@ takeLine :: Int
          -> ([ByteString] -> [ByteString])
          -> E.Iteratee ByteString IO ByteString
 takeLine len front = do
-    mbs <- E.head
+    mbs <- EL.head
     case mbs of
         Nothing -> E.throwError IncompleteHeaders
         Just bs -> do
