@@ -22,7 +22,7 @@ module Network.Wai.Handler.Warp
     , parseRequest
 #if TEST
     , takeLineMax
-    , takeUntilBlank
+    , takeHeaders
     , InvalidRequest (..)
 #endif
     ) where
@@ -59,16 +59,17 @@ import Blaze.ByteString.Builder.HTTP
 import Blaze.ByteString.Builder
     (copyByteString, Builder, toLazyByteString, toByteStringIO)
 import Blaze.ByteString.Builder.Char8 (fromChar, fromShow)
-import Data.Monoid (mconcat, mappend)
+import Data.Monoid (mappend)
 import Network.Socket.SendFile (sendFile)
 import Network.Socket.Enumerator (iterSocket)
 
 import Control.Monad.IO.Class (liftIO)
 import System.Timeout (timeout)
 import Data.Word (Word8)
+import Data.List (foldl')
 
 run :: Port -> Application -> IO ()
-run port = withSocketsDo .
+run port = withSocketsDo . -- FIXME should this be called by client user instead?
     bracket
         (listenOn $ PortNumber $ fromIntegral port)
         sClose .
@@ -100,7 +101,7 @@ serveConnection port app conn remoteHost' = do
 
 parseRequest :: Port -> SockAddr -> E.Iteratee S.ByteString IO (E.Enumeratee ByteString ByteString IO a, Request)
 parseRequest port remoteHost' = do
-    headers' <- takeUntilBlank 0 id
+    headers' <- takeHeaders
     parseRequest' port headers' remoteHost'
 
 -- FIXME come up with good values here
@@ -182,27 +183,37 @@ parseFirst s = do
             let (rpath, qstring) = B.break (== '?') query
              in return (method, rpath, qstring, hsecond)
         else E.throwError NonHttp
+{-# INLINE parseFirst #-} -- FIXME is this inline necessary? the function is only called from one place and not exported
+
+httpBuilder, spaceBuilder, newlineBuilder, transferEncodingBuilder
+           , colonSpaceBuilder :: Builder
+httpBuilder = copyByteString "HTTP/"
+spaceBuilder = fromChar ' '
+newlineBuilder = copyByteString "\r\n"
+transferEncodingBuilder = copyByteString "Transfer-Encoding: chunked\r\n\r\n"
+colonSpaceBuilder = copyByteString ": "
 
 headers :: HttpVersion -> Status -> ResponseHeaders -> Bool -> Builder
-headers httpversion status responseHeaders isChunked' =
-    copyByteString "HTTP/"
-    `mappend` copyByteString httpversion
-    `mappend` fromChar ' '
-    `mappend` fromShow (statusCode status)
-    `mappend` fromChar ' '
-    `mappend` copyByteString (statusMessage status)
-    `mappend` copyByteString "\r\n"
-    `mappend` mconcat (map go responseHeaders)
-    `mappend`
-        if isChunked'
-            then copyByteString "Transfer-Encoding: chunked\r\n\r\n"
-            else copyByteString "\r\n"
-  where
-    go (x, y) =
-        copyByteString (ciOriginal x)
-        `mappend` copyByteString ": "
-        `mappend` copyByteString y
-        `mappend` copyByteString "\r\n"
+headers !httpversion !status !responseHeaders !isChunked' = {-# SCC "headers" #-}
+    let !start = httpBuilder
+                `mappend` copyByteString httpversion
+                `mappend` spaceBuilder
+                `mappend` fromShow (statusCode status)
+                `mappend` spaceBuilder
+                `mappend` copyByteString (statusMessage status)
+                `mappend` newlineBuilder
+        !start' = foldl' responseHeaderToBuilder start responseHeaders
+        !end = if isChunked'
+                 then transferEncodingBuilder
+                 else newlineBuilder
+    in start' `mappend` end
+
+responseHeaderToBuilder :: Builder -> (CIByteString, ByteString) -> Builder
+responseHeaderToBuilder b (x, y) = b
+  `mappend` (copyByteString $ ciOriginal x)
+  `mappend` colonSpaceBuilder
+  `mappend` copyByteString y
+  `mappend` newlineBuilder
 
 isChunked :: HttpVersion -> Bool
 isChunked = (==) http11
@@ -299,6 +310,9 @@ enumSocket _ _ step = E.returnI step
 
 ------ The functions below are not warp-specific and could be split out into a
 --separate package.
+
+takeHeaders :: E.Iteratee ByteString IO [ByteString]
+takeHeaders = takeUntilBlank 0 id
 
 takeUntilBlank :: Int
                -> ([ByteString] -> [ByteString])
