@@ -2,6 +2,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE BangPatterns #-}
 ---------------------------------------------------------
 -- |
 -- Module        : Network.Wai.Handler.Warp
@@ -27,6 +28,7 @@ import qualified System.IO
 
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as S
+import qualified Data.ByteString.Unsafe as SU
 import qualified Data.ByteString.Char8 as B
 import qualified Data.ByteString.Lazy as L
 import Network
@@ -57,6 +59,7 @@ import Network.Socket.SendFile (sendFile)
 
 import Control.Monad.IO.Class (liftIO)
 import System.Timeout (timeout)
+import Data.Word (Word8)
 
 run :: Port -> Application -> IO ()
 run port = withSocketsDo .
@@ -149,28 +152,29 @@ parseRequest' :: Port
               -> [ByteString]
               -> SockAddr
               -> E.Iteratee S.ByteString IO (E.Enumeratee S.ByteString S.ByteString IO a, Request)
-parseRequest' port lines' remoteHost' = do
-    (firstLine, otherLines) <-
-        case lines' of
-            x:xs -> return (x, xs)
-            [] -> E.throwError $ NotEnoughLines $ map B.unpack lines'
+parseRequest' _ [] _ = E.throwError $ NotEnoughLines []
+parseRequest' port (firstLine:otherLines) remoteHost' = do
     (method, rpath', gets, httpversion) <- parseFirst firstLine
-    let rpath = '/' : case B.unpack rpath' of
-                        ('/':x) -> x
-                        _ -> B.unpack rpath'
+    let rpath =
+            if S.null rpath'
+                then "/"
+                else if '/' == B.head rpath'
+                        then "/"
+                        else B.cons '/' rpath'
     let heads = map (first mkCIByteString . parseHeaderNoAttr) otherLines
     let host = fromMaybe "" $ lookup "host" heads
-    let len = fromMaybe 0 $ do
-                bs <- lookup "Content-Length" heads
-                let str = B.unpack bs
-                case reads str of
-                    (x, _):_ -> Just x
-                    _ -> Nothing
-    let (serverName', _) = B.break (== ':') host
+    let len =
+            case lookup "content-length" heads of
+                Nothing -> 0
+                Just bs ->
+                    case reads $ B.unpack bs of -- FIXME could probably be optimized
+                        (x, _):_ -> x
+                        [] -> 0
+    let serverName' = takeUntil 58 host -- ':'
     return (requestBodyHandle len, Request
                 { requestMethod = method
                 , httpVersion = httpversion
-                , pathInfo = B.pack rpath
+                , pathInfo = rpath
                 , queryString = gets
                 , serverName = serverName'
                 , serverPort = port
@@ -179,6 +183,14 @@ parseRequest' port lines' remoteHost' = do
                 , errorHandler = System.IO.hPutStr System.IO.stderr
                 , remoteHost = remoteHost'
                 })
+
+
+takeUntil :: Word8 -> ByteString -> ByteString
+takeUntil c bs =
+    case S.elemIndex c bs of
+       Just !idx -> SU.unsafeTake idx bs
+       Nothing -> bs
+{-# INLINE takeUntil #-}
 
 parseFirst :: ByteString
            -> E.Iteratee S.ByteString IO (ByteString, ByteString, ByteString, HttpVersion)
