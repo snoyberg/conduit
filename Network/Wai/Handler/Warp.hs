@@ -20,6 +20,11 @@ module Network.Wai.Handler.Warp
     ( run
     , sendResponse
     , parseRequest
+#if TEST
+    , takeLineMax
+    , takeUntilBlank
+    , InvalidRequest (..)
+#endif
     ) where
 
 import Prelude hiding (catch)
@@ -47,6 +52,7 @@ import Data.Typeable (Typeable)
 import Data.Enumerator (($$), (>>==))
 import qualified Data.Enumerator as E
 import qualified Data.Enumerator.List as EL
+import qualified Data.Enumerator.Binary as EB
 import Blaze.ByteString.Builder.Enumerator (builderToByteString)
 import Blaze.ByteString.Builder.HTTP
     (chunkedTransferEncoding, chunkedTransferTerminator)
@@ -55,6 +61,7 @@ import Blaze.ByteString.Builder
 import Blaze.ByteString.Builder.Char8 (fromChar, fromShow)
 import Data.Monoid (mconcat, mappend)
 import Network.Socket.SendFile (sendFile)
+import Network.Socket.Enumerator (iterSocket)
 
 import Control.Monad.IO.Class (liftIO)
 import System.Timeout (timeout)
@@ -103,38 +110,6 @@ maxHeaderLength = 1024
 bytesPerRead = 4096
 readTimeout = 3000000
 
-takeUntilBlank :: Int
-               -> ([ByteString] -> [ByteString])
-               -> E.Iteratee S.ByteString IO [ByteString]
-takeUntilBlank count _
-    | count > maxHeaders = E.throwError TooManyHeaders
-takeUntilBlank count front = do
-    l <- takeLine 0 id
-    if B.null l
-        then return $ front []
-        else takeUntilBlank (count + 1) $ front . (:) l
-
-takeLine :: Int
-         -> ([ByteString] -> [ByteString])
-         -> E.Iteratee ByteString IO ByteString
-takeLine len front = do
-    mbs <- EL.head
-    case mbs of
-        Nothing -> E.throwError IncompleteHeaders
-        Just bs -> do
-            let (x, y) = S.breakByte 10 bs
-                x' = if S.length x > 0 && S.last x == 13
-                        then S.init x
-                        else x
-            let len' = len + B.length x
-            case () of
-                ()
-                    | len' > maxHeaderLength -> E.throwError OverLargeHeader
-                    | B.null y -> takeLine len' $ front . (:) x
-                    | otherwise -> do
-                        E.yield () $ E.Chunks [B.drop 1 y]
-                        return $ B.concat $ front [x']
-
 data InvalidRequest =
     NotEnoughLines [String]
     | BadFirstLine String
@@ -143,7 +118,7 @@ data InvalidRequest =
     | IncompleteHeaders
     | OverLargeHeader
     | SocketTimeout
-    deriving (Show, Typeable)
+    deriving (Show, Typeable, Eq)
 instance Exception InvalidRequest
 
 -- | Parse a set of header lines and body into a 'Request'.
@@ -170,7 +145,9 @@ parseRequest' port (firstLine:otherLines) remoteHost' = do
                         (x, _):_ -> x
                         [] -> 0
     let serverName' = takeUntil 58 host -- ':'
-    return (requestBodyHandle len, Request
+    -- FIXME isolate takes an Integer instead of Int or Int64. If this is a
+    -- performance penalty, we may need our own version.
+    return (EB.isolate len, Request
                 { requestMethod = method
                 , httpVersion = httpversion
                 , pathInfo = rpath
@@ -297,45 +274,8 @@ parseHeaderNoAttr s =
                     else rest
      in (mkCIByteString k, rest')
 
-requestBodyHandle :: Int
-                  -> E.Enumeratee ByteString ByteString IO a
-requestBodyHandle initLen =
-    go initLen
-  where
-    go 0 step = return step
-    go len (E.Continue k) = do
-        x <- E.head
-        case x of
-            Nothing -> return $ E.Continue k
-            Just bs -> do
-                (bs', newlen) <- yieldExtra len bs
-                k (E.Chunks [bs']) >>== go newlen
-    go len step = do
-        drain len
-        return step
-    drain 0 = return ()
-    drain len = do
-        mbs <- E.head
-        case mbs of
-            Nothing -> return ()
-            Just bs -> do
-                (_, newlen) <- yieldExtra len bs
-                drain newlen
-    yieldExtra len bs
-        | B.length bs == len = return (bs, 0)
-        | B.length bs < len = return (bs, len - B.length bs)
-        | otherwise = do
-            let (x, y) = B.splitAt len bs
-            E.yield () $ E.Chunks [y]
-            return (x, 0)
-
-iterSocket :: Socket -> E.Iteratee ByteString IO ()
-iterSocket socket =
-    E.continue go
-  where
-    go E.EOF = E.yield () E.EOF
-    go (E.Chunks cs) = liftIO (Sock.sendMany socket cs) >> E.continue go
-
+-- FIXME when we switch to Jeremy's timeout code, we can probably start using
+-- network-enumerator's enumSocket
 enumSocket :: Int -> Socket -> E.Enumerator ByteString IO a
 enumSocket len socket (E.Continue k) = do
 #if NO_TIMEOUT_PROTECTION
@@ -352,3 +292,38 @@ enumSocket len socket (E.Continue k) = do
         | S.length bs == 0 = E.continue k
         | otherwise = k (E.Chunks [bs]) >>== enumSocket len socket
 enumSocket _ _ step = E.returnI step
+
+------ The functions below are not warp-specific and could be split out into a
+--separate package.
+
+takeUntilBlank :: Int
+               -> ([ByteString] -> [ByteString])
+               -> E.Iteratee S.ByteString IO [ByteString]
+takeUntilBlank count _
+    | count > maxHeaders = E.throwError TooManyHeaders
+takeUntilBlank count front = do
+    l <- takeLineMax 0 id
+    if B.null l
+        then return $ front []
+        else takeUntilBlank (count + 1) $ front . (:) l
+
+takeLineMax :: Int
+            -> ([ByteString] -> [ByteString])
+            -> E.Iteratee ByteString IO ByteString
+takeLineMax len front = do
+    mbs <- EL.head
+    case mbs of
+        Nothing -> E.throwError IncompleteHeaders
+        Just bs -> do
+            let (x, y) = S.breakByte 10 bs
+                x' = if S.length x > 0 && S.last x == 13
+                        then S.init x
+                        else x
+            let len' = len + B.length x
+            case () of
+                ()
+                    | len' > maxHeaderLength -> E.throwError OverLargeHeader
+                    | B.null y -> takeLineMax len' $ front . (:) x
+                    | otherwise -> do
+                        E.yield () $ E.Chunks [B.drop 1 y]
+                        return $ B.concat $ front [x']

@@ -25,6 +25,7 @@ Library
                    , enumerator                    >= 0.4.5    && < 0.5
                    , blaze-builder                 >= 0.2.1.4  && < 0.3
                    , sendfile                      >= 0.7.2    && < 0.8
+                   , network-enumerator            >= 0.1.1    && < 0.2
   if flag(network-bytestring)
       build-depends: network               >= 2.2.1   && < 2.2.3
                    , network-bytestring    >= 0.1.3   && < 0.1.4
