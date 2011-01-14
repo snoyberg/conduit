@@ -44,8 +44,6 @@ import Data.Maybe (fromMaybe)
 
 import Data.Typeable (Typeable)
 
-import Control.Arrow (first)
-
 import Data.Enumerator (($$), (>>==))
 import qualified Data.Enumerator as E
 import Blaze.ByteString.Builder.Enumerator (builderToByteString)
@@ -161,7 +159,7 @@ parseRequest' port (firstLine:otherLines) remoteHost' = do
                 else if '/' == B.head rpath'
                         then "/"
                         else B.cons '/' rpath'
-    let heads = map (first mkCIByteString . parseHeaderNoAttr) otherLines
+    let heads = map parseHeaderNoAttr otherLines
     let host = fromMaybe "" $ lookup "host" heads
     let len =
             case lookup "content-length" heads of
@@ -288,16 +286,15 @@ sendResponse req hv socket (ResponseEnumerator res) =
         -- FIXME ensure that the mconcat on the concents here is unnecessary
         step k x = k x >>== chunk
 
-parseHeaderNoAttr :: ByteString -> (ByteString, ByteString)
+parseHeaderNoAttr :: ByteString -> (CIByteString, ByteString)
 parseHeaderNoAttr s =
-    let (k, rest) = B.span (/= ':') s
-        rest' = if not (B.null rest) &&
-                   B.head rest == ':' &&
-                   not (B.null $ B.tail rest) &&
-                   B.head (B.tail rest) == ' '
-                    then B.drop 2 rest
+    let (k, rest) = S.breakByte 58 s -- ':'
+        restLen = S.length rest
+        -- FIXME check for colon without following space?
+        rest' = if restLen > 1 && SU.unsafeTake 2 rest == ": "
+                    then SU.unsafeDrop 2 rest
                     else rest
-     in (k, rest')
+     in (mkCIByteString k, rest')
 
 requestBodyHandle :: Int
                   -> E.Enumeratee ByteString ByteString IO a
