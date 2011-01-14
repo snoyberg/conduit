@@ -218,19 +218,23 @@ sendResponse req hv socket (ResponseFile s hs fp) = do
             sendFile socket fp
             return $ lookup "content-length" hs /= Nothing
         else return True
-sendResponse req hv socket (ResponseBuilder s hs b) = do
-    toByteStringIO (Sock.sendAll socket) $
-        if hasBody s req
-            then b'
-            else headers'
-    return isKeepAlive
+sendResponse req hv socket (ResponseBuilder s hs b)
+    | hasBody s req = do
+          toByteStringIO (Sock.sendAll socket) b'
+          return isKeepAlive
+    | otherwise = do
+        Sock.sendMany socket
+            $ L.toChunks
+            $ toLazyByteString
+            $ headers hv s hs False
+        return True
   where
-    headers' = headers hv s hs True
+    headers' = headers hv s hs isChunked'
     b' =
         if isChunked'
             then headers'
-                     `mappend` chunkedTransferEncoding b
-                     `mappend` chunkedTransferTerminator
+                 `mappend` chunkedTransferEncoding b
+                 `mappend` chunkedTransferTerminator
             else headers hv s hs False `mappend` b
     hasLength = lookup "content-length" hs /= Nothing
     isChunked' = isChunked hv && not hasLength
