@@ -6,7 +6,9 @@ module Network.Wai.Application.Static
       MimeType
     , defaultMimeType
       -- ** Mime type by file extension
+    , Extension
     , MimeMap
+    , takeExtensions
     , defaultMimeTypes
     , mimeTypeByExt
     , defaultMimeTypeByExt
@@ -22,8 +24,6 @@ import qualified Network.Wai as W
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.ByteString (ByteString)
-import System.FilePath (takeExtensions)
-import Data.Maybe (fromMaybe)
 import System.Directory (doesFileExist, doesDirectoryExist)
 import qualified Data.ByteString.Char8 as S8
 import qualified Data.ByteString.Lazy as L
@@ -32,8 +32,16 @@ import Web.Routes.Base (decodePathInfo, encodePathInfo)
 import System.PosixCompat.Files (fileSize, getFileStatus)
 import Control.Monad.IO.Class (liftIO)
 
+-- | A list of all possible extensions, starting from the largest.
+takeExtensions :: FilePath -> [String]
+takeExtensions s =
+    case break (== '.') s of
+        (_, '.':x) -> x : takeExtensions x
+        (_, _) -> []
+
 type MimeType = ByteString
-type MimeMap = Map FilePath MimeType
+type Extension = String
+type MimeMap = Map Extension MimeType
 
 defaultMimeType :: MimeType
 defaultMimeType = "application/octet-stream"
@@ -41,67 +49,74 @@ defaultMimeType = "application/octet-stream"
 -- taken from snap-core Snap.Util.FileServer
 defaultMimeTypes :: MimeMap
 defaultMimeTypes = Map.fromList [
-  ( ".asc"     , "text/plain"                        ),
-  ( ".asf"     , "video/x-ms-asf"                    ),
-  ( ".asx"     , "video/x-ms-asf"                    ),
-  ( ".avi"     , "video/x-msvideo"                   ),
-  ( ".bz2"     , "application/x-bzip"                ),
-  ( ".c"       , "text/plain"                        ),
-  ( ".class"   , "application/octet-stream"          ),
-  ( ".conf"    , "text/plain"                        ),
-  ( ".cpp"     , "text/plain"                        ),
-  ( ".css"     , "text/css"                          ),
-  ( ".cxx"     , "text/plain"                        ),
-  ( ".dtd"     , "text/xml"                          ),
-  ( ".dvi"     , "application/x-dvi"                 ),
-  ( ".gif"     , "image/gif"                         ),
-  ( ".gz"      , "application/x-gzip"                ),
-  ( ".hs"      , "text/plain"                        ),
-  ( ".htm"     , "text/html"                         ),
-  ( ".html"    , "text/html"                         ),
-  ( ".jar"     , "application/x-java-archive"        ),
-  ( ".jpeg"    , "image/jpeg"                        ),
-  ( ".jpg"     , "image/jpeg"                        ),
-  ( ".js"      , "text/javascript"                   ),
-  ( ".log"     , "text/plain"                        ),
-  ( ".m3u"     , "audio/x-mpegurl"                   ),
-  ( ".mov"     , "video/quicktime"                   ),
-  ( ".mp3"     , "audio/mpeg"                        ),
-  ( ".mpeg"    , "video/mpeg"                        ),
-  ( ".mpg"     , "video/mpeg"                        ),
-  ( ".ogg"     , "application/ogg"                   ),
-  ( ".pac"     , "application/x-ns-proxy-autoconfig" ),
-  ( ".pdf"     , "application/pdf"                   ),
-  ( ".png"     , "image/png"                         ),
-  ( ".ps"      , "application/postscript"            ),
-  ( ".qt"      , "video/quicktime"                   ),
-  ( ".sig"     , "application/pgp-signature"         ),
-  ( ".spl"     , "application/futuresplash"          ),
-  ( ".swf"     , "application/x-shockwave-flash"     ),
-  ( ".tar"     , "application/x-tar"                 ),
-  ( ".tar.bz2" , "application/x-bzip-compressed-tar" ),
-  ( ".tar.gz"  , "application/x-tgz"                 ),
-  ( ".tbz"     , "application/x-bzip-compressed-tar" ),
-  ( ".text"    , "text/plain"                        ),
-  ( ".tgz"     , "application/x-tgz"                 ),
-  ( ".torrent" , "application/x-bittorrent"          ),
-  ( ".ttf"     , "application/x-font-truetype"       ),
-  ( ".txt"     , "text/plain"                        ),
-  ( ".wav"     , "audio/x-wav"                       ),
-  ( ".wax"     , "audio/x-ms-wax"                    ),
-  ( ".wma"     , "audio/x-ms-wma"                    ),
-  ( ".wmv"     , "video/x-ms-wmv"                    ),
-  ( ".xbm"     , "image/x-xbitmap"                   ),
-  ( ".xml"     , "text/xml"                          ),
-  ( ".xpm"     , "image/x-xpixmap"                   ),
-  ( ".xwd"     , "image/x-xwindowdump"               ),
-  ( ".zip"     , "application/zip"                   )]
+  ( "asc"     , "text/plain"                        ),
+  ( "asf"     , "video/x-ms-asf"                    ),
+  ( "asx"     , "video/x-ms-asf"                    ),
+  ( "avi"     , "video/x-msvideo"                   ),
+  ( "bz2"     , "application/x-bzip"                ),
+  ( "c"       , "text/plain"                        ),
+  ( "class"   , "application/octet-stream"          ),
+  ( "conf"    , "text/plain"                        ),
+  ( "cpp"     , "text/plain"                        ),
+  ( "css"     , "text/css"                          ),
+  ( "cxx"     , "text/plain"                        ),
+  ( "dtd"     , "text/xml"                          ),
+  ( "dvi"     , "application/x-dvi"                 ),
+  ( "gif"     , "image/gif"                         ),
+  ( "gz"      , "application/x-gzip"                ),
+  ( "hs"      , "text/plain"                        ),
+  ( "htm"     , "text/html"                         ),
+  ( "html"    , "text/html"                         ),
+  ( "jar"     , "application/x-java-archive"        ),
+  ( "jpeg"    , "image/jpeg"                        ),
+  ( "jpg"     , "image/jpeg"                        ),
+  ( "js"      , "text/javascript"                   ),
+  ( "log"     , "text/plain"                        ),
+  ( "m3u"     , "audio/x-mpegurl"                   ),
+  ( "mov"     , "video/quicktime"                   ),
+  ( "mp3"     , "audio/mpeg"                        ),
+  ( "mpeg"    , "video/mpeg"                        ),
+  ( "mpg"     , "video/mpeg"                        ),
+  ( "ogg"     , "application/ogg"                   ),
+  ( "pac"     , "application/x-ns-proxy-autoconfig" ),
+  ( "pdf"     , "application/pdf"                   ),
+  ( "png"     , "image/png"                         ),
+  ( "ps"      , "application/postscript"            ),
+  ( "qt"      , "video/quicktime"                   ),
+  ( "sig"     , "application/pgp-signature"         ),
+  ( "spl"     , "application/futuresplash"          ),
+  ( "swf"     , "application/x-shockwave-flash"     ),
+  ( "tar"     , "application/x-tar"                 ),
+  ( "tar.bz2" , "application/x-bzip-compressed-tar" ),
+  ( "tar.gz"  , "application/x-tgz"                 ),
+  ( "tbz"     , "application/x-bzip-compressed-tar" ),
+  ( "text"    , "text/plain"                        ),
+  ( "tgz"     , "application/x-tgz"                 ),
+  ( "torrent" , "application/x-bittorrent"          ),
+  ( "ttf"     , "application/x-font-truetype"       ),
+  ( "txt"     , "text/plain"                        ),
+  ( "wav"     , "audio/x-wav"                       ),
+  ( "wax"     , "audio/x-ms-wax"                    ),
+  ( "wma"     , "audio/x-ms-wma"                    ),
+  ( "wmv"     , "video/x-ms-wmv"                    ),
+  ( "xbm"     , "image/x-xbitmap"                   ),
+  ( "xml"     , "text/xml"                          ),
+  ( "xpm"     , "image/x-xpixmap"                   ),
+  ( "xwd"     , "image/x-xwindowdump"               ),
+  ( "zip"     , "application/zip"                   )]
 
 mimeTypeByExt :: MimeMap
               -> MimeType -- ^ default mime type
               -> FilePath
               -> MimeType
-mimeTypeByExt mm def fp = fromMaybe def $ Map.lookup (takeExtensions fp) mm
+mimeTypeByExt mm def =
+    go . takeExtensions
+  where
+    go [] = def
+    go (e:es) =
+        case Map.lookup e mm of
+            Nothing -> go es
+            Just mt -> mt
 
 defaultMimeTypeByExt :: FilePath -> MimeType
 defaultMimeTypeByExt = mimeTypeByExt defaultMimeTypes defaultMimeType

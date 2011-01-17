@@ -20,7 +20,6 @@ library
                    , transformers              >= 0.2.2    && < 0.3
                    , unix-compat               >= 0.2      && < 0.3
                    , directory                 >= 1.0      && < 1.2
-                   , filepath                  >= 1.1      && < 1.2
                    , containers                >= 0.2      && < 0.5
     exposed-modules: Network.Wai.Application.Static
     ghc-options:     -Wall
