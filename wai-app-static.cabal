@@ -1,0 +1,35 @@
+name:            wai-app-static
+version:         0.0.0
+license:         BSD3
+license-file:    LICENSE
+author:          Michael Snoyman <michael@snoyman.com>
+maintainer:      Michael Snoyman <michael@snoyman.com>
+synopsis:        WAI application for static serving
+description:     Also provides some helper functions and datatypes for use outside of WAI.
+category:        Web, Yesod
+stability:       Stable
+cabal-version:   >= 1.6
+build-type:      Simple
+homepage:        http://docs.yesodweb.com/
+
+library
+    build-depends:   base                      >= 4        && < 5
+                   , wai                       >= 0.3      && < 0.4
+                   , bytestring                >= 0.9.1.4  && < 0.10
+                   , web-routes                >= 0.23     && < 0.24
+                   , transformers              >= 0.2.2    && < 0.3
+                   , unix-compat               >= 0.2      && < 0.3
+                   , directory                 >= 1.0      && < 1.2
+                   , filepath                  >= 1.1      && < 1.2
+                   , containers                >= 0.2      && < 0.5
+    exposed-modules: Network.Wai.Application.Static
+    ghc-options:     -Wall
+
+executable           warp-static
+    build-depends:   warp                      >= 0.3      && < 0.4
+    main-is:         warp-static.hs
+    ghc-options:     -Wall
+
+source-repository head
+  type:     git
+  location: git://github.com/snoyberg/wai-app-static.git
