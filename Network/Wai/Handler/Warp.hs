@@ -251,6 +251,7 @@ sendResponse req hv socket (ResponseBuilder s hs b)
 sendResponse req hv socket (ResponseEnumerator res) =
     res go
   where
+    -- FIXME perhaps alloca a buffer per thread and reuse that in all functiosn below. Should lessen greatly the GC burden (I hope)
     go s hs
         | not (hasBody s req) = do
             liftIO $ Sock.sendMany socket
@@ -260,7 +261,7 @@ sendResponse req hv socket (ResponseEnumerator res) =
     go s hs =
             chunk'
           $ E.enumList 1 [headers hv s hs isChunked']
-         $$ E.joinI $ builderToByteString
+         $$ E.joinI $ builderToByteString -- FIXME unsafeBuilderToByteString
          $$ (iterSocket socket >> return isKeepAlive)
       where
         hasLength = lookup "content-length" hs /= Nothing
