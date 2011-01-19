@@ -153,9 +153,10 @@ stripTrailingSlash "" = ""
 stripTrailingSlash (x:xs) = x : stripTrailingSlash xs
 
 checkPieces :: FilePath -- ^ static file prefix
+            -> [FilePath] -- ^ List of default index files. Cannot contain slashes.
             -> [String] -- ^ parsed request
             -> IO CheckPieces
-checkPieces prefix pieces
+checkPieces prefix indices pieces
     | any unsafe pieces = return Forbidden
     | anyButLast null pieces =
         return $ Redirect $ filterButLast (not . null) pieces
@@ -173,10 +174,27 @@ checkPieces prefix pieces
             (True, False) -> return $ Redirect $ init pieces
             (False, _) -> do
                 de <- doesDirectoryExist fp
-                case (de, isFolder) of
-                    (True, True) -> return $ DirectoryResponse fp
-                    (True, False) -> return $ Redirect $ pieces ++ [""]
-                    (False, _) -> return NotFound
+                if de
+                    then do
+                        x <- checkIndices fp indices
+                        case x of
+                            Just index -> return $ Redirect $ setLast pieces index
+                            Nothing ->
+                                if isFolder
+                                    then return $ DirectoryResponse fp
+                                    else return $ Redirect $ pieces ++ [""]
+                    else return NotFound
+  where
+    setLast [] x = [x]
+    setLast [""] x = [x]
+    setLast (a:b) x = a : setLast b x
+    checkIndices _ [] = return Nothing
+    checkIndices fp (i:is) = do
+        let fp' = fp ++ '/' : i
+        fe <- doesFileExist fp'
+        if fe
+            then return $ Just i
+            else checkIndices fp is
 
 type Listing = FilePath -> IO L.ByteString
 
@@ -190,7 +208,7 @@ data StaticSettings = StaticSettings
 staticApp :: StaticSettings -> W.Application
 staticApp (StaticSettings folder indices mlisting getmime) req = liftIO $ do
     let pieces = decodePathInfo $ S8.unpack $ W.pathInfo req
-    cp <- checkPieces folder pieces
+    cp <- checkPieces folder indices pieces
     case cp of
         Redirect pieces' -> do
             let loc = S8.pack $ '/' : encodePathInfo pieces' []
@@ -204,29 +222,20 @@ staticApp (StaticSettings folder indices mlisting getmime) req = liftIO $ do
         NotFound -> return $ W.responseLBS W.status404
                         [ ("Content-Type", "text/plain")
                         ] "File not found"
-        FileResponse fp -> sendfile fp
-        DirectoryResponse fp -> sendfolder fp indices
-  where
-    sendfolder fp (i:is) = do
-        let fp' = fp ++ '/' : i
-        fe <- doesFileExist fp'
-        if fe
-            then sendfile fp'
-            else sendfolder fp is
-    sendfolder fp [] =
-        case mlisting of
-            Just listing -> do
-                lbs <- listing fp
-                return $ W.responseLBS W.status200
-                    [ ("Content-Type", "text/html")
-                    ] lbs
-            Nothing -> return $ W.responseLBS W.status403
-                    [ ("Content-Type", "text/plain")
-                    ] "Directory listings disabled"
-    sendfile fp = do
-        mimetype <- getmime fp
-        filesize <- fileSize `fmap` getFileStatus fp
-        return $ W.ResponseFile W.status200
-                    [ ("Content-Type", mimetype)
-                    , ("Content-Length", S8.pack $ show filesize)
-                    ] fp
+        FileResponse fp -> do
+            mimetype <- getmime fp
+            filesize <- fileSize `fmap` getFileStatus fp
+            return $ W.ResponseFile W.status200
+                        [ ("Content-Type", mimetype)
+                        , ("Content-Length", S8.pack $ show filesize)
+                        ] fp
+        DirectoryResponse fp ->
+            case mlisting of
+                Just listing -> do
+                    lbs <- listing fp
+                    return $ W.responseLBS W.status200
+                        [ ("Content-Type", "text/html")
+                        ] lbs
+                Nothing -> return $ W.responseLBS W.status403
+                        [ ("Content-Type", "text/plain")
+                        ] "Directory listings disabled"
