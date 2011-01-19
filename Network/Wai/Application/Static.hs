@@ -15,6 +15,13 @@ module Network.Wai.Application.Static
       -- ** Finding files
     , CheckPieces
     , checkPieces
+      -- ** File/folder metadata
+    , MetaData (..)
+    , mdIsFile
+    , getMetaData
+      -- ** Directory listings
+    , Listing
+    , defaultListing
       -- * WAI application
     , StaticSettings (..)
     , staticApp
@@ -24,13 +31,25 @@ import qualified Network.Wai as W
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.ByteString (ByteString)
-import System.Directory (doesFileExist, doesDirectoryExist)
+import System.Directory (doesFileExist, doesDirectoryExist, getDirectoryContents)
 import qualified Data.ByteString.Char8 as S8
 import qualified Data.ByteString.Lazy as L
 import Data.ByteString.Lazy.Char8 ()
 import Web.Routes.Base (decodePathInfo, encodePathInfo)
-import System.PosixCompat.Files (fileSize, getFileStatus)
+import System.PosixCompat.Files (fileSize, getFileStatus, modificationTime)
+import System.Posix.Types (FileOffset, EpochTime)
 import Control.Monad.IO.Class (liftIO)
+import Data.Maybe (catMaybes)
+
+import           Text.Blaze                  ((!))
+import qualified Text.Blaze.Html5            as H
+import qualified Text.Blaze.Renderer.Utf8    as HU
+import qualified Text.Blaze.Html5.Attributes as A
+
+import Data.Time
+import System.Locale (defaultTimeLocale)
+
+import Data.List (sortBy)
 
 -- | A list of all possible extensions, starting from the largest.
 takeExtensions :: FilePath -> [String]
@@ -196,7 +215,7 @@ checkPieces prefix indices pieces
             then return $ Just i
             else checkIndices fp is
 
-type Listing = FilePath -> IO L.ByteString
+type Listing = [String] -> FilePath -> IO L.ByteString
 
 data StaticSettings = StaticSettings
     { ssFolder :: FilePath
@@ -232,10 +251,104 @@ staticApp (StaticSettings folder indices mlisting getmime) req = liftIO $ do
         DirectoryResponse fp ->
             case mlisting of
                 Just listing -> do
-                    lbs <- listing fp
+                    lbs <- listing pieces fp
                     return $ W.responseLBS W.status200
                         [ ("Content-Type", "text/html")
                         ] lbs
                 Nothing -> return $ W.responseLBS W.status403
                         [ ("Content-Type", "text/plain")
                         ] "Directory listings disabled"
+
+-- Code below taken from Happstack: http://patch-tag.com/r/mae/happstack/snapshot/current/content/pretty/happstack-server/src/Happstack/Server/FileServe/BuildingBlocks.hs
+defaultListing :: Listing
+defaultListing pieces localPath = do
+    fps <- getDirectoryContents localPath
+    fps' <- mapM (getMetaData localPath) fps
+    let isTop = null pieces || pieces == [""]
+    let fps'' = if isTop then fps' else Just (FolderMetaData "..") : fps'
+    return $ HU.renderHtml
+           $ H.html $ do
+             H.head $ do
+                 H.title $ H.string "Directory Listing"
+                 H.meta  ! A.httpEquiv (H.stringValue "Content-Type") ! A.content (H.stringValue "text/html;charset=utf-8")
+                 H.style $ H.string $ unlines [ "table { border-collapse: collapse; font-family: 'sans-serif'; }"
+                                              , "table, th, td { border: 1px solid #98BF21; }" 
+                                              , "td.size { text-align: right; }"
+                                              , "td.date { text-align: right; }"
+                                              , "td { padding-right: 1em; padding-left: 1em; }"
+                                              , "tr { background-color: white; }"
+                                              , "tr.alt { background-color: #EAF2D3 }"
+                                              , "th { background-color: #A7C942; color: white; font-size: 1.125em; }"
+                                              ]
+             H.body $ do
+                 H.h1 $ H.string "Directory Listing"
+                 renderDirectoryContentsTable $ catMaybes fps''
+
+-- | a function to generate an HTML table showing the contents of a directory on the disk
+--
+-- This function generates most of the content of the
+-- 'renderDirectoryContents' page. If you want to style the page
+-- differently, or add google analytics code, etc, you can just create
+-- a new page template to wrap around this HTML.
+--
+-- see also: 'getMetaData', 'renderDirectoryContents'
+renderDirectoryContentsTable :: [MetaData] -- ^ list of files+meta data, see 'getMetaData'
+                             -> H.Html
+renderDirectoryContentsTable fps =
+           H.table $ do H.thead $ do H.th $ H.string ""
+                                     H.th $ H.string "Name"
+                                     H.th $ H.string "Last modified"
+                                     H.th $ H.string "Size"
+                        H.tbody $ mapM_ mkRow (zip (sortBy sortMD fps) $ cycle [False, True])
+    where
+      sortMD FolderMetaData{} FileMetaData{} = LT
+      sortMD FileMetaData{} FolderMetaData{} = LT
+      sortMD x y = mdName x `compare` mdName y
+      mkRow :: (MetaData, Bool) -> H.Html
+      mkRow (md, alt) =
+          (if alt then (! A.class_ (H.stringValue "alt")) else id) $
+          H.tr $ do
+                   H.td $ H.string $ if mdIsFile md then "File" else "Folder"
+                   H.td (H.a ! A.href (H.stringValue $ mdName md ++ if mdIsFile md then "" else "/")  $ H.string $ mdName md)
+                   H.td ! A.class_ (H.stringValue "date") $ H.string $
+                       if mdIsFile md
+                           then formatCalendarTime defaultTimeLocale "%d-%b-%Y %X %Z" $ mdModified md
+                           else "-"
+                   H.td ! A.class_ (H.stringValue "size") $ H.string $
+                       if mdIsFile md
+                           then show $ mdSize md
+                           else "-"
+      formatCalendarTime _ _ _ = "FIXME formatCalendarTime"
+
+data MetaData =
+    FileMetaData
+        { mdName :: FilePath
+        , mdModified :: EpochTime
+        , mdSize :: FileOffset
+        }
+  | FolderMetaData
+        { mdName :: FilePath
+        }
+  deriving Show
+
+mdIsFile :: MetaData -> Bool
+mdIsFile FileMetaData{} = True
+mdIsFile FolderMetaData{} = False
+
+-- | look up the meta data associated with a file
+getMetaData :: FilePath -- ^ path to directory on disk containing the entry
+            -> FilePath -- ^ entry in that directory
+            -> IO (Maybe MetaData)
+getMetaData _ ('.':_) = return Nothing
+getMetaData localPath fp = do
+    let fp' = localPath ++ '/' : fp
+    fe <- doesFileExist fp'
+    if fe
+        then do
+            fs <- getFileStatus fp'
+            let modTime = modificationTime fs
+            let count = fileSize fs
+            return $ Just $ FileMetaData fp modTime count
+        else do
+            de <- doesDirectoryExist fp'
+            return $ if de then Just (FolderMetaData fp) else Nothing

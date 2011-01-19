@@ -1,5 +1,5 @@
 import Network.Wai.Application.Static
-    ( StaticSettings (..), staticApp, defaultMimeTypeByExt
+    ( StaticSettings (..), staticApp, defaultMimeTypeByExt, defaultListing
     )
 import Network.Wai.Handler.Warp (run)
 import System.Environment (getArgs)
@@ -16,6 +16,6 @@ main = do
     run port $ staticApp StaticSettings
         { ssFolder = folder
         , ssIndices = ["index.html", "index.htm"]
-        , ssListing = Nothing
+        , ssListing = Just defaultListing
         , ssGetMimeType = return . defaultMimeTypeByExt
         }
