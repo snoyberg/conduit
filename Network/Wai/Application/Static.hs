@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
 -- | Static file serving for WAI.
 module Network.Wai.Application.Static
     ( -- * Generic, non-WAI code
@@ -50,7 +51,8 @@ import Data.Time
 import Data.Time.Clock.POSIX
 import System.Locale (defaultTimeLocale)
 
-import Data.List (sortBy)
+import Data.List (sortBy, intercalate)
+import Data.FileEmbed (embedFile)
 
 -- | A list of all possible extensions, starting from the largest.
 takeExtensions :: FilePath -> [String]
@@ -147,6 +149,7 @@ data CheckPieces
     | NotFound
     | FileResponse FilePath
     | DirectoryResponse FilePath
+    | SendContent MimeType L.ByteString
     deriving Show
 
 anyButLast :: (a -> Bool) -> [a] -> Bool
@@ -176,6 +179,8 @@ checkPieces :: FilePath -- ^ static file prefix
             -> [FilePath] -- ^ List of default index files. Cannot contain slashes.
             -> [String] -- ^ parsed request
             -> IO CheckPieces
+checkPieces _ _ [".hidden", "folder.png"] =
+    return $ SendContent "image/png" $ L.fromChunks [$(embedFile "folder.png")]
 checkPieces prefix indices pieces
     | any unsafe pieces = return Forbidden
     | anyButLast null pieces =
@@ -254,11 +259,14 @@ staticApp (StaticSettings folder indices mlisting getmime) req = liftIO $ do
                 Just listing -> do
                     lbs <- listing pieces fp
                     return $ W.responseLBS W.status200
-                        [ ("Content-Type", "text/html")
+                        [ ("Content-Type", "text/html; charset=utf-8")
                         ] lbs
                 Nothing -> return $ W.responseLBS W.status403
                         [ ("Content-Type", "text/plain")
                         ] "Directory listings disabled"
+        SendContent mt lbs -> return $ W.responseLBS W.status200
+                        [ ("Content-Type", mt)
+                        ] lbs
 
 -- Code below taken from Happstack: http://patch-tag.com/r/mae/happstack/snapshot/current/content/pretty/happstack-server/src/Happstack/Server/FileServe/BuildingBlocks.hs
 defaultListing :: Listing
@@ -270,20 +278,35 @@ defaultListing pieces localPath = do
     return $ HU.renderHtml
            $ H.html $ do
              H.head $ do
-                 H.title $ H.string "Directory Listing"
-                 H.meta  ! A.httpEquiv (H.stringValue "Content-Type") ! A.content (H.stringValue "text/html;charset=utf-8")
-                 H.style $ H.string $ unlines [ "table { border-collapse: collapse; font-family: 'sans-serif'; }"
+                 let title = intercalate "/" pieces
+                 let title' = if null title then "root folder" else title
+                 H.title $ H.string title'
+                 H.style $ H.string $ unlines [ "table { margin: 0 auto; width: 760px; border-collapse: collapse; font-family: 'sans-serif'; }"
                                               , "table, th, td { border: 1px solid #98BF21; }" 
                                               , "td.size { text-align: right; }"
                                               , "td.date { text-align: right; }"
                                               , "td { padding-right: 1em; padding-left: 1em; }"
+                                              , "td.first { padding-right: 0; padding-left: 0; text-align: center }"
                                               , "tr { background-color: white; }"
                                               , "tr.alt { background-color: #EAF2D3 }"
                                               , "th { background-color: #A7C942; color: white; font-size: 1.125em; }"
+                                              , "h1 { width: 760px; margin: 1em auto; font-size: 1em }"
+                                              , "img { width: 20px }"
                                               ]
              H.body $ do
-                 H.h1 $ H.string "Directory Listing"
-                 renderDirectoryContentsTable $ catMaybes fps''
+                 H.h1 $ showFolder $ "" : filter (not . null) pieces
+                 renderDirectoryContentsTable folderSrc $ catMaybes fps''
+  where
+    folderSrc = concatMap (const "../") (drop 1 pieces) ++ ".hidden/folder.png"
+    showName "" = "root"
+    showName x = x
+    showFolder [] = H.string "FIXME: Unexpected showFolder []"
+    showFolder [x] = H.string $ showName x
+    showFolder (x:xs) = do
+        let href = concat $ replicate (length xs) "../"
+        H.a ! A.href (H.stringValue href) $ H.string $ showName x
+        H.string " / "
+        showFolder xs
 
 -- | a function to generate an HTML table showing the contents of a directory on the disk
 --
@@ -293,9 +316,10 @@ defaultListing pieces localPath = do
 -- a new page template to wrap around this HTML.
 --
 -- see also: 'getMetaData', 'renderDirectoryContents'
-renderDirectoryContentsTable :: [MetaData] -- ^ list of files+meta data, see 'getMetaData'
+renderDirectoryContentsTable :: String
+                             -> [MetaData] -- ^ list of files+meta data, see 'getMetaData'
                              -> H.Html
-renderDirectoryContentsTable fps =
+renderDirectoryContentsTable folderSrc fps =
            H.table $ do H.thead $ do H.th $ H.string ""
                                      H.th $ H.string "Name"
                                      H.th $ H.string "Last modified"
@@ -303,22 +327,26 @@ renderDirectoryContentsTable fps =
                         H.tbody $ mapM_ mkRow (zip (sortBy sortMD fps) $ cycle [False, True])
     where
       sortMD FolderMetaData{} FileMetaData{} = LT
-      sortMD FileMetaData{} FolderMetaData{} = LT
+      sortMD FileMetaData{} FolderMetaData{} = GT
       sortMD x y = mdName x `compare` mdName y
       mkRow :: (MetaData, Bool) -> H.Html
       mkRow (md, alt) =
           (if alt then (! A.class_ (H.stringValue "alt")) else id) $
           H.tr $ do
-                   H.td $ H.string $ if mdIsFile md then "File" else "Folder"
+                   H.td ! A.class_ (H.stringValue "first")
+                        $ if mdIsFile md
+                              then return ()
+                              else H.img ! A.src (H.stringValue folderSrc)
+                                         ! A.alt (H.stringValue "Folder")
                    H.td (H.a ! A.href (H.stringValue $ mdName md ++ if mdIsFile md then "" else "/")  $ H.string $ mdName md)
                    H.td ! A.class_ (H.stringValue "date") $ H.string $
                        if mdIsFile md
                            then formatCalendarTime defaultTimeLocale "%d-%b-%Y %X %Z" $ mdModified md
-                           else "-"
+                           else ""
                    H.td ! A.class_ (H.stringValue "size") $ H.string $
                        if mdIsFile md
                            then prettyShow $ mdSize md
-                           else "-"
+                           else ""
       formatCalendarTime a b c =  formatTime a b $ posixSecondsToUTCTime (realToFrac c :: POSIXTime)
       prettyShow = (++ " bytes") . reverse . addCommas . reverse . show
       addCommas (a:b:c:d:e) = a : b : c : ',' : addCommas (d : e)
