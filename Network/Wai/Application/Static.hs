@@ -47,6 +47,7 @@ import qualified Text.Blaze.Renderer.Utf8    as HU
 import qualified Text.Blaze.Html5.Attributes as A
 
 import Data.Time
+import Data.Time.Clock.POSIX
 import System.Locale (defaultTimeLocale)
 
 import Data.List (sortBy)
@@ -316,9 +317,13 @@ renderDirectoryContentsTable fps =
                            else "-"
                    H.td ! A.class_ (H.stringValue "size") $ H.string $
                        if mdIsFile md
-                           then show $ mdSize md
+                           then prettyShow $ mdSize md
                            else "-"
-      formatCalendarTime _ _ _ = "FIXME formatCalendarTime"
+      formatCalendarTime a b c =  formatTime a b $ posixSecondsToUTCTime (realToFrac c :: POSIXTime)
+      prettyShow = (++ " bytes") . reverse . addCommas . reverse . show
+      addCommas (a:b:c:d:e) = a : b : c : ',' : addCommas (d : e)
+      addCommas x = x
+
 
 data MetaData =
     FileMetaData
