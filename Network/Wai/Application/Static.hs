@@ -181,6 +181,8 @@ checkPieces :: FilePath -- ^ static file prefix
             -> IO CheckPieces
 checkPieces _ _ [".hidden", "folder.png"] =
     return $ SendContent "image/png" $ L.fromChunks [$(embedFile "folder.png")]
+checkPieces _ _ [".hidden", "haskell.png"] =
+    return $ SendContent "image/png" $ L.fromChunks [$(embedFile "haskell.png")]
 checkPieces prefix indices pieces
     | any unsafe pieces = return Forbidden
     | anyButLast null pieces =
@@ -282,22 +284,26 @@ defaultListing pieces localPath = do
                  let title' = if null title then "root folder" else title
                  H.title $ H.string title'
                  H.style $ H.string $ unlines [ "table { margin: 0 auto; width: 760px; border-collapse: collapse; font-family: 'sans-serif'; }"
-                                              , "table, th, td { border: 1px solid #98BF21; }" 
-                                              , "td.size { text-align: right; }"
-                                              , "td.date { text-align: right; }"
+                                              , "table, th, td { border: 1px solid #353948; }" 
+                                              , "td.size { text-align: right; font-size: 0.7em; width: 50px }"
+                                              , "td.date { text-align: right; font-size: 0.7em; width: 130px }"
                                               , "td { padding-right: 1em; padding-left: 1em; }"
+                                              , "th.first { background-color: white; width: 24px }"
                                               , "td.first { padding-right: 0; padding-left: 0; text-align: center }"
                                               , "tr { background-color: white; }"
-                                              , "tr.alt { background-color: #EAF2D3 }"
-                                              , "th { background-color: #A7C942; color: white; font-size: 1.125em; }"
+                                              , "tr.alt { background-color: #A3B5BA}"
+                                              , "th { background-color: #3C4569; color: white; font-size: 1.125em; }"
                                               , "h1 { width: 760px; margin: 1em auto; font-size: 1em }"
                                               , "img { width: 20px }"
+                                              , "a { text-decoration: none }"
                                               ]
              H.body $ do
                  H.h1 $ showFolder $ "" : filter (not . null) pieces
-                 renderDirectoryContentsTable folderSrc $ catMaybes fps''
+                 renderDirectoryContentsTable haskellSrc folderSrc $ catMaybes fps''
   where
-    folderSrc = concatMap (const "../") (drop 1 pieces) ++ ".hidden/folder.png"
+    image x = concatMap (const "../") (drop 1 pieces) ++ ".hidden/" ++ x ++ ".png"
+    folderSrc = image "folder"
+    haskellSrc = image "haskell"
     showName "" = "root"
     showName x = x
     showFolder [] = H.string "FIXME: Unexpected showFolder []"
@@ -317,12 +323,13 @@ defaultListing pieces localPath = do
 --
 -- see also: 'getMetaData', 'renderDirectoryContents'
 renderDirectoryContentsTable :: String
+                             -> String
                              -> [MetaData] -- ^ list of files+meta data, see 'getMetaData'
                              -> H.Html
-renderDirectoryContentsTable folderSrc fps =
-           H.table $ do H.thead $ do H.th $ H.string ""
+renderDirectoryContentsTable haskellSrc folderSrc fps =
+           H.table $ do H.thead $ do H.th ! (A.class_ $ H.stringValue "first") $ H.img ! (A.src $ H.stringValue haskellSrc)
                                      H.th $ H.string "Name"
-                                     H.th $ H.string "Last modified"
+                                     H.th $ H.string "Modified"
                                      H.th $ H.string "Size"
                         H.tbody $ mapM_ mkRow (zip (sortBy sortMD fps) $ cycle [False, True])
     where
@@ -341,16 +348,26 @@ renderDirectoryContentsTable folderSrc fps =
                    H.td (H.a ! A.href (H.stringValue $ mdName md ++ if mdIsFile md then "" else "/")  $ H.string $ mdName md)
                    H.td ! A.class_ (H.stringValue "date") $ H.string $
                        if mdIsFile md
-                           then formatCalendarTime defaultTimeLocale "%d-%b-%Y %X %Z" $ mdModified md
+                           then formatCalendarTime defaultTimeLocale "%d-%b-%Y %X" $ mdModified md
                            else ""
                    H.td ! A.class_ (H.stringValue "size") $ H.string $
                        if mdIsFile md
                            then prettyShow $ mdSize md
                            else ""
       formatCalendarTime a b c =  formatTime a b $ posixSecondsToUTCTime (realToFrac c :: POSIXTime)
-      prettyShow = (++ " bytes") . reverse . addCommas . reverse . show
-      addCommas (a:b:c:d:e) = a : b : c : ',' : addCommas (d : e)
-      addCommas x = x
+      prettyShow x
+        | x > 1024 = prettyShowK $ x `div` 1024
+        | otherwise = addCommas "B" x
+      prettyShowK x
+        | x > 1024 = prettyShowM $ x `div` 1024
+        | otherwise = addCommas "KB" x
+      prettyShowM x
+        | x > 1024 = prettyShowG $ x `div` 1024
+        | otherwise = addCommas "MB" x
+      prettyShowG x = addCommas "GB" x
+      addCommas s = (++ (' ' : s)) . reverse . addCommas' . reverse . show
+      addCommas' (a:b:c:d:e) = a : b : c : ',' : addCommas' (d : e)
+      addCommas' x = x
 
 
 data MetaData =

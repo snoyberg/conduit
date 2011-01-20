@@ -11,7 +11,7 @@ stability:       Stable
 cabal-version:   >= 1.6
 build-type:      Simple
 homepage:        http://docs.yesodweb.com/
-Extra-source-files: folder.png
+Extra-source-files: folder.png, haskell.png
 
 library
     build-depends:   base                      >= 4        && < 5
