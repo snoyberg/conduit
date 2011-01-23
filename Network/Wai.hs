@@ -7,13 +7,10 @@ This module defines a generic web application interface. It is a common
 protocol between web servers and web applications.
 
 The overriding design principles here are performance and generality . To
-address performance, this library is built on 'Source' for the request body and
-'Enumerator' for the response bodies. The advantages of this approach over lazy
-IO have been debated elsewhere.
-
-Nonetheless, many people find these data structures difficult to work with. For
-that reason, this library includes the "Network.Wai.Enumerator" module to
-provide more familiar abstractions, including lazy IO.
+address performance, this library is built on top of the enumerator package.
+The advantages of this approach over lazy IO have been debated elsewhere.
+However, helper functions like 'responseLBS' allow you to continue using lazy
+IO if you so desire.
 
 Generality is achieved by removing many variables commonly found in similar
 projects that are not universal to all servers. The goal is that the 'Request'
@@ -50,6 +47,7 @@ module Network.Wai
       -- ** Response status code
     , Status (..)
     , status200
+    , status201
     , status301
     , status302
     , status303
@@ -155,6 +153,10 @@ instance Eq Status where
 -- | OK
 status200 :: Status
 status200 = Status 200 $ B8.pack "OK"
+
+-- | Created
+status201 :: Status
+status201 = Status 200 $ B8.pack "Created"
 
 -- | Moved Permanently
 status301 :: Status
