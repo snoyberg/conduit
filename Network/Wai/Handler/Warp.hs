@@ -18,6 +18,7 @@
 ---------------------------------------------------------
 module Network.Wai.Handler.Warp
     ( run
+    , Port
     , sendResponse
     , parseRequest
 #if TEST
