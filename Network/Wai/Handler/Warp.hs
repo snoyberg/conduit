@@ -25,7 +25,7 @@
 module Network.Wai.Handler.Warp
     ( -- * Run a Warp server
       run
-    , runOnException
+    , runEx
     , runInteractive
     , serveConnections
       -- * Datatypes
@@ -85,12 +85,12 @@ import Control.Monad (forever)
 
 -- | Run an 'Application' on the given port, ignoring all exceptions.
 run :: Port -> Application -> IO ()
-run = runOnException (const $ return ())
+run = runEx (const $ return ())
 
 -- | Run an 'Application' on the given port, with the given exception handler.
 -- Please note that you will also receive 'InvalidRequest' exceptions.
-runOnException :: (SomeException -> IO ()) -> Port -> Application -> IO ()
-runOnException onE port = withSocketsDo . -- FIXME should this be called by client user instead?
+runEx :: (SomeException -> IO ()) -> Port -> Application -> IO ()
+runEx onE port = withSocketsDo . -- FIXME should this be called by client user instead?
     bracket
         (listenOn $ PortNumber $ fromIntegral port)
         sClose .
