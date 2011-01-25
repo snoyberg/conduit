@@ -46,17 +46,17 @@ module Network.Wai
     , ResponseHeaders
       -- ** Response status code
     , Status (..)
-    , status200
-    , status201
-    , status301
-    , status302
-    , status303
-    , status400
-    , status401
-    , status403
-    , status404
-    , status405
-    , status500
+    , status200, statusOK
+    , status201, statusCreated
+    , status301, statusMovedPermanently
+    , status302, statusFound
+    , status303, statusSeeOther
+    , status400, statusBadRequest
+    , status401, statusUnauthorized
+    , status403, statusForbidden
+    , status404, statusNotFound
+    , status405, statusNotAllowed
+    , status500, statusServerError
       -- * WAI interface
     , Request (..)
     , Response (..)
@@ -151,48 +151,59 @@ instance Eq Status where
     x == y = statusCode x == statusCode y
 
 -- | OK
-status200 :: Status
+status200, statusOK :: Status
 status200 = Status 200 $ B8.pack "OK"
+statusOK = status200
 
 -- | Created
-status201 :: Status
+status201, statusCreated :: Status
 status201 = Status 200 $ B8.pack "Created"
+statusCreated = status201
 
 -- | Moved Permanently
-status301 :: Status
+status301, statusMovedPermanently :: Status
 status301 = Status 301 $ B8.pack "Moved Permanently"
+statusMovedPermanently = status301
 
 -- | Found
-status302 :: Status
+status302, statusFound :: Status
 status302 = Status 302 $ B8.pack "Found"
+statusFound = status302
 
 -- | See Other
-status303 :: Status
+status303, statusSeeOther :: Status
 status303 = Status 303 $ B8.pack "See Other"
+statusSeeOther = status303
 
 -- | Bad Request
-status400 :: Status
+status400, statusBadRequest :: Status
 status400 = Status 400 $ B8.pack "Bad Request"
+statusBadRequest = status400
 
 -- | Unauthorized
-status401 :: Status
+status401, statusUnauthorized :: Status
 status401 = Status 401 $ B8.pack "Unauthorized"
+statusUnauthorized = status401
 
 -- | Forbidden
-status403 :: Status
+status403, statusForbidden :: Status
 status403 = Status 403 $ B8.pack "Forbidden"
+statusForbidden = status403
 
 -- | Not Found
-status404 :: Status
+status404, statusNotFound :: Status
 status404 = Status 404 $ B8.pack "Not Found"
+statusNotFound = status404
 
 -- | Method Not Allowed
-status405 :: Status
+status405, statusNotAllowed :: Status
 status405 = Status 405 $ B8.pack "Method Not Allowed"
+statusNotAllowed = status405
 
 -- | Internal Server Error
-status500 :: Status
+status500, statusServerError :: Status
 status500 = Status 500 $ B8.pack "Internal Server Error"
+statusServerError = status500
 
 -- | Information on the request sent by the client. This abstracts away the
 -- details of the underlying implementation.
