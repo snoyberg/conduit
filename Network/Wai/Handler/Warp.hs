@@ -4,7 +4,7 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE BangPatterns #-}
 ---------------------------------------------------------
--- |
+--
 -- Module        : Network.Wai.Handler.Warp
 -- Copyright     : Michael Snoyman
 -- License       : BSD3
@@ -16,15 +16,26 @@
 -- A fast, light-weight HTTP server handler for WAI.
 --
 ---------------------------------------------------------
+
+-- | A fast, light-weight HTTP server handler for WAI. Some random notes (a FAQ, if you will):
+--
+-- * When a 'ResponseFile' indicates a file which does not exist, an exception
+--   is thrown. This will close the connection to the client as well. You should
+--   handle file existance checks at the application level.
 module Network.Wai.Handler.Warp
-    ( run
+    ( -- * Run a Warp server
+      run
+    , runOnException
+    , serveConnections
+      -- * Datatypes
     , Port
+    , InvalidRequest (..)
+      -- * Utility functions for other packages
     , sendResponse
     , parseRequest
 #if TEST
     , takeLineMax
     , takeHeaders
-    , InvalidRequest (..)
 #endif
     ) where
 
@@ -69,30 +80,42 @@ import System.Timeout (timeout)
 import Data.Word (Word8)
 import Data.List (foldl')
 
+-- | Run an 'Application' on the given port, ignoring all exceptions.
 run :: Port -> Application -> IO ()
-run port = withSocketsDo . -- FIXME should this be called by client user instead?
+run = runOnException print
+
+-- | Run an 'Application' on the given port, with the given exception handler.
+-- Please note that you will also receive 'InvalidRequest' exceptions.
+runOnException :: (SomeException -> IO ()) -> Port -> Application -> IO ()
+runOnException onE port = withSocketsDo . -- FIXME should this be called by client user instead?
     bracket
         (listenOn $ PortNumber $ fromIntegral port)
         sClose .
-        serveConnections port
+        serveConnections onE port
+
 type Port = Int
 
-serveConnections :: Port -> Application -> Socket -> IO ()
-serveConnections port app socket = do
+-- | Runs a server, listening on the given socket. The user is responsible for
+-- closing the socket after 'runWithSocket' completes. You must also supply a
+-- 'Port' argument for use in the 'serverPort' record; however, this field is
+-- only used for informational purposes. If you are in fact listening on a
+-- non-TCP socket, this can be a ficticious value.
+serveConnections :: (SomeException -> IO ())
+                 -> Port -> Application -> Socket -> IO ()
+serveConnections onE port app socket = do
     (conn, sa) <- accept socket
-    _ <- forkIO $ serveConnection port app conn sa
-    serveConnections port app socket
+    _ <- forkIO $ serveConnection onE port app conn sa
+    serveConnections onE port app socket
 
-serveConnection :: Port -> Application -> Socket -> SockAddr -> IO ()
-serveConnection port app conn remoteHost' = do
+serveConnection :: (SomeException -> IO ())
+                -> Port -> Application -> Socket -> SockAddr -> IO ()
+serveConnection onException port app conn remoteHost' = do
     catch
         (finally
           (E.run_ $ fromClient $$ serveConnection')
           (sClose conn))
-        ignoreAll
+        onException
   where
-    ignoreAll :: SomeException -> IO ()
-    ignoreAll _ = return ()
     fromClient = enumSocket bytesPerRead conn
     serveConnection' = do
         (enumeratee, env) <- parseRequest port remoteHost'
