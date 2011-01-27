@@ -233,6 +233,11 @@ data StaticSettings = StaticSettings
     }
 
 staticApp :: StaticSettings -> W.Application
+staticApp _ req
+    | W.requestMethod req /= "GET" = return $ W.responseLBS
+        W.status405
+        [("Content-Type", "text/plain")]
+        "Only GET is supported"
 staticApp (StaticSettings folder indices mlisting getmime) req = liftIO $ do
     let pieces = decodePathInfo $ S8.unpack $ W.pathInfo req
     cp <- checkPieces folder indices pieces
@@ -293,7 +298,7 @@ defaultListing pieces localPath = do
                                               , "tr { background-color: white; }"
                                               , "tr.alt { background-color: #A3B5BA}"
                                               , "th { background-color: #3C4569; color: white; font-size: 1.125em; }"
-                                              , "h1 { width: 760px; margin: 1em auto; font-size: 1em }"
+                                              , "h1 { width: 760px; margin: 1em auto; font-size: 1em; font-family: sans-serif }"
                                               , "img { width: 20px }"
                                               , "a { text-decoration: none }"
                                               ]
@@ -306,7 +311,7 @@ defaultListing pieces localPath = do
     haskellSrc = image "haskell"
     showName "" = "root"
     showName x = x
-    showFolder [] = H.string "FIXME: Unexpected showFolder []"
+    showFolder [] = H.string "error: Unexpected showFolder []"
     showFolder [x] = H.string $ showName x
     showFolder (x:xs) = do
         let href = concat $ replicate (length xs) "../"

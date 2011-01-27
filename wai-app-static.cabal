@@ -29,11 +29,6 @@ library
     exposed-modules: Network.Wai.Application.Static
     ghc-options:     -Wall
 
-executable           warp-static
-    build-depends:   warp                      >= 0.3      && < 0.4
-    main-is:         warp-static.hs
-    ghc-options:     -Wall -threaded
-
 source-repository head
   type:     git
   location: git://github.com/snoyberg/wai-app-static.git
