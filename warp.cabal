@@ -35,6 +35,8 @@ Library
   ghc-options:       -Wall
   if !flag(timeout-protection)
       Cpp-options: -DNO_TIMEOUT_PROTECTION
+  if os(windows)
+      Cpp-options: -DWINDOWS
 
 source-repository head
   type:     git

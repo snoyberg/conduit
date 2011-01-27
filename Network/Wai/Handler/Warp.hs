@@ -26,7 +26,6 @@ module Network.Wai.Handler.Warp
     ( -- * Run a Warp server
       run
     , runEx
-    , runInteractive
     , serveConnections
       -- * Datatypes
     , Port
@@ -57,7 +56,7 @@ import Network.Socket
     )
 import qualified Network.Socket.ByteString as Sock
 import Control.Exception (bracket, finally, Exception, SomeException, catch)
-import Control.Concurrent (forkIO, threadDelay)
+import Control.Concurrent (forkIO)
 import Data.Maybe (fromMaybe)
 
 import Data.Typeable (Typeable)
@@ -80,8 +79,12 @@ import Control.Monad.IO.Class (liftIO)
 import System.Timeout (timeout)
 import Data.Word (Word8)
 import Data.List (foldl')
+
+#if WINDOWS
+import Control.Concurrent (threadDelay)
 import qualified Control.Concurrent.MVar as MV
 import Control.Monad (forever)
+#endif
 
 -- | Run an 'Application' on the given port, ignoring all exceptions.
 run :: Port -> Application -> IO ()
@@ -90,18 +93,8 @@ run = runEx (const $ return ())
 -- | Run an 'Application' on the given port, with the given exception handler.
 -- Please note that you will also receive 'InvalidRequest' exceptions.
 runEx :: (SomeException -> IO ()) -> Port -> Application -> IO ()
-runEx onE port = withSocketsDo . -- FIXME should this be called by client user instead?
-    bracket
-        (listenOn $ PortNumber $ fromIntegral port)
-        sClose .
-        serveConnections onE port
-
--- | When using the standard 'run' function on Windows in GHCi, ctrl-C becomes
--- unresponsive. This function should be a drop-in replacement allowing normal
--- operations. This does have a minor performance hit, and therefore this
--- function is recommended only for development, not production.
-runInteractive :: Port -> Application -> IO ()
-runInteractive port app = withSocketsDo $ do
+#if WINDOWS
+runEx onE port app = withSocketsDo $ do
     var <- MV.newMVar Nothing
     let clean = MV.modifyMVar_ var $ \s -> maybe (return ()) sClose s >> return Nothing
     _ <- forkIO $ bracket
@@ -109,8 +102,15 @@ runInteractive port app = withSocketsDo $ do
         (const clean)
         (\s -> do
             MV.modifyMVar_ var (\_ -> return $ Just s)
-            serveConnections (const $ return ()) port app s)
+            serveConnections onE port app s)
     forever (threadDelay maxBound) `finally` clean
+#else
+runEx onE port = withSocketsDo . -- FIXME should this be called by client user instead?
+    bracket
+        (listenOn $ PortNumber $ fromIntegral port)
+        sClose .
+        serveConnections onE port
+#endif
 
 type Port = Int
 
