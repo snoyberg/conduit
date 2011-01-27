@@ -1,21 +1,28 @@
+{-# LANGUAGE DeriveDataTypeable, RecordWildCards #-}
 import Network.Wai.Application.Static
     ( StaticSettings (..), staticApp, defaultMimeTypeByExt, defaultListing
     )
 import Network.Wai.Handler.Warp (run)
 import System.Environment (getArgs)
+import System.Console.CmdArgs
+
+data Args = Args
+    { docroot :: FilePath
+    , index :: [FilePath]
+    , port :: Int
+    , noindex :: Bool
+    }
+    deriving (Show, Data, Typeable)
+
+defaultArgs = Args "." ["index.html", "index.htm"] 3000 False
 
 main :: IO ()
 main = do
+    Args {..} <- cmdArgs defaultArgs
     args <- getArgs
-    (folder, port) <- return $
-        case args of
-            [] -> (".", 3000)
-            [f] -> (f, 3000)
-            [f, p] -> (f, read p)
-            _ -> error "Usage: warp-static [root [port]]"
     run port $ staticApp StaticSettings
-        { ssFolder = folder
-        , ssIndices = ["index.html", "index.htm"]
+        { ssFolder = docroot
+        , ssIndices = if noindex then [] else index
         , ssListing = Just defaultListing
         , ssGetMimeType = return . defaultMimeTypeByExt
         }
