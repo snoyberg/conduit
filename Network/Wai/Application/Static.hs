@@ -26,6 +26,7 @@ module Network.Wai.Application.Static
       -- * WAI application
     , StaticSettings (..)
     , staticApp
+    , staticAppPieces
     ) where
 
 import qualified Network.Wai as W
@@ -233,13 +234,17 @@ data StaticSettings = StaticSettings
     }
 
 staticApp :: StaticSettings -> W.Application
-staticApp _ req
+staticApp set req = do
+    let pieces = decodePathInfo $ S8.unpack $ W.pathInfo req
+    staticAppPieces set pieces req
+
+staticAppPieces :: StaticSettings -> [String] -> W.Application
+staticAppPieces _ _ req
     | W.requestMethod req /= "GET" = return $ W.responseLBS
         W.status405
         [("Content-Type", "text/plain")]
         "Only GET is supported"
-staticApp (StaticSettings folder indices mlisting getmime) req = liftIO $ do
-    let pieces = decodePathInfo $ S8.unpack $ W.pathInfo req
+staticAppPieces (StaticSettings folder indices mlisting getmime) pieces _ = liftIO $ do
     cp <- checkPieces folder indices pieces
     case cp of
         Redirect pieces' -> do
