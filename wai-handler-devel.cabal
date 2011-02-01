@@ -30,7 +30,10 @@ Library
                    , hint                  >= 0.3.2.3       && < 0.4
                    , text                  >= 0.7           && < 0.12
                    , old-time              >= 1.0           && < 1.1
+                   , enumerator            >= 0.4.5         && < 0.5
+                   , transformers          >= 0.2.2         && < 0.3
   Exposed-modules:   Network.Wai.Handler.DevelServer
+                     Network.Wai.Application.Devel
   ghc-options:       -Wall
 
 Executable           wai-handler-devel

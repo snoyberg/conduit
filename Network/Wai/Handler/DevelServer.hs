@@ -1,13 +1,15 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE StandaloneDeriving #-}
 module Network.Wai.Handler.DevelServer
     ( run
     , runQuit
     , runNoWatch
     ) where
 
-import Language.Haskell.Interpreter
+import Language.Haskell.Interpreter hiding (typeOf)
 import Network.Wai
 
 import Data.Text.Lazy (pack)
@@ -25,23 +27,25 @@ import Control.Concurrent (forkIO, threadDelay)
 import qualified Control.Concurrent.MVar as M
 import qualified Control.Concurrent.Chan as C
 import System.Directory (getModificationTime)
-import Network.Wai.Handler.Warp (parseRequest, sendResponse, drainRequestBody)
+import qualified Network.Wai.Handler.Warp as Warp
+import Network.Wai.Application.Devel
 
 import Data.List (nub, group, sort)
 import System.Time (ClockTime)
+import Data.Typeable (typeOf, Typeable1 (..), mkTyCon, mkTyConApp)
+import Data.Enumerator (Iteratee)
+import Data.ByteString (ByteString)
 
 type FunctionName = String
 
-runNoWatch :: Port -> ModuleName -> FunctionName
+runNoWatch :: Int -> ModuleName -> FunctionName
            -> (FilePath -> IO [FilePath]) -> IO ()
 runNoWatch port modu func extras = do
-    queue <- C.newChan
-    mqueue <- M.newMVar queue
-    startApp queue $ loadingApp Nothing
-    _ <- reload modu func mqueue extras Nothing
-    run' port mqueue
+    ah <- initAppHolder
+    _ <- reload modu func extras Nothing ah
+    Warp.run port $ toApp ah
 
-runQuit :: Port -> ModuleName -> FunctionName -> (FilePath -> IO [FilePath])
+runQuit :: Int -> ModuleName -> FunctionName -> (FilePath -> IO [FilePath])
         -> IO ()
 runQuit port modu func extras = do
     _ <- forkIO $ run port modu func extras
@@ -53,15 +57,14 @@ runQuit port modu func extras = do
             'q':_ -> putStrLn "Quitting, goodbye!"
             _ -> go
 
-run :: Port -> ModuleName -> FunctionName -> (FilePath -> IO [FilePath])
+run :: Int -> ModuleName -> FunctionName -> (FilePath -> IO [FilePath])
     -> IO ()
 run port modu func extras = do
-    queue <- C.newChan
-    mqueue <- M.newMVar queue
-    startApp queue $ loadingApp Nothing
-    _ <- forkIO $ fillApp modu func mqueue extras
-    run' port mqueue
+    ah <- initAppHolder
+    _ <- forkIO $ fillApp modu func extras ah
+    Warp.run port $ toApp ah
 
+{-
 startApp :: Queue -> Handler -> IO ()
 startApp queue withApp = do
     forkIO (withApp go) >> return ()
@@ -81,6 +84,7 @@ startApp queue withApp = do
             $ charsToLBS
             $ "Exception thrown while running application\n\n" ++ show e
     void x = x >> return ()
+-}
 
 getTimes :: [FilePath] -> IO [ClockTime]
 getTimes = E.handle (constSE $ return []) . mapM getModificationTime
@@ -88,9 +92,9 @@ getTimes = E.handle (constSE $ return []) . mapM getModificationTime
 constSE :: x -> SomeException -> x
 constSE = const
 
-fillApp :: String -> String -> M.MVar Queue
-        -> (FilePath -> IO [FilePath]) -> IO ()
-fillApp modu func mqueue dirs =
+fillApp :: String -> String
+        -> (FilePath -> IO [FilePath]) -> AppHolder -> IO ()
+fillApp modu func dirs ah =
     go Nothing []
   where
     go prevError prevFiles = do
@@ -102,40 +106,41 @@ fillApp modu func mqueue dirs =
                     return $ times /= map snd prevFiles
         (newError, newFiles) <-
             if toReload
-                then reload modu func mqueue dirs prevError
+                then reload modu func dirs prevError ah
                 else return (prevError, prevFiles)
         threadDelay 1000000
         go newError newFiles
 
-reload :: String -> String -> M.MVar Queue
+reload :: String -> String
        -> (FilePath -> IO [FilePath])
        -> Maybe SomeException
+       -> AppHolder
        -> IO (Maybe SomeException, [(FilePath, ClockTime)])
-reload modu func mqueue extras prevError = do
+reload modu func extras prevError ah = do
     case prevError of
          Nothing -> putStrLn "Attempting to interpret your app..."
          _       -> return ()
-    loadingApp' prevError mqueue
+    loadingApp' prevError ah
     res <- theapp modu func
     case res of
         Left err -> do
             if show (Just err) /= show prevError
                then putStrLn $ "Compile failed: " ++ showInterpError err
                else return ()
-            loadingApp' (Just $ toException err) mqueue
+            loadingApp' (Just $ toException err) ah
             return (Just $ toException err, [])
         Right (app, files') -> E.handle onInitErr $ do
             files'' <- mapM extras files'
             let files = map head $ group $ sort $ concat $ files' : files''
             putStrLn "Interpreting success, new app loaded"
             E.handle onInitErr $ do
-                swapApp app mqueue
+                swapApp app ah
                 times <- getTimes files
                 return (Nothing, zip files times)
     where
         onInitErr e = do
             putStrLn $ "Error initializing application: " ++ show e
-            loadingApp' (Just e) mqueue
+            loadingApp' (Just e) ah
             return (Just e, [])
 
 showInterpError :: InterpreterError -> String
@@ -143,16 +148,8 @@ showInterpError (WontCompile errs) =
     concat . nub $ map (\(GhcError msg) -> '\n':'\n':msg) errs
 showInterpError err = show err
 
-loadingApp' :: Maybe SomeException -> M.MVar Queue -> IO ()
-loadingApp' err mqueue = swapApp (loadingApp err) mqueue
-
-swapApp :: Handler -> M.MVar Queue -> IO ()
-swapApp app mqueue = do
-    oldqueue <- M.takeMVar mqueue
-    C.writeChan oldqueue Nothing
-    queue <- C.newChan
-    M.putMVar mqueue queue
-    startApp queue app
+loadingApp' :: Maybe SomeException -> AppHolder -> IO ()
+loadingApp' err = swapApp (loadingApp err)
 
 loadingApp :: Maybe SomeException -> Handler
 loadingApp err f =
@@ -171,44 +168,23 @@ charsToLBS = encodeUtf8 . pack
 
 type Handler = (Application -> IO ()) -> IO ()
 
+instance Typeable1 (Iteratee ByteString IO) where
+    typeOf1 _ =
+        mkTyConApp i [c, io]
+      where
+        i = mkTyCon "Data.Enumerator.Iteratee"
+        c = typeOf (undefined :: ByteString)
+        io = typeOf1 (undefined :: IO ())
+
 theapp :: String -> String -> IO (Either InterpreterError (Handler, [FilePath]))
 theapp modu func =
     runInterpreter $ do
         loadModules [modu]
         mods <- getLoadedModules
-        setImports ["Prelude", "Network.Wai", modu]
+        setImports ["Prelude", "Network.Wai", "Data.Enumerator", "Data.ByteString.Internal", modu]
         app <- interpret func infer
         return (app, map toFile mods)
   where
     toFile s = map toSlash s ++ ".hs"
     toSlash '.' = '/'
     toSlash c   = c
-
-run' :: Port -> M.MVar Queue -> IO ()
-run' port = withSocketsDo .
-    bracket
-        (listenOn $ PortNumber $ fromIntegral port)
-        sClose .
-        serveConnections port
-type Port = Int
-
-serveConnections :: Port -> M.MVar Queue -> Socket -> IO ()
-serveConnections port mqueue socket = do
-    (conn, remoteHost', _) <- accept socket
-    _ <- forkIO $ serveConnection port mqueue conn remoteHost'
-    serveConnections port mqueue socket
-
-type Queue = C.Chan (Maybe (Request, Response -> IO ()))
-
-serveConnection :: Port -> M.MVar Queue -> Handle -> String -> IO ()
-serveConnection port mqueue conn remoteHost' = do
-    (ilen, env) <- parseRequest port conn remoteHost'
-    let onRes res =
-            finally
-                (do
-                    _ <- sendResponse env (httpVersion env) conn res
-                    drainRequestBody conn ilen
-                    return ())
-                (hClose conn)
-    queue <- M.readMVar mqueue
-    C.writeChan queue $ Just (env, onRes)
