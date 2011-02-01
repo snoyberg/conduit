@@ -1,7 +1,6 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 import Network.Wai.Handler.DevelServer (runQuit)
 import System.Console.CmdArgs
-import Control.Concurrent (forkIO)
 
 data Devel = Devel
     { port :: Int

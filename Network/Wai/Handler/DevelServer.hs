@@ -15,17 +15,10 @@ import Network.Wai
 import Data.Text.Lazy (pack)
 import Data.Text.Lazy.Encoding (encodeUtf8)
 import qualified Data.ByteString.Lazy.Char8 as L8
-import Network
-    ( listenOn, accept, sClose, PortID(PortNumber), Socket
-    , withSocketsDo)
-import Control.Exception (bracket, finally, Exception,
-                          SomeException, toException)
+import Control.Exception (Exception, SomeException, toException)
 import qualified Control.Exception as E
-import System.IO (Handle, hClose)
 import Control.Concurrent (forkIO, threadDelay)
 
-import qualified Control.Concurrent.MVar as M
-import qualified Control.Concurrent.Chan as C
 import System.Directory (getModificationTime)
 import qualified Network.Wai.Handler.Warp as Warp
 import Network.Wai.Application.Devel
