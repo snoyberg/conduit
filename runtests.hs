@@ -16,6 +16,7 @@ import Network.Wai.Middleware.Jsonp
 import Network.Wai.Middleware.Gzip
 import Network.Wai.Middleware.Vhost
 import Network.Wai.Middleware.Autohead
+import Network.Wai.Middleware.MethodOverride
 import Codec.Compression.GZip (decompress)
 
 import Data.Enumerator (run_, enumList, ($$), Iteratee)
@@ -39,6 +40,7 @@ testSuite = testGroup "Network.Wai.Parse"
     , testCase "gzip" caseGzip
     , testCase "vhost" caseVhost
     , testCase "autohead" caseAutohead
+    , testCase "method override" caseMethodOverride
     ]
 
 caseParseQueryString :: Assertion
@@ -285,3 +287,25 @@ caseAutohead = flip runSession autoheadApp $ do
                 }
     assertHeader "Foo" "Bar" sres1
     assertBody "" sres1
+
+moApp = methodOverride $ \req -> return $ responseLBS status200
+    [("Method", requestMethod req)] ""
+
+caseMethodOverride = flip runSession moApp $ do
+    sres1 <- request Request
+                { requestMethod = "GET"
+                , queryString = ""
+                }
+    assertHeader "Method" "GET" sres1
+
+    sres2 <- request Request
+                { requestMethod = "POST"
+                , queryString = ""
+                }
+    assertHeader "Method" "POST" sres2
+
+    sres3 <- request Request
+                { requestMethod = "POST"
+                , queryString = "_method=PUT"
+                }
+    assertHeader "Method" "PUT" sres3
