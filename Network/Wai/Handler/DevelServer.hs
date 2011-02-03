@@ -25,9 +25,6 @@ import Network.Wai.Application.Devel
 
 import Data.List (nub, group, sort)
 import System.Time (ClockTime)
-import Data.Typeable (typeOf, Typeable1 (..), mkTyCon, mkTyConApp)
-import Data.Enumerator (Iteratee)
-import Data.ByteString (ByteString)
 
 type FunctionName = String
 
@@ -160,14 +157,6 @@ charsToLBS :: String -> L8.ByteString
 charsToLBS = encodeUtf8 . pack
 
 type Handler = (Application -> IO ()) -> IO ()
-
-instance Typeable1 (Iteratee ByteString IO) where
-    typeOf1 _ =
-        mkTyConApp i [c, io]
-      where
-        i = mkTyCon "Data.Enumerator.Iteratee"
-        c = typeOf (undefined :: ByteString)
-        io = typeOf1 (undefined :: IO ())
 
 theapp :: String -> String -> IO (Either InterpreterError (Handler, [FilePath]))
 theapp modu func =
