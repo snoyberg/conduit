@@ -48,14 +48,12 @@ import qualified Data.ByteString as S
 import qualified Data.ByteString.Unsafe as SU
 import qualified Data.ByteString.Char8 as B
 import qualified Data.ByteString.Lazy as L
-import Network
-    ( listenOn, sClose, PortID(PortNumber), Socket
-    , withSocketsDo)
+import Network (listenOn, sClose, PortID(PortNumber), Socket)
 import Network.Socket
     ( accept, SockAddr
     )
 import qualified Network.Socket.ByteString as Sock
-import Control.Exception (bracket, finally, Exception, SomeException, catch, throwIO)
+import Control.Exception (bracket, finally, Exception, SomeException, catch)
 import Control.Concurrent (forkIO)
 import Data.Maybe (fromMaybe)
 
@@ -73,17 +71,17 @@ import Blaze.ByteString.Builder
 import Blaze.ByteString.Builder.Char8 (fromChar, fromShow)
 import Data.Monoid (mappend, mconcat)
 import Network.Socket.SendFile (sendFile)
-import Network.Socket.Enumerator (iterSocket)
 
 import Control.Monad.IO.Class (liftIO)
-import System.Timeout (timeout)
+import qualified Timeout as T
 import Data.Word (Word8)
 import Data.List (foldl')
+import Control.Monad (forever)
 
 #if WINDOWS
 import Control.Concurrent (threadDelay)
 import qualified Control.Concurrent.MVar as MV
-import Control.Monad (forever)
+import Network.Socket (withSocketsDo)
 #endif
 
 -- | Run an 'Application' on the given port, ignoring all exceptions.
@@ -105,7 +103,7 @@ runEx onE port app = withSocketsDo $ do
             serveConnections onE port app s)
     forever (threadDelay maxBound) `finally` clean
 #else
-runEx onE port = withSocketsDo . -- FIXME should this be called by client user instead?
+runEx onE port =
     bracket
         (listenOn $ PortNumber $ fromIntegral port)
         sClose .
@@ -122,24 +120,32 @@ type Port = Int
 serveConnections :: (SomeException -> IO ())
                  -> Port -> Application -> Socket -> IO ()
 serveConnections onE port app socket = do
-    (conn, sa) <- accept socket
-    _ <- forkIO $ serveConnection onE port app conn sa
-    serveConnections onE port app socket
+    tm <- T.initialize $ timeout * 1000000
+    forever $ do
+        (conn, sa) <- accept socket
+        _ <- forkIO $ do
+            th <- T.register tm $ sClose conn
+            serveConnection th onE port app conn sa
+        return ()
 
-serveConnection :: (SomeException -> IO ())
+serveConnection :: T.Handle
+                -> (SomeException -> IO ())
                 -> Port -> Application -> Socket -> SockAddr -> IO ()
-serveConnection onException port app conn remoteHost' = do
+serveConnection th onException port app conn remoteHost' = do
     catch
         (finally
           (E.run_ $ fromClient $$ serveConnection')
           (sClose conn))
         onException
   where
-    fromClient = enumSocket bytesPerRead conn
+    fromClient = enumSocket th bytesPerRead conn
     serveConnection' = do
         (enumeratee, env) <- parseRequest port remoteHost'
+        -- Let the application run for as long as it wants
+        --FIXME liftIO $ T.pause th
         res <- E.joinI $ enumeratee $$ app env
-        keepAlive <- liftIO $ sendResponse env (httpVersion env) conn res
+        --liftIO $ T.resume th
+        keepAlive <- liftIO $ sendResponse th env (httpVersion env) conn res
         if keepAlive then serveConnection' else return ()
 
 parseRequest :: Port -> SockAddr -> E.Iteratee S.ByteString IO (E.Enumeratee ByteString ByteString IO a, Request)
@@ -148,11 +154,11 @@ parseRequest port remoteHost' = do
     parseRequest' port headers' remoteHost'
 
 -- FIXME come up with good values here
-maxHeaders, maxHeaderLength, bytesPerRead, readTimeout :: Int
+maxHeaders, maxHeaderLength, bytesPerRead, timeout :: Int
 maxHeaders = 30
 maxHeaderLength = 1024
 bytesPerRead = 4096
-readTimeout = 3000000
+timeout = 1 -- seconds
 
 data InvalidRequest =
     NotEnoughLines [String]
@@ -170,7 +176,7 @@ parseRequest' :: Port
               -> [ByteString]
               -> SockAddr
               -> E.Iteratee S.ByteString IO (E.Enumeratee S.ByteString S.ByteString IO a, Request)
-parseRequest' _ [] _ = throwError $ NotEnoughLines []
+parseRequest' _ [] _ = E.throwError $ NotEnoughLines []
 parseRequest' port (firstLine:otherLines) remoteHost' = do
     (method, rpath', gets, httpversion) <- parseFirst firstLine
     let rpath =
@@ -217,13 +223,13 @@ parseFirst s = do
     (method, query, http') <-
         case pieces of
             [x, y, z] -> return (x, y, z)
-            _ -> throwError $ BadFirstLine $ B.unpack s
+            _ -> E.throwError $ BadFirstLine $ B.unpack s
     let (hfirst, hsecond) = B.splitAt 5 http'
     if (hfirst == "HTTP/")
         then
             let (rpath, qstring) = B.break (== '?') query
              in return (method, rpath, qstring, hsecond)
-        else throwError NonHttp
+        else E.throwError NonHttp
 {-# INLINE parseFirst #-} -- FIXME is this inline necessary? the function is only called from one place and not exported
 
 httpBuilder, spaceBuilder, newlineBuilder, transferEncodingBuilder
@@ -262,15 +268,16 @@ isChunked = (==) http11
 hasBody :: Status -> Request -> Bool
 hasBody s req = s /= (Status 204 "") && requestMethod req /= "HEAD"
 
-sendResponse :: Request -> HttpVersion -> Socket -> Response -> IO Bool
-sendResponse req hv socket (ResponseFile s hs fp) = do
+sendResponse :: T.Handle
+             -> Request -> HttpVersion -> Socket -> Response -> IO Bool
+sendResponse _FIXMEth req hv socket (ResponseFile s hs fp) = do
     Sock.sendMany socket $ L.toChunks $ toLazyByteString $ headers hv s hs False
     if hasBody s req
         then do
-            sendFile socket fp
+            sendFile socket fp -- FIXME tickle the timeout here
             return $ lookup "content-length" hs /= Nothing
         else return True
-sendResponse req hv socket (ResponseBuilder s hs b)
+sendResponse _FIXMEth req hv socket (ResponseBuilder s hs b)
     | hasBody s req = do
           toByteStringIO (Sock.sendAll socket) b'
           return isKeepAlive
@@ -291,7 +298,7 @@ sendResponse req hv socket (ResponseBuilder s hs b)
     hasLength = lookup "content-length" hs /= Nothing
     isChunked' = isChunked hv && not hasLength
     isKeepAlive = isChunked' || hasLength
-sendResponse req hv socket (ResponseEnumerator res) =
+sendResponse th req hv socket (ResponseEnumerator res) =
     res go
   where
     -- FIXME perhaps alloca a buffer per thread and reuse that in all functiosn below. Should lessen greatly the GC burden (I hope)
@@ -305,7 +312,7 @@ sendResponse req hv socket (ResponseEnumerator res) =
             chunk'
           $ E.enumList 1 [headers hv s hs isChunked']
          $$ E.joinI $ builderToByteString -- FIXME unsafeBuilderToByteString
-         $$ (iterSocket socket >> return isKeepAlive)
+         $$ (iterSocket th socket >> return isKeepAlive)
       where
         hasLength = lookup "content-length" hs /= Nothing
         isChunked' = isChunked hv && not hasLength
@@ -331,24 +338,20 @@ parseHeaderNoAttr s =
                     else rest
      in (mkCIByteString k, rest')
 
--- FIXME when we switch to Jeremy's timeout code, we can probably start using
--- network-enumerator's enumSocket
-enumSocket :: Int -> Socket -> E.Enumerator ByteString IO a
-enumSocket len socket (E.Continue k) = do
-#if NO_TIMEOUT_PROTECTION
-    bs <- liftIO $ Sock.recv socket len
-    go bs
-#else
-    mbs <- liftIO $ timeout readTimeout $ Sock.recv socket len
-    case mbs of
-        Nothing -> throwError SocketTimeout
-        Just bs -> go bs
-#endif
+enumSocket :: T.Handle -> Int -> Socket -> E.Enumerator ByteString IO a
+enumSocket th len socket =
+    inner
   where
-    go bs
+    inner (E.Continue k) = do
+        bs <- liftIO $ Sock.recv socket len
+        liftIO $ T.tickle th
+        if S.null bs
+            then E.throwError SocketTimeout
+            else go k bs
+    inner step = E.returnI step
+    go k bs
         | S.length bs == 0 = E.continue k
-        | otherwise = k (E.Chunks [bs]) >>== enumSocket len socket
-enumSocket _ _ step = E.returnI step
+        | otherwise = k (E.Chunks [bs]) >>== enumSocket th len socket
 
 ------ The functions below are not warp-specific and could be split out into a
 --separate package.
@@ -360,7 +363,7 @@ takeUntilBlank :: Int
                -> ([ByteString] -> [ByteString])
                -> E.Iteratee S.ByteString IO [ByteString]
 takeUntilBlank count _
-    | count > maxHeaders = throwError TooManyHeaders
+    | count > maxHeaders = E.throwError TooManyHeaders
 takeUntilBlank count front = do
     l <- takeLineMax 0 id
     if B.null l
@@ -373,7 +376,7 @@ takeLineMax :: Int
 takeLineMax len front = do
     mbs <- EL.head
     case mbs of
-        Nothing -> throwError IncompleteHeaders
+        Nothing -> E.throwError IncompleteHeaders
         Just bs -> do
             let (x, y) = S.breakByte 10 bs
                 x' = if S.length x > 0 && S.last x == 13
@@ -382,10 +385,21 @@ takeLineMax len front = do
             let len' = len + B.length x
             case () of
                 ()
-                    | len' > maxHeaderLength -> throwError OverLargeHeader
+                    | len' > maxHeaderLength -> E.throwError OverLargeHeader
                     | B.null y -> takeLineMax len' $ front . (:) x
                     | otherwise -> do
                         E.yield () $ E.Chunks [B.drop 1 y]
                         return $ B.concat $ front [x']
 
-throwError = liftIO . throwIO
+iterSocket :: T.Handle
+           -> Socket
+           -> E.Iteratee B.ByteString IO ()
+iterSocket th sock =
+    E.continue step
+  where
+    step E.EOF = E.yield () E.EOF
+    step (E.Chunks []) = E.continue step
+    step (E.Chunks xs) = do
+        liftIO $ Sock.sendMany sock xs
+        liftIO $ T.tickle th
+        E.continue step
