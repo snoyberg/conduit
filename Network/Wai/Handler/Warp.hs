@@ -55,7 +55,7 @@ import Network.Socket
     ( accept, SockAddr
     )
 import qualified Network.Socket.ByteString as Sock
-import Control.Exception (bracket, finally, Exception, SomeException, catch)
+import Control.Exception (bracket, finally, Exception, SomeException, catch, throwIO)
 import Control.Concurrent (forkIO)
 import Data.Maybe (fromMaybe)
 
@@ -170,7 +170,7 @@ parseRequest' :: Port
               -> [ByteString]
               -> SockAddr
               -> E.Iteratee S.ByteString IO (E.Enumeratee S.ByteString S.ByteString IO a, Request)
-parseRequest' _ [] _ = E.throwError $ NotEnoughLines []
+parseRequest' _ [] _ = throwError $ NotEnoughLines []
 parseRequest' port (firstLine:otherLines) remoteHost' = do
     (method, rpath', gets, httpversion) <- parseFirst firstLine
     let rpath =
@@ -217,13 +217,13 @@ parseFirst s = do
     (method, query, http') <-
         case pieces of
             [x, y, z] -> return (x, y, z)
-            _ -> E.throwError $ BadFirstLine $ B.unpack s
+            _ -> throwError $ BadFirstLine $ B.unpack s
     let (hfirst, hsecond) = B.splitAt 5 http'
     if (hfirst == "HTTP/")
         then
             let (rpath, qstring) = B.break (== '?') query
              in return (method, rpath, qstring, hsecond)
-        else E.throwError NonHttp
+        else throwError NonHttp
 {-# INLINE parseFirst #-} -- FIXME is this inline necessary? the function is only called from one place and not exported
 
 httpBuilder, spaceBuilder, newlineBuilder, transferEncodingBuilder
@@ -341,7 +341,7 @@ enumSocket len socket (E.Continue k) = do
 #else
     mbs <- liftIO $ timeout readTimeout $ Sock.recv socket len
     case mbs of
-        Nothing -> E.throwError SocketTimeout
+        Nothing -> throwError SocketTimeout
         Just bs -> go bs
 #endif
   where
@@ -360,7 +360,7 @@ takeUntilBlank :: Int
                -> ([ByteString] -> [ByteString])
                -> E.Iteratee S.ByteString IO [ByteString]
 takeUntilBlank count _
-    | count > maxHeaders = E.throwError TooManyHeaders
+    | count > maxHeaders = throwError TooManyHeaders
 takeUntilBlank count front = do
     l <- takeLineMax 0 id
     if B.null l
@@ -373,7 +373,7 @@ takeLineMax :: Int
 takeLineMax len front = do
     mbs <- EL.head
     case mbs of
-        Nothing -> E.throwError IncompleteHeaders
+        Nothing -> throwError IncompleteHeaders
         Just bs -> do
             let (x, y) = S.breakByte 10 bs
                 x' = if S.length x > 0 && S.last x == 13
@@ -382,8 +382,10 @@ takeLineMax len front = do
             let len' = len + B.length x
             case () of
                 ()
-                    | len' > maxHeaderLength -> E.throwError OverLargeHeader
+                    | len' > maxHeaderLength -> throwError OverLargeHeader
                     | B.null y -> takeLineMax len' $ front . (:) x
                     | otherwise -> do
                         E.yield () $ E.Chunks [B.drop 1 y]
                         return $ B.concat $ front [x']
+
+throwError = liftIO . throwIO
