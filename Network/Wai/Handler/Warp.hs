@@ -142,9 +142,9 @@ serveConnection th onException port app conn remoteHost' = do
     serveConnection' = do
         (enumeratee, env) <- parseRequest port remoteHost'
         -- Let the application run for as long as it wants
-        --FIXME liftIO $ T.pause th
+        liftIO $ T.pause th
         res <- E.joinI $ enumeratee $$ app env
-        --liftIO $ T.resume th
+        liftIO $ T.resume th
         keepAlive <- liftIO $ sendResponse th env (httpVersion env) conn res
         if keepAlive then serveConnection' else return ()
 

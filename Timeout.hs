@@ -4,14 +4,18 @@ module Timeout
     , initialize
     , register
     , tickle
+    , pause
+    , resume
     ) where
 
 import qualified Data.IORef as I
 import Control.Concurrent (forkIO, threadDelay)
 import Control.Monad (forever)
+import qualified Control.Exception as E
 
 newtype Manager = Manager (I.IORef [Handle])
-data Handle = Handle (IO ()) (I.IORef Bool)
+data Handle = Handle (IO ()) (I.IORef State)
+data State = Active | Inactive | Paused
 
 initialize :: Int -> IO Manager
 initialize timeout = do
@@ -25,19 +29,26 @@ initialize timeout = do
   where
     go [] front = return front
     go (m@(Handle onTimeout iactive):rest) front = do
-        active <- I.atomicModifyIORef iactive (\x -> (False, x))
-        if active
-            then go rest (front . (:) m)
-            else do
-                onTimeout
+        state <- I.atomicModifyIORef iactive (\x -> (go' x, x))
+        case state of
+            Inactive -> do
+                onTimeout `E.catch` ignoreAll
                 go rest front
+            _ -> go rest (front . (:) m)
+    go' Active = Inactive
+    go' x = x
+
+ignoreAll :: E.SomeException -> IO ()
+ignoreAll _ = return ()
 
 register :: Manager -> IO () -> IO Handle
 register (Manager ref) onTimeout = do
-    iactive <- I.newIORef True
+    iactive <- I.newIORef Active
     let h = Handle onTimeout iactive
     I.atomicModifyIORef ref (\x -> (h : x, ()))
     return h
 
-tickle :: Handle -> IO ()
-tickle (Handle _ iactive) = I.writeIORef iactive True
+tickle, pause, resume :: Handle -> IO ()
+tickle (Handle _ iactive) = I.writeIORef iactive Active
+pause (Handle _ iactive) = I.writeIORef iactive Paused
+resume = tickle
