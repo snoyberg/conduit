@@ -248,7 +248,7 @@ staticAppPieces (StaticSettings folder indices mlisting getmime) pieces _ = lift
     cp <- checkPieces folder indices pieces
     case cp of
         Redirect pieces' -> do
-            let loc = S8.pack $ '/' : encodePathInfo pieces' []
+            let loc = S8.pack $ (concatMap (const "../") $ drop 1 pieces) ++ encodePathInfo pieces' []
             return $ W.responseLBS W.status301
                 [ ("Content-Type", "text/plain")
                 , ("Location", loc)
