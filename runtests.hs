@@ -17,10 +17,12 @@ import Network.Wai.Middleware.Gzip
 import Network.Wai.Middleware.Vhost
 import Network.Wai.Middleware.Autohead
 import Network.Wai.Middleware.MethodOverride
+import Network.Wai.Middleware.AcceptOverride
 import Codec.Compression.GZip (decompress)
 
 import Data.Enumerator (run_, enumList, ($$), Iteratee)
 import Control.Monad.IO.Class (liftIO)
+import Data.Maybe (fromMaybe)
 
 main :: IO ()
 main = defaultMain [testSuite]
@@ -41,6 +43,7 @@ testSuite = testGroup "Network.Wai.Parse"
     , testCase "vhost" caseVhost
     , testCase "autohead" caseAutohead
     , testCase "method override" caseMethodOverride
+    , testCase "accept override" caseAcceptOverride
     ]
 
 caseParseQueryString :: Assertion
@@ -309,3 +312,25 @@ caseMethodOverride = flip runSession moApp $ do
                 , queryString = "_method=PUT"
                 }
     assertHeader "Method" "PUT" sres3
+
+aoApp = acceptOverride $ \req -> return $ responseLBS status200
+    [("Accept", fromMaybe "" $ lookup "Accept" $ requestHeaders req)] ""
+
+caseAcceptOverride = flip runSession aoApp $ do
+    sres1 <- request Request
+                { queryString = ""
+                , requestHeaders = [("Accept", "foo")]
+                }
+    assertHeader "Accept" "foo" sres1
+
+    sres2 <- request Request
+                { queryString = ""
+                , requestHeaders = [("Accept", "bar")]
+                }
+    assertHeader "Accept" "bar" sres2
+
+    sres3 <- request Request
+                { queryString = "_accept=baz"
+                , requestHeaders = [("Accept", "bar")]
+                }
+    assertHeader "Accept" "baz" sres3
