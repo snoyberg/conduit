@@ -23,6 +23,7 @@ Source-repository head
 Library
   Build-Depends:     base                  >= 4             && < 5
                    , wai                   >= 0.3           && < 0.4
+                   , wai-extra             >= 0.3           && < 0.4
                    , warp                  >= 0.3           && < 0.4
                    , directory             >= 1.0           && < 1.2
                    , network               >= 2.2           && < 2.4

@@ -22,6 +22,7 @@ import Control.Concurrent (forkIO, threadDelay)
 import System.Directory (getModificationTime)
 import qualified Network.Wai.Handler.Warp as Warp
 import Network.Wai.Application.Devel
+import Network.Wai.Middleware.Debug (debug)
 
 import Data.List (nub, group, sort)
 import System.Time (ClockTime)
@@ -124,7 +125,7 @@ reload modu func extras prevError ah = do
             let files = map head $ group $ sort $ concat $ files' : files''
             putStrLn "Interpreting success, new app loaded"
             E.handle onInitErr $ do
-                swapApp app ah
+                swapApp (\f -> app $ f . debug) ah
                 times <- getTimes files
                 return (Nothing, zip files times)
     where
