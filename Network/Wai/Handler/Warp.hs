@@ -152,6 +152,7 @@ serveConnections' set app socket = do
         _ <- forkIO $ do
             th <- T.register tm $ sClose conn
             serveConnection th onE port app conn sa
+            T.cancel th
         return ()
 
 serveConnection :: T.Handle

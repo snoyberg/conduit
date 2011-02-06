@@ -6,6 +6,7 @@ module Timeout
     , tickle
     , pause
     , resume
+    , cancel
     ) where
 
 import qualified Data.IORef as I
@@ -13,9 +14,11 @@ import Control.Concurrent (forkIO, threadDelay)
 import Control.Monad (forever)
 import qualified Control.Exception as E
 
+-- FIXME implement stopManager
+
 newtype Manager = Manager (I.IORef [Handle])
 data Handle = Handle (IO ()) (I.IORef State)
-data State = Active | Inactive | Paused
+data State = Active | Inactive | Paused | Canceled
 
 initialize :: Int -> IO Manager
 initialize timeout = do
@@ -34,6 +37,7 @@ initialize timeout = do
             Inactive -> do
                 onTimeout `E.catch` ignoreAll
                 go rest front
+            Canceled -> go rest front
             _ -> go rest (front . (:) m)
     go' Active = Inactive
     go' x = x
@@ -48,7 +52,8 @@ register (Manager ref) onTimeout = do
     I.atomicModifyIORef ref (\x -> (h : x, ()))
     return h
 
-tickle, pause, resume :: Handle -> IO ()
+tickle, pause, resume, cancel :: Handle -> IO ()
 tickle (Handle _ iactive) = I.writeIORef iactive Active
 pause (Handle _ iactive) = I.writeIORef iactive Paused
 resume = tickle
+cancel (Handle _ iactive) = I.writeIORef iactive Canceled
