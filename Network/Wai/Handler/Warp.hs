@@ -316,15 +316,18 @@ sendResponse th req hv socket (ResponseFile s hs fp) = do
                 -- FIXME do we want to tickle here?
                 threadWaitWrite fd
                 tickler cont
-sendResponse _FIXMEth req hv socket (ResponseBuilder s hs b)
+sendResponse th req hv socket (ResponseBuilder s hs b)
     | hasBody s req = do
-          toByteStringIO (Sock.sendAll socket) b'
+          toByteStringIO (\bs -> do
+            Sock.sendAll socket bs
+            T.tickle th) b'
           return isKeepAlive
     | otherwise = do
         Sock.sendMany socket
             $ L.toChunks
             $ toLazyByteString
             $ headers hv s hs False
+        T.tickle th
         return True
   where
     headers' = headers hv s hs isChunked'
