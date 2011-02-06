@@ -15,7 +15,7 @@ import Network.Wai
 import Data.Text.Lazy (pack)
 import Data.Text.Lazy.Encoding (encodeUtf8)
 import qualified Data.ByteString.Lazy.Char8 as L8
-import Control.Exception (Exception, SomeException, toException)
+import Control.Exception (Exception, SomeException, toException, fromException)
 import qualified Control.Exception as E
 import Control.Concurrent (forkIO, threadDelay)
 
@@ -151,7 +151,10 @@ loadingApp err f =
         ) $ toMessage err
   where
     toMessage Nothing = "Loading code changes, please wait"
-    toMessage (Just err') = charsToLBS $ "Error loading code: " ++ show err'
+    toMessage (Just err') = charsToLBS $ "Error loading code: " ++
+        (case fromException err' of
+            Just e -> showInterpError e
+            Nothing -> show err')
 
 charsToLBS :: String -> L8.ByteString
 charsToLBS = encodeUtf8 . pack
