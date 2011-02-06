@@ -27,6 +27,13 @@ module Network.Wai.Handler.Warp
       run
     , runEx
     , serveConnections
+      -- * Run a Warp server with full settings control
+    , runSettings
+    , Settings
+    , defaultSettings
+    , settingsPort
+    , settingsOnException
+    , settingsTimeout
       -- * Datatypes
     , Port
     , InvalidRequest (..)
@@ -53,7 +60,10 @@ import Network.Socket
     ( accept, SockAddr
     )
 import qualified Network.Socket.ByteString as Sock
-import Control.Exception (bracket, finally, Exception, SomeException, catch)
+import Control.Exception
+    ( bracket, finally, Exception, SomeException, catch
+    , fromException
+    )
 import Control.Concurrent (forkIO)
 import Data.Maybe (fromMaybe)
 
@@ -91,23 +101,30 @@ run = runEx (const $ return ())
 -- | Run an 'Application' on the given port, with the given exception handler.
 -- Please note that you will also receive 'InvalidRequest' exceptions.
 runEx :: (SomeException -> IO ()) -> Port -> Application -> IO ()
+runEx onE port = runSettings Settings
+    { settingsPort = port
+    , settingsOnException = onE
+    , settingsTimeout = 30
+    }
+
+runSettings :: Settings -> Application -> IO ()
 #if WINDOWS
-runEx onE port app = withSocketsDo $ do
+runSettings set app = withSocketsDo $ do
     var <- MV.newMVar Nothing
     let clean = MV.modifyMVar_ var $ \s -> maybe (return ()) sClose s >> return Nothing
     _ <- forkIO $ bracket
-        (listenOn $ PortNumber $ fromIntegral port)
+        (listenOn $ PortNumber $ fromIntegral $ settingsPort set)
         (const clean)
         (\s -> do
             MV.modifyMVar_ var (\_ -> return $ Just s)
-            serveConnections onE port app s)
+            serveConnections' set app s)
     forever (threadDelay maxBound) `finally` clean
 #else
-runEx onE port =
+runSettings set =
     bracket
-        (listenOn $ PortNumber $ fromIntegral port)
+        (listenOn $ PortNumber $ fromIntegral $ settingsPort set)
         sClose .
-        serveConnections onE port
+        serveConnections' set
 #endif
 
 type Port = Int
@@ -119,8 +136,17 @@ type Port = Int
 -- non-TCP socket, this can be a ficticious value.
 serveConnections :: (SomeException -> IO ())
                  -> Port -> Application -> Socket -> IO ()
-serveConnections onE port app socket = do
-    tm <- T.initialize $ timeout * 1000000
+serveConnections onE port = serveConnections' defaultSettings
+    { settingsOnException = onE
+    , settingsPort = port
+    }
+
+serveConnections' :: Settings
+                  -> Application -> Socket -> IO ()
+serveConnections' set app socket = do
+    let onE = settingsOnException set
+        port = settingsPort set
+    tm <- T.initialize $ settingsTimeout set * 1000000
     forever $ do
         (conn, sa) <- accept socket
         _ <- forkIO $ do
@@ -154,11 +180,10 @@ parseRequest port remoteHost' = do
     parseRequest' port headers' remoteHost'
 
 -- FIXME come up with good values here
-maxHeaders, maxHeaderLength, bytesPerRead, timeout :: Int
+maxHeaders, maxHeaderLength, bytesPerRead :: Int
 maxHeaders = 30
 maxHeaderLength = 1024
 bytesPerRead = 4096
-timeout = 1 -- seconds
 
 data InvalidRequest =
     NotEnoughLines [String]
@@ -403,3 +428,22 @@ iterSocket th sock =
         liftIO $ Sock.sendMany sock xs
         liftIO $ T.tickle th
         E.continue step
+
+data Settings = Settings
+    { settingsPort :: Int
+    , settingsOnException :: SomeException -> IO ()
+    , settingsTimeout :: Int -- ^ seconds
+    }
+
+defaultSettings :: Settings
+defaultSettings = Settings
+    { settingsPort = 3000
+    , settingsOnException = \e ->
+        case fromException e of
+            Just x -> go x
+            Nothing -> print e
+    , settingsTimeout = 30
+    }
+  where
+    go :: InvalidRequest -> IO ()
+    go _ = return ()
