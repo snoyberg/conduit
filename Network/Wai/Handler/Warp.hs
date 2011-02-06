@@ -64,7 +64,7 @@ import Control.Exception
     ( bracket, finally, Exception, SomeException, catch
     , fromException
     )
-import Control.Concurrent (forkIO)
+import Control.Concurrent (forkIO, threadWaitWrite)
 import Data.Maybe (fromMaybe)
 
 import Data.Typeable (Typeable)
@@ -80,7 +80,7 @@ import Blaze.ByteString.Builder
     (copyByteString, Builder, toLazyByteString, toByteStringIO)
 import Blaze.ByteString.Builder.Char8 (fromChar, fromShow)
 import Data.Monoid (mappend, mconcat)
-import Network.Socket.SendFile (sendFile)
+import Network.Socket.SendFile (sendFileIterWith, Iter (..))
 
 import Control.Monad.IO.Class (liftIO)
 import qualified Timeout as T
@@ -185,6 +185,9 @@ maxHeaders, maxHeaderLength, bytesPerRead :: Int
 maxHeaders = 30
 maxHeaderLength = 1024
 bytesPerRead = 4096
+
+sendFileCount :: Integer
+sendFileCount = 65536
 
 data InvalidRequest =
     NotEnoughLines [String]
@@ -296,13 +299,23 @@ hasBody s req = s /= (Status 204 "") && requestMethod req /= "HEAD"
 
 sendResponse :: T.Handle
              -> Request -> HttpVersion -> Socket -> Response -> IO Bool
-sendResponse _FIXMEth req hv socket (ResponseFile s hs fp) = do
+sendResponse th req hv socket (ResponseFile s hs fp) = do
     Sock.sendMany socket $ L.toChunks $ toLazyByteString $ headers hv s hs False
     if hasBody s req
         then do
-            sendFile socket fp -- FIXME tickle the timeout here
+            sendFileIterWith tickler socket fp sendFileCount
             return $ lookup "content-length" hs /= Nothing
         else return True
+  where
+    tickler iter = do
+        r <- iter
+        case r of
+            Done _ -> return ()
+            Sent _ cont -> T.tickle th >> tickler cont
+            WouldBlock _ fd cont -> do
+                -- FIXME do we want to tickle here?
+                threadWaitWrite fd
+                tickler cont
 sendResponse _FIXMEth req hv socket (ResponseBuilder s hs b)
     | hasBody s req = do
           toByteStringIO (Sock.sendAll socket) b'
