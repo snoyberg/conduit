@@ -23,7 +23,7 @@ You want a minimal example? Here it is!
 >     run 8080 app
 
 Put that code into a file named _hello.hs_ and install [wai] and
-[wai-extra] from Hackage:
+[warp] from Hackage:
 
     cabal install wai warp
 
@@ -101,6 +101,6 @@ works without GHC extensions:
 
 
  [wai]: http://hackage.haskell.org/package/wai
- [wai-extra]: http://hackage.haskell.org/package/wai-extra
+ [warp]: http://hackage.haskell.org/package/warp
  [overloaded strings]: http://www.haskell.org/ghc/docs/latest/html/users_guide/type-class-extensions.html#overloaded-strings
  [bytestring]: http://hackage.haskell.org/package/bytestring

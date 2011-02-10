@@ -23,7 +23,7 @@ You want a minimal example? Here it is!
         putStrLn $ "http://localhost:8080/"
         run 8080 app
 
-Put that code into a file named _hello.hs_ and install [wai] and [wai-extra] from Hackage:
+Put that code into a file named _hello.hs_ and install [wai] and [warp] from Hackage:
 
     cabal install wai warp
 
@@ -96,6 +96,6 @@ For the sake of efficiency, WAI uses the [bytestring] package.  We used GHCs [ov
 
 
  [wai]: http://hackage.haskell.org/package/wai
- [wai-extra]: http://hackage.haskell.org/package/wai-extra
+ [warp]: http://hackage.haskell.org/package/warp
  [overloaded strings]: http://www.haskell.org/ghc/docs/latest/html/users_guide/type-class-extensions.html#overloaded-strings
  [bytestring]: http://hackage.haskell.org/package/bytestring
