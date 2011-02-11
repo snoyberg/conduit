@@ -181,10 +181,11 @@ parseRequest port remoteHost' = do
     parseRequest' port headers' remoteHost'
 
 -- FIXME come up with good values here
-maxHeaders, maxHeaderLength, bytesPerRead :: Int
+maxHeaders, maxHeaderLength, bytesPerRead, maxTotalHeaderLength :: Int
 maxHeaders = 30
 maxHeaderLength = 1024
 bytesPerRead = 4096
+maxTotalHeaderLength = 50 * 1024
 
 sendFileCount :: Integer
 sendFileCount = 65536
@@ -398,9 +399,6 @@ enumSocket th len socket =
 ------ The functions below are not warp-specific and could be split out into a
 --separate package.
 
-takeHeaders :: E.Iteratee ByteString IO [ByteString]
-takeHeaders = takeUntilBlank 0 id
-
 takeUntilBlank :: Int
                -> ([ByteString] -> [ByteString])
                -> E.Iteratee S.ByteString IO [ByteString]
@@ -464,3 +462,69 @@ defaultSettings = Settings
   where
     go :: InvalidRequest -> IO ()
     go _ = return ()
+
+takeHeaders = do
+  !x <- forceHead
+  takeHeaders' 0 id id x
+
+{-# INLINE takeHeaders #-}
+
+takeHeaders' :: Int
+             -> ([ByteString] -> [ByteString])
+             -> ([ByteString] -> [ByteString])
+             -> ByteString
+             -> E.Iteratee S.ByteString IO [ByteString]
+takeHeaders' !len _ _ _ | len > maxTotalHeaderLength = E.throwError OverLargeHeader
+takeHeaders' !len !lines !prepend !bs = do
+  let !bsLen = {-# SCC "takeHeaders'.bsLen" #-} S.length bs
+      !mnl = {-# SCC "takeHeaders'.mnl" #-} S.elemIndex 10 bs
+  case mnl of
+       -- no newline.  prepend entire bs to next line
+       !Nothing -> {-# SCC "takeHeaders'.noNewline" #-} do
+         let !len' = len + bsLen
+         !more <- forceHead 
+         takeHeaders' len' lines (prepend . (:) bs) more
+       Just !nl -> {-# SCC "takeHeaders'.newline" #-} do
+         let !end = nl 
+             !start = nl + 1
+             !line = {-# SCC "takeHeaders'.line" #-}
+                     if end > 0
+                        -- line data included in this chunk
+                        then S.concat $! prepend [SU.unsafeTake (checkCR bs end) bs]
+                        --then S.concat $! prepend [SU.unsafeTake (end-1) bs]
+                        -- no line data in this chunk (all in prepend, or empty line)
+                        else S.concat $! prepend []
+         if S.null line
+            -- no more headers
+            then {-# SCC "takeHeaders'.noMoreHeaders" #-} do
+              let !lines' = {-# SCC "takeHeaders'.noMoreHeaders.lines'" #-} lines []
+              if start < bsLen
+                 then {-# SCC "takeHeaders'.noMoreHeaders.yield" #-} do
+                   let !rest = {-# SCC "takeHeaders'.noMoreHeaders.yield.rest" #-} SU.unsafeDrop start bs
+                   E.yield lines' $! E.Chunks [rest]
+                 else return lines'
+
+            -- more headers
+            else {-# SCC "takeHeaders'.moreHeaders" #-} do
+              let !len' = len + start 
+                  !lines' = {-# SCC "takeHeaders.lines'" #-} lines . (:) line
+              !more <- {-# SCC "takeHeaders'.more" #-} 
+                       if start < bsLen
+                          then return $! SU.unsafeDrop start bs
+                          else forceHead
+              {-# SCC "takeHeaders'.takeMore" #-} takeHeaders' len' lines' id more
+{-# INLINE takeHeaders' #-}
+
+forceHead = do
+  !mx <- E.head
+  case mx of
+       !Nothing -> E.throwError IncompleteHeaders
+       Just !x -> return x
+{-# INLINE forceHead #-}
+
+checkCR bs pos = 
+  let !p = pos - 1
+  in if '\r' == B.index bs p
+        then p
+        else pos
+{-# INLINE checkCR #-}

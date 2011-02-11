@@ -64,7 +64,7 @@ caseTakeLineMaxIncomplete = do
 
 caseTakeUntilBlankTooMany = do
     x <- run $ (enumList 1 $ repeat "f\n") $$ takeHeaders
-    assertException TooManyHeaders x
+    assertException OverLargeHeader x
 
 caseTakeUntilBlankTooLarge = do
     x <- run $ (enumList 1 $ repeat "f") $$ takeHeaders
