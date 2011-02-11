@@ -41,12 +41,11 @@ module Network.Wai.Handler.Warp
     , sendResponse
     , parseRequest
 #if TEST
-    , takeLineMax
     , takeHeaders
 #endif
     ) where
 
-import Prelude hiding (catch)
+import Prelude hiding (catch, lines)
 import Network.Wai
 import qualified System.IO
 
@@ -181,9 +180,7 @@ parseRequest port remoteHost' = do
     parseRequest' port headers' remoteHost'
 
 -- FIXME come up with good values here
-maxHeaders, maxHeaderLength, bytesPerRead, maxTotalHeaderLength :: Int
-maxHeaders = 30
-maxHeaderLength = 1024
+bytesPerRead, maxTotalHeaderLength :: Int
 bytesPerRead = 4096
 maxTotalHeaderLength = 50 * 1024
 
@@ -399,38 +396,6 @@ enumSocket th len socket =
 ------ The functions below are not warp-specific and could be split out into a
 --separate package.
 
-takeUntilBlank :: Int
-               -> ([ByteString] -> [ByteString])
-               -> E.Iteratee S.ByteString IO [ByteString]
-takeUntilBlank count _
-    | count > maxHeaders = E.throwError TooManyHeaders
-takeUntilBlank count front = do
-    l <- takeLineMax 0 id
-    if B.null l
-        then return $ front []
-        else takeUntilBlank (count + 1) $ front . (:) l
-
-takeLineMax :: Int
-            -> ([ByteString] -> [ByteString])
-            -> E.Iteratee ByteString IO ByteString
-takeLineMax len front = do
-    mbs <- EL.head
-    case mbs of
-        Nothing -> E.throwError IncompleteHeaders
-        Just bs -> do
-            let (x, y) = S.breakByte 10 bs
-                x' = if S.length x > 0 && S.last x == 13
-                        then S.init x
-                        else x
-            let len' = len + B.length x
-            case () of
-                ()
-                    | len' > maxHeaderLength -> E.throwError OverLargeHeader
-                    | B.null y -> takeLineMax len' $ front . (:) x
-                    | otherwise -> do
-                        E.yield () $ E.Chunks [B.drop 1 y]
-                        return $ B.concat $ front [x']
-
 iterSocket :: T.Handle
            -> Socket
            -> E.Iteratee B.ByteString IO ()
@@ -463,6 +428,7 @@ defaultSettings = Settings
     go :: InvalidRequest -> IO ()
     go _ = return ()
 
+takeHeaders :: E.Iteratee ByteString IO [ByteString]
 takeHeaders = do
   !x <- forceHead
   takeHeaders' 0 id id x
@@ -515,13 +481,15 @@ takeHeaders' !len !lines !prepend !bs = do
               {-# SCC "takeHeaders'.takeMore" #-} takeHeaders' len' lines' id more
 {-# INLINE takeHeaders' #-}
 
+forceHead :: E.Iteratee ByteString IO ByteString
 forceHead = do
-  !mx <- E.head
+  !mx <- EL.head
   case mx of
        !Nothing -> E.throwError IncompleteHeaders
        Just !x -> return x
 {-# INLINE forceHead #-}
 
+checkCR :: ByteString -> Int -> Int
 checkCR bs pos = 
   let !p = pos - 1
   in if '\r' == B.index bs p
