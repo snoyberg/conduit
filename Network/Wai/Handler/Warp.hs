@@ -150,7 +150,7 @@ serveConnections' set app socket = do
     forever $ do
         (conn, sa) <- accept socket
         _ <- forkIO $ do
-            th <- T.register tm $ sClose conn
+            th <- T.registerKillThread tm
             serveConnection th onE port app conn sa
             T.cancel th
         return ()

@@ -3,6 +3,7 @@ module Timeout
     , Handle
     , initialize
     , register
+    , registerKillThread
     , tickle
     , pause
     , resume
@@ -10,7 +11,7 @@ module Timeout
     ) where
 
 import qualified Data.IORef as I
-import Control.Concurrent (forkIO, threadDelay)
+import Control.Concurrent (forkIO, threadDelay, myThreadId, killThread)
 import Control.Monad (forever)
 import qualified Control.Exception as E
 
@@ -51,6 +52,11 @@ register (Manager ref) onTimeout = do
     let h = Handle onTimeout iactive
     I.atomicModifyIORef ref (\x -> (h : x, ()))
     return h
+
+registerKillThread :: Manager -> IO Handle
+registerKillThread m = do
+    tid <- myThreadId
+    register m $ killThread tid
 
 tickle, pause, resume, cancel :: Handle -> IO ()
 tickle (Handle _ iactive) = I.writeIORef iactive Active
