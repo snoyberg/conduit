@@ -402,11 +402,16 @@ iterSocket :: T.Handle
 iterSocket th sock =
     E.continue step
   where
-    step E.EOF = E.yield () E.EOF
+    -- We pause timeouts before passing control back to user code. This ensures
+    -- that a timeout will only ever be executed when Warp is in control. We
+    -- also make sure to resume the timeout after the completion of user code
+    -- so that we can kill idle connections.
+    step E.EOF = liftIO (T.resume th) >> E.yield () E.EOF
     step (E.Chunks []) = E.continue step
     step (E.Chunks xs) = do
+        liftIO $ T.resume th
         liftIO $ Sock.sendMany sock xs
-        liftIO $ T.tickle th
+        liftIO $ T.pause th
         E.continue step
 
 data Settings = Settings
