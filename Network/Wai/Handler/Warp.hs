@@ -243,18 +243,15 @@ takeUntil c bs =
 
 parseFirst :: ByteString
            -> E.Iteratee S.ByteString IO (ByteString, ByteString, ByteString, HttpVersion)
-parseFirst s = do
-    let pieces = S.split 32 s  -- ' '
-    (method, query, http') <-
-        case pieces of
-            [x, y, z] -> return (x, y, z)
-            _ -> E.throwError $ BadFirstLine $ B.unpack s
-    let (hfirst, hsecond) = B.splitAt 5 http'
-    if (hfirst == "HTTP/")
-        then
-            let (rpath, qstring) = S.breakByte 63 query  -- '?'
-             in return (method, rpath, qstring, hsecond)
-        else E.throwError NonHttp
+parseFirst s = 
+    case S.split 32 s of  -- ' '
+        [method, query, http'] -> do
+            let (hfirst, hsecond) = B.splitAt 5 http'
+            if hfirst == "HTTP/"
+               then let (rpath, qstring) = S.breakByte 63 query  -- '?'
+                    in return (method, rpath, qstring, hsecond)
+               else E.throwError NonHttp
+        _ -> E.throwError $ BadFirstLine $ B.unpack s
 {-# INLINE parseFirst #-} -- FIXME is this inline necessary? the function is only called from one place and not exported
 
 httpBuilder, spaceBuilder, newlineBuilder, transferEncodingBuilder
