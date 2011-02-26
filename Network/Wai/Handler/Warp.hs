@@ -252,7 +252,7 @@ parseFirst s = do
     let (hfirst, hsecond) = B.splitAt 5 http'
     if (hfirst == "HTTP/")
         then
-            let (rpath, qstring) = B.break (== '?') query
+            let (rpath, qstring) = S.breakByte 63 query  -- '?'
              in return (method, rpath, qstring, hsecond)
         else E.throwError NonHttp
 {-# INLINE parseFirst #-} -- FIXME is this inline necessary? the function is only called from one place and not exported
