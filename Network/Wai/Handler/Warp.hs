@@ -324,8 +324,7 @@ sendResponse th req hv socket (ResponseBuilder s hs b)
         return True
   where
     headers' = headers hv s hs isChunked'
-    b' =
-        if isChunked'
+    b' = if isChunked'
             then headers'
                  `mappend` chunkedTransferEncoding b
                  `mappend` chunkedTransferTerminator
@@ -337,14 +336,12 @@ sendResponse th req hv socket (ResponseEnumerator res) =
     res go
   where
     -- FIXME perhaps alloca a buffer per thread and reuse that in all functiosn below. Should lessen greatly the GC burden (I hope)
-    go s hs
-        | not (hasBody s req) = do
+    go s hs | not (hasBody s req) = do
             liftIO $ Sock.sendMany socket
                    $ L.toChunks $ toLazyByteString
                    $ headers hv s hs False
             return True
-    go s hs =
-            chunk'
+    go s hs = chunk'
           $ E.enumList 1 [headers hv s hs isChunked']
          $$ E.joinI $ builderToByteString -- FIXME unsafeBuilderToByteString
          $$ (iterSocket th socket >> return isKeepAlive)
@@ -352,10 +349,9 @@ sendResponse th req hv socket (ResponseEnumerator res) =
         hasLength = lookup "content-length" hs /= Nothing
         isChunked' = isChunked hv && not hasLength
         isKeepAlive = isChunked' || hasLength
-        chunk' i =
-            if isChunked'
-                then E.joinI $ chunk $$ i
-                else i
+        chunk' i = if isChunked'
+                      then E.joinI $ chunk $$ i
+                      else i
         chunk :: E.Enumeratee Builder Builder IO Bool
         chunk = E.checkDone $ E.continue . step
         step k E.EOF = k (E.Chunks [chunkedTransferTerminator]) >>== return
@@ -369,8 +365,8 @@ parseHeaderNoAttr s =
         restLen = S.length rest
         -- FIXME check for colon without following space?
         rest' = if restLen > 1 && SU.unsafeTake 2 rest == ": "
-                    then SU.unsafeDrop 2 rest
-                    else rest
+                   then SU.unsafeDrop 2 rest
+                   else rest
      in (mkCIByteString k, rest')
 
 enumSocket :: T.Handle -> Int -> Socket -> E.Enumerator ByteString IO a
