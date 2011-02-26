@@ -64,6 +64,7 @@ import Control.Exception
     , fromException
     )
 import Control.Concurrent (forkIO, threadWaitWrite)
+import qualified Data.Char as C
 import Data.Maybe (fromMaybe)
 
 import Data.Typeable (Typeable)
@@ -215,10 +216,7 @@ parseRequest' port (firstLine:otherLines) remoteHost' = do
     let len =
             case lookup "content-length" heads of
                 Nothing -> 0
-                Just bs ->
-                    case reads $ B.unpack bs of -- FIXME could probably be optimized
-                        (x, _):_ -> x
-                        [] -> 0
+                Just bs -> fromIntegral $ B.foldl' (\i c -> i * 10 + C.digitToInt c) 0 $ B.takeWhile C.isDigit bs
     let serverName' = takeUntil 58 host -- ':'
     -- FIXME isolate takes an Integer instead of Int or Int64. If this is a
     -- performance penalty, we may need our own version.
