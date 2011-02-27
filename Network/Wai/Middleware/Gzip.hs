@@ -55,7 +55,10 @@ compressE re f =
     f' s hs =
         joinI $ compress $$ f s hs'
       where
-        hs' = ("Content-Encoding", "gzip") : hs
+        -- Remove Content-Length header, since we will certainly have a
+        -- different length after gzip compression.
+        hs' = ("Content-Encoding", "gzip") : filter notLength hs
+        notLength (x, _) = x /= "content-length"
 
 splitCommas :: String -> [String]
 splitCommas [] = []

@@ -164,18 +164,27 @@ parseRequestBody sink req = do
             bs <- E.consume
             return (parseQueryString $ S.concat bs, [])
         Just (Just bound) -> -- multi-part
-            let bound' = S8.pack "--" `S.append` bound
-             in parsePieces sink bound'
+            let bound'' = S8.pack "--" `S.append` bound
+             in parsePieces sink bound''
   where
     urlenc = S8.pack "application/x-www-form-urlencoded"
-    formBound = S8.pack "multipart/form-data; boundary="
+    formBound = S8.pack "multipart/form-data;"
+    bound' = "boundary="
+    boundary s =
+        if "multipart/form-data;" `S.isPrefixOf` s
+            then
+                let s' = S.dropWhile (== 32) $ S.drop (S.length formBound) s
+                 in if bound' `S.isPrefixOf` s'
+                        then Just $ S.drop (S.length bound') s'
+                        else Nothing
+            else Nothing
     ctype = do
       ctype' <- lookup "Content-Type" $ requestHeaders req
       if urlenc `S.isPrefixOf` ctype'
           then Just Nothing
-          else if formBound `S.isPrefixOf` ctype'
-                  then Just $ Just $ S.drop (S.length formBound) ctype'
-                  else Nothing
+          else case boundary ctype' of
+                Just x -> Just $ Just x
+                Nothing -> Nothing
 
 takeLine :: Iteratee S.ByteString IO (Maybe S.ByteString)
 takeLine = do
