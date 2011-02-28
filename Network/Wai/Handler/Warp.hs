@@ -377,13 +377,9 @@ enumSocket th len socket =
         bs <- liftIO $ Sock.recv socket len
         liftIO $ T.tickle th
         if S.null bs
-            then E.throwError SocketTimeout
-            else go k bs
+            then E.continue k
+            else k (E.Chunks [bs]) >>== inner
     inner step = E.returnI step
-    go k bs
-        | S.length bs == 0 = E.continue k
-        | otherwise = k (E.Chunks [bs]) >>== enumSocket th len socket
-
 ------ The functions below are not warp-specific and could be split out into a
 --separate package.
 
