@@ -1,6 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE CPP #-}
+{-# LANGUAGE TemplateHaskell, CPP #-}
 -- | Static file serving for WAI.
 module Network.Wai.Application.Static
     ( -- * Generic, non-WAI code
@@ -15,8 +14,8 @@ module Network.Wai.Application.Static
     , mimeTypeByExt
     , defaultMimeTypeByExt
       -- ** Finding files
-    , CheckPieces
-    , checkPieces
+    , Pieces
+    , pathFromPieces
       -- ** File/folder metadata
     , MetaData (..)
     , mdIsFile
@@ -24,10 +23,15 @@ module Network.Wai.Application.Static
       -- ** Directory listings
     , Listing
     , defaultListing
+    , defaultDirListing
       -- * WAI application
-    , StaticSettings (..)
     , staticApp
     , staticAppPieces
+      -- ** Settings
+    , StaticSettings (..)
+    , defaultStaticSettings
+    , defaultPublicSettings
+    , CacheSettings (..)
     ) where
 
 import qualified Network.Wai as W
@@ -42,7 +46,7 @@ import Data.ByteString.Lazy.Char8 ()
 import System.PosixCompat.Files (fileSize, getFileStatus, modificationTime)
 import System.Posix.Types (FileOffset, EpochTime)
 import Control.Monad.IO.Class (liftIO)
-import Data.Maybe (catMaybes)
+import Data.Maybe (catMaybes, isNothing, isJust)
 
 import           Text.Blaze                  ((!))
 import qualified Text.Blaze.Html5            as H
@@ -62,6 +66,17 @@ import Data.FileEmbed (embedFile)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import qualified Data.Text.Encoding.Error as TEE
+
+#ifdef PRINT
+import Debug.Trace
+debug :: (Show a) => a -> a
+debug a = trace ("DEBUG: " ++ show a) a
+#else
+trace :: String -> a -> a 
+trace _ x = x
+debug :: a -> a
+debug = id
+#endif
 
 -- | A list of all possible extensions, starting from the largest.
 takeExtensions :: FilePath -> [String]
@@ -157,20 +172,19 @@ defaultMimeTypeByExt :: FilePath -> MimeType
 defaultMimeTypeByExt = mimeTypeByExt defaultMimeTypes defaultMimeType
 
 data CheckPieces
-    = Redirect [String]
+    = Redirect Pieces
     | Forbidden
     | NotFound
     | FileResponse FilePath
+    | NotModified
     | DirectoryResponse FilePath
+    -- TODO: add file size
     | SendContent MimeType L.ByteString
     deriving Show
 
-anyButLast :: (a -> Bool) -> [a] -> Bool
-anyButLast _ [] = False
-anyButLast _ [_] = False
-anyButLast p (x:xs)
-    | p x == True = True
-    | otherwise = anyButLast p xs
+safeInit  :: [a] -> [a]
+safeInit [] = []
+safeInit xs = init xs
 
 filterButLast :: (a -> Bool) -> [a] -> [a]
 filterButLast _ [] = []
@@ -178,6 +192,7 @@ filterButLast _ [x] = [x]
 filterButLast f (x:xs)
     | f x = x : filterButLast f xs
     | otherwise = filterButLast f xs
+
 
 unsafe :: FilePath -> Bool
 unsafe ('.':_) = True
@@ -188,43 +203,75 @@ stripTrailingSlash "/" = ""
 stripTrailingSlash "" = ""
 stripTrailingSlash (x:xs) = x : stripTrailingSlash xs
 
-checkPieces :: FilePath -- ^ static file prefix
-            -> [FilePath] -- ^ List of default index files. Cannot contain slashes.
-            -> [String] -- ^ parsed request
+type Pieces = [Text]
+relativeFromPieces :: Pieces -> Text
+relativeFromPieces pieces = concatMap (const "../") (drop 1 pieces) -- last path which is not a dir
+
+pathFromPieces :: FilePath -> Pieces -> FilePath
+pathFromPieces prefix pieces =
+        concat $ prefix : map ((:) '/') (map unfixPathName pieces)
+
+checkPieces :: FilePath      -- ^ static file prefix
+            -> [FilePath]    -- ^ List of default index files. Cannot contain slashes.
+            -> Pieces        -- ^ parsed request
+            -> CacheSettings
+            -> W.Request
             -> IO CheckPieces
-checkPieces _ _ [".hidden", "folder.png"] =
+checkPieces _ _ [".hidden", "folder.png"] _ _ =
     return $ SendContent "image/png" $ L.fromChunks [$(embedFile "folder.png")]
-checkPieces _ _ [".hidden", "haskell.png"] =
+checkPieces _ _ [".hidden", "haskell.png"] _ _ =
     return $ SendContent "image/png" $ L.fromChunks [$(embedFile "haskell.png")]
-checkPieces prefix indices pieces
+checkPieces prefix indices pieces cache req
     | any unsafe pieces = return Forbidden
-    | anyButLast null pieces =
+    | any null $ safeInit pieces =
         return $ Redirect $ filterButLast (not . null) pieces
     | otherwise = do
-        let fp = concat $ prefix : map ((:) '/') (map unfixPathName pieces)
+        let fp = pathFromPieces prefix pieces
         let (isFile, isFolder) =
                 case () of
                     ()
                         | null pieces -> (True, True)
                         | null (last pieces) -> (False, True)
                         | otherwise -> (True, False)
-        fe <- doesFileExist $ stripTrailingSlash fp
-        case (fe, isFile) of
-            (True, True) -> return $ FileResponse fp
-            (True, False) -> return $ Redirect $ init pieces
-            (False, _) -> do
-                de <- doesDirectoryExist fp
-                if de
-                    then do
-                        x <- checkIndices fp indices
-                        case x of
-                            Just index -> return $ Redirect $ setLast pieces index
-                            Nothing ->
-                                if isFolder
-                                    then return $ DirectoryResponse fp
-                                    else return $ Redirect $ pieces ++ [""]
-                    else return NotFound
+
+        if not isFile then uncached fp isFile isFolder
+           else
+             case cache of
+               ETag ioLookup -> do
+                 -- No support for If-Match
+                 let mlastEtag = lookup "If-None-Match" (W.requestHeaders req)
+                 metag <- ioLookup fp
+                 case debug (metag, mlastEtag) of
+                   (Just hash, Just lastHash) | hash == lastHash -> return NotModified
+                   _ -> trace "ETAG: no cache match" uncached fp isFile isFolder
+               Forever isStaticFile -> 
+                   if isStaticFile fp (W.queryString req) &&
+                       (isJust $ lookup "If-Modified-Since" (W.requestHeaders req)) &&
+                       (isNothing $ lookup "If-Unmodified-Since" (W.requestHeaders req))
+                       then return NotModified
+                       else trace "Static: no cache match" uncached fp isFile isFolder
+               NoCache    -> trace "NoCache" uncached fp isFile isFolder
+
+
   where
+    uncached fp isFile isFolder = do
+      fe <- doesFileExist $ stripTrailingSlash fp
+      case (fe, isFile) of
+          (True, True)  -> return $ FileResponse fp
+          (True, False) -> return $ Redirect $ init pieces
+          (False, _) -> do
+              de <- doesDirectoryExist fp
+              if not de
+                  then return NotFound
+                  else do
+                      x <- checkIndices fp indices
+                      case x of
+                          Just index -> return $ Redirect $ setLast pieces index
+                          Nothing ->
+                              if isFolder
+                                  then return $ DirectoryResponse fp
+                                  else return $ Redirect $ pieces ++ [""]
+
     setLast [] x = [x]
     setLast [""] x = [x]
     setLast (a:b) x = a : setLast b x
@@ -236,30 +283,101 @@ checkPieces prefix indices pieces
             then return $ Just i
             else checkIndices fp is
 
-type Listing = [String] -> FilePath -> IO L.ByteString
+type Listing = (Pieces -> FilePath -> IO L.ByteString)
+
+data StaticDirListing = ListingForbidden | StaticDirListing {
+    ssListing :: Listing
+  , ssIndices :: [FilePath]
+}
+
+defaultDirListing :: StaticDirListing
+defaultDirListing = StaticDirListing defaultListing []
+
+-- IO is for development mode
+type CheckHashParam = (FilePath -> S8.ByteString -> Bool)
+data CacheSettings = NoCache | Forever CheckHashParam | ETag (FilePath -> IO (Maybe S8.ByteString))
+
+{-MaxAge S8.ByteString -}
+{-maxAge :: Int -> CacheSettings-}
+{-maxAge = MaxAge . S8.pack . show-}
+
+oneYear :: Int
+oneYear = 60 * 60 * 24 * 365
 
 data StaticSettings = StaticSettings
     { ssFolder :: FilePath
-    , ssIndices :: [FilePath]
-    , ssListing :: Maybe Listing
+    , ssMkRedirect :: Pieces -> FilePath -> S8.ByteString
     , ssGetMimeType :: FilePath -> IO MimeType
+    , ssDirListing :: StaticDirListing
+    , ssCacheSettings :: CacheSettings
     }
+
+defaultStaticSettings :: CacheSettings -> StaticSettings
+defaultStaticSettings isStaticFile = StaticSettings { ssFolder = "static"
+  , ssMkRedirect = \pieces newPath -> S8.pack $ (relativeFromPieces pieces) ++ newPath
+  , ssGetMimeType = return . defaultMimeTypeByExt
+  , ssDirListing = defaultDirListing
+  , ssCacheSettings = isStaticFile
+}
+defaultPublicSettings :: CacheSettings -> StaticSettings
+defaultPublicSettings etags = StaticSettings { ssFolder = "public"
+  , ssMkRedirect = \pieces newPath -> S8.pack $ (relativeFromPieces pieces) ++ newPath
+  , ssGetMimeType = return . defaultMimeTypeByExt
+  , ssDirListing = ListingForbidden
+  , ssCacheSettings = etags
+}
+
 
 staticApp :: StaticSettings -> W.Application
 staticApp set req = do
     let pieces = W.pathInfo req
     staticAppPieces set pieces req
 
-staticAppPieces :: StaticSettings -> [T.Text] -> W.Application
+status304, statusNotModified :: W.Status
+status304 = W.Status 304 "Not Modified"
+statusNotModified = status304
+
+staticAppPieces :: StaticSettings -> Pieces -> W.Application
 staticAppPieces _ _ req
     | W.requestMethod req /= "GET" = return $ W.responseLBS
         H.status405
         [("Content-Type", "text/plain")]
         "Only GET is supported"
-staticAppPieces (StaticSettings folder indices mlisting getmime) piecesT _ = liftIO $ do
-    let pieces = map T.unpack piecesT -- FIXME stick with Text
-    cp <- checkPieces folder indices pieces
-    case cp of
+staticAppPieces ss@StaticSettings{} pieces req = liftIO $ do
+    let cache = ssCacheSettings ss
+    let indices = case ssDirListing ss of
+                      StaticDirListing _ is -> is
+                      ListingForbidden      -> []
+    cp <- checkPieces (ssFolder ss) indices pieces cache req
+    case debug cp of
+        FileResponse fp -> do
+            mimetype <- (ssGetMimeType ss) fp
+            filesize <- fileSize `fmap` getFileStatus fp
+            ch <- setCacheHeaders cache fp
+            return $ W.ResponseFile W.status200
+                        ( [ ("Content-Type", mimetype)
+                          , ("Content-Length", S8.pack $ show filesize)
+                          ] ++ ch ) fp Nothing
+        NotModified ->
+            return $ W.responseLBS statusNotModified
+                        [ ("Content-Type", "text/plain")
+                        ] "Not Modified"
+        DirectoryResponse fp ->
+            case ssDirListing ss of
+                StaticDirListing f _ -> do
+                    lbs <- f pieces fp
+                    return $ W.responseLBS W.status200
+                        [ ("Content-Type", "text/html; charset=utf-8")
+                        ] lbs
+                ListingForbidden -> return $ W.responseLBS W.status403
+                        [ ("Content-Type", "text/plain")
+                        ] "Directory listings disabled"
+        SendContent mt lbs -> do
+            -- TODO: set caching headers
+            return $ W.responseLBS W.status200
+                [ ("Content-Type", mt)
+                  -- TODO: set Content-Length
+                ] lbs
         Redirect pieces' -> do
             let loc =
                     toByteString $
@@ -275,26 +393,19 @@ staticAppPieces (StaticSettings folder indices mlisting getmime) piecesT _ = lif
         NotFound -> return $ W.responseLBS H.status404
                         [ ("Content-Type", "text/plain")
                         ] "File not found"
-        FileResponse fp -> do
-            mimetype <- getmime fp
-            filesize <- fileSize `fmap` getFileStatus fp
-            return $ W.ResponseFile H.status200
-                        [ ("Content-Type", mimetype)
-                        , ("Content-Length", S8.pack $ show filesize)
-                        ] fp Nothing
-        DirectoryResponse fp ->
-            case mlisting of
-                Just listing -> do
-                    lbs <- listing pieces fp
-                    return $ W.responseLBS H.status200
-                        [ ("Content-Type", "text/html; charset=utf-8")
-                        ] lbs
-                Nothing -> return $ W.responseLBS H.status403
-                        [ ("Content-Type", "text/plain")
-                        ] "Directory listings disabled"
-        SendContent mt lbs -> return $ W.responseLBS H.status200
-                        [ ("Content-Type", mt)
-                        ] lbs
+    where
+      -- expires header: formatTime "%a, %d-%b-%Y %X GMT"
+        setCacheHeaders :: CacheSettings -> FilePath -> IO W.ResponseHeaders
+        setCacheHeaders (Forever isStaticFile) fp = return $
+            if isStaticFile fp (W.queryString req)
+              then [("Cache-Control", S8.append "max-age=" $ S8.pack $ show oneYear)]
+              else []
+        setCacheHeaders NoCache _ = return []
+        setCacheHeaders (ETag ioLookup) fp = do
+            etag <- ioLookup fp
+            return $ case etag of
+              Just hash -> [("ETag", hash)]
+              Nothing -> []
 
 fixPathName :: FilePath -> FilePath
 #if defined(mingw32_HOST_OS)
@@ -341,7 +452,7 @@ defaultListing pieces localPath = do
                  H.h1 $ showFolder $ "" : filter (not . null) pieces
                  renderDirectoryContentsTable haskellSrc folderSrc $ catMaybes fps''
   where
-    image x = concatMap (const "../") (drop 1 pieces) ++ ".hidden/" ++ x ++ ".png"
+    image x = (relativeFromPieces pieces) ++ ".hidden/" ++ x ++ ".png"
     folderSrc = image "folder"
     haskellSrc = image "haskell"
     showName "" = "root"

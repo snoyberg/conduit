@@ -8,10 +8,14 @@ synopsis:        WAI application for static serving
 description:     Also provides some helper functions and datatypes for use outside of WAI.
 category:        Web, Yesod
 stability:       Stable
-cabal-version:   >= 1.6
+cabal-version:   >= 1.8
 build-type:      Simple
 homepage:        http://www.yesodweb.com/
 Extra-source-files: folder.png, haskell.png
+
+Flag print
+    Description:   print debug info
+    Default:       True
 
 library
     build-depends:   base                      >= 4        && < 5
@@ -30,6 +34,28 @@ library
                    , blaze-builder             >= 0.2.1.4  && < 0.4
     exposed-modules: Network.Wai.Application.Static
     ghc-options:     -Wall
+    extensions:     CPP
+
+    if flag(print)
+      cpp-options:  -DPRINT
+
+test-suite runtests
+    hs-source-dirs: tests
+    main-is: runtests.hs
+    type: exitcode-stdio-1.0
+
+    build-depends:   base                      >= 4        && < 5
+                   , hspec
+                   , HUnit
+                   , Cabal
+                   , wai-app-static
+                   , wai
+                   , wai-test
+                   , network
+                   , bytestring
+                   , transformers
+                   , containers
+  ghc-options:   -Wall
 
 source-repository head
   type:     git
