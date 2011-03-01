@@ -207,12 +207,14 @@ parseRequest' :: Port
 parseRequest' _ [] _ = E.throwError $ NotEnoughLines []
 parseRequest' port (firstLine:otherLines) remoteHost' = do
     (method, rpath', gets, httpversion) <- parseFirst firstLine
-    let rpath =
+    let (host',rpath) =
             if S.null rpath'
-                then "/"
-                else rpath'
+                then ("","/")
+                else if "http://" `S.isPrefixOf` rpath'
+                         then S.break (47==) $ S.drop 7 rpath' -- '/'
+                         else ("", rpath')
     let heads = map parseHeaderNoAttr otherLines
-    let host = fromMaybe "" $ lookup "host" heads
+    let host = fromMaybe host' $ lookup "host" heads
     let len =
             case lookup "content-length" heads of
                 Nothing -> 0
