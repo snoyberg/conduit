@@ -22,17 +22,13 @@ rewrite convert app req = do
 --   2) for a non-directory bar, check for bar.html
 --   if the file exists, do the rewrite
 autoHtmlRewrite :: String -> B.ByteString -> IO B.ByteString
-autoHtmlRewrite staticDir pInfo =
-    let pieces = decodePathInfo $ B.unpack $ pInfo
-    in if null pieces then return pInfo
-         else
-           let fp = concat $ map ((:) '/') (reWritePieces pieces)
-           in  do fe <- doesFileExist $ staticDir ++ "/" ++ fp
-                  return $ if fe then B.pack fp else pInfo
-    where
-      reWritePieces :: [String] -> [String]
-      reWritePieces pieces =
-         let end = last pieces
-         in if null end
-              then pieces ++  ["index.html"]
-              else (init pieces) ++ [end ++ ".html"]
+autoHtmlRewrite staticDir pInfo = do
+    fe <- doesFileExist $ staticDir ++ "/" ++ reWritePath
+    return $ if fe then B.pack reWritePath else pInfo
+  where
+    reWritePath = concat $ map ((:) '/') reWritePieces
+    pieces = decodePathInfo $ B.unpack $ pInfo
+    reWritePieces =
+       if (null pieces) || (null $ last pieces)
+          then pieces ++  ["index.html"]
+          else (init pieces) ++ [(last pieces) ++ ".html"]
