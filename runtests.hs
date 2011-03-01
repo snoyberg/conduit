@@ -21,6 +21,7 @@ import Network.Wai.Middleware.AcceptOverride
 import Codec.Compression.GZip (decompress)
 
 import Data.Enumerator (run_, enumList, ($$), Iteratee)
+import Data.Enumerator.Binary (enumFile)
 import Control.Monad.IO.Class (liftIO)
 import Data.Maybe (fromMaybe)
 
@@ -44,6 +45,7 @@ testSuite = testGroup "Network.Wai.Parse"
     , testCase "autohead" caseAutohead
     , testCase "method override" caseMethodOverride
     , testCase "accept override" caseAcceptOverride
+    , testCase "dalvik multipart" caseDalvikMultipart
     ]
 
 caseParseQueryString :: Assertion
@@ -334,3 +336,31 @@ caseAcceptOverride = flip runSession aoApp $ do
                 , requestHeaders = [("Accept", "bar")]
                 }
     assertHeader "Accept" "baz" sres3
+
+caseDalvikMultipart = do
+    let headers =
+            [ ("content-length", "12098")
+            , ("content-type", "multipart/form-data;boundary=*****")
+            , ("GATEWAY_INTERFACE", "CGI/1.1")
+            , ("PATH_INFO", "/")
+            , ("QUERY_STRING", "")
+            , ("REMOTE_ADDR", "192.168.1.115")
+            , ("REMOTE_HOST", "ganjizza")
+            , ("REQUEST_URI", "http://192.168.1.115:3000/")
+            , ("REQUEST_METHOD", "POST")
+            , ("HTTP_CONNECTION", "Keep-Alive")
+            , ("HTTP_COOKIE", "_SESSION=fgUGM5J/k6mGAAW+MMXIJZCJHobw/oEbb6T17KQN0p9yNqiXn/m/ACrsnRjiCEgqtG4fogMUDI+jikoFGcwmPjvuD5d+MDz32iXvDdDJsFdsFMfivuey2H+n6IF6yFGD")
+            , ("HTTP_USER_AGENT", "Dalvik/1.1.0 (Linux; U; Android 2.1-update1; sdk Build/ECLAIR)")
+            , ("HTTP_HOST", "192.168.1.115:3000")
+            , ("HTTP_ACCEPT", "*, */*")
+            , ("HTTP_VERSION", "HTTP/1.1")
+            , ("REQUEST_PATH", "/")
+            ]
+    let request = Request
+            { requestHeaders = headers
+            }
+    (params, files) <- run_ $ enumFile "test/dalvik-request" $$ parseRequestBody lbsSink request
+    lookup "scannedTime" params @?= Just "1.298590056748E9"
+    lookup "geoLong" params @?= Just "0"
+    lookup "geoLat" params @?= Just "0"
+    length files @?= 1
