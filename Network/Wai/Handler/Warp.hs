@@ -211,7 +211,7 @@ parseRequest' port (firstLine:otherLines) remoteHost' = do
             if S.null rpath'
                 then ("","/")
                 else if "http://" `S.isPrefixOf` rpath'
-                         then S.break (47==) $ S.drop 7 rpath' -- '/'
+                         then S.breakByte 47 $ S.drop 7 rpath' -- '/'
                          else ("", rpath')
     let heads = map parseHeaderNoAttr otherLines
     let host = fromMaybe host' $ lookup "host" heads
