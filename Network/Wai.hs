@@ -157,7 +157,7 @@ statusOK = status200
 
 -- | Created
 status201, statusCreated :: Status
-status201 = Status 200 $ B8.pack "Created"
+status201 = Status 201 $ B8.pack "Created"
 statusCreated = status201
 
 -- | Moved Permanently
