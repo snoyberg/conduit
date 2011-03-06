@@ -48,6 +48,7 @@ module Network.Wai
     , Status (..)
     , status200, statusOK
     , status201, statusCreated
+    , status206, statusPartialContent
     , status301, statusMovedPermanently
     , status302, statusFound
     , status303, statusSeeOther
@@ -159,6 +160,11 @@ statusOK = status200
 status201, statusCreated :: Status
 status201 = Status 201 $ B8.pack "Created"
 statusCreated = status201
+
+-- | Partial Content
+status206, statusPartialContent :: Status
+status206 = Status 206 $ B8.pack "Partial Content"
+statusPartialContent = status206
 
 -- | Moved Permanently
 status301, statusMovedPermanently :: Status
