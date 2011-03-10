@@ -23,5 +23,6 @@ Library
                    , enumerator             >= 0.4.7    && < 0.5
                    , network                >= 2.2      && < 2.4
                    , http-types             >= 0.5      && < 0.6
+                   , text                   >= 0.5      && < 1.0
   Exposed-modules:   Network.Wai
   ghc-options:       -Wall

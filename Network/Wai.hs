@@ -46,6 +46,7 @@ import Data.Enumerator.Binary (enumFile)
 import Blaze.ByteString.Builder (Builder, fromByteString, fromLazyByteString)
 import Network.Socket (SockAddr)
 import qualified Network.HTTP.Types as H
+import Data.Text (Text)
 
 -- | Information on the request sent by the client. This abstracts away the
 -- details of the underlying implementation.
@@ -56,9 +57,9 @@ data Request = Request
   -- depending on backend; in a standalone server setting, this is most likely
   -- all information after the domain name. In a CGI application, this would be
   -- the information following the path to the CGI executable itself.
-  ,  pathInfo       :: B.ByteString
+  ,  rawPathInfo    :: B.ByteString
   -- | If no query string was specified, this should be empty.
-  ,  queryString    :: B.ByteString
+  ,  rawQueryString :: B.ByteString
   ,  serverName     :: B.ByteString
   ,  serverPort     :: Int
   ,  requestHeaders :: H.RequestHeaders
@@ -69,6 +70,10 @@ data Request = Request
   ,  errorHandler   :: String -> IO ()
   -- | The client\'s host information.
   ,  remoteHost     :: SockAddr
+  -- | Path info, broken down into individual components.
+  ,  pathInfo       :: [Text]
+  -- | Parsed query string information
+  ,  queryString    :: H.Query
   }
   deriving Typeable
 
