@@ -26,40 +26,8 @@ would kill the performance of a CGI application.
 
 -}
 module Network.Wai
-    ( -- * Data types
-
-      -- ** Request method
-      Method
-      -- ** HTTP protocol versions
-    , HttpVersion
-    , http09
-    , http10
-    , http11
-      -- ** Case-insensitive byte strings
-    , CIByteString (..)
-    , mkCIByteString
-      -- ** Request header names
-    , RequestHeader
-    , RequestHeaders
-      -- ** Response header names
-    , ResponseHeader
-    , ResponseHeaders
-      -- ** Response status code
-    , Status (..)
-    , status200, statusOK
-    , status201, statusCreated
-    , status206, statusPartialContent
-    , status301, statusMovedPermanently
-    , status302, statusFound
-    , status303, statusSeeOther
-    , status400, statusBadRequest
-    , status401, statusUnauthorized
-    , status403, statusForbidden
-    , status404, statusNotFound
-    , status405, statusNotAllowed
-    , status500, statusServerError
-      -- * WAI interface
-    , Request (..)
+    ( -- * WAI interface
+      Request (..)
     , Response (..)
     , ResponseEnumerator
     , responseEnumerator
@@ -70,152 +38,20 @@ module Network.Wai
     ) where
 
 import qualified Data.ByteString as B
-import qualified Data.ByteString.Char8 as B8
 import qualified Data.ByteString.Lazy as L
-import Data.Char (toLower)
-import Data.String (IsString (..))
 import Data.Typeable (Typeable)
 import Data.Enumerator (Iteratee, ($$), joinI, run_)
 import qualified Data.Enumerator as E
-import Data.Enumerator.IO (enumFile)
+import Data.Enumerator.Binary (enumFile)
 import Blaze.ByteString.Builder (Builder, fromByteString, fromLazyByteString)
-import Data.Data (Data)
 import Network.Socket (SockAddr)
-
--- | HTTP request method. Since the HTTP protocol allows arbitrary request
--- methods, we leave this open as a 'B.ByteString'. Please note the request
--- methods are case-sensitive.
-type Method = B.ByteString
-
--- | Version of HTTP protocol used in current request. The value given here
--- should be everything following the \"HTTP/\" line in a request. In other
--- words, HTTP\/1.1 -> \"1.1\", HTTP\/1.0 -> \"1.0\".
-type HttpVersion = B.ByteString
-
--- | HTTP/0.9
-http09 :: HttpVersion
-http09 = B8.pack "0.9"
-
--- | HTTP/1.0
-http10 :: HttpVersion
-http10 = B8.pack "1.0"
-
--- | HTTP/1.1
-http11 :: HttpVersion
-http11 = B8.pack "1.1"
-
--- | A case insensitive bytestring, where the 'Eq' and 'Ord' instances do
--- comparisons based on the lower-cased version of this string. For efficiency,
--- this datatype contains both the original and lower-case version of the
--- string; this means there is no need to lower-case the bytestring for every
--- comparison.
---
--- Please note that this datatype has an 'IsString' instance, which can allow
--- for very concise code when using the OverloadedStrings language extension.
-data CIByteString = CIByteString
-    { ciOriginal :: !B.ByteString
-    , ciLowerCase :: !B.ByteString
-    }
-    deriving (Data, Typeable)
-
--- | Convert a regular bytestring to a case-insensitive bytestring.
-mkCIByteString :: B.ByteString -> CIByteString
-mkCIByteString bs = CIByteString bs $ B8.map toLower bs
-
-instance Show CIByteString where
-    show = show . ciOriginal
-instance Read CIByteString where
-    readsPrec i = map (\(x, y) -> (mkCIByteString x, y)) . readsPrec i
-instance Eq CIByteString where
-    x == y = ciLowerCase x == ciLowerCase y
-instance Ord CIByteString where
-    x <= y = ciLowerCase x <= ciLowerCase y
-instance IsString CIByteString where
-    fromString = mkCIByteString . fromString
-
--- | Headers sent from the client to the server. Note that this is a
--- case-insensitive string, as the HTTP spec specifies.
-type RequestHeader = CIByteString
-type RequestHeaders = [(RequestHeader, B.ByteString)]
-
--- | Headers sent from the server to the client. Note that this is a
--- case-insensitive string, as the HTTP spec specifies.
-type ResponseHeader = CIByteString
-type ResponseHeaders = [(ResponseHeader, B.ByteString)]
-
--- | HTTP status code; a combination of the integral code and a status message.
--- Equality is determined solely on the basis of the integral code.
-data Status = Status { statusCode :: Int, statusMessage :: B.ByteString }
-    deriving Show
-
-instance Eq Status where
-    x == y = statusCode x == statusCode y
-
--- | OK
-status200, statusOK :: Status
-status200 = Status 200 $ B8.pack "OK"
-statusOK = status200
-
--- | Created
-status201, statusCreated :: Status
-status201 = Status 201 $ B8.pack "Created"
-statusCreated = status201
-
--- | Partial Content
-status206, statusPartialContent :: Status
-status206 = Status 206 $ B8.pack "Partial Content"
-statusPartialContent = status206
-
--- | Moved Permanently
-status301, statusMovedPermanently :: Status
-status301 = Status 301 $ B8.pack "Moved Permanently"
-statusMovedPermanently = status301
-
--- | Found
-status302, statusFound :: Status
-status302 = Status 302 $ B8.pack "Found"
-statusFound = status302
-
--- | See Other
-status303, statusSeeOther :: Status
-status303 = Status 303 $ B8.pack "See Other"
-statusSeeOther = status303
-
--- | Bad Request
-status400, statusBadRequest :: Status
-status400 = Status 400 $ B8.pack "Bad Request"
-statusBadRequest = status400
-
--- | Unauthorized
-status401, statusUnauthorized :: Status
-status401 = Status 401 $ B8.pack "Unauthorized"
-statusUnauthorized = status401
-
--- | Forbidden
-status403, statusForbidden :: Status
-status403 = Status 403 $ B8.pack "Forbidden"
-statusForbidden = status403
-
--- | Not Found
-status404, statusNotFound :: Status
-status404 = Status 404 $ B8.pack "Not Found"
-statusNotFound = status404
-
--- | Method Not Allowed
-status405, statusNotAllowed :: Status
-status405 = Status 405 $ B8.pack "Method Not Allowed"
-statusNotAllowed = status405
-
--- | Internal Server Error
-status500, statusServerError :: Status
-status500 = Status 500 $ B8.pack "Internal Server Error"
-statusServerError = status500
+import qualified Network.HTTP.Types as H
 
 -- | Information on the request sent by the client. This abstracts away the
 -- details of the underlying implementation.
 data Request = Request
-  {  requestMethod  :: Method
-  ,  httpVersion    :: HttpVersion
+  {  requestMethod  :: H.Method
+  ,  httpVersion    :: H.HttpVersion
   -- | Extra path information sent by the client. The meaning varies slightly
   -- depending on backend; in a standalone server setting, this is most likely
   -- all information after the domain name. In a CGI application, this would be
@@ -225,7 +61,7 @@ data Request = Request
   ,  queryString    :: B.ByteString
   ,  serverName     :: B.ByteString
   ,  serverPort     :: Int
-  ,  requestHeaders :: [(RequestHeader, B.ByteString)]
+  ,  requestHeaders :: H.RequestHeaders
   -- ^ Was this request made over an SSL connection?
   ,  isSecure       :: Bool
   -- ^ Log the given line in some method; how this is accomplished is
@@ -237,13 +73,13 @@ data Request = Request
   deriving Typeable
 
 data Response
-    = ResponseFile Status ResponseHeaders FilePath
-    | ResponseBuilder Status ResponseHeaders Builder
+    = ResponseFile H.Status H.ResponseHeaders FilePath
+    | ResponseBuilder H.Status H.ResponseHeaders Builder
     | ResponseEnumerator (forall a. ResponseEnumerator a)
   deriving Typeable
 
 type ResponseEnumerator a =
-    (Status -> ResponseHeaders -> Iteratee Builder IO a) -> IO a
+    (H.Status -> H.ResponseHeaders -> Iteratee Builder IO a) -> IO a
 
 responseEnumerator :: Response -> ResponseEnumerator a
 responseEnumerator (ResponseEnumerator e) f = e f
@@ -253,7 +89,7 @@ responseEnumerator (ResponseBuilder s h b) f = run_ $ do
     E.yield () $ E.Chunks [b]
     f s h
 
-responseLBS :: Status -> ResponseHeaders -> L.ByteString -> Response
+responseLBS :: H.Status -> H.ResponseHeaders -> L.ByteString -> Response
 responseLBS s h = ResponseBuilder s h . fromLazyByteString
 
 type Application = Request -> Iteratee B.ByteString IO Response
