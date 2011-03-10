@@ -24,6 +24,8 @@ import Data.Enumerator (run_, enumList, ($$), Iteratee)
 import Data.Enumerator.Binary (enumFile)
 import Control.Monad.IO.Class (liftIO)
 import Data.Maybe (fromMaybe)
+import Network.HTTP.Types (parseSimpleQuery, status200)
+import qualified Data.Ascii as A
 
 main :: IO ()
 main = defaultMain [testSuite]
@@ -51,7 +53,7 @@ testSuite = testGroup "Network.Wai.Parse"
 caseParseQueryString :: Assertion
 caseParseQueryString = do
     let go l r =
-            map (S8.pack *** S8.pack) l @=? parseQueryString (S8.pack r)
+            map (S8.pack *** S8.pack) l @=? parseSimpleQuery (S8.pack r)
 
     go [] ""
     go [("foo", "")] "foo"
@@ -68,7 +70,7 @@ caseParseQueryStringQM :: Assertion
 caseParseQueryStringQM = do
     let go l r =
             map (S8.pack *** S8.pack) l
-                @=? parseQueryString (S8.pack $ '?' : r)
+                @=? parseSimpleQuery (S8.pack $ '?' : r)
 
     go [] ""
     go [("foo", "")] "foo"
@@ -83,10 +85,9 @@ caseParseQueryStringQM = do
 
 caseParseHttpAccept :: Assertion
 caseParseHttpAccept = do
-    let input =
-          S8.pack "text/plain; q=0.5, text/html, text/x-dvi; q=0.8, text/x-c"
+    let input = "text/plain; q=0.5, text/html, text/x-dvi; q=0.8, text/x-c"
         expected = ["text/html", "text/x-c", "text/x-dvi", "text/plain"]
-    map S8.pack expected @=? parseHttpAccept input
+    expected @=? parseHttpAccept input
 
 parseRequestBody' :: Sink ([S8.ByteString] -> [S8.ByteString]) L.ByteString
                   -> SRequest
@@ -114,14 +115,14 @@ caseParseRequestBody = run_ t where
         "--AaB03x--"
     content3 = S8.pack "------WebKitFormBoundaryB1pWXPZ6lNr8RiLh\r\nContent-Disposition: form-data; name=\"yaml\"; filename=\"README\"\r\nContent-Type: application/octet-stream\r\n\r\nPhoto blog using Hack.\n\r\n------WebKitFormBoundaryB1pWXPZ6lNr8RiLh--\r\n"
     t = do
-        let content1 = S8.pack "foo=bar&baz=bin"
-        let ctype1 = S8.pack "application/x-www-form-urlencoded"
+        let content1 = "foo=bar&baz=bin"
+        let ctype1 = "application/x-www-form-urlencoded"
         result1 <- parseRequestBody' lbsSink $ toRequest ctype1 content1
         liftIO $ assertEqual "parsing post x-www-form-urlencoded"
                     (map (S8.pack *** S8.pack) [("foo", "bar"), ("baz", "bin")], [])
                     result1
 
-        let ctype2 = S8.pack "multipart/form-data; boundary=AaB03x"
+        let ctype2 = "multipart/form-data; boundary=AaB03x"
         result2 <- parseRequestBody' lbsSink $ toRequest ctype2 content2
         let expectedsmap2 =
               [ ("title", "A File")
@@ -136,7 +137,7 @@ caseParseRequestBody = run_ t where
                     expected2
                     result2
 
-        let ctype3 = S8.pack "multipart/form-data; boundary=----WebKitFormBoundaryB1pWXPZ6lNr8RiLh"
+        let ctype3 = "multipart/form-data; boundary=----WebKitFormBoundaryB1pWXPZ6lNr8RiLh"
         result3 <- parseRequestBody' lbsSink $ toRequest ctype3 content3
         let expectedsmap3 = []
         let expectedfile3 = [(S8.pack "yaml", FileInfo (S8.pack "README") (S8.pack "application/octet-stream") $
@@ -156,12 +157,12 @@ caseParseRequestBody = run_ t where
                     expected3
                     result3'
 
-toRequest :: S8.ByteString -> S8.ByteString -> SRequest
+toRequest :: A.Ascii -> S8.ByteString -> SRequest
 toRequest ctype content = SRequest (Request
     { requestHeaders = [("Content-Type", ctype)]
     }) (L.fromChunks [content])
 
-toRequest' :: S8.ByteString -> S8.ByteString -> SRequest
+toRequest' :: A.Ascii -> S8.ByteString -> SRequest
 toRequest' ctype content = SRequest (Request
     { requestHeaders = [("Content-Type", ctype)]
     }) (L.fromChunks $ map S.singleton $ S.unpack content)
@@ -223,21 +224,21 @@ jsonpApp = jsonp $ const $ return $ responseLBS
 caseJsonp :: Assertion
 caseJsonp = flip runSession jsonpApp $ do
     sres1 <- request Request
-                { queryString = "callback=test"
+                { queryString = [("callback", Just "test")]
                 , requestHeaders = [("Accept", "text/javascript")]
                 }
     assertContentType "text/javascript" sres1
     assertBody "test({\"foo\":\"bar\"})" sres1
 
     sres2 <- request Request
-                { queryString = "call_back=test"
+                { queryString = [("call_back", Just "test")]
                 , requestHeaders = [("Accept", "text/javascript")]
                 }
     assertContentType "application/json" sres2
     assertBody "{\"foo\":\"bar\"}" sres2
 
     sres3 <- request Request
-                { queryString = "callback=test"
+                { queryString = [("callback", Just "test")]
                 , requestHeaders = [("Accept", "text/html")]
                 }
     assertContentType "application/json" sres3
@@ -299,19 +300,19 @@ moApp = methodOverride $ \req -> return $ responseLBS status200
 caseMethodOverride = flip runSession moApp $ do
     sres1 <- request Request
                 { requestMethod = "GET"
-                , queryString = ""
+                , queryString = []
                 }
     assertHeader "Method" "GET" sres1
 
     sres2 <- request Request
                 { requestMethod = "POST"
-                , queryString = ""
+                , queryString = []
                 }
     assertHeader "Method" "POST" sres2
 
     sres3 <- request Request
                 { requestMethod = "POST"
-                , queryString = "_method=PUT"
+                , queryString = [("_method", Just "PUT")]
                 }
     assertHeader "Method" "PUT" sres3
 
@@ -320,19 +321,19 @@ aoApp = acceptOverride $ \req -> return $ responseLBS status200
 
 caseAcceptOverride = flip runSession aoApp $ do
     sres1 <- request Request
-                { queryString = ""
+                { queryString = []
                 , requestHeaders = [("Accept", "foo")]
                 }
     assertHeader "Accept" "foo" sres1
 
     sres2 <- request Request
-                { queryString = ""
+                { queryString = []
                 , requestHeaders = [("Accept", "bar")]
                 }
     assertHeader "Accept" "bar" sres2
 
     sres3 <- request Request
-                { queryString = "_accept=baz"
+                { queryString = [("_accept", Just "baz")]
                 , requestHeaders = [("Accept", "bar")]
                 }
     assertHeader "Accept" "baz" sres3

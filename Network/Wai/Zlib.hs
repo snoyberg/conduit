@@ -3,8 +3,9 @@ module Network.Wai.Zlib (compress) where
 import Prelude hiding (head)
 import Data.Enumerator
     ( Enumeratee, checkDone, Stream (..)
-    , (>>==), head, ($$), joinI
+    , (>>==), ($$), joinI
     )
+import Data.Enumerator.List (head)
 import Blaze.ByteString.Builder (Builder, fromByteString)
 import Blaze.ByteString.Builder.Enumerator (builderToByteString)
 import Control.Monad.IO.Class (liftIO)

@@ -3,8 +3,7 @@
 -- | Some helpers for parsing data out of a raw WAI 'Request'.
 
 module Network.Wai.Parse
-    ( parseQueryString
-    , parseHttpAccept
+    ( parseHttpAccept
     , parseRequestBody
     , Sink (..)
     , lbsSink
@@ -36,6 +35,7 @@ import qualified Data.Enumerator as E
 import qualified Data.Enumerator.List as EL
 import Control.Monad.IO.Class (liftIO)
 import qualified Data.Ascii as A
+import qualified Network.HTTP.Types as H
 
 uncons :: S.ByteString -> Maybe (Word8, S.ByteString)
 uncons s
@@ -46,33 +46,6 @@ breakDiscard :: Word8 -> S.ByteString -> (S.ByteString, S.ByteString)
 breakDiscard w s =
     let (x, y) = S.break (== w) s
      in (x, S.drop 1 y)
-
--- | Split out the query string into a list of keys and values. A few
--- importants points:
---
--- * There is no way to distinguish between a parameter with no value and a
--- parameter with an empty value. Eg, "foo=" and "foo" are the same.
---
--- * The result returned is still bytestrings, since we perform no character
--- decoding here. Most likely, you will want to use UTF-8 decoding, but this is
--- left to the user of the library.
---
--- * Percent decoding errors are ignored. In particular, "%Q" will be output as
--- "%Q".
-parseQueryString :: S.ByteString -> [(S.ByteString, S.ByteString)]
-parseQueryString = parseQueryString' . dropQuestion
-  where
-    dropQuestion q | S.null q || S.head q /= 63 = q
-    dropQuestion q | otherwise = S.tail q
-    parseQueryString' q | S.null q = []
-    parseQueryString' q =
-        let (x, xs) = breakDiscard 38 q -- ampersand
-         in parsePair x : parseQueryString' xs
-      where
-        parsePair x =
-            let (k, v) = breakDiscard 61 x -- equal sign
-             in (qsDecode k, qsDecode v)
-
 
 qsDecode :: S.ByteString -> S.ByteString
 qsDecode z = fst $ S.unfoldrN (S.length z) go z
@@ -97,11 +70,12 @@ qsDecode z = fst $ S.unfoldrN (S.length z) go z
     combine a b = shiftL a 4 .|. b
 
 -- | Parse the HTTP accept string to determine supported content types.
-parseHttpAccept :: S.ByteString -> [S.ByteString]
-parseHttpAccept = map fst
+parseHttpAccept :: A.Ascii -> [A.Ascii]
+parseHttpAccept = map (A.unsafeFromByteString . fst)
                 . sortBy (rcompare `on` snd)
                 . map grabQ
                 . S.split 44 -- comma
+                . A.toByteString
   where
     rcompare :: Double -> Double -> Ordering
     rcompare = flip compare
@@ -164,7 +138,7 @@ parseRequestBody sink req = do
             -- Therefore, I'm optimizing for the usual case by sticking with
             -- strict byte strings here.
             bs <- EL.consume
-            return (parseQueryString $ S.concat bs, [])
+            return (H.parseSimpleQuery $ S.concat bs, [])
         Just (Just bound) -> -- multi-part
             let bound'' = S8.pack "--" `S.append` bound
              in parsePieces sink bound''
