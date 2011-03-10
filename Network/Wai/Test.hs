@@ -18,18 +18,19 @@ module Network.Wai.Test
 import Network.Wai
 import qualified Test.HUnit.Base as H
 import Control.Monad.IO.Class (liftIO)
-import Control.Monad.Trans.Class (lift)
-import Control.Monad.Trans.State (StateT, evalStateT, get, put)
+import Control.Monad.Trans.State (StateT, evalStateT)
 import Control.Monad.Trans.Reader (ReaderT, runReaderT, ask)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.ByteString (ByteString)
-import qualified Data.ByteString as S
 import qualified Data.ByteString.Char8 as S8
-import Data.Enumerator (joinI, consume, ($$), run_, enumList)
+import Data.Enumerator (joinI, ($$), run_, enumList)
+import Data.Enumerator.List (consume)
 import Blaze.ByteString.Builder.Enumerator (builderToByteString)
 import qualified Data.ByteString.Lazy as L
 import qualified Data.ByteString.Lazy.Char8 as L8
+import qualified Network.HTTP.Types as H
+import qualified Data.Ascii as A
 
 type Session = ReaderT Application (StateT ClientState IO)
 
@@ -48,8 +49,8 @@ data SRequest = SRequest
     , simpleRequestBody :: L.ByteString
     }
 data SResponse = SResponse
-    { simpleStatus :: Status
-    , simpleHeaders :: [(CIByteString, ByteString)]
+    { simpleStatus :: H.Status
+    , simpleHeaders :: H.ResponseHeaders
     , simpleBody :: L.ByteString
     }
     deriving (Show, Eq)
@@ -78,7 +79,7 @@ assertBool s b = liftIO $ H.assertBool s b
 assertString :: String -> Session ()
 assertString s = liftIO $ H.assertString s
 
-assertContentType :: ByteString -> SResponse -> Session ()
+assertContentType :: A.Ascii -> SResponse -> Session ()
 assertContentType ct SResponse{simpleHeaders = h} =
     case lookup "content-type" h of
         Nothing -> assertString $ concat
@@ -93,7 +94,7 @@ assertContentType ct SResponse{simpleHeaders = h} =
             , show ct'
             ]) (go ct == go ct')
   where
-    go = S8.takeWhile (/= ';')
+    go = A.unsafeFromByteString . S8.takeWhile (/= ';') . A.toByteString
 
 assertStatus :: Int -> SResponse -> Session ()
 assertStatus i SResponse{simpleStatus = s} = assertBool (concat
@@ -103,7 +104,7 @@ assertStatus i SResponse{simpleStatus = s} = assertBool (concat
     , show sc
     ]) $ i == sc
   where
-    sc = statusCode s
+    sc = H.statusCode s
 
 assertBody :: L.ByteString -> SResponse -> Session ()
 assertBody lbs SResponse{simpleBody = lbs'} = assertBool (concat
@@ -113,7 +114,7 @@ assertBody lbs SResponse{simpleBody = lbs'} = assertBool (concat
     , show $ L8.unpack lbs'
     ]) $ lbs == lbs'
 
-assertHeader :: CIByteString -> S.ByteString -> SResponse -> Session ()
+assertHeader :: A.CIAscii -> A.Ascii -> SResponse -> Session ()
 assertHeader header value SResponse{simpleHeaders = h} =
     case lookup header h of
         Nothing -> assertString $ concat
@@ -132,7 +133,7 @@ assertHeader header value SResponse{simpleHeaders = h} =
             , show value'
             ]) (value == value')
 
-assertNoHeader :: CIByteString -> SResponse -> Session ()
+assertNoHeader :: A.CIAscii -> SResponse -> Session ()
 assertNoHeader header SResponse{simpleHeaders = h} =
     case lookup header h of
         Nothing -> return ()
