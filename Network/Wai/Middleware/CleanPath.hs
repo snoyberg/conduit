@@ -6,22 +6,26 @@ module Network.Wai.Middleware.CleanPath
 import Network.Wai
 import qualified Data.ByteString.Char8 as B
 import qualified Data.ByteString.Lazy as L
+import Network.HTTP.Types (status301)
+import Data.Text (Text)
+import qualified Data.Ascii as A
+import Data.Monoid (mconcat)
 
-cleanPath :: (B.ByteString -> Either B.ByteString [String])
-          -> B.ByteString
-          -> ([String] -> Application)
+cleanPath :: ([Text] -> Either A.Ascii [Text])
+          -> A.Ascii
+          -> ([Text] -> Application)
           -> Application
 cleanPath splitter prefix app env =
     case splitter $ pathInfo env of
         Right pieces -> app pieces env
         Left p -> return
                 $ responseLBS status301
-                  [("Location", B.concat [prefix, p, suffix])]
+                  [("Location", mconcat [prefix, p, A.unsafeFromByteString suffix])]
                 $ L.empty
     where
         -- include the query string if present
         suffix =
-            case B.uncons $ queryString env of
+            case B.uncons $ rawQueryString env of
                 Nothing -> B.empty
-                Just ('?', _) -> queryString env
-                _ -> B.cons '?' $ queryString env
+                Just ('?', _) -> rawQueryString env
+                _ -> B.cons '?' $ rawQueryString env

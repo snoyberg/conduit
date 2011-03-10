@@ -19,8 +19,8 @@ module Network.Wai.Middleware.Gzip (gzip) where
 import Network.Wai
 import Network.Wai.Zlib
 import Data.Maybe (fromMaybe)
-import qualified Data.ByteString.Char8 as B
 import Data.Enumerator (($$), joinI)
+import qualified Data.Ascii as A
 
 -- | Use gzip to compress the body of the response.
 --
@@ -43,7 +43,7 @@ gzip files app env = do
                     then ResponseEnumerator $ compressE $ responseEnumerator res
                     else res
   where
-    enc = fromMaybe [] $ (splitCommas . B.unpack)
+    enc = fromMaybe [] $ (splitCommas . A.toString)
                     `fmap` lookup "Accept-Encoding" (requestHeaders env)
 
 compressE :: (forall a. ResponseEnumerator a)

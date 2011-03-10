@@ -33,7 +33,9 @@ import System.IO (hClose, openBinaryTempFile, Handle)
 import Network.Wai
 import Data.Enumerator (Iteratee, yield)
 import qualified Data.Enumerator as E
+import qualified Data.Enumerator.List as EL
 import Control.Monad.IO.Class (liftIO)
+import qualified Data.Ascii as A
 
 uncons :: S.ByteString -> Maybe (Word8, S.ByteString)
 uncons s
@@ -161,7 +163,7 @@ parseRequestBody sink req = do
             -- NOTE: in general, url-encoded data will be in a single chunk.
             -- Therefore, I'm optimizing for the usual case by sticking with
             -- strict byte strings here.
-            bs <- E.consume
+            bs <- EL.consume
             return (parseQueryString $ S.concat bs, [])
         Just (Just bound) -> -- multi-part
             let bound'' = S8.pack "--" `S.append` bound
@@ -179,7 +181,7 @@ parseRequestBody sink req = do
                         else Nothing
             else Nothing
     ctype = do
-      ctype' <- lookup "Content-Type" $ requestHeaders req
+      ctype' <- fmap A.toByteString $ lookup "Content-Type" $ requestHeaders req
       if urlenc `S.isPrefixOf` ctype'
           then Just Nothing
           else case boundary ctype' of
@@ -188,7 +190,7 @@ parseRequestBody sink req = do
 
 takeLine :: Iteratee S.ByteString IO (Maybe S.ByteString)
 takeLine = do
-    mbs <- E.head
+    mbs <- EL.head
     case mbs of
         Nothing -> return Nothing
         Just bs ->
@@ -297,7 +299,7 @@ sinkTillBound :: S.ByteString
               -> x
               -> Iteratee S.ByteString IO (x, Bool)
 sinkTillBound bound iter seed = do
-    mbs <- E.head
+    mbs <- EL.head
     case mbs of
         Nothing -> return (seed, False)
         Just bs -> go bs
@@ -310,7 +312,7 @@ sinkTillBound bound iter seed = do
                 yield () $ E.Chunks [after]
                 return (seed', True)
             PartialBound -> do
-                mbs <- E.head
+                mbs <- EL.head
                 case mbs of
                     Nothing -> do
                         seed' <- liftIO $ iter seed bs
@@ -320,7 +322,7 @@ sinkTillBound bound iter seed = do
                         yield () $ E.Chunks [bs']
                         sinkTillBound bound iter seed
             NoBound -> do
-                mbs <- E.head
+                mbs <- EL.head
                 case mbs of
                     Nothing -> do
                         seed' <- liftIO $ iter seed bs

@@ -4,13 +4,14 @@ module Network.Wai.Middleware.MethodOverride
     ) where
 
 import Network.Wai
-import Network.Wai.Parse (parseQueryString)
+import Control.Monad (join)
+import Data.Ascii (unsafeFromByteString)
 
 methodOverride :: Middleware
 methodOverride app req =
     app req'
   where
     req' =
-        case lookup "_method" $ parseQueryString $ queryString req of
+        case join $ lookup "_method" $ queryString req of
             Nothing -> req
-            Just m -> req { requestMethod = m }
+            Just m -> req { requestMethod = unsafeFromByteString m }

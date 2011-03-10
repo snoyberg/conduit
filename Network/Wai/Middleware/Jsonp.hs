@@ -17,26 +17,12 @@ module Network.Wai.Middleware.Jsonp (jsonp) where
 
 import Network.Wai
 import qualified Data.ByteString.Char8 as B8
-import Data.Maybe (fromMaybe)
 import Data.Enumerator (($$), enumList, Step (..), Enumerator, Iteratee, Enumeratee, joinI, checkDone, continue, Stream (..), (>>==))
 import Blaze.ByteString.Builder (copyByteString, Builder)
 import Blaze.ByteString.Builder.Char8 (fromChar)
 import Data.Monoid (mappend)
-
-takeCallback :: B8.ByteString -> Maybe B8.ByteString
-takeCallback bs | B8.null bs = Nothing
-takeCallback bs =
-    let (x, y) = B8.break (== '=') bs
-        (y', z) = B8.break (== '&') $ B8.drop 1 y
-     in if x == B8.pack "callback"
-            then Just y'
-            else takeCallback $ B8.drop 1 z
-
-dropQM :: B8.ByteString -> B8.ByteString
-dropQM bs
-    | B8.null bs = bs
-    | B8.head bs == '?' = B8.tail bs
-    | otherwise = bs
+import qualified Data.Ascii as A
+import Control.Monad (join)
 
 -- | Wrap json responses in a jsonp callback.
 --
@@ -47,11 +33,11 @@ dropQM bs
 -- callback function.
 jsonp :: Middleware
 jsonp app env = do
-    let accept = fromMaybe B8.empty $ lookup "Accept" $ requestHeaders env
+    let accept = maybe B8.empty A.toByteString $ lookup "Accept" $ requestHeaders env
     let callback :: Maybe B8.ByteString
         callback =
             if B8.pack "text/javascript" `B8.isInfixOf` accept
-                then takeCallback $ dropQM $ queryString env
+                then join $ lookup "callback" $ queryString env
                 else Nothing
     let env' =
             case callback of
@@ -76,12 +62,14 @@ jsonp app env = do
                 `mappend` b
                 `mappend` fromChar ')'
     go c (ResponseEnumerator e) = addCallback c e
+    go' :: B8.ByteString -> Response -> [(A.CIAscii, A.Ascii)] -> Iteratee B8.ByteString IO Response
     go' c r hs =
         case checkJSON hs of
             Just _ -> addCallback c $ responseEnumerator r
             Nothing -> return r
+    checkJSON :: [(A.CIAscii, A.Ascii)] -> Maybe [(A.CIAscii, A.Ascii)]
     checkJSON hs =
-        case fmap B8.unpack $ lookup "Content-Type" hs of
+        case fmap A.toString $ lookup "Content-Type" hs of
             Just "application/json" -> Just $ fixHeaders hs
             _ -> Nothing
     fixHeaders = changeVal "Content-Type" "text/javascript"
@@ -110,8 +98,8 @@ jsonp app env = do
 
 changeVal :: Eq a
           => a
-          -> String
-          -> [(a, B8.ByteString)]
-          -> [(a, B8.ByteString)]
-changeVal key val old = (key, B8.pack val)
+          -> A.Ascii
+          -> [(a, A.Ascii)]
+          -> [(a, A.Ascii)]
+changeVal key val old = (key, val)
                       : filter (\(k, _) -> k /= key) old

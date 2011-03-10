@@ -4,14 +4,13 @@ module Network.Wai.Middleware.Rewrite
     ) where
 
 import Network.Wai
-import qualified Data.ByteString.Char8 as B
 import System.Directory (doesFileExist)
 import Control.Monad.IO.Class (liftIO)
-import Web.Routes.Base (decodePathInfo)
+import Data.Text (Text, unpack, pack)
 
 -- | rewrite based on your own conversion rules
 -- Example usage: rewrite (autoHtmlRewrite "static")
-rewrite :: (B.ByteString -> IO B.ByteString) -> Middleware
+rewrite :: ([Text] -> IO [Text]) -> Middleware
 rewrite convert app req = do
   newPathInfo <- liftIO $ convert $ pathInfo req
   app req { pathInfo = newPathInfo }
@@ -21,13 +20,13 @@ rewrite convert app req = do
 --   1) for a directory foo/, check for foo/index.html
 --   2) for a non-directory bar, check for bar.html
 --   if the file exists, do the rewrite
-autoHtmlRewrite :: String -> B.ByteString -> IO B.ByteString
-autoHtmlRewrite staticDir pInfo = do
+autoHtmlRewrite :: String -> [Text] -> IO [Text]
+autoHtmlRewrite staticDir pieces' = do
     fe <- doesFileExist $ staticDir ++ "/" ++ reWritePath
-    return $ if fe then B.pack reWritePath else pInfo
+    return $ if fe then map pack reWritePieces else pieces'
   where
+    pieces = map unpack pieces'
     reWritePath = concat $ map ((:) '/') reWritePieces
-    pieces = decodePathInfo $ B.unpack $ pInfo
     reWritePieces =
        if (null pieces) || (null $ last pieces)
           then pieces ++  ["index.html"]

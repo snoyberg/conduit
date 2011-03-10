@@ -29,6 +29,10 @@ import Blaze.ByteString.Builder.Enumerator (builderToByteString)
 import Control.Monad.IO.Class (liftIO)
 import Data.ByteString.Lazy.Internal (defaultChunkSize)
 import System.IO (Handle)
+import Network.HTTP.Types (Status (..))
+import qualified Network.HTTP.Types as H
+import Data.Ascii (ciToByteString)
+import qualified Data.Ascii as A
 
 safeRead :: Read a => a -> String -> a
 safeRead d s =
@@ -94,16 +98,18 @@ run'' vars inputH outputH xsendfile app = do
                 a:_ -> addrAddress a
                 [] -> error $ "Invalid REMOTE_ADDR or REMOTE_HOST: " ++ remoteHost'
     let env = Request
-            { requestMethod = rmethod
-            , pathInfo = B.pack pinfo
-            , queryString = B.pack qstring
+            { requestMethod = A.unsafeFromByteString rmethod
+            , rawPathInfo = B.pack pinfo
+            , pathInfo = H.decodePathSegments $ B.pack pinfo
+            , rawQueryString = B.pack qstring
+            , queryString = H.parseQuery $ B.pack qstring
             , serverName = B.pack servername
             , serverPort = serverport
-            , requestHeaders = map (cleanupVarName *** B.pack) vars
+            , requestHeaders = map (cleanupVarName *** A.unsafeFromString) vars
             , isSecure = isSecure'
             , errorHandler = System.IO.hPutStr System.IO.stderr
             , remoteHost = addr
-            , httpVersion = "1.1" -- FIXME
+            , httpVersion = H.http11 -- FIXME
             }
     -- FIXME worry about exception?
     res <- run_ $ inputH contentLength $$ app env
@@ -117,9 +123,9 @@ run'' vars inputH outputH xsendfile app = do
     status (Status i m) = (fromByteString "Status", mconcat
         [ fromString $ show i
         , fromChar ' '
-        , fromByteString m
+        , fromByteString $ A.toByteString m
         ])
-    header' (x, y) = (fromByteString $ ciOriginal x, fromByteString y)
+    header' (x, y) = (fromByteString $ ciToByteString x, fromByteString $ A.toByteString y)
     header (x, y) = mconcat
         [ x
         , fromByteString ": "
@@ -143,7 +149,7 @@ run'' vars inputH outputH xsendfile app = do
             Nothing -> ("Content-Type", "text/html; charset=utf-8") : h
             Just _ -> h
 
-cleanupVarName :: String -> RequestHeader
+cleanupVarName :: String -> A.CIAscii
 cleanupVarName ('H':'T':'T':'P':'_':a:as) =
     String.fromString $ a : helper' as
   where
