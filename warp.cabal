@@ -1,5 +1,5 @@
 Name:                warp
-Version:             0.3.2.3
+Version:             0.4.0
 Synopsis:            A fast, light-weight web server for WAI applications.
 License:             BSD3
 License-file:        LICENSE
@@ -19,12 +19,14 @@ flag network-bytestring
 Library
   Build-Depends:     base                          >= 3        && < 5
                    , bytestring                    >= 0.9      && < 0.10
-                   , wai                           >= 0.3.0    && < 0.4
+                   , wai                           >= 0.4      && < 0.5
                    , blaze-builder-enumerator      >= 0.2      && < 0.3
                    , transformers                  >= 0.2      && < 0.3
                    , enumerator                    >= 0.4.5    && < 0.5
                    , blaze-builder                 >= 0.2.1.4  && < 0.3
                    , sendfile                      >= 0.7.2    && < 0.8
+                   , http-types                    >= 0.5      && < 0.6
+                   , ascii                         >= 0.0.2    && < 0.1
   if flag(network-bytestring)
       build-depends: network               >= 2.2.1   && < 2.2.3
                    , network-bytestring    >= 0.1.3   && < 0.1.4

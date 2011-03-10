@@ -87,6 +87,8 @@ import qualified Timeout as T
 import Data.Word (Word8)
 import Data.List (foldl')
 import Control.Monad (forever)
+import qualified Network.HTTP.Types as H
+import qualified Data.Ascii as A
 
 #if WINDOWS
 import Control.Concurrent (threadDelay)
@@ -149,6 +151,7 @@ serveConnections' set app socket = do
     tm <- T.initialize $ settingsTimeout set * 1000000
     forever $ do
         (conn, sa) <- accept socket
+        putStrLn "Accepted a connection"
         _ <- forkIO $ do
             th <- T.registerKillThread tm
             serveConnection th onE port app conn sa
@@ -214,19 +217,22 @@ parseRequest' port (firstLine:otherLines) remoteHost' = do
                          then S.breakByte 47 $ S.drop 7 rpath' -- '/'
                          else ("", rpath')
     let heads = map parseHeaderNoAttr otherLines
-    let host = fromMaybe host' $ lookup "host" heads
+    let host = A.toByteString $ fromMaybe (A.unsafeFromByteString host')
+             $ lookup "host" heads
     let len =
             case lookup "content-length" heads of
                 Nothing -> 0
-                Just bs -> fromIntegral $ B.foldl' (\i c -> i * 10 + C.digitToInt c) 0 $ B.takeWhile C.isDigit bs
+                Just bs -> fromIntegral $ B.foldl' (\i c -> i * 10 + C.digitToInt c) 0 $ B.takeWhile C.isDigit $ A.toByteString bs
     let serverName' = takeUntil 58 host -- ':'
     -- FIXME isolate takes an Integer instead of Int or Int64. If this is a
     -- performance penalty, we may need our own version.
     return (EB.isolate len, Request
-                { requestMethod = method
+                { requestMethod = A.unsafeFromByteString method
                 , httpVersion = httpversion
-                , pathInfo = rpath
-                , queryString = gets
+                , pathInfo = H.decodePathSegments rpath
+                , rawPathInfo = rpath
+                , rawQueryString = gets
+                , queryString = H.parseQuery gets
                 , serverName = serverName'
                 , serverPort = port
                 , requestHeaders = heads
@@ -244,14 +250,18 @@ takeUntil c bs =
 {-# INLINE takeUntil #-}
 
 parseFirst :: ByteString
-           -> E.Iteratee S.ByteString IO (ByteString, ByteString, ByteString, HttpVersion)
+           -> E.Iteratee S.ByteString IO (ByteString, ByteString, ByteString, H.HttpVersion)
 parseFirst s = 
     case S.split 32 s of  -- ' '
         [method, query, http'] -> do
             let (hfirst, hsecond) = B.splitAt 5 http'
             if hfirst == "HTTP/"
                then let (rpath, qstring) = S.breakByte 63 query  -- '?'
-                    in return (method, rpath, qstring, hsecond)
+                        hv =
+                            case hsecond of
+                                "1.1" -> H.http11
+                                _ -> H.http10
+                    in return (method, rpath, qstring, hv)
                else E.throwError NonHttp
         _ -> E.throwError $ BadFirstLine $ B.unpack s
 {-# INLINE parseFirst #-} -- FIXME is this inline necessary? the function is only called from one place and not exported
@@ -264,14 +274,17 @@ newlineBuilder = copyByteString "\r\n"
 transferEncodingBuilder = copyByteString "Transfer-Encoding: chunked\r\n\r\n"
 colonSpaceBuilder = copyByteString ": "
 
-headers :: HttpVersion -> Status -> ResponseHeaders -> Bool -> Builder
+headers :: H.HttpVersion -> H.Status -> H.ResponseHeaders -> Bool -> Builder
 headers !httpversion !status !responseHeaders !isChunked' = {-# SCC "headers" #-}
     let !start = httpBuilder
-                `mappend` copyByteString httpversion
+                `mappend` (copyByteString $
+                            case httpversion of
+                                H.HttpVersion 1 1 -> "1.1"
+                                _ -> "1.0")
                 `mappend` spaceBuilder
-                `mappend` fromShow (statusCode status)
+                `mappend` fromShow (H.statusCode status)
                 `mappend` spaceBuilder
-                `mappend` copyByteString (statusMessage status)
+                `mappend` copyByteString (A.toByteString $ H.statusMessage status)
                 `mappend` newlineBuilder
         !start' = foldl' responseHeaderToBuilder start responseHeaders
         !end = if isChunked'
@@ -279,21 +292,21 @@ headers !httpversion !status !responseHeaders !isChunked' = {-# SCC "headers" #-
                  else newlineBuilder
     in start' `mappend` end
 
-responseHeaderToBuilder :: Builder -> (CIByteString, ByteString) -> Builder
+responseHeaderToBuilder :: Builder -> (A.CIAscii, A.Ascii) -> Builder
 responseHeaderToBuilder b (x, y) = b
-  `mappend` (copyByteString $ ciOriginal x)
+  `mappend` (copyByteString $ A.ciToByteString x)
   `mappend` colonSpaceBuilder
-  `mappend` copyByteString y
+  `mappend` copyByteString (A.toByteString y)
   `mappend` newlineBuilder
 
-isChunked :: HttpVersion -> Bool
-isChunked = (==) http11
+isChunked :: H.HttpVersion -> Bool
+isChunked = (==) H.http11
 
-hasBody :: Status -> Request -> Bool
-hasBody s req = s /= (Status 204 "") && requestMethod req /= "HEAD"
+hasBody :: H.Status -> Request -> Bool
+hasBody s req = s /= (H.Status 204 "") && requestMethod req /= "HEAD"
 
 sendResponse :: T.Handle
-             -> Request -> HttpVersion -> Socket -> Response -> IO Bool
+             -> Request -> H.HttpVersion -> Socket -> Response -> IO Bool
 sendResponse th req hv socket (ResponseFile s hs fp) = do
     Sock.sendMany socket $ L.toChunks $ toLazyByteString $ headers hv s hs False
     if hasBody s req
@@ -361,7 +374,7 @@ sendResponse th req hv socket (ResponseEnumerator res) =
         step k (E.Chunks [x]) = k (E.Chunks [chunkedTransferEncoding x]) >>== chunk
         step k (E.Chunks xs) = k (E.Chunks [chunkedTransferEncoding $ mconcat xs]) >>== chunk
 
-parseHeaderNoAttr :: ByteString -> (CIByteString, ByteString)
+parseHeaderNoAttr :: ByteString -> H.Header
 parseHeaderNoAttr s =
     let (k, rest) = S.breakByte 58 s -- ':'
         restLen = S.length rest
@@ -369,7 +382,7 @@ parseHeaderNoAttr s =
         rest' = if restLen > 1 && SU.unsafeTake 2 rest == ": "
                    then SU.unsafeDrop 2 rest
                    else rest
-     in (mkCIByteString k, rest')
+     in (A.toCIAscii $ A.unsafeFromByteString k, A.unsafeFromByteString rest')
 
 enumSocket :: T.Handle -> Int -> Socket -> E.Enumerator ByteString IO a
 enumSocket th len socket =
