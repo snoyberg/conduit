@@ -5,6 +5,7 @@ import Network.Wai.Application.Static
 import Network.Wai.Handler.Warp (run)
 import System.Environment (getArgs)
 import System.Console.CmdArgs
+import Text.Printf (printf)
 
 data Args = Args
     { docroot :: FilePath
@@ -20,6 +21,7 @@ main :: IO ()
 main = do
     Args {..} <- cmdArgs defaultArgs
     args <- getArgs
+    printf "Serving directory %s on port %d with %s index files.\n" docroot port (if noindex then "no" else show index)
     run port $ staticApp StaticSettings
         { ssFolder = docroot
         , ssIndices = if noindex then [] else index
