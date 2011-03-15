@@ -85,6 +85,7 @@ defaultMimeTypes = Map.fromList [
   ( "cxx"     , "text/plain"                        ),
   ( "dtd"     , "text/xml"                          ),
   ( "dvi"     , "application/x-dvi"                 ),
+  ( "epub"    , "application/epub+zip"              ),
   ( "gif"     , "image/gif"                         ),
   ( "gz"      , "application/x-gzip"                ),
   ( "hs"      , "text/plain"                        ),
