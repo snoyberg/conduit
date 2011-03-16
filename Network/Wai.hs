@@ -33,6 +33,7 @@ module Network.Wai
     , responseEnumerator
     , Application
     , Middleware
+    , FilePart (..)
       -- * Response body smart constructors
     , responseLBS
     ) where
@@ -40,13 +41,14 @@ module Network.Wai
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as L
 import Data.Typeable (Typeable)
-import Data.Enumerator (Iteratee, ($$), joinI, run_)
+import Data.Enumerator (Enumerator, Iteratee, ($$), joinI, run_)
 import qualified Data.Enumerator as E
 import Data.Enumerator.Binary (enumFile)
 import Blaze.ByteString.Builder (Builder, fromByteString, fromLazyByteString)
 import Network.Socket (SockAddr)
 import qualified Network.HTTP.Types as H
 import Data.Text (Text)
+import Data.ByteString.Lazy.Char8 () -- makes it easier to use responseLBS
 
 -- | Information on the request sent by the client. This abstracts away the
 -- details of the underlying implementation.
@@ -78,21 +80,30 @@ data Request = Request
   deriving Typeable
 
 data Response
-    = ResponseFile H.Status H.ResponseHeaders FilePath
+    = ResponseFile H.Status H.ResponseHeaders FilePath (Maybe FilePart)
     | ResponseBuilder H.Status H.ResponseHeaders Builder
     | ResponseEnumerator (forall a. ResponseEnumerator a)
   deriving Typeable
+
+data FilePart = FilePart
+    { filePartOffset :: Integer
+    , filePartByteCount :: Integer
+    }
 
 type ResponseEnumerator a =
     (H.Status -> H.ResponseHeaders -> Iteratee Builder IO a) -> IO a
 
 responseEnumerator :: Response -> ResponseEnumerator a
 responseEnumerator (ResponseEnumerator e) f = e f
-responseEnumerator (ResponseFile s h fp) f =
-    run_ $ enumFile fp $$ joinI $ E.map fromByteString $$ f s h
+responseEnumerator (ResponseFile s h fp mpart) f =
+    run_ $ (maybe enumFile enumFilePart) mpart fp $$ joinI
+         $ E.map fromByteString $$ f s h
 responseEnumerator (ResponseBuilder s h b) f = run_ $ do
     E.yield () $ E.Chunks [b]
     f s h
+
+enumFilePart :: FilePart -> FilePath -> Enumerator B.ByteString IO a
+enumFilePart (FilePart offset count) fp = undefined
 
 responseLBS :: H.Status -> H.ResponseHeaders -> L.ByteString -> Response
 responseLBS s h = ResponseBuilder s h . fromLazyByteString
