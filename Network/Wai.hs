@@ -63,9 +63,9 @@ data Request = Request
   ,  serverName     :: B.ByteString
   ,  serverPort     :: Int
   ,  requestHeaders :: H.RequestHeaders
-  -- ^ Was this request made over an SSL connection?
+  -- | Was this request made over an SSL connection?
   ,  isSecure       :: Bool
-  -- ^ Log the given line in some method; how this is accomplished is
+  -- | Log the given line in some method; how this is accomplished is
   -- server-dependant.
   ,  errorHandler   :: String -> IO ()
   -- | The client\'s host information.
