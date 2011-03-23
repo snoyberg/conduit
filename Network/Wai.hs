@@ -41,7 +41,11 @@ module Network.Wai
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as L
 import Data.Typeable (Typeable)
-import Data.Enumerator (Enumerator, Iteratee, ($$), joinI, run_)
+import Data.Enumerator
+    ( Enumerator, Iteratee (..), ($$), joinI, run_, returnI
+    , Stream (Chunks), (>>==), continue, Step (Continue)
+    , throwError
+    )
 import qualified Data.Enumerator as E
 import Data.Enumerator.Binary (enumFile)
 import Blaze.ByteString.Builder (Builder, fromByteString, fromLazyByteString)
@@ -49,6 +53,9 @@ import Network.Socket (SockAddr)
 import qualified Network.HTTP.Types as H
 import Data.Text (Text)
 import Data.ByteString.Lazy.Char8 () -- makes it easier to use responseLBS
+import qualified System.IO as IO
+import qualified Control.Exception as Exc
+import Control.Monad.IO.Class (liftIO)
 
 -- | Information on the request sent by the client. This abstracts away the
 -- details of the underlying implementation.
@@ -102,8 +109,34 @@ responseEnumerator (ResponseBuilder s h b) f = run_ $ do
     E.yield () $ E.Chunks [b]
     f s h
 
+tryStep :: IO t -> (t -> Iteratee a IO b) -> Iteratee a IO b
+tryStep get io = do
+    tried <- liftIO $ Exc.try get
+    case tried of
+        Right t -> io t
+        Left err -> throwError (err :: Exc.SomeException)
+
 enumFilePart :: FilePart -> FilePath -> Enumerator B.ByteString IO a
-enumFilePart (FilePart offset count) fp = undefined
+enumFilePart (FilePart offset count) fp step = withHandle $ \h -> do
+    liftIO $ IO.hSeek h IO.AbsoluteSeek offset
+    Iteratee $ Exc.finally
+        (runIteratee $ enumHandleCount count 4096 h step)
+        (IO.hClose h)
+  where
+    withHandle = tryStep $ IO.openBinaryFile fp IO.ReadMode
+
+
+enumHandleCount :: Integer -> Integer -> IO.Handle -> Enumerator B.ByteString IO a
+enumHandleCount count buff h (Continue k)
+    | count <= 0 = continue k
+    | otherwise = do
+        let toRead = min count buff
+        bs <- liftIO $ B.hGet h $ fromInteger toRead
+        if B.null bs
+            then continue k
+            else k (Chunks [bs]) >>==
+                  enumHandleCount (count - fromIntegral (B.length bs)) buff h
+enumHandleCount _ _ _ step = returnI step
 
 responseLBS :: H.Status -> H.ResponseHeaders -> L.ByteString -> Response
 responseLBS s h = ResponseBuilder s h . fromLazyByteString
