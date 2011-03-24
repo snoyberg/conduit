@@ -5,7 +5,6 @@ module Network.Wai.Middleware.MethodOverride
 
 import Network.Wai
 import Control.Monad (join)
-import Data.Ascii (unsafeFromByteString)
 
 methodOverride :: Middleware
 methodOverride app req =
@@ -14,4 +13,4 @@ methodOverride app req =
     req' =
         case join $ lookup "_method" $ queryString req of
             Nothing -> req
-            Just m -> req { requestMethod = unsafeFromByteString m }
+            Just m -> req { requestMethod = m }

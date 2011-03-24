@@ -12,7 +12,7 @@ autohead app req
     | requestMethod req == "HEAD" = do
         res <- app req { requestMethod = "GET" }
         case res of
-            ResponseFile s hs _ -> return $ ResponseBuilder s hs mempty
+            ResponseFile s hs _ _ -> return $ ResponseBuilder s hs mempty
             ResponseBuilder s hs _ -> return $ ResponseBuilder s hs mempty
             ResponseEnumerator e -> do
                 let helper f =

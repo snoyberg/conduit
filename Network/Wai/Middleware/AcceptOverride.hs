@@ -6,7 +6,7 @@ module Network.Wai.Middleware.AcceptOverride
 
 import Network.Wai
 import Control.Monad (join)
-import qualified Data.Ascii as A
+import Data.ByteString (ByteString)
 
 acceptOverride :: Middleware
 acceptOverride app req =
@@ -15,12 +15,12 @@ acceptOverride app req =
     req' =
         case join $ lookup "_accept" $ queryString req of
             Nothing -> req
-            Just a -> req { requestHeaders = changeVal "Accept" (A.unsafeFromByteString a) $ requestHeaders req}
+            Just a -> req { requestHeaders = changeVal "Accept" a $ requestHeaders req}
 
 changeVal :: Eq a
           => a
-          -> A.Ascii
-          -> [(a, A.Ascii)]
-          -> [(a, A.Ascii)]
+          -> ByteString
+          -> [(a, ByteString)]
+          -> [(a, ByteString)]
 changeVal key val old = (key, val)
                       : filter (\(k, _) -> k /= key) old

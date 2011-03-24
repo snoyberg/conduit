@@ -8,11 +8,10 @@ import qualified Data.ByteString.Char8 as B
 import qualified Data.ByteString.Lazy as L
 import Network.HTTP.Types (status301)
 import Data.Text (Text)
-import qualified Data.Ascii as A
 import Data.Monoid (mconcat)
 
-cleanPath :: ([Text] -> Either A.Ascii [Text])
-          -> A.Ascii
+cleanPath :: ([Text] -> Either B.ByteString [Text])
+          -> B.ByteString
           -> ([Text] -> Application)
           -> Application
 cleanPath splitter prefix app env =
@@ -20,7 +19,7 @@ cleanPath splitter prefix app env =
         Right pieces -> app pieces env
         Left p -> return
                 $ responseLBS status301
-                  [("Location", mconcat [prefix, p, A.unsafeFromByteString suffix])]
+                  [("Location", mconcat [prefix, p, suffix])]
                 $ L.empty
     where
         -- include the query string if present

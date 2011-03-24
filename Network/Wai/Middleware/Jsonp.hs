@@ -16,13 +16,14 @@
 module Network.Wai.Middleware.Jsonp (jsonp) where
 
 import Network.Wai
+import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as B8
 import Data.Enumerator (($$), enumList, Step (..), Enumerator, Iteratee, Enumeratee, joinI, checkDone, continue, Stream (..), (>>==))
 import Blaze.ByteString.Builder (copyByteString, Builder)
 import Blaze.ByteString.Builder.Char8 (fromChar)
 import Data.Monoid (mappend)
-import qualified Data.Ascii as A
 import Control.Monad (join)
+import Data.Maybe (fromMaybe)
 
 -- | Wrap json responses in a jsonp callback.
 --
@@ -33,7 +34,7 @@ import Control.Monad (join)
 -- callback function.
 jsonp :: Middleware
 jsonp app env = do
-    let accept = maybe B8.empty A.toByteString $ lookup "Accept" $ requestHeaders env
+    let accept = fromMaybe B8.empty $ lookup "Accept" $ requestHeaders env
     let callback :: Maybe B8.ByteString
         callback =
             if B8.pack "text/javascript" `B8.isInfixOf` accept
@@ -52,7 +53,7 @@ jsonp app env = do
         Nothing -> return res
         Just c -> go c res
   where
-    go c r@(ResponseFile _ hs _) = go' c r hs
+    go c r@(ResponseFile _ hs _ _) = go' c r hs
     go c r@(ResponseBuilder s hs b) =
         case checkJSON hs of
             Nothing -> return r
@@ -62,14 +63,12 @@ jsonp app env = do
                 `mappend` b
                 `mappend` fromChar ')'
     go c (ResponseEnumerator e) = addCallback c e
-    go' :: B8.ByteString -> Response -> [(A.CIAscii, A.Ascii)] -> Iteratee B8.ByteString IO Response
     go' c r hs =
         case checkJSON hs of
             Just _ -> addCallback c $ responseEnumerator r
             Nothing -> return r
-    checkJSON :: [(A.CIAscii, A.Ascii)] -> Maybe [(A.CIAscii, A.Ascii)]
     checkJSON hs =
-        case fmap A.toString $ lookup "Content-Type" hs of
+        case fmap B8.unpack $ lookup "Content-Type" hs of
             Just "application/json" -> Just $ fixHeaders hs
             _ -> Nothing
     fixHeaders = changeVal "Content-Type" "text/javascript"
@@ -98,8 +97,8 @@ jsonp app env = do
 
 changeVal :: Eq a
           => a
-          -> A.Ascii
-          -> [(a, A.Ascii)]
-          -> [(a, A.Ascii)]
+          -> ByteString
+          -> [(a, ByteString)]
+          -> [(a, ByteString)]
 changeVal key val old = (key, val)
                       : filter (\(k, _) -> k /= key) old

@@ -31,8 +31,7 @@ import Data.ByteString.Lazy.Internal (defaultChunkSize)
 import System.IO (Handle)
 import Network.HTTP.Types (Status (..))
 import qualified Network.HTTP.Types as H
-import Data.Ascii (ciToByteString)
-import qualified Data.Ascii as A
+import qualified Data.CaseInsensitive as CI
 
 safeRead :: Read a => a -> String -> a
 safeRead d s =
@@ -98,14 +97,14 @@ run'' vars inputH outputH xsendfile app = do
                 a:_ -> addrAddress a
                 [] -> error $ "Invalid REMOTE_ADDR or REMOTE_HOST: " ++ remoteHost'
     let env = Request
-            { requestMethod = A.unsafeFromByteString rmethod
+            { requestMethod = rmethod
             , rawPathInfo = B.pack pinfo
             , pathInfo = H.decodePathSegments $ B.pack pinfo
             , rawQueryString = B.pack qstring
             , queryString = H.parseQuery $ B.pack qstring
             , serverName = B.pack servername
             , serverPort = serverport
-            , requestHeaders = map (cleanupVarName *** A.unsafeFromString) vars
+            , requestHeaders = map (cleanupVarName *** B.pack) vars
             , isSecure = isSecure'
             , errorHandler = System.IO.hPutStr System.IO.stderr
             , remoteHost = addr
@@ -114,7 +113,7 @@ run'' vars inputH outputH xsendfile app = do
     -- FIXME worry about exception?
     res <- run_ $ inputH contentLength $$ app env
     case (xsendfile, res) of
-        (Just sf, ResponseFile s hs fp) ->
+        (Just sf, ResponseFile s hs fp Nothing) ->
             mapM_ outputH $ L.toChunks $ toLazyByteString $ sfBuilder s hs sf fp
         _ -> responseEnumerator res $ \s hs ->
             joinI $ enumList 1 [headers s hs, fromChar '\n'] $$ builderIter
@@ -123,9 +122,9 @@ run'' vars inputH outputH xsendfile app = do
     status (Status i m) = (fromByteString "Status", mconcat
         [ fromString $ show i
         , fromChar ' '
-        , fromByteString $ A.toByteString m
+        , fromByteString m
         ])
-    header' (x, y) = (fromByteString $ ciToByteString x, fromByteString $ A.toByteString y)
+    header' (x, y) = (fromByteString $ CI.original x, fromByteString y)
     header (x, y) = mconcat
         [ x
         , fromByteString ": "
@@ -149,7 +148,7 @@ run'' vars inputH outputH xsendfile app = do
             Nothing -> ("Content-Type", "text/html; charset=utf-8") : h
             Just _ -> h
 
-cleanupVarName :: String -> A.CIAscii
+cleanupVarName :: String -> CI.CI B.ByteString
 cleanupVarName ('H':'T':'T':'P':'_':a:as) =
     String.fromString $ a : helper' as
   where

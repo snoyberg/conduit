@@ -34,7 +34,6 @@ import Data.Enumerator (Iteratee, yield)
 import qualified Data.Enumerator as E
 import qualified Data.Enumerator.List as EL
 import Control.Monad.IO.Class (liftIO)
-import qualified Data.Ascii as A
 import qualified Network.HTTP.Types as H
 
 uncons :: S.ByteString -> Maybe (Word8, S.ByteString)
@@ -70,12 +69,11 @@ qsDecode z = fst $ S.unfoldrN (S.length z) go z
     combine a b = shiftL a 4 .|. b
 
 -- | Parse the HTTP accept string to determine supported content types.
-parseHttpAccept :: A.Ascii -> [A.Ascii]
-parseHttpAccept = map (A.unsafeFromByteString . fst)
+parseHttpAccept :: S.ByteString -> [S.ByteString]
+parseHttpAccept = map fst
                 . sortBy (rcompare `on` snd)
                 . map grabQ
                 . S.split 44 -- comma
-                . A.toByteString
   where
     rcompare :: Double -> Double -> Ordering
     rcompare = flip compare
@@ -155,7 +153,7 @@ parseRequestBody sink req = do
                         else Nothing
             else Nothing
     ctype = do
-      ctype' <- fmap A.toByteString $ lookup "Content-Type" $ requestHeaders req
+      ctype' <- lookup "Content-Type" $ requestHeaders req
       if urlenc `S.isPrefixOf` ctype'
           then Just Nothing
           else case boundary ctype' of
