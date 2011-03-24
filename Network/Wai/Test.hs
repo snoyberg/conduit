@@ -30,7 +30,7 @@ import Blaze.ByteString.Builder.Enumerator (builderToByteString)
 import qualified Data.ByteString.Lazy as L
 import qualified Data.ByteString.Lazy.Char8 as L8
 import qualified Network.HTTP.Types as H
-import qualified Data.Ascii as A
+import Data.CaseInsensitive (CI)
 
 type Session = ReaderT Application (StateT ClientState IO)
 
@@ -79,7 +79,7 @@ assertBool s b = liftIO $ H.assertBool s b
 assertString :: String -> Session ()
 assertString s = liftIO $ H.assertString s
 
-assertContentType :: A.Ascii -> SResponse -> Session ()
+assertContentType :: ByteString -> SResponse -> Session ()
 assertContentType ct SResponse{simpleHeaders = h} =
     case lookup "content-type" h of
         Nothing -> assertString $ concat
@@ -94,7 +94,7 @@ assertContentType ct SResponse{simpleHeaders = h} =
             , show ct'
             ]) (go ct == go ct')
   where
-    go = A.unsafeFromByteString . S8.takeWhile (/= ';') . A.toByteString
+    go = S8.takeWhile (/= ';')
 
 assertStatus :: Int -> SResponse -> Session ()
 assertStatus i SResponse{simpleStatus = s} = assertBool (concat
@@ -114,7 +114,7 @@ assertBody lbs SResponse{simpleBody = lbs'} = assertBool (concat
     , show $ L8.unpack lbs'
     ]) $ lbs == lbs'
 
-assertHeader :: A.CIAscii -> A.Ascii -> SResponse -> Session ()
+assertHeader :: CI ByteString -> ByteString -> SResponse -> Session ()
 assertHeader header value SResponse{simpleHeaders = h} =
     case lookup header h of
         Nothing -> assertString $ concat
@@ -133,7 +133,7 @@ assertHeader header value SResponse{simpleHeaders = h} =
             , show value'
             ]) (value == value')
 
-assertNoHeader :: A.CIAscii -> SResponse -> Session ()
+assertNoHeader :: CI ByteString -> SResponse -> Session ()
 assertNoHeader header SResponse{simpleHeaders = h} =
     case lookup header h of
         Nothing -> return ()
