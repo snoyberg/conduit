@@ -80,7 +80,7 @@ import Blaze.ByteString.Builder
     (copyByteString, Builder, toLazyByteString, toByteStringIO)
 import Blaze.ByteString.Builder.Char8 (fromChar, fromShow)
 import Data.Monoid (mappend, mconcat)
-import Network.Socket.SendFile (sendFileIterWith, Iter (..))
+import Network.Socket.SendFile (sendFileIterWith,sendFileIterWith', Iter (..))
 
 import Control.Monad.IO.Class (liftIO)
 import qualified Timeout as T
@@ -88,7 +88,7 @@ import Data.Word (Word8)
 import Data.List (foldl')
 import Control.Monad (forever)
 import qualified Network.HTTP.Types as H
-import qualified Data.Ascii as A
+import qualified Data.CaseInsensitive as CI
 
 #if WINDOWS
 import Control.Concurrent (threadDelay)
@@ -151,7 +151,6 @@ serveConnections' set app socket = do
     tm <- T.initialize $ settingsTimeout set * 1000000
     forever $ do
         (conn, sa) <- accept socket
-        putStrLn "Accepted a connection"
         _ <- forkIO $ do
             th <- T.registerKillThread tm
             serveConnection th onE port app conn sa
@@ -217,17 +216,16 @@ parseRequest' port (firstLine:otherLines) remoteHost' = do
                          then S.breakByte 47 $ S.drop 7 rpath' -- '/'
                          else ("", rpath')
     let heads = map parseHeaderNoAttr otherLines
-    let host = A.toByteString $ fromMaybe (A.unsafeFromByteString host')
-             $ lookup "host" heads
+    let host = fromMaybe host' $ lookup "host" heads
     let len =
             case lookup "content-length" heads of
                 Nothing -> 0
-                Just bs -> fromIntegral $ B.foldl' (\i c -> i * 10 + C.digitToInt c) 0 $ B.takeWhile C.isDigit $ A.toByteString bs
+                Just bs -> fromIntegral $ B.foldl' (\i c -> i * 10 + C.digitToInt c) 0 $ B.takeWhile C.isDigit bs
     let serverName' = takeUntil 58 host -- ':'
     -- FIXME isolate takes an Integer instead of Int or Int64. If this is a
     -- performance penalty, we may need our own version.
     return (EB.isolate len, Request
-                { requestMethod = A.unsafeFromByteString method
+                { requestMethod = method
                 , httpVersion = httpversion
                 , pathInfo = H.decodePathSegments rpath
                 , rawPathInfo = rpath
@@ -284,7 +282,7 @@ headers !httpversion !status !responseHeaders !isChunked' = {-# SCC "headers" #-
                 `mappend` spaceBuilder
                 `mappend` fromShow (H.statusCode status)
                 `mappend` spaceBuilder
-                `mappend` copyByteString (A.toByteString $ H.statusMessage status)
+                `mappend` copyByteString (H.statusMessage status)
                 `mappend` newlineBuilder
         !start' = foldl' responseHeaderToBuilder start responseHeaders
         !end = if isChunked'
@@ -292,11 +290,11 @@ headers !httpversion !status !responseHeaders !isChunked' = {-# SCC "headers" #-
                  else newlineBuilder
     in start' `mappend` end
 
-responseHeaderToBuilder :: Builder -> (A.CIAscii, A.Ascii) -> Builder
+responseHeaderToBuilder :: Builder -> H.Header -> Builder
 responseHeaderToBuilder b (x, y) = b
-  `mappend` (copyByteString $ A.ciToByteString x)
+  `mappend` copyByteString (CI.original x)
   `mappend` colonSpaceBuilder
-  `mappend` copyByteString (A.toByteString y)
+  `mappend` copyByteString y
   `mappend` newlineBuilder
 
 isChunked :: H.HttpVersion -> Bool
@@ -307,11 +305,16 @@ hasBody s req = s /= (H.Status 204 "") && requestMethod req /= "HEAD"
 
 sendResponse :: T.Handle
              -> Request -> H.HttpVersion -> Socket -> Response -> IO Bool
-sendResponse th req hv socket (ResponseFile s hs fp) = do
+sendResponse th req hv socket (ResponseFile s hs fp mpart) = do
     Sock.sendMany socket $ L.toChunks $ toLazyByteString $ headers hv s hs False
     if hasBody s req
         then do
-            sendFileIterWith tickler socket fp sendFileCount
+            case mpart of
+                Nothing -> sendFileIterWith tickler socket fp sendFileCount
+                Just part ->
+                    sendFileIterWith' tickler socket fp sendFileCount
+                        (filePartOffset part)
+                        (filePartByteCount part)
             return $ lookup "content-length" hs /= Nothing
         else return True
   where
@@ -382,7 +385,7 @@ parseHeaderNoAttr s =
         rest' = if restLen > 1 && SU.unsafeTake 2 rest == ": "
                    then SU.unsafeDrop 2 rest
                    else rest
-     in (A.toCIAscii $ A.unsafeFromByteString k, A.unsafeFromByteString rest')
+     in (CI.mk k, rest')
 
 enumSocket :: T.Handle -> Int -> Socket -> E.Enumerator ByteString IO a
 enumSocket th len socket =
