@@ -91,6 +91,7 @@ defaultMimeTypes = Map.fromList [
   ( "hs"      , "text/plain"                        ),
   ( "htm"     , "text/html"                         ),
   ( "html"    , "text/html"                         ),
+  ( "ico"     , "image/vnd.microsoft.icon"          ),
   ( "jar"     , "application/x-java-archive"        ),
   ( "jpeg"    , "image/jpeg"                        ),
   ( "jpg"     , "image/jpeg"                        ),
