@@ -72,6 +72,7 @@ defaultMimeType = "application/octet-stream"
 -- taken from snap-core Snap.Util.FileServer
 defaultMimeTypes :: MimeMap
 defaultMimeTypes = Map.fromList [
+  ( "apk"     , "application/vnd.android.package-archive" ),
   ( "asc"     , "text/plain"                        ),
   ( "asf"     , "video/x-ms-asf"                    ),
   ( "asx"     , "video/x-ms-asf"                    ),
