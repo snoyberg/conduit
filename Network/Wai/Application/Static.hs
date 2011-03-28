@@ -109,6 +109,7 @@ defaultMimeTypes = Map.fromList [
   ( "qt"      , "video/quicktime"                   ),
   ( "sig"     , "application/pgp-signature"         ),
   ( "spl"     , "application/futuresplash"          ),
+  ( "svg"     , "image/svg+xml"                     ),
   ( "swf"     , "application/x-shockwave-flash"     ),
   ( "tar"     , "application/x-tar"                 ),
   ( "tar.bz2" , "application/x-bzip-compressed-tar" ),
