@@ -170,15 +170,15 @@ serveConnection th onException port app conn remoteHost' = do
   where
     fromClient = enumSocket th bytesPerRead conn
     serveConnection' = do
-        (enumeratee, env) <- parseRequest port remoteHost'
+        (len, env) <- parseRequest port remoteHost'
         -- Let the application run for as long as it wants
         liftIO $ T.pause th
-        res <- E.joinI $ enumeratee $$ app env
+        res <- E.joinI $ EB.isolate len $$ app env
         liftIO $ T.resume th
         keepAlive <- liftIO $ sendResponse th env (httpVersion env) conn res
         if keepAlive then serveConnection' else return ()
 
-parseRequest :: Port -> SockAddr -> E.Iteratee S.ByteString IO (E.Enumeratee ByteString ByteString IO a, Request)
+parseRequest :: Port -> SockAddr -> E.Iteratee S.ByteString IO (Integer, Request)
 parseRequest port remoteHost' = do
     headers' <- takeHeaders
     parseRequest' port headers' remoteHost'
@@ -206,7 +206,7 @@ instance Exception InvalidRequest
 parseRequest' :: Port
               -> [ByteString]
               -> SockAddr
-              -> E.Iteratee S.ByteString IO (E.Enumeratee S.ByteString S.ByteString IO a, Request)
+              -> E.Iteratee S.ByteString IO (Integer, Request)
 parseRequest' _ [] _ = E.throwError $ NotEnoughLines []
 parseRequest' port (firstLine:otherLines) remoteHost' = do
     (method, rpath', gets, httpversion) <- parseFirst firstLine
@@ -226,7 +226,7 @@ parseRequest' port (firstLine:otherLines) remoteHost' = do
     let serverName' = takeUntil 58 host -- ':'
     -- FIXME isolate takes an Integer instead of Int or Int64. If this is a
     -- performance penalty, we may need our own version.
-    return (EB.isolate len, Request
+    return (len, Request
                 { requestMethod = A.unsafeFromByteString method
                 , httpVersion = httpversion
                 , pathInfo = H.decodePathSegments rpath
