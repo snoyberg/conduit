@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE CPP #-}
 -- | Static file serving for WAI.
 module Network.Wai.Application.Static
     ( -- * Generic, non-WAI code
@@ -54,6 +55,10 @@ import System.Locale (defaultTimeLocale)
 
 import Data.List (sortBy, intercalate)
 import Data.FileEmbed (embedFile)
+
+import qualified Data.Text as T
+import qualified Data.Text.Encoding as TE
+import qualified Data.Text.Encoding.Error as TEE
 
 -- | A list of all possible extensions, starting from the largest.
 takeExtensions :: FilePath -> [String]
@@ -193,7 +198,7 @@ checkPieces prefix indices pieces
     | anyButLast null pieces =
         return $ Redirect $ filterButLast (not . null) pieces
     | otherwise = do
-        let fp = concat $ prefix : map ((:) '/') pieces
+        let fp = concat $ prefix : map ((:) '/') (map unfixPathName pieces)
         let (isFile, isFolder) =
                 case () of
                     ()
@@ -284,6 +289,20 @@ staticAppPieces (StaticSettings folder indices mlisting getmime) pieces _ = lift
                         [ ("Content-Type", mt)
                         ] lbs
 
+fixPathName :: FilePath -> FilePath
+#if defined(mingw32_HOST_OS)
+fixPathName = id
+#else
+fixPathName = T.unpack . TE.decodeUtf8With TEE.lenientDecode . S8.pack
+#endif
+
+unfixPathName :: FilePath -> FilePath
+#if defined(mingw32_HOST_OS)
+unfixPathName = id
+#else
+unfixPathName = S8.unpack . TE.encodeUtf8 . T.pack
+#endif
+
 -- Code below taken from Happstack: http://patch-tag.com/r/mae/happstack/snapshot/current/content/pretty/happstack-server/src/Happstack/Server/FileServe/BuildingBlocks.hs
 defaultListing :: Listing
 defaultListing pieces localPath = do
@@ -359,7 +378,7 @@ renderDirectoryContentsTable haskellSrc folderSrc fps =
                               then return ()
                               else H.img ! A.src (H.stringValue folderSrc)
                                          ! A.alt (H.stringValue "Folder")
-                   H.td (H.a ! A.href (H.stringValue $ mdName md ++ if mdIsFile md then "" else "/")  $ H.string $ mdName md)
+                   H.td (H.a ! A.href (H.stringValue $ mdName' md ++ if mdIsFile md then "" else "/")  $ H.string $ mdName' md)
                    H.td ! A.class_ (H.stringValue "date") $ H.string $
                        if mdIsFile md
                            then formatCalendarTime defaultTimeLocale "%d-%b-%Y %X" $ mdModified md
@@ -383,6 +402,7 @@ renderDirectoryContentsTable haskellSrc folderSrc fps =
       addCommas' (a:b:c:d:e) = a : b : c : ',' : addCommas' (d : e)
       addCommas' x = x
 
+mdName' = fixPathName . mdName
 
 data MetaData =
     FileMetaData
