@@ -36,9 +36,6 @@ module Network.Wai.Handler.Warp
       -- * Datatypes
     , Port
     , InvalidRequest (..)
-      -- * Utility functions for other packages
-    , sendResponse
-    , parseRequest
 #if TEST
     , takeHeaders
 #endif
