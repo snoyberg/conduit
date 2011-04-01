@@ -68,9 +68,6 @@ data Request = Request
   ,  requestHeaders :: H.RequestHeaders
   -- | Was this request made over an SSL connection?
   ,  isSecure       :: Bool
-  -- | Log the given line in some method; how this is accomplished is
-  -- server-dependant.
-  ,  errorHandler   :: String -> IO ()
   -- | The client\'s host information.
   ,  remoteHost     :: SockAddr
   -- | Path info, broken down into individual components.
