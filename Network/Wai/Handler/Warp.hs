@@ -25,10 +25,9 @@
 module Network.Wai.Handler.Warp
     ( -- * Run a Warp server
       run
-    , runEx
-    , serveConnections
-      -- * Run a Warp server with full settings control
     , runSettings
+    , runSettingsSocket
+      -- * Settings
     , Settings
     , defaultSettings
     , settingsPort
@@ -47,7 +46,6 @@ module Network.Wai.Handler.Warp
 
 import Prelude hiding (catch, lines)
 import Network.Wai
-import qualified System.IO
 
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as S
@@ -89,6 +87,7 @@ import Data.List (foldl')
 import Control.Monad (forever)
 import qualified Network.HTTP.Types as H
 import qualified Data.CaseInsensitive as CI
+import System.IO (hPutStrLn, stderr)
 
 #if WINDOWS
 import Control.Concurrent (threadDelay)
@@ -96,19 +95,12 @@ import qualified Control.Concurrent.MVar as MV
 import Network.Socket (withSocketsDo)
 #endif
 
--- | Run an 'Application' on the given port, ignoring all exceptions.
+-- | Run an 'Application' on the given port. This calls 'runSettings' with
+-- 'defaultSettings'.
 run :: Port -> Application -> IO ()
-run = runEx (const $ return ())
+run p = runSettings defaultSettings { settingsPort = p }
 
--- | Run an 'Application' on the given port, with the given exception handler.
--- Please note that you will also receive 'InvalidRequest' exceptions.
-runEx :: (SomeException -> IO ()) -> Port -> Application -> IO ()
-runEx onE port = runSettings Settings
-    { settingsPort = port
-    , settingsOnException = onE
-    , settingsTimeout = 30
-    }
-
+-- | Run a Warp server with the given settings.
 runSettings :: Settings -> Application -> IO ()
 #if WINDOWS
 runSettings set app = withSocketsDo $ do
@@ -119,33 +111,26 @@ runSettings set app = withSocketsDo $ do
         (const clean)
         (\s -> do
             MV.modifyMVar_ var (\_ -> return $ Just s)
-            serveConnections' set app s)
+            runSettingsSocket set s app)
     forever (threadDelay maxBound) `finally` clean
 #else
 runSettings set =
     bracket
         (listenOn $ PortNumber $ fromIntegral $ settingsPort set)
         sClose .
-        serveConnections' set
+        (flip (runSettingsSocket set))
 #endif
 
 type Port = Int
 
--- | Runs a server, listening on the given socket. The user is responsible for
--- closing the socket after 'runWithSocket' completes. You must also supply a
--- 'Port' argument for use in the 'serverPort' record; however, this field is
--- only used for informational purposes. If you are in fact listening on a
--- non-TCP socket, this can be a ficticious value.
-serveConnections :: (SomeException -> IO ())
-                 -> Port -> Application -> Socket -> IO ()
-serveConnections onE port = serveConnections' defaultSettings
-    { settingsOnException = onE
-    , settingsPort = port
-    }
-
-serveConnections' :: Settings
-                  -> Application -> Socket -> IO ()
-serveConnections' set app socket = do
+-- | Same as 'runSettings', but uses a user-supplied socket instead of opening
+-- one. This allows the user to provide, for example, Unix named socket, which
+-- can be used when reverse HTTP proxying into your application.
+--
+-- Note that the 'settingsPort' will still be passed to 'Application's via the
+-- 'serverPort' record.
+runSettingsSocket :: Settings -> Socket -> Application -> IO ()
+runSettingsSocket set socket app = do
     let onE = settingsOnException set
         port = settingsPort set
     tm <- T.initialize $ settingsTimeout set * 1000000
@@ -194,10 +179,8 @@ data InvalidRequest =
     NotEnoughLines [String]
     | BadFirstLine String
     | NonHttp
-    | TooManyHeaders
     | IncompleteHeaders
     | OverLargeHeader
-    | SocketTimeout
     deriving (Show, Typeable, Eq)
 instance Exception InvalidRequest
 
@@ -235,7 +218,6 @@ parseRequest' port (firstLine:otherLines) remoteHost' = do
                 , serverPort = port
                 , requestHeaders = heads
                 , isSecure = False
-                , errorHandler = System.IO.hPutStr System.IO.stderr
                 , remoteHost = remoteHost'
                 })
 
@@ -419,19 +401,27 @@ iterSocket th sock =
         liftIO $ T.pause th
         E.continue step
 
+-- | Various Warp server settings. This is purposely kept as an abstract data
+-- type so that new settings can be added without breaking backwards
+-- compatibility. In order to create a 'Settings' value, use 'defaultSettings'
+-- and record syntax to modify individual records. For example:
+--
+-- > defaultSettings { settingsTimeout = 20 }
 data Settings = Settings
-    { settingsPort :: Int
-    , settingsOnException :: SomeException -> IO ()
-    , settingsTimeout :: Int -- ^ seconds
+    { settingsPort :: Int -- ^ Port to listen on. Default value: 3000
+    , settingsOnException :: SomeException -> IO () -- ^ What to do with exceptions thrown by either the application or server. Default: ignore server-generated exceptions (see 'InvalidRequest') and print application-generated applications to stderr.
+    , settingsTimeout :: Int -- ^ Timeout value in seconds. Default value: 30
     }
 
+-- | The default settings for the Warp server. See the individual settings for
+-- the default value.
 defaultSettings :: Settings
 defaultSettings = Settings
     { settingsPort = 3000
     , settingsOnException = \e ->
         case fromException e of
             Just x -> go x
-            Nothing -> print e
+            Nothing -> hPutStrLn stderr $ show e
     , settingsTimeout = 30
     }
   where
