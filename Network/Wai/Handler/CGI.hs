@@ -106,7 +106,6 @@ run'' vars inputH outputH xsendfile app = do
             , serverPort = serverport
             , requestHeaders = map (cleanupVarName *** B.pack) vars
             , isSecure = isSecure'
-            , errorHandler = System.IO.hPutStr System.IO.stderr
             , remoteHost = addr
             , httpVersion = H.http11 -- FIXME
             }
