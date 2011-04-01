@@ -16,7 +16,8 @@ import Control.Concurrent.MVar
     ( MVar, newEmptyMVar, newMVar
     , takeMVar, putMVar, readMVar
     )
-import Network.Wai (Application, responseLBS, status500)
+import Network.Wai (Application, responseLBS)
+import Network.HTTP.Types (status500)
 import Data.ByteString.Lazy.Char8 ()
 import Control.Monad.IO.Class (liftIO)
 

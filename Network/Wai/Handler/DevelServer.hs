@@ -11,6 +11,7 @@ module Network.Wai.Handler.DevelServer
 
 import Language.Haskell.Interpreter hiding (typeOf)
 import Network.Wai
+import Network.HTTP.Types (status200)
 
 import Data.Text.Lazy (pack)
 import Data.Text.Lazy.Encoding (encodeUtf8)
