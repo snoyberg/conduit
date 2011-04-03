@@ -31,6 +31,7 @@ module Network.Wai.Handler.Warp
     , Settings
     , defaultSettings
     , settingsPort
+    , settingsHost
     , settingsOnException
     , settingsTimeout
       -- * Datatypes
@@ -49,10 +50,13 @@ import qualified Data.ByteString as S
 import qualified Data.ByteString.Unsafe as SU
 import qualified Data.ByteString.Char8 as B
 import qualified Data.ByteString.Lazy as L
-import Network (listenOn, sClose, PortID(PortNumber), Socket)
+import Network (sClose, Socket)
 import Network.Socket
-    ( accept, SockAddr
+    ( accept, SockAddr (SockAddrInet), Family (AF_INET)
+    , SocketType (Stream), listen, bindSocket, setSocketOption
+    , SocketOption (ReuseAddr), iNADDR_ANY, inet_addr, SockAddr (SockAddrInet)
     )
+import qualified Network.Socket
 import qualified Network.Socket.ByteString as Sock
 import Control.Exception
     ( bracket, finally, Exception, SomeException, catch
@@ -92,6 +96,16 @@ import qualified Control.Concurrent.MVar as MV
 import Network.Socket (withSocketsDo)
 #endif
 
+bindPort :: Int -> String -> IO Socket
+bindPort p s = do
+    sock <- Network.Socket.socket AF_INET Stream 0
+    h <- if s == "*" then return iNADDR_ANY else inet_addr s
+    let addr = SockAddrInet (fromIntegral p) h
+    setSocketOption sock ReuseAddr 1
+    bindSocket sock addr
+    listen sock 150
+    return sock
+
 -- | Run an 'Application' on the given port. This calls 'runSettings' with
 -- 'defaultSettings'.
 run :: Port -> Application -> IO ()
@@ -104,7 +118,7 @@ runSettings set app = withSocketsDo $ do
     var <- MV.newMVar Nothing
     let clean = MV.modifyMVar_ var $ \s -> maybe (return ()) sClose s >> return Nothing
     _ <- forkIO $ bracket
-        (listenOn $ PortNumber $ fromIntegral $ settingsPort set)
+        (bindPort (settingsPort set) (settingsHost set))
         (const clean)
         (\s -> do
             MV.modifyMVar_ var (\_ -> return $ Just s)
@@ -113,7 +127,7 @@ runSettings set app = withSocketsDo $ do
 #else
 runSettings set =
     bracket
-        (listenOn $ PortNumber $ fromIntegral $ settingsPort set)
+        (bindPort (settingsPort set) (settingsHost set))
         sClose .
         (flip (runSettingsSocket set))
 #endif
@@ -406,6 +420,7 @@ iterSocket th sock =
 -- > defaultSettings { settingsTimeout = 20 }
 data Settings = Settings
     { settingsPort :: Int -- ^ Port to listen on. Default value: 3000
+    , settingsHost :: String -- ^ Host to bind to, or * for all. Default value: *
     , settingsOnException :: SomeException -> IO () -- ^ What to do with exceptions thrown by either the application or server. Default: ignore server-generated exceptions (see 'InvalidRequest') and print application-generated applications to stderr.
     , settingsTimeout :: Int -- ^ Timeout value in seconds. Default value: 30
     }
@@ -415,6 +430,7 @@ data Settings = Settings
 defaultSettings :: Settings
 defaultSettings = Settings
     { settingsPort = 3000
+    , settingsHost = "*"
     , settingsOnException = \e ->
         case fromException e of
             Just x -> go x
