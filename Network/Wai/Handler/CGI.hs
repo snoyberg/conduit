@@ -1,10 +1,11 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
+-- | Backend for Common Gateway Interface. Almost all users should use the
+-- 'run' function.
 module Network.Wai.Handler.CGI
     ( run
-    , run'
-    , run''
     , runSendfile
+    , runGeneric
     , requestBodyFunc
     ) where
 
@@ -42,38 +43,36 @@ safeRead d s =
 lookup' :: String -> [(String, String)] -> String
 lookup' key pairs = fromMaybe "" $ lookup key pairs
 
+-- | Run an application using CGI.
 run :: Application -> IO ()
 run app = do
     vars <- getEnvironment
     let input = requestBodyHandle System.IO.stdin
         output = B.hPut System.IO.stdout
-    run'' vars input output Nothing app
+    runGeneric vars input output Nothing app
 
+-- | Some web servers provide an optimization for sending files via a sendfile
+-- system call via a special header. To use this feature, provide that header
+-- name here.
 runSendfile :: B.ByteString -- ^ sendfile header
             -> Application -> IO ()
 runSendfile sf app = do
     vars <- getEnvironment
     let input = requestBodyHandle System.IO.stdin
         output = B.hPut System.IO.stdout
-    run'' vars input output (Just sf) app
+    runGeneric vars input output (Just sf) app
 
-run' :: [(String, String)] -- ^ all variables
-     -> System.IO.Handle -- ^ responseBody of input
-     -> System.IO.Handle -- ^ destination for output
-     -> Application
-     -> IO ()
-run' vars inputH outputH app = do
-    let input = requestBodyHandle inputH
-        output = B.hPut outputH
-    run'' vars input output Nothing app
-
-run'' :: [(String, String)] -- ^ all variables
+-- | A generic CGI helper, which allows other backends (FastCGI and SCGI) to
+-- use the same code as CGI. Most users will not need this function, and can
+-- stick with 'run' or 'runSendfile'.
+runGeneric
+     :: [(String, String)] -- ^ all variables
      -> (forall a. Int -> Enumerator B.ByteString IO a) -- ^ responseBody of input
      -> (B.ByteString -> IO ()) -- ^ destination for output
      -> Maybe B.ByteString -- ^ does the server support the X-Sendfile header?
      -> Application
      -> IO ()
-run'' vars inputH outputH xsendfile app = do
+runGeneric vars inputH outputH xsendfile app = do
     let rmethod = B.pack $ lookup' "REQUEST_METHOD" vars
         pinfo = lookup' "PATH_INFO" vars
         qstring = lookup' "QUERY_STRING" vars
