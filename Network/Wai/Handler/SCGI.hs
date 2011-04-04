@@ -5,7 +5,7 @@ module Network.Wai.Handler.SCGI
     ) where
 
 import Network.Wai
-import Network.Wai.Handler.CGI (run'', requestBodyFunc)
+import Network.Wai.Handler.CGI (runGeneric, requestBodyFunc)
 import Foreign.Ptr
 import Foreign.Marshal.Alloc
 import Foreign.C
@@ -31,7 +31,7 @@ runOne sf app = do
                     (i, _):_ -> i
                     [] -> 0
     conLenI <- newIORef conLen
-    run'' headers (requestBodyFunc $ input socket conLenI)
+    runGeneric headers (requestBodyFunc $ input socket conLenI)
               (write socket) sf app
     drain socket conLenI
     _ <- c'close socket
