@@ -7,22 +7,32 @@ This module defines a generic web application interface. It is a common
 protocol between web servers and web applications.
 
 The overriding design principles here are performance and generality . To
-address performance, this library is built on top of the enumerator package.
-The advantages of this approach over lazy IO have been debated elsewhere.
-However, helper functions like 'responseLBS' allow you to continue using lazy
-IO if you so desire.
+address performance, this library is built on top of the enumerator and
+blaze-builder packages.  The advantages of enumerators over lazy IO have been
+debated elsewhere and so will not be addressed here.  However, helper functions
+like 'responseLBS' allow you to continue using lazy IO if you so desire.
 
 Generality is achieved by removing many variables commonly found in similar
 projects that are not universal to all servers. The goal is that the 'Request'
 object contains only data which is meaningful in all circumstances.
 
-A final note: please remember when using this package that, while your
-application may compile without a hitch against many different servers, there
-are other considerations to be taken when moving to a new backend. For example,
-if you transfer from a CGI application to a FastCGI one, you might suddenly
-find you have a memory leak. Conversely, a FastCGI application would be
-well served to preload all templates from disk when first starting; this
-would kill the performance of a CGI application.
+Please remember when using this package that, while your application may
+compile without a hitch against many different servers, there are other
+considerations to be taken when moving to a new backend. For example, if you
+transfer from a CGI application to a FastCGI one, you might suddenly find you
+have a memory leak. Conversely, a FastCGI application would be well served to
+preload all templates from disk when first starting; this would kill the
+performance of a CGI application.
+
+This package purposely provides very little functionality. You can find various
+middlewares, backends and utilities on Hackage. Some of the most commonly used
+include:
+
+[warp] <http://hackage.haskell.org/package/warp>
+
+[wai-extra] <http://hackage.haskell.org/package/wai-extra>
+
+[wai-test] <http://hackage.haskell.org/package/wai-test>
 
 -}
 module Network.Wai
@@ -61,9 +71,17 @@ data Request = Request
   -- all information after the domain name. In a CGI application, this would be
   -- the information following the path to the CGI executable itself.
   ,  rawPathInfo    :: B.ByteString
-  -- | If no query string was specified, this should be empty.
+  -- | If no query string was specified, this should be empty. This value
+  -- /will/ include the leading question mark.
   ,  rawQueryString :: B.ByteString
+  -- | Generally the host requested by the user via the Host request header.
+  -- Backends are free to provide alternative values as necessary. This value
+  -- should not be used to construct URLs.
   ,  serverName     :: B.ByteString
+  -- | The listening port that the server received this request on. It is
+  -- possible for a server to listen on a non-numeric port (i.e., Unix named
+  -- socket), in which case this value will be arbitrary. Like 'serverName',
+  -- this value should not be used in URL construction.
   ,  serverPort     :: Int
   ,  requestHeaders :: H.RequestHeaders
   -- | Was this request made over an SSL connection?
