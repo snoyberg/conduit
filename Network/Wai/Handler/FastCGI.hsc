@@ -133,7 +133,7 @@ handleRequest f ins outs env xsendfile = do
     let vars' = map (S8.unpack *** S8.unpack) vars
     let input = const $ sRead ins
     let hPut = sPutStr' outs
-    CGI.run'' vars' (CGI.requestBodyFunc input) hPut xsendfile f
+    CGI.runGeneric vars' (CGI.requestBodyFunc input) hPut xsendfile f
 
 data FCGX_Request
 
