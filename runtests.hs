@@ -25,7 +25,6 @@ import Data.Enumerator.Binary (enumFile)
 import Control.Monad.IO.Class (liftIO)
 import Data.Maybe (fromMaybe)
 import Network.HTTP.Types (parseSimpleQuery, status200)
-import qualified Data.Ascii as A
 
 main :: IO ()
 main = defaultMain [testSuite]
@@ -157,12 +156,12 @@ caseParseRequestBody = run_ t where
                     expected3
                     result3'
 
-toRequest :: A.Ascii -> S8.ByteString -> SRequest
+toRequest :: S8.ByteString -> S8.ByteString -> SRequest
 toRequest ctype content = SRequest (Request
     { requestHeaders = [("Content-Type", ctype)]
     }) (L.fromChunks [content])
 
-toRequest' :: A.Ascii -> S8.ByteString -> SRequest
+toRequest' :: S8.ByteString -> S8.ByteString -> SRequest
 toRequest' ctype content = SRequest (Request
     { requestHeaders = [("Content-Type", ctype)]
     }) (L.fromChunks $ map S.singleton $ S.unpack content)
