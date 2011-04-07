@@ -247,16 +247,17 @@ data StaticSettings = StaticSettings
 
 staticApp :: StaticSettings -> W.Application
 staticApp set req = do
-    let pieces = map T.unpack $ W.pathInfo req -- FIXME stick with Text
+    let pieces = W.pathInfo req
     staticAppPieces set pieces req
 
-staticAppPieces :: StaticSettings -> [String] -> W.Application
+staticAppPieces :: StaticSettings -> [T.Text] -> W.Application
 staticAppPieces _ _ req
     | W.requestMethod req /= "GET" = return $ W.responseLBS
         H.status405
         [("Content-Type", "text/plain")]
         "Only GET is supported"
-staticAppPieces (StaticSettings folder indices mlisting getmime) pieces _ = liftIO $ do
+staticAppPieces (StaticSettings folder indices mlisting getmime) piecesT _ = liftIO $ do
+    let pieces = map T.unpack piecesT -- FIXME stick with Text
     cp <- checkPieces folder indices pieces
     case cp of
         Redirect pieces' -> do
