@@ -26,7 +26,7 @@ main = do
         } &= summary "WAI development web server"
     runQuit p m f $ if y then determineHamletDeps else (const $ return [])
 
-data TempType = Hamlet | Cassius | Lucius | Julius | Widget
+data TempType = Hamlet | Cassius | Lucius | Julius | Widget | Verbatim
     deriving Show
 
 determineHamletDeps :: FilePath -> IO [FilePath]
@@ -39,6 +39,7 @@ determineHamletDeps x = do
   where
     go (Just (Hamlet, f)) = Just $ "hamlet/" ++ f ++ ".hamlet"
     go (Just (Widget, f)) = Just $ "hamlet/" ++ f ++ ".hamlet"
+    go (Just (Verbatim, f)) = Just f
     go _ = Nothing
     parser = do
         ty <- (A.string "$(hamletFile " >> return Hamlet)
@@ -51,6 +52,8 @@ determineHamletDeps x = do
            <|> (A.string "$(Settings.luciusFile " >> return Lucius)
            <|> (A.string "$(Settings.juliusFile " >> return Julius)
            <|> (A.string "$(Settings.widgetFile " >> return Widget)
+           <|> (A.string "$(persistFile " >> return Verbatim)
+           <|> (A.string "$(parseRoutesFile " >> return Verbatim)
         A.skipWhile isSpace
         _ <- A.char '"'
         y <- A.many1 $ A.satisfy (/= '"')
