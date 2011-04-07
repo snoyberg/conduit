@@ -1,5 +1,5 @@
 name:            wai-app-static
-version:         0.0.1.4
+version:         0.1.0
 license:         BSD3
 license-file:    LICENSE
 author:          Michael Snoyman <michael@snoyman.com>
@@ -10,14 +10,14 @@ category:        Web, Yesod
 stability:       Stable
 cabal-version:   >= 1.6
 build-type:      Simple
-homepage:        http://docs.yesodweb.com/
+homepage:        http://www.yesodweb.com/
 Extra-source-files: folder.png, haskell.png
 
 library
     build-depends:   base                      >= 4        && < 5
-                   , wai                       >= 0.3      && < 0.4
+                   , wai                       >= 0.4      && < 0.5
                    , bytestring                >= 0.9.1.4  && < 0.10
-                   , web-routes                >= 0.23     && < 0.24
+                   , http-types                >= 0.6      && < 0.7
                    , transformers              >= 0.2.2    && < 0.3
                    , unix-compat               >= 0.2      && < 0.3
                    , directory                 >= 1.0      && < 1.2
@@ -27,6 +27,7 @@ library
                    , old-locale                >= 1.0.0.2  && < 1.1
                    , file-embed                >= 0.0.3.1  && < 0.1
                    , text                      >= 0.5      && < 1.0
+                   , blaze-builder             >= 0.2.1.4  && < 0.4
     exposed-modules: Network.Wai.Application.Static
     ghc-options:     -Wall
 

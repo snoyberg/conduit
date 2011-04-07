@@ -31,6 +31,7 @@ module Network.Wai.Application.Static
     ) where
 
 import qualified Network.Wai as W
+import qualified Network.HTTP.Types as H
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.ByteString (ByteString)
@@ -38,7 +39,6 @@ import System.Directory (doesFileExist, doesDirectoryExist, getDirectoryContents
 import qualified Data.ByteString.Char8 as S8
 import qualified Data.ByteString.Lazy as L
 import Data.ByteString.Lazy.Char8 ()
-import Web.Routes.Base (decodePathInfo, encodePathInfo)
 import System.PosixCompat.Files (fileSize, getFileStatus, modificationTime)
 import System.Posix.Types (FileOffset, EpochTime)
 import Control.Monad.IO.Class (liftIO)
@@ -48,6 +48,9 @@ import           Text.Blaze                  ((!))
 import qualified Text.Blaze.Html5            as H
 import qualified Text.Blaze.Renderer.Utf8    as HU
 import qualified Text.Blaze.Html5.Attributes as A
+
+import Blaze.ByteString.Builder (toByteString, copyByteString)
+import Data.Monoid (mappend)
 
 import Data.Time
 import Data.Time.Clock.POSIX
@@ -244,48 +247,51 @@ data StaticSettings = StaticSettings
 
 staticApp :: StaticSettings -> W.Application
 staticApp set req = do
-    let pieces = decodePathInfo $ S8.unpack $ W.pathInfo req
+    let pieces = map T.unpack $ W.pathInfo req -- FIXME stick with Text
     staticAppPieces set pieces req
 
 staticAppPieces :: StaticSettings -> [String] -> W.Application
 staticAppPieces _ _ req
     | W.requestMethod req /= "GET" = return $ W.responseLBS
-        W.status405
+        H.status405
         [("Content-Type", "text/plain")]
         "Only GET is supported"
 staticAppPieces (StaticSettings folder indices mlisting getmime) pieces _ = liftIO $ do
     cp <- checkPieces folder indices pieces
     case cp of
         Redirect pieces' -> do
-            let loc = S8.pack $ (concatMap (const "../") $ drop 1 pieces) ++ encodePathInfo pieces' []
-            return $ W.responseLBS W.status301
+            let loc =
+                    toByteString $
+                    foldr mappend (H.encodePathSegments $ map T.pack pieces') -- FIXME use Text
+                    $ map (const $ copyByteString "../") $ drop 1 pieces
+            return $ W.responseLBS H.status301
                 [ ("Content-Type", "text/plain")
                 , ("Location", loc)
                 ] "Redirect"
-        Forbidden -> return $ W.responseLBS W.status403
+        Forbidden -> return $ W.responseLBS H.status403
                         [ ("Content-Type", "text/plain")
                         ] "Forbidden"
-        NotFound -> return $ W.responseLBS W.status404
+        NotFound -> return $ W.responseLBS H.status404
                         [ ("Content-Type", "text/plain")
                         ] "File not found"
         FileResponse fp -> do
             mimetype <- getmime fp
             filesize <- fileSize `fmap` getFileStatus fp
-            return $ W.ResponseFile W.status200
+            return $ W.ResponseFile H.status200
                         [ ("Content-Type", mimetype)
                         , ("Content-Length", S8.pack $ show filesize)
-                        ] fp
+                        ] fp Nothing
         DirectoryResponse fp ->
             case mlisting of
                 Just listing -> do
                     lbs <- listing pieces fp
-                    return $ W.responseLBS W.status200
+                    return $ W.responseLBS H.status200
                         [ ("Content-Type", "text/html; charset=utf-8")
                         ] lbs
-                Nothing -> return $ W.responseLBS W.status403
+                Nothing -> return $ W.responseLBS H.status403
                         [ ("Content-Type", "text/plain")
                         ] "Directory listings disabled"
-        SendContent mt lbs -> return $ W.responseLBS W.status200
+        SendContent mt lbs -> return $ W.responseLBS H.status200
                         [ ("Content-Type", mt)
                         ] lbs
 
