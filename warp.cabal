@@ -1,5 +1,5 @@
 Name:                warp
-Version:             0.4.0
+Version:             0.4.0.1
 Synopsis:            A fast, light-weight web server for WAI applications.
 License:             BSD3
 License-file:        LICENSE
@@ -11,10 +11,8 @@ Build-Type:          Simple
 Cabal-Version:       >=1.6
 Stability:           Stable
 
-flag timeout-protection
-    Description: Use timeouts (very performance-costly) to protect against DOS attacks.
-    Default: True
 flag network-bytestring
+    Default: False
 
 Library
   Build-Depends:     base                          >= 3        && < 5
@@ -35,8 +33,6 @@ Library
   Exposed-modules:   Network.Wai.Handler.Warp
   Other-modules:     Timeout
   ghc-options:       -Wall
-  if !flag(timeout-protection)
-      Cpp-options: -DNO_TIMEOUT_PROTECTION
   if os(windows)
       Cpp-options: -DWINDOWS
 
