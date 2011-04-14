@@ -8,6 +8,7 @@ You want a minimal example? Here it is!
 
 > {-# LANGUAGE OverloadedStrings #-}
 > import Network.Wai
+> import Network.HTTP.Types
 > import Network.Wai.Handler.Warp (run)
 > import Data.ByteString.Lazy.Char8 () -- Just for an orphan instance
 >
@@ -53,6 +54,7 @@ Now we redefine `responseBody` to refer to that file:
 >     status200
 >     [("Content-Type", "text/html")]
 >     "index.html"
+>     Nothing
 
 
 Basic dispatching
@@ -67,7 +69,7 @@ Depending on the path info provided with each `Request` we can serve
 different `Response`s:
 
 > app3 :: Application
-> app3 request = case pathInfo request of
+> app3 request = case rawPathInfo request of
 >     "/"     -> return index
 >     "/raw/" -> return plainIndex
 >     _       -> return notFound
@@ -76,6 +78,7 @@ different `Response`s:
 >     status200
 >     [("Content-Type", "text/plain")]
 >     "index.html"
+>     Nothing
 >
 > notFound = responseLBS
 >     status404
