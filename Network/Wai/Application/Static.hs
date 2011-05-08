@@ -32,6 +32,8 @@ module Network.Wai.Application.Static
     , defaultStaticSettings
     , defaultPublicSettings
     , CacheSettings (..)
+      -- should be moved to common helper
+    , unfixPathName
     ) where
 
 import qualified Network.Wai as W
@@ -60,7 +62,7 @@ import Data.Time
 import Data.Time.Clock.POSIX
 import System.Locale (defaultTimeLocale)
 
-import Data.List (sortBy, intercalate)
+import Data.List (sortBy)
 import Data.FileEmbed (embedFile)
 
 import qualified Data.Text as T
@@ -194,22 +196,23 @@ filterButLast f (x:xs)
     | otherwise = filterButLast f xs
 
 
-unsafe :: FilePath -> Bool
-unsafe ('.':_) = True
-unsafe s = any (== '/') s
+unsafe :: T.Text -> Bool
+unsafe s | T.null s = False
+         | T.head s == '.' = True
+         | otherwise = T.any (== '/') s
 
 stripTrailingSlash :: FilePath -> FilePath
 stripTrailingSlash "/" = ""
 stripTrailingSlash "" = ""
 stripTrailingSlash (x:xs) = x : stripTrailingSlash xs
 
-type Pieces = [Text]
-relativeFromPieces :: Pieces -> Text
-relativeFromPieces pieces = concatMap (const "../") (drop 1 pieces) -- last path which is not a dir
+type Pieces = [T.Text]
+relativeDirFromPieces :: Pieces -> T.Text
+relativeDirFromPieces pieces = T.concat $ map (const "../") (drop 1 pieces) -- last piece is not a dir
 
 pathFromPieces :: FilePath -> Pieces -> FilePath
 pathFromPieces prefix pieces =
-        concat $ prefix : map ((:) '/') (map unfixPathName pieces)
+        concat $ prefix : map ((:) '/') (map unfixPathName $ map T.unpack pieces)
 
 checkPieces :: FilePath      -- ^ static file prefix
             -> [FilePath]    -- ^ List of default index files. Cannot contain slashes.
@@ -223,15 +226,15 @@ checkPieces _ _ [".hidden", "haskell.png"] _ _ =
     return $ SendContent "image/png" $ L.fromChunks [$(embedFile "haskell.png")]
 checkPieces prefix indices pieces cache req
     | any unsafe pieces = return Forbidden
-    | any null $ safeInit pieces =
-        return $ Redirect $ filterButLast (not . null) pieces
+    | any T.null $ safeInit pieces =
+        return $ Redirect $ filterButLast (not . T.null) pieces
     | otherwise = do
         let fp = pathFromPieces prefix pieces
         let (isFile, isFolder) =
                 case () of
                     ()
                         | null pieces -> (True, True)
-                        | null (last pieces) -> (False, True)
+                        | T.null (last pieces) -> (False, True)
                         | otherwise -> (True, False)
 
         if not isFile then uncached fp isFile isFolder
@@ -245,7 +248,7 @@ checkPieces prefix indices pieces cache req
                    (Just hash, Just lastHash) | hash == lastHash -> return NotModified
                    _ -> trace "ETAG: no cache match" uncached fp isFile isFolder
                Forever isStaticFile -> 
-                   if isStaticFile fp (W.queryString req) &&
+                   if isStaticFile fp (S8.drop 1 $ W.rawQueryString req) &&
                        (isJust $ lookup "If-Modified-Since" (W.requestHeaders req)) &&
                        (isNothing $ lookup "If-Unmodified-Since" (W.requestHeaders req))
                        then return NotModified
@@ -266,7 +269,7 @@ checkPieces prefix indices pieces cache req
                   else do
                       x <- checkIndices fp indices
                       case x of
-                          Just index -> return $ Redirect $ setLast pieces index
+                          Just index -> return $ Redirect $ setLast pieces (T.pack index)
                           Nothing ->
                               if isFolder
                                   then return $ DirectoryResponse fp
@@ -297,31 +300,34 @@ defaultDirListing = StaticDirListing defaultListing []
 type CheckHashParam = (FilePath -> S8.ByteString -> Bool)
 data CacheSettings = NoCache | Forever CheckHashParam | ETag (FilePath -> IO (Maybe S8.ByteString))
 
-{-MaxAge S8.ByteString -}
-{-maxAge :: Int -> CacheSettings-}
-{-maxAge = MaxAge . S8.pack . show-}
-
 oneYear :: Int
 oneYear = 60 * 60 * 24 * 365
 
 data StaticSettings = StaticSettings
     { ssFolder :: FilePath
-    , ssMkRedirect :: Pieces -> FilePath -> S8.ByteString
+    , ssMkRedirect :: Pieces -> ByteString -> S8.ByteString
     , ssGetMimeType :: FilePath -> IO MimeType
     , ssDirListing :: StaticDirListing
     , ssCacheSettings :: CacheSettings
     }
 
+defaultMkRedirect :: Pieces -> ByteString -> S8.ByteString
+defaultMkRedirect pieces newPath =
+  let relDir = TE.encodeUtf8 (relativeDirFromPieces pieces) in
+    S8.append relDir (if (S8.last relDir) == '/' && (S8.head newPath) == '/'
+                       then S8.tail newPath
+                       else newPath)
+
 defaultStaticSettings :: CacheSettings -> StaticSettings
 defaultStaticSettings isStaticFile = StaticSettings { ssFolder = "static"
-  , ssMkRedirect = \pieces newPath -> S8.pack $ (relativeFromPieces pieces) ++ newPath
+  , ssMkRedirect = defaultMkRedirect
   , ssGetMimeType = return . defaultMimeTypeByExt
   , ssDirListing = defaultDirListing
   , ssCacheSettings = isStaticFile
 }
 defaultPublicSettings :: CacheSettings -> StaticSettings
 defaultPublicSettings etags = StaticSettings { ssFolder = "public"
-  , ssMkRedirect = \pieces newPath -> S8.pack $ (relativeFromPieces pieces) ++ newPath
+  , ssMkRedirect = defaultMkRedirect
   , ssGetMimeType = return . defaultMimeTypeByExt
   , ssDirListing = ListingForbidden
   , ssCacheSettings = etags
@@ -333,8 +339,8 @@ staticApp set req = do
     let pieces = W.pathInfo req
     staticAppPieces set pieces req
 
-status304, statusNotModified :: W.Status
-status304 = W.Status 304 "Not Modified"
+status304, statusNotModified :: H.Status
+status304 = H.Status 304 "Not Modified"
 statusNotModified = status304
 
 staticAppPieces :: StaticSettings -> Pieces -> W.Application
@@ -349,12 +355,12 @@ staticAppPieces ss@StaticSettings{} pieces req = liftIO $ do
                       StaticDirListing _ is -> is
                       ListingForbidden      -> []
     cp <- checkPieces (ssFolder ss) indices pieces cache req
-    case debug cp of
+    case cp of
         FileResponse fp -> do
             mimetype <- (ssGetMimeType ss) fp
             filesize <- fileSize `fmap` getFileStatus fp
             ch <- setCacheHeaders cache fp
-            return $ W.ResponseFile W.status200
+            return $ W.ResponseFile H.status200
                         ( [ ("Content-Type", mimetype)
                           , ("Content-Length", S8.pack $ show filesize)
                           ] ++ ch ) fp Nothing
@@ -366,22 +372,26 @@ staticAppPieces ss@StaticSettings{} pieces req = liftIO $ do
             case ssDirListing ss of
                 StaticDirListing f _ -> do
                     lbs <- f pieces fp
-                    return $ W.responseLBS W.status200
+                    return $ W.responseLBS H.status200
                         [ ("Content-Type", "text/html; charset=utf-8")
                         ] lbs
-                ListingForbidden -> return $ W.responseLBS W.status403
+                ListingForbidden -> return $ W.responseLBS H.status403
                         [ ("Content-Type", "text/plain")
                         ] "Directory listings disabled"
         SendContent mt lbs -> do
             -- TODO: set caching headers
-            return $ W.responseLBS W.status200
+            return $ W.responseLBS H.status200
                 [ ("Content-Type", mt)
                   -- TODO: set Content-Length
                 ] lbs
         Redirect pieces' -> do
-            let loc =
+            let loc = (ssMkRedirect ss) pieces' $ toByteString (H.encodePathSegments pieces')
+
+            let loc' =
+                    -- relativeDirFromPieces pieces = T.concat $ map (const "../") (drop 1 pieces) -- last piece is not a dir
+                    -- (ssMkRedirect ss) pieces' $ encodePathInfo pieces' [] 
                     toByteString $
-                    foldr mappend (H.encodePathSegments $ map T.pack pieces') -- FIXME use Text
+                    foldr mappend (H.encodePathSegments pieces') -- FIXME use Text
                     $ map (const $ copyByteString "../") $ drop 1 pieces
             return $ W.responseLBS H.status301
                 [ ("Content-Type", "text/plain")
@@ -395,9 +405,9 @@ staticAppPieces ss@StaticSettings{} pieces req = liftIO $ do
                         ] "File not found"
     where
       -- expires header: formatTime "%a, %d-%b-%Y %X GMT"
-        setCacheHeaders :: CacheSettings -> FilePath -> IO W.ResponseHeaders
+        setCacheHeaders :: CacheSettings -> FilePath -> IO H.ResponseHeaders
         setCacheHeaders (Forever isStaticFile) fp = return $
-            if isStaticFile fp (W.queryString req)
+            if isStaticFile fp (S8.drop 1 $ W.rawQueryString req)
               then [("Cache-Control", S8.append "max-age=" $ S8.pack $ show oneYear)]
               else []
         setCacheHeaders NoCache _ = return []
@@ -407,6 +417,16 @@ staticAppPieces ss@StaticSettings{} pieces req = liftIO $ do
               Just hash -> [("ETag", hash)]
               Nothing -> []
 
+{-
+The problem is that the System.Directory functions are a lie: they
+claim to be using String, but it's really just a raw byte sequence.
+We're assuming that non-Windows systems use UTF-8 encoding (there was
+a discussion regarding this, it wasn't an arbitrary decision). So we
+need to encode/decode the byte sequence to/from UTF8. That's the use
+case for fixPathName/unfixPathName. I'm starting to use John
+Millikin's system-filepath package for some stuff with work, and might
+consider migrating over to it for this in the future.
+-}
 fixPathName :: FilePath -> FilePath
 #if defined(mingw32_HOST_OS)
 fixPathName = id
@@ -431,7 +451,7 @@ defaultListing pieces localPath = do
     return $ HU.renderHtml
            $ H.html $ do
              H.head $ do
-                 let title = intercalate "/" pieces
+                 let title = T.unpack $ T.intercalate "/" pieces
                  let title' = if null title then "root folder" else title
                  H.title $ H.string title'
                  H.style $ H.string $ unlines [ "table { margin: 0 auto; width: 760px; border-collapse: collapse; font-family: 'sans-serif'; }"
@@ -449,10 +469,10 @@ defaultListing pieces localPath = do
                                               , "a { text-decoration: none }"
                                               ]
              H.body $ do
-                 H.h1 $ showFolder $ "" : filter (not . null) pieces
+                 H.h1 $ showFolder $ map T.unpack $ filter (not . T.null) pieces
                  renderDirectoryContentsTable haskellSrc folderSrc $ catMaybes fps''
   where
-    image x = (relativeFromPieces pieces) ++ ".hidden/" ++ x ++ ".png"
+    image x = T.unpack $ T.concat [(relativeDirFromPieces pieces), ".hidden/", x, ".png"]
     folderSrc = image "folder"
     haskellSrc = image "haskell"
     showName "" = "root"
@@ -520,6 +540,7 @@ renderDirectoryContentsTable haskellSrc folderSrc fps =
       addCommas' (a:b:c:d:e) = a : b : c : ',' : addCommas' (d : e)
       addCommas' x = x
 
+mdName' :: MetaData -> FilePath
 mdName' = fixPathName . mdName
 
 data MetaData =

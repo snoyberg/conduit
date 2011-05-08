@@ -1,5 +1,5 @@
 name:            wai-app-static
-version:         0.1.0
+version:         0.2.0
 license:         BSD3
 license-file:    LICENSE
 author:          Michael Snoyman <michael@snoyman.com>
@@ -49,12 +49,14 @@ test-suite runtests
                    , HUnit
                    , Cabal
                    , wai-app-static
-                   , wai
                    , wai-test
+                   , wai
+                   , http-types
                    , network
                    , bytestring
-                   , transformers
-                   , containers
+                   , text
+                   -- , transformers
+                   -- , containers
   ghc-options:   -Wall
 
 source-repository head
