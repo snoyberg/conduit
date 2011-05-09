@@ -70,9 +70,11 @@ data Request = Request
   -- depending on backend; in a standalone server setting, this is most likely
   -- all information after the domain name. In a CGI application, this would be
   -- the information following the path to the CGI executable itself.
+  -- Do not modify this raw value- modify pathInfo instead.
   ,  rawPathInfo    :: B.ByteString
   -- | If no query string was specified, this should be empty. This value
   -- /will/ include the leading question mark.
+  -- Do not modify this raw value- modify queryString instead.
   ,  rawQueryString :: B.ByteString
   -- | Generally the host requested by the user via the Host request header.
   -- Backends are free to provide alternative values as necessary. This value
@@ -88,7 +90,7 @@ data Request = Request
   ,  isSecure       :: Bool
   -- | The client\'s host information.
   ,  remoteHost     :: SockAddr
-  -- | Path info, broken down into individual components.
+  -- | Path info in individual pieces- the url without a hostname/port and without a query string, split on forward slashes,
   ,  pathInfo       :: [Text]
   -- | Parsed query string information
   ,  queryString    :: H.Query
