@@ -43,25 +43,25 @@ runNoWatch port modu func extras = do
 runQuit :: Int -> ModuleName -> FunctionName -> (FilePath -> IO [FilePath])
         -> IO ()
 runQuit port modu func extras = do
-    ev <- newEmptyMVar
-    _ <- forkIO $ run port modu func extras (Just ev)
-    go ev
+    sig <- newEmptyMVar
+    _ <- forkIO $ run port modu func extras (Just sig)
+    go sig
   where
-    go ev = do
+    go sig = do
         x <- getLine
         case x of
             'q':_ -> putStrLn "Quitting, goodbye!"
             'r':_ -> do
                 putStrLn "Forcing reinterpretation"
-                _ <- tryPutMVar ev ()
-                go ev
-            _ -> go ev
+                _ <- tryPutMVar sig ()
+                go sig
+            _ -> go sig
 
 run :: Int -> ModuleName -> FunctionName -> (FilePath -> IO [FilePath]) -> Maybe (MVar ())
     -> IO ()
-run port modu func extras mev = do
+run port modu func extras msig = do
     ah <- initAppHolder
-    _ <- forkIO $ fillApp modu func extras ah mev
+    _ <- forkIO $ fillApp modu func extras ah msig
     Warp.run port $ toApp ah
 
 {-
@@ -94,11 +94,11 @@ constSE = const
 
 fillApp :: String -> String
         -> (FilePath -> IO [FilePath]) -> AppHolder -> Maybe (MVar ()) -> IO ()
-fillApp modu func dirs ah mev =
+fillApp modu func dirs ah msig =
     go Nothing []
   where
     go prevError prevFiles = do
-        forceReload <- maybe (return False) (fmap isJust . tryTakeMVar) mev
+        forceReload <- maybe (return False) (fmap isJust . tryTakeMVar) msig
         toReload <-
             if forceReload || null prevFiles
                 then return True
