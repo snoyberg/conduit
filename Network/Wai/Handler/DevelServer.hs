@@ -2,7 +2,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE StandaloneDeriving #-}
 module Network.Wai.Handler.DevelServer
     ( run
     , runQuit
@@ -21,6 +20,7 @@ import qualified Control.Exception as E
 import Control.Concurrent (forkIO, threadDelay)
 
 import Data.Maybe
+import Control.Monad
 import Control.Concurrent.MVar
 
 import System.Directory (getModificationTime)
@@ -50,8 +50,7 @@ runQuit port modu func extras = do
     go ev = do
         x <- getLine
         case x of
-            'q':_ -> do
-                putStrLn "Quitting, goodbye!"
+            'q':_ -> putStrLn "Quitting, goodbye!"
             'r':_ -> do
                 putStrLn "Forcing reinterpretation"
                 _ <- tryPutMVar ev ()
@@ -126,9 +125,8 @@ reload modu func extras prevError ah = do
     res <- theapp modu func
     case res of
         Left err -> do
-            if show (Just err) /= show prevError
-               then putStrLn $ "Compile failed: " ++ showInterpError err
-               else return ()
+            when (show (Just err) /= show prevError) $
+               putStrLn $ "Compile failed: " ++ showInterpError err
             loadingApp' (Just $ toException err) ah
             return (Just $ toException err, [])
         Right (app, files') -> E.handle onInitErr $ do
