@@ -20,6 +20,9 @@ import Control.Exception (Exception, SomeException, toException, fromException)
 import qualified Control.Exception as E
 import Control.Concurrent (forkIO, threadDelay)
 
+import Data.Maybe
+import Control.Concurrent.MVar
+
 import System.Directory (getModificationTime)
 import qualified Network.Wai.Handler.Warp as Warp
 import Network.Wai.Application.Devel
@@ -40,20 +43,26 @@ runNoWatch port modu func extras = do
 runQuit :: Int -> ModuleName -> FunctionName -> (FilePath -> IO [FilePath])
         -> IO ()
 runQuit port modu func extras = do
-    _ <- forkIO $ run port modu func extras
-    go
+    ev <- newEmptyMVar
+    _ <- forkIO $ run port modu func extras (Just ev)
+    go ev
   where
-    go = do
+    go ev = do
         x <- getLine
         case x of
-            'q':_ -> putStrLn "Quitting, goodbye!"
-            _ -> go
+            'q':_ -> do
+                putStrLn "Quitting, goodbye!"
+            'r':_ -> do
+                putStrLn "Forcing reinterpretation"
+                _ <- tryPutMVar ev ()
+                go ev
+            _ -> go ev
 
-run :: Int -> ModuleName -> FunctionName -> (FilePath -> IO [FilePath])
+run :: Int -> ModuleName -> FunctionName -> (FilePath -> IO [FilePath]) -> Maybe (MVar ())
     -> IO ()
-run port modu func extras = do
+run port modu func extras mev = do
     ah <- initAppHolder
-    _ <- forkIO $ fillApp modu func extras ah
+    _ <- forkIO $ fillApp modu func extras ah mev
     Warp.run port $ toApp ah
 
 {-
@@ -85,13 +94,14 @@ constSE :: x -> SomeException -> x
 constSE = const
 
 fillApp :: String -> String
-        -> (FilePath -> IO [FilePath]) -> AppHolder -> IO ()
-fillApp modu func dirs ah =
+        -> (FilePath -> IO [FilePath]) -> AppHolder -> Maybe (MVar ()) -> IO ()
+fillApp modu func dirs ah mev =
     go Nothing []
   where
     go prevError prevFiles = do
+        forceReload <- maybe (return False) (fmap isJust . tryTakeMVar) mev
         toReload <-
-            if null prevFiles
+            if forceReload || null prevFiles
                 then return True
                 else do
                     times <- getTimes $ map fst prevFiles
