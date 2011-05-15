@@ -2,7 +2,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE StandaloneDeriving #-}
 module Network.Wai.Handler.DevelServer
     ( run
     , runQuit
@@ -19,6 +18,10 @@ import qualified Data.ByteString.Lazy.Char8 as L8
 import Control.Exception (Exception, SomeException, toException, fromException)
 import qualified Control.Exception as E
 import Control.Concurrent (forkIO, threadDelay)
+
+import Data.Maybe
+import Control.Monad
+import Control.Concurrent.MVar
 
 import System.Directory (getModificationTime)
 import qualified Network.Wai.Handler.Warp as Warp
@@ -40,20 +43,25 @@ runNoWatch port modu func extras = do
 runQuit :: Int -> ModuleName -> FunctionName -> (FilePath -> IO [FilePath])
         -> IO ()
 runQuit port modu func extras = do
-    _ <- forkIO $ run port modu func extras
-    go
+    sig <- newEmptyMVar
+    _ <- forkIO $ run port modu func extras (Just sig)
+    go sig
   where
-    go = do
+    go sig = do
         x <- getLine
         case x of
             'q':_ -> putStrLn "Quitting, goodbye!"
-            _ -> go
+            'r':_ -> do
+                putStrLn "Forcing reinterpretation"
+                _ <- tryPutMVar sig ()
+                go sig
+            _ -> go sig
 
-run :: Int -> ModuleName -> FunctionName -> (FilePath -> IO [FilePath])
+run :: Int -> ModuleName -> FunctionName -> (FilePath -> IO [FilePath]) -> Maybe (MVar ())
     -> IO ()
-run port modu func extras = do
+run port modu func extras msig = do
     ah <- initAppHolder
-    _ <- forkIO $ fillApp modu func extras ah
+    _ <- forkIO $ fillApp modu func extras ah msig
     Warp.run port $ toApp ah
 
 {-
@@ -85,13 +93,14 @@ constSE :: x -> SomeException -> x
 constSE = const
 
 fillApp :: String -> String
-        -> (FilePath -> IO [FilePath]) -> AppHolder -> IO ()
-fillApp modu func dirs ah =
+        -> (FilePath -> IO [FilePath]) -> AppHolder -> Maybe (MVar ()) -> IO ()
+fillApp modu func dirs ah msig =
     go Nothing []
   where
     go prevError prevFiles = do
+        forceReload <- maybe (return False) (fmap isJust . tryTakeMVar) msig
         toReload <-
-            if null prevFiles
+            if forceReload || null prevFiles
                 then return True
                 else do
                     times <- getTimes $ map fst prevFiles
@@ -116,9 +125,8 @@ reload modu func extras prevError ah = do
     res <- theapp modu func
     case res of
         Left err -> do
-            if show (Just err) /= show prevError
-               then putStrLn $ "Compile failed: " ++ showInterpError err
-               else return ()
+            when (show (Just err) /= show prevError) $
+               putStrLn $ "Compile failed: " ++ showInterpError err
             loadingApp' (Just $ toException err) ah
             return (Just $ toException err, [])
         Right (app, files') -> E.handle onInitErr $ do
