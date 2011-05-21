@@ -1,5 +1,5 @@
 name:            wai-app-static
-version:         0.2.0
+version:         0.4
 license:         BSD3
 license-file:    LICENSE
 author:          Michael Snoyman <michael@snoyman.com>
@@ -15,7 +15,7 @@ Extra-source-files: folder.png, haskell.png
 
 Flag print
     Description:   print debug info
-    Default:       True
+    Default:       False
 
 library
     build-depends:   base                      >= 4        && < 5
@@ -45,17 +45,17 @@ test-suite runtests
     type: exitcode-stdio-1.0
 
     build-depends:   base                      >= 4        && < 5
-                   , hspec
+                   , hspec >= 0.5
                    , HUnit
                    , Cabal
-                   , wai-app-static
+                   , wai-app-static >= 0.4
                    , wai-test
                    , wai
                    , http-types
                    , network
                    , bytestring
                    , text
-                   -- , transformers
+                   , transformers
                    -- , containers
   ghc-options:   -Wall
 
