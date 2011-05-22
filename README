@@ -1,7 +1,11 @@
+wai-handler-webkit
+==================
+
 Turn WAI applications into standalone GUIs using Qt WebKit.
 
+
 Linux
-=====
+-----
 
 You'll need the appropriate system libraries, on Ubuntu:
 
@@ -13,7 +17,7 @@ On Lucid, this required adding a PPA:
 
 
 Windows
-=======
+-------
 
 * Install the Qt SDK from <http://qt.nokia.com/downloads/>
 
