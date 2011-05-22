@@ -21,4 +21,7 @@ library
     ghc-options:       -Wall
     exposed-modules:   Network.Wai.Handler.Webkit
     c-sources:         webkit.cpp
-    pkgconfig-depends: QtWebKit
+    if os(windows)
+        extra-libraries: QtCore4, QtGui4, QtNetwork4, QtWebKit4
+    else
+        pkgconfig-depends: QtWebKit
