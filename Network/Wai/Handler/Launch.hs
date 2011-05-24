@@ -31,7 +31,7 @@ ping  var app req
                 case lookup "content-type" headers of
                     Just ct
                         | "text/html" `S.isPrefixOf` ct -> do
-                            enumList 1 [fromByteString "<script>setInterval(function(){var x;if(window.XMLHttpRequest){x=new XMLHttpRequest();}else{x=new ActiveXObject(\"Microsoft.XMLHTTP\");}x.open(\"GET\",\"/_ping\",false);x.send();},1000)</script>"] $$ f status headers
+                            enumList 1 [fromByteString "<script>setInterval(function(){var x;if(window.XMLHttpRequest){x=new XMLHttpRequest();}else{x=new ActiveXObject(\"Microsoft.XMLHTTP\");}x.open(\"GET\",\"/_ping\",false);x.send();},60000)</script>"] $$ f status headers
                     _ -> f status headers
 
 #if WINDOWS
@@ -54,7 +54,7 @@ run app = do
 
 loop :: IORef Bool -> IO ()
 loop x = do
-    let seconds = 2
+    let seconds = 120
     threadDelay $ 1000000 * seconds
     b <- readIORef x
     if b
