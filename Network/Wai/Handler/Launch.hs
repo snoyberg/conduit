@@ -14,6 +14,9 @@ import Control.Monad.IO.Class (liftIO)
 import qualified Data.ByteString as S
 import Data.Enumerator (($$), enumList)
 import Blaze.ByteString.Builder (fromByteString)
+#if !WINDOWS
+import System.Cmd (rawSystem)
+#endif
 
 ping :: IORef Bool -> Middleware
 ping  var app req
@@ -35,6 +38,8 @@ ping  var app req
 foreign import ccall "launch"
     launch :: IO ()
 #else
+launch :: IO ()
+launch = rawSystem "xdg-open" ["http://localhost:4587/"] >> return ()
 #endif
 
 run :: Application -> IO ()

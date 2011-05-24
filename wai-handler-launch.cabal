@@ -24,3 +24,5 @@ Library
         c-sources: windows.c
         cpp-options: -DWINDOWS
         extra-libraries: Shell32
+    else
+        build-depends: process >= 1.0 && < 1.2
