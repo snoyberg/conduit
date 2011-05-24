@@ -45,7 +45,10 @@ launch = rawSystem "xdg-open" ["http://localhost:4587/"] >> return ()
 run :: Application -> IO ()
 run app = do
     x <- newIORef True
-    forkIO $ Warp.run 4587 $ ping x app
+    forkIO $ Warp.runSettings Warp.defaultSettings
+        { Warp.settingsPort = 4587
+        , Warp.settingsOnException = const $ return ()
+        } $ ping x app
     launch
     loop x
 

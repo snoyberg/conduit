@@ -18,7 +18,7 @@ Library
                  , http-types              >= 0.6    && < 0.7
                  , transformers            >= 0.2    && < 0.3
                  , bytestring              >= 0.9    && < 1
-                 , blaze-builder           >= 0.3    && < 0.4
+                 , blaze-builder           >= 0.2    && < 0.4
                  , enumerator              >= 0.4    && < 0.5
     if os(windows)
         c-sources: windows.c
