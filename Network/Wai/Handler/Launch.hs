@@ -75,7 +75,7 @@ insideHead toInsert =
             case step of
                 Continue k -> do
                     step' <- lift $ runIteratee $ k stream
-                    return step'
+                    EL.map id step'
                 Yield b s -> return $ Yield b s
                 Error e -> return $ Error e
 
