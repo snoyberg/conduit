@@ -24,6 +24,7 @@ import Blaze.ByteString.Builder.Char8 (fromChar)
 import Data.Monoid (mappend)
 import Control.Monad (join)
 import Data.Maybe (fromMaybe)
+import qualified Data.ByteString as S
 
 -- | Wrap json responses in a jsonp callback.
 --
@@ -68,8 +69,9 @@ jsonp app env = do
             Just _ -> addCallback c $ responseEnumerator r
             Nothing -> return r
     checkJSON hs =
-        case fmap B8.unpack $ lookup "Content-Type" hs of
-            Just "application/json" -> Just $ fixHeaders hs
+        case lookup "Content-Type" hs of
+            Just x
+                | B8.pack "application/json" `S.isPrefixOf` x -> Just $ fixHeaders hs
             _ -> Nothing
     fixHeaders = changeVal "Content-Type" "text/javascript"
     addCallback :: B8.ByteString -> (forall a. ResponseEnumerator a)
