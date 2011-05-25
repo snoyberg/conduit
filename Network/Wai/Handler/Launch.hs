@@ -12,11 +12,14 @@ import Foreign
 import Foreign.C.String
 import Control.Monad.IO.Class (liftIO)
 import qualified Data.ByteString as S
-import Data.Enumerator (($$), enumList)
+import Data.Enumerator (($$), enumList, joinI)
 import Blaze.ByteString.Builder (fromByteString)
 #if !WINDOWS
 import System.Cmd (rawSystem)
 #endif
+import Codec.Zlib.Enum (ungzip)
+import Blaze.ByteString.Builder.Enumerator (builderToByteString)
+import qualified Data.Enumerator.List as EL
 
 ping :: IORef Bool -> Middleware
 ping  var app req
@@ -31,15 +34,30 @@ ping  var app req
                 case lookup "content-type" headers of
                     Just ct
                         | "text/html" `S.isPrefixOf` ct -> do
-                            enumList 1 [fromByteString "<script>setInterval(function(){var x;if(window.XMLHttpRequest){x=new XMLHttpRequest();}else{x=new ActiveXObject(\"Microsoft.XMLHTTP\");}x.open(\"GET\",\"/_ping\",false);x.send();},60000)</script>"] $$ f status headers
+                            let (isEnc, headers') = fixHeaders id headers
+                            let fixEnc x =
+                                    if isEnc
+                                        then joinI $ builderToByteString $$ joinI $ ungzip $$ joinI $ EL.map fromByteString $$ x
+                                        else x
+                            fixEnc $ enumList 1 [fromByteString "<script>setInterval(function(){var x;if(window.XMLHttpRequest){x=new XMLHttpRequest();}else{x=new ActiveXObject(\"Microsoft.XMLHTTP\");}x.open(\"GET\",\"/_ping\",false);x.send();},60000)</script>"] $$ f status headers'
                     _ -> f status headers
+
+fixHeaders front [] = (False, front [])
+fixHeaders front (("content-encoding", "gzip"):rest) = (True, front rest)
+fixHeaders front (x:xs) = fixHeaders (front . (:) x) xs
 
 #if WINDOWS
 foreign import ccall "launch"
     launch :: IO ()
 #else
 launch :: IO ()
-launch = rawSystem "xdg-open" ["http://localhost:4587/"] >> return ()
+launch = forkIO (rawSystem
+#if MAC
+    "open"
+#else
+    "xdg-open"
+#endif
+    ["http://localhost:4587/"] >> return ()) >> return ()
 #endif
 
 run :: Application -> IO ()

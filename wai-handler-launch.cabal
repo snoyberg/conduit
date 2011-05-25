@@ -20,9 +20,14 @@ Library
                  , bytestring              >= 0.9    && < 1
                  , blaze-builder           >= 0.2    && < 0.4
                  , enumerator              >= 0.4    && < 0.5
+                 , blaze-builder-enumerator>= 0.2    && < 0.3
+                 , zlib-enum               >= 0.2    && < 0.3
     if os(windows)
         c-sources: windows.c
         cpp-options: -DWINDOWS
         extra-libraries: Shell32
     else
-        build-depends: process >= 1.0 && < 1.2
+        if os(darwin)
+            cpp-options: -DMAC
+        else
+            build-depends: process >= 1.0 && < 1.2
