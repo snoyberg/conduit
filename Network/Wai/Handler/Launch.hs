@@ -44,11 +44,12 @@ ping  var app req
                     if isHtml headers
                         then do
                             let (isEnc, headers') = fixHeaders id headers
+                            let headers'' = filter (\(x, _) -> x /= "content-length") headers'
                             let fixEnc x =
                                     if isEnc
                                         then joinI $ ungzip $$ x
                                         else x
-                            joinI $ builderToByteString $$ fixEnc $ joinI $ insideHead "<script>setInterval(function(){var x;if(window.XMLHttpRequest){x=new XMLHttpRequest();}else{x=new ActiveXObject(\"Microsoft.XMLHTTP\");}x.open(\"GET\",\"/_ping\",false);x.send();},60000)</script>" $$ joinI $ EL.map fromByteString $$ f status headers'
+                            joinI $ builderToByteString $$ fixEnc $ joinI $ insideHead "<script>setInterval(function(){var x;if(window.XMLHttpRequest){x=new XMLHttpRequest();}else{x=new ActiveXObject(\"Microsoft.XMLHTTP\");}x.open(\"GET\",\"/_ping\",false);x.send();},60000)</script>" $$ joinI $ EL.map fromByteString $$ f status headers''
                         else f status headers
 
 insideHead :: S.ByteString -> Enumeratee S.ByteString S.ByteString IO a
