@@ -29,19 +29,27 @@ ping  var app req
         return $ responseLBS status200 [] ""
     | otherwise = do
         res <- app req
-        let renum = responseEnumerator res
-        return $ ResponseEnumerator $ \f -> do
-            renum $ \status headers -> do
-                case lookup "content-type" headers of
-                    Just ct
-                        | "text/html" `S.isPrefixOf` ct -> do
+        let isHtml hs =
+                case lookup "content-type" hs of
+                    Just ct -> "text/html" `S.isPrefixOf` ct
+                    Nothing -> False
+        case res of
+            ResponseFile _ hs _ _
+                | not $ isHtml hs -> return res
+            ResponseBuilder _ hs _
+                | not $ isHtml hs -> return res
+            _ -> do
+                let renum = responseEnumerator res
+                return $ ResponseEnumerator $ \f -> renum $ \status headers ->
+                    if isHtml headers
+                        then do
                             let (isEnc, headers') = fixHeaders id headers
                             let fixEnc x =
                                     if isEnc
                                         then joinI $ ungzip $$ x
                                         else x
                             joinI $ builderToByteString $$ fixEnc $ joinI $ insideHead "<script>setInterval(function(){var x;if(window.XMLHttpRequest){x=new XMLHttpRequest();}else{x=new ActiveXObject(\"Microsoft.XMLHTTP\");}x.open(\"GET\",\"/_ping\",false);x.send();},60000)</script>" $$ joinI $ EL.map fromByteString $$ f status headers'
-                    _ -> f status headers
+                        else f status headers
 
 insideHead :: S.ByteString -> Enumeratee S.ByteString S.ByteString IO a
 insideHead toInsert =
