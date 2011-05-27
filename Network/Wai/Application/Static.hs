@@ -342,11 +342,13 @@ data StaticSettings = StaticSettings
     }
 
 defaultMkRedirect :: Pieces -> ByteString -> S8.ByteString
-defaultMkRedirect pieces newPath =
-  let relDir = TE.encodeUtf8 (relativeDirFromPieces pieces) in
-    S8.append relDir (if (S8.last relDir) == '/' && (S8.head newPath) == '/'
-                       then S8.tail newPath
-                       else newPath)
+defaultMkRedirect pieces newPath
+    | S8.null newPath || S8.null relDir ||
+      S8.last relDir /= '/' || S8.head newPath /= '/' =
+        relDir `S8.append` newPath
+    | otherwise = relDir `S8.append` S8.tail newPath
+  where
+    relDir = TE.encodeUtf8 (relativeDirFromPieces pieces)
 
 defaultStaticSettings :: CacheSettings -> StaticSettings
 defaultStaticSettings isStaticFile = StaticSettings { ssFolder = fileSystemLookup "static"
