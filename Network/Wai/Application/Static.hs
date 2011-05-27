@@ -34,6 +34,10 @@ module Network.Wai.Application.Static
     , CacheSettings (..)
       -- should be moved to common helper
     , unfixPathName
+      -- new stuff to be sorted
+    , fileSystemLookup
+    , defaultMkRedirect
+    , File (..)
     ) where
 
 import qualified Network.Wai as W
@@ -177,12 +181,11 @@ data CheckPieces
     = Redirect Pieces
     | Forbidden
     | NotFound
-    | FileResponse FilePath
+    | FileResponse File
     | NotModified
-    | DirectoryResponse FilePath
+    | DirectoryResponse Folder
     -- TODO: add file size
     | SendContent MimeType L.ByteString
-    deriving Show
 
 safeInit  :: [a] -> [a]
 safeInit [] = []
@@ -214,9 +217,9 @@ pathFromPieces :: FilePath -> Pieces -> FilePath
 pathFromPieces prefix pieces =
         concat $ prefix : map ((:) '/') (map unfixPathName $ map T.unpack pieces)
 
-checkPieces :: FilePath      -- ^ static file prefix
-            -> [FilePath]    -- ^ List of default index files. Cannot contain slashes.
-            -> Pieces        -- ^ parsed request
+checkPieces :: (Pieces -> IO FileLookup) -- ^ file lookup function
+            -> [T.Text]                  -- ^ List of default index files. Cannot contain slashes.
+            -> Pieces                    -- ^ parsed request
             -> CacheSettings
             -> W.Request
             -> IO CheckPieces
@@ -224,12 +227,11 @@ checkPieces _ _ [".hidden", "folder.png"] _ _ =
     return $ SendContent "image/png" $ L.fromChunks [$(embedFile "folder.png")]
 checkPieces _ _ [".hidden", "haskell.png"] _ _ =
     return $ SendContent "image/png" $ L.fromChunks [$(embedFile "haskell.png")]
-checkPieces prefix indices pieces cache req
+checkPieces fileLookup indices pieces cache req
     | any unsafe pieces = return Forbidden
     | any T.null $ safeInit pieces =
         return $ Redirect $ filterButLast (not . T.null) pieces
     | otherwise = do
-        let fp = pathFromPieces prefix pieces
         let (isFile, isFolder) =
                 case () of
                     ()
@@ -237,7 +239,8 @@ checkPieces prefix indices pieces cache req
                         | T.null (last pieces) -> (False, True)
                         | otherwise -> (True, False)
 
-        if not isFile then uncached fp isFile isFolder
+        let fp = undefined
+        if not isFile then uncached isFile isFolder
            else
              case cache of
                ETag ioLookup -> do
@@ -246,67 +249,81 @@ checkPieces prefix indices pieces cache req
                  metag <- ioLookup fp
                  case debug (metag, mlastEtag) of
                    (Just hash, Just lastHash) | hash == lastHash -> return NotModified
-                   _ -> trace "ETAG: no cache match" uncached fp isFile isFolder
+                   _ -> trace "ETAG: no cache match" uncached isFile isFolder
                Forever isStaticFile -> 
                    if isStaticFile fp (S8.drop 1 $ W.rawQueryString req) &&
                        (isJust $ lookup "If-Modified-Since" (W.requestHeaders req)) &&
                        (isNothing $ lookup "If-Unmodified-Since" (W.requestHeaders req))
                        then return NotModified
-                       else trace "Static: no cache match" uncached fp isFile isFolder
-               NoCache    -> trace "NoCache" uncached fp isFile isFolder
+                       else trace "Static: no cache match" uncached isFile isFolder
+               NoCache    -> trace "NoCache" uncached isFile isFolder
 
 
   where
-    uncached fp isFile isFolder = do
-      fe <- doesFileExist $ stripTrailingSlash fp
-      case (fe, isFile) of
-          (True, True)  -> return $ FileResponse fp
-          (True, False) -> return $ Redirect $ init pieces
-          (False, _) -> do
-              de <- doesDirectoryExist fp
-              if not de
-                  then return NotFound
-                  else do
-                      x <- checkIndices fp indices
-                      case x of
-                          Just index -> return $ Redirect $ setLast pieces (T.pack index)
-                          Nothing ->
-                              if isFolder
-                                  then return $ DirectoryResponse fp
-                                  else return $ Redirect $ pieces ++ [""]
+    uncached isFile isFolder = do
+      fl <- fileLookup pieces
+      case (fl, isFile) of
+          (FLDoesNotExist, _) -> return NotFound
+          (FLFile file, True)  -> return $ FileResponse file
+          (FLFile{}, False) -> return $ Redirect $ init pieces
+          (FLFolder folder@(Folder contents), _) -> do
+              case checkIndices $ map feName $ filter feIsFile contents of
+                  Just index -> return $ Redirect $ setLast pieces index
+                  Nothing ->
+                      if isFolder
+                          then return $ DirectoryResponse folder
+                          else return $ Redirect $ pieces ++ [""]
 
     setLast [] x = [x]
     setLast [""] x = [x]
     setLast (a:b) x = a : setLast b x
-    checkIndices _ [] = return Nothing
-    checkIndices fp (i:is) = do
-        let fp' = fp ++ '/' : i
-        fe <- doesFileExist fp'
-        if fe
-            then return $ Just i
-            else checkIndices fp is
 
-type Listing = (Pieces -> FilePath -> IO L.ByteString)
+    checkIndices :: [T.Text] -> Maybe T.Text
+    checkIndices contents =
+        go indices
+      where
+        go [] = Nothing
+        go (i:is)
+            | i `elem` contents = Just i
+            | otherwise = go is
+
+type Listing = (Pieces -> Folder -> IO L.ByteString)
 
 data StaticDirListing = ListingForbidden | StaticDirListing {
     ssListing :: Listing
-  , ssIndices :: [FilePath]
+  , ssIndices :: [T.Text]
 }
 
 defaultDirListing :: StaticDirListing
 defaultDirListing = StaticDirListing defaultListing []
 
 -- IO is for development mode
-type CheckHashParam = (FilePath -> S8.ByteString -> Bool)
-data CacheSettings = NoCache | Forever CheckHashParam | ETag (FilePath -> IO (Maybe S8.ByteString))
+type CheckHashParam = (File -> S8.ByteString -> Bool)
+data CacheSettings = NoCache | Forever CheckHashParam | ETag (File -> IO (Maybe S8.ByteString))
 
 oneYear :: Int
 oneYear = 60 * 60 * 24 * 365
 
+data FileLookup = FLFolder Folder | FLFile File | FLDoesNotExist
+
+data Folder = Folder [FolderEntry] -- Bool: True = file, False = folder
+
+data FolderEntry = FolderEntry
+    { feName :: T.Text
+    , feIsFile :: Bool
+    , feGetMetaData :: IO (Maybe MetaData)
+    }
+
+data File = File
+    { fileGetSize :: IO Int
+    , fileToResponse :: H.Status -> H.ResponseHeaders -> W.Response
+    , fileName :: T.Text
+    }
+
 data StaticSettings = StaticSettings
-    { ssFolder :: FilePath
+    { ssFolder :: Pieces -> IO FileLookup
     , ssMkRedirect :: Pieces -> ByteString -> S8.ByteString
-    , ssGetMimeType :: FilePath -> IO MimeType
+    , ssGetMimeType :: File -> IO MimeType
     , ssDirListing :: StaticDirListing
     , ssCacheSettings :: CacheSettings
     }
@@ -319,20 +336,46 @@ defaultMkRedirect pieces newPath =
                        else newPath)
 
 defaultStaticSettings :: CacheSettings -> StaticSettings
-defaultStaticSettings isStaticFile = StaticSettings { ssFolder = "static"
+defaultStaticSettings isStaticFile = StaticSettings { ssFolder = fileSystemLookup "static"
   , ssMkRedirect = defaultMkRedirect
-  , ssGetMimeType = return . defaultMimeTypeByExt
+  , ssGetMimeType = return . defaultMimeTypeByExt . T.unpack . fileName
   , ssDirListing = defaultDirListing
   , ssCacheSettings = isStaticFile
 }
 defaultPublicSettings :: CacheSettings -> StaticSettings
-defaultPublicSettings etags = StaticSettings { ssFolder = "public"
+defaultPublicSettings etags = StaticSettings { ssFolder = fileSystemLookup "public"
   , ssMkRedirect = defaultMkRedirect
-  , ssGetMimeType = return . defaultMimeTypeByExt
+  , ssGetMimeType = return . defaultMimeTypeByExt . T.unpack . fileName
   , ssDirListing = ListingForbidden
   , ssCacheSettings = etags
 }
 
+fileSystemLookup :: FilePath -> Pieces -> IO FileLookup
+fileSystemLookup prefix pieces = do
+    let fp = pathFromPieces prefix pieces
+    fe <- doesFileExist fp
+    if fe
+        then do
+            return $ FLFile File
+                { fileGetSize = fmap (fromIntegral . fileSize) $ getFileStatus fp
+                , fileToResponse = \s h -> W.ResponseFile s h fp Nothing
+                , fileName = last pieces
+                }
+        else do
+            de <- doesDirectoryExist fp
+            if de
+                then do
+                    entries <- getDirectoryContents fp >>= (mapM $ \name -> do
+                        let name' = T.pack name -- FIXME fix/unfix, not sure which
+                        let fp' = fp ++ '/' : name
+                        fe' <- doesFileExist fp'
+                        return FolderEntry
+                            { feName = name'
+                            , feIsFile = fe'
+                            , feGetMetaData = getMetaData fp name
+                            })
+                    return $ FLFolder $ Folder entries
+                else return FLDoesNotExist
 
 staticApp :: StaticSettings -> W.Application
 staticApp set req = do
@@ -356,14 +399,14 @@ staticAppPieces ss@StaticSettings{} pieces req = liftIO $ do
                       ListingForbidden      -> []
     cp <- checkPieces (ssFolder ss) indices pieces cache req
     case cp of
-        FileResponse fp -> do
-            mimetype <- (ssGetMimeType ss) fp
-            filesize <- fileSize `fmap` getFileStatus fp
-            ch <- setCacheHeaders cache fp
-            return $ W.ResponseFile H.status200
-                        ( [ ("Content-Type", mimetype)
-                          , ("Content-Length", S8.pack $ show filesize)
-                          ] ++ ch ) fp Nothing
+        FileResponse file -> do
+            mimetype <- ssGetMimeType ss file
+            filesize <- fileGetSize file
+            ch <- setCacheHeaders cache file
+            let headers = ("Content-Type", mimetype)
+                        : ("Content-Length", S8.pack $ show filesize)
+                        : ch
+            return $ fileToResponse file H.status200 headers
         NotModified ->
             return $ W.responseLBS statusNotModified
                         [ ("Content-Type", "text/plain")
@@ -405,7 +448,7 @@ staticAppPieces ss@StaticSettings{} pieces req = liftIO $ do
                         ] "File not found"
     where
       -- expires header: formatTime "%a, %d-%b-%Y %X GMT"
-        setCacheHeaders :: CacheSettings -> FilePath -> IO H.ResponseHeaders
+        setCacheHeaders :: CacheSettings -> File -> IO H.ResponseHeaders
         setCacheHeaders (Forever isStaticFile) fp = return $
             if isStaticFile fp (S8.drop 1 $ W.rawQueryString req)
               then [("Cache-Control", S8.append "max-age=" $ S8.pack $ show oneYear)]
@@ -443,9 +486,8 @@ unfixPathName = S8.unpack . TE.encodeUtf8 . T.pack
 
 -- Code below taken from Happstack: http://patch-tag.com/r/mae/happstack/snapshot/current/content/pretty/happstack-server/src/Happstack/Server/FileServe/BuildingBlocks.hs
 defaultListing :: Listing
-defaultListing pieces localPath = do
-    fps <- getDirectoryContents localPath
-    fps' <- mapM (getMetaData localPath) fps
+defaultListing pieces (Folder contents) = do
+    fps' <- mapM feGetMetaData contents
     let isTop = null pieces || pieces == [""]
     let fps'' = if isTop then fps' else Just (FolderMetaData "..") : fps'
     return $ HU.renderHtml
