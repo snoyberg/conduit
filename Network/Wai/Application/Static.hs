@@ -216,13 +216,19 @@ stripTrailingSlash "/" = ""
 stripTrailingSlash "" = ""
 stripTrailingSlash (x:xs) = x : stripTrailingSlash xs
 
-type Pieces = [T.Text]
+data Piece = Piece
+    { pieceRaw :: FilePath
+    , piecePretty :: T.Text
+    }
+    deriving (Eq, Ord)
+type Pieces = [Piece]
+
 relativeDirFromPieces :: Pieces -> T.Text
 relativeDirFromPieces pieces = T.concat $ map (const "../") (drop 1 pieces) -- last piece is not a dir
 
 pathFromPieces :: FilePath -> Pieces -> FilePath
 pathFromPieces prefix pieces =
-        concat $ prefix : map ((:) '/') (map unfixPathName $ map T.unpack pieces)
+        concat $ prefix : map ((:) '/') (map pieceRaw pieces)
 
 checkPieces :: (Pieces -> IO FileLookup) -- ^ file lookup function
             -> [T.Text]                  -- ^ List of default index files. Cannot contain slashes.
@@ -230,20 +236,20 @@ checkPieces :: (Pieces -> IO FileLookup) -- ^ file lookup function
             -> CacheSettings
             -> W.Request
             -> IO CheckPieces
-checkPieces _ _ [".hidden", "folder.png"] _ _ =
+checkPieces _ _ [Piece _ ".hidden", Piece _ "folder.png"] _ _ =
     return $ SendContent "image/png" $ L.fromChunks [$(embedFile "folder.png")]
-checkPieces _ _ [".hidden", "haskell.png"] _ _ =
+checkPieces _ _ [Piece _ ".hidden", Piece _ "haskell.png"] _ _ =
     return $ SendContent "image/png" $ L.fromChunks [$(embedFile "haskell.png")]
 checkPieces fileLookup indices pieces cache req
-    | any unsafe pieces = return Forbidden
-    | any T.null $ safeInit pieces =
-        return $ Redirect $ filterButLast (not . T.null) pieces
+    | any (unsafe . piecePretty) pieces = return Forbidden
+    | any (T.null . piecePretty) $ safeInit pieces =
+        return $ Redirect $ filterButLast (not . T.null . piecePretty) pieces
     | otherwise = do
         let (isFile, isFolder) =
                 case () of
                     ()
                         | null pieces -> (True, True)
-                        | T.null (last pieces) -> (False, True)
+                        | T.null $ piecePretty (last pieces) -> (False, True)
                         | otherwise -> (True, False)
 
         let fp = undefined
@@ -275,14 +281,14 @@ checkPieces fileLookup indices pieces cache req
           (FLFile{}, False) -> return $ Redirect $ init pieces
           (FLFolder folder@(Folder contents), _) -> do
               case checkIndices $ map feName $ filter feIsFile contents of
-                  Just index -> return $ Redirect $ setLast pieces index
+                  Just index -> return $ Redirect $ setLast pieces $ Piece (T.unpack index) index
                   Nothing ->
                       if isFolder
                           then return $ DirectoryResponse folder
-                          else return $ Redirect $ pieces ++ [""]
+                          else return $ Redirect $ pieces ++ [Piece "" ""]
 
     setLast [] x = [x]
-    setLast [""] x = [x]
+    setLast [Piece "" ""] x = [x]
     setLast (a:b) x = a : setLast b x
 
     checkIndices :: [T.Text] -> Maybe T.Text
@@ -366,7 +372,7 @@ fileSystemLookup prefix pieces = do
             return $ FLFile File
                 { fileGetSize = fmap (fromIntegral . fileSize) $ getFileStatus fp
                 , fileToResponse = \s h -> W.ResponseFile s h fp Nothing
-                , fileName = last pieces
+                , fileName = piecePretty $ last pieces
                 }
         else do
             de <- doesDirectoryExist fp
@@ -390,9 +396,11 @@ data EmbeddedEntry = EEFile S8.ByteString | EEFolder Embedded
 
 embeddedLookup :: Embedded -> Pieces -> IO FileLookup -- FIXME broken for unicode path names
 embeddedLookup root pieces =
-    return $ elookup pieces root
+    return $ elookup (map piecePretty pieces) root
   where
+    elookup  :: [T.Text] -> Embedded -> FileLookup
     elookup [] x = FLFolder $ Folder $ map toEntry $ Map.toList x
+    elookup [""] x = elookup [] x
     elookup (p:ps) x =
         case Map.lookup p x of
             Nothing -> FLDoesNotExist
@@ -412,12 +420,12 @@ toEntry (name, ee) = FolderEntry
     , feGetMetaData = return $ Just $
         case ee of
             EEFile bs -> FileMetaData
-                { mdName = T.unpack name
+                { mdName = name
                 , mdModified = 0 -- FIXME
                 , mdSize = fromIntegral $ S8.length bs
                 }
             EEFolder _ -> FolderMetaData
-                { mdName = T.unpack name
+                { mdName = name
                 }
     }
 
@@ -426,20 +434,21 @@ toEmbedded fps =
     go texts
   where
     texts = map (\(x, y) -> (filter (not . T.null) $ toPieces x, y)) fps
+    toPiece fp = T.pack $ fixPathName fp
     toPieces "" = []
     toPieces x =
         let (y, z) = break (== '/') x
-         in T.pack y : toPieces (drop 1 z)
-    go :: [(Pieces, S8.ByteString)] -> Embedded
+         in toPiece y : toPieces (drop 1 z)
+    go :: [([T.Text], S8.ByteString)] -> Embedded
     go orig =
         Map.fromList $ map (second go') hoisted
       where
         next = map (\(x, y) -> (head x, (tail x, y))) orig
-        grouped :: [[(T.Text, (Pieces, S8.ByteString))]]
+        grouped :: [[(T.Text, ([T.Text], S8.ByteString))]]
         grouped = groupBy ((==) `on` fst) $ sortBy (comparing fst) next
-        hoisted :: [(T.Text, [(Pieces, S8.ByteString)])]
+        hoisted :: [(T.Text, [([T.Text], S8.ByteString)])]
         hoisted = map (fst . head &&& map snd) grouped
-    go' :: [(Pieces, S8.ByteString)] -> EmbeddedEntry
+    go' :: [([T.Text], S8.ByteString)] -> EmbeddedEntry
     go' [([], content)] = EEFile content
     go' x = EEFolder $ go $ filter (\y -> not $ null $ fst y) x
 
@@ -451,9 +460,13 @@ bsToFile name bs = File
     }
 
 staticApp :: StaticSettings -> W.Application
-staticApp set req = do
-    let pieces = W.pathInfo req
-    staticAppPieces set pieces req
+staticApp set req =
+    staticAppPieces set (map toPiece $ W.pathInfo req) req
+  where
+    toPiece t = Piece
+        { piecePretty = t
+        , pieceRaw = unfixPathName $ T.unpack t
+        }
 
 status304, statusNotModified :: H.Status
 status304 = H.Status 304 "Not Modified"
@@ -501,13 +514,13 @@ staticAppPieces ss@StaticSettings{} pieces req = liftIO $ do
                   -- TODO: set Content-Length
                 ] lbs
         Redirect pieces' -> do
-            let loc = (ssMkRedirect ss) pieces' $ toByteString (H.encodePathSegments pieces')
+            let loc = (ssMkRedirect ss) pieces' $ toByteString (H.encodePathSegments $ map piecePretty pieces')
 
             let loc' =
                     -- relativeDirFromPieces pieces = T.concat $ map (const "../") (drop 1 pieces) -- last piece is not a dir
                     -- (ssMkRedirect ss) pieces' $ encodePathInfo pieces' [] 
                     toByteString $
-                    foldr mappend (H.encodePathSegments pieces') -- FIXME use Text
+                    foldr mappend (H.encodePathSegments $ map piecePretty pieces') -- FIXME is this correct?
                     $ map (const $ copyByteString "../") $ drop 1 pieces
             return $ W.responseLBS H.status301
                 [ ("Content-Type", "text/plain")
@@ -561,12 +574,12 @@ unfixPathName = S8.unpack . TE.encodeUtf8 . T.pack
 defaultListing :: Listing
 defaultListing pieces (Folder contents) = do
     fps' <- mapM feGetMetaData contents
-    let isTop = null pieces || pieces == [""]
+    let isTop = null pieces || pieces == [Piece "" ""]
     let fps'' = if isTop then fps' else Just (FolderMetaData "..") : fps'
     return $ HU.renderHtml
            $ H.html $ do
              H.head $ do
-                 let title = T.unpack $ T.intercalate "/" pieces
+                 let title = T.unpack $ T.intercalate "/" $ map piecePretty pieces
                  let title' = if null title then "root folder" else title
                  H.title $ H.string title'
                  H.style $ H.string $ unlines [ "table { margin: 0 auto; width: 760px; border-collapse: collapse; font-family: 'sans-serif'; }"
@@ -584,7 +597,7 @@ defaultListing pieces (Folder contents) = do
                                               , "a { text-decoration: none }"
                                               ]
              H.body $ do
-                 H.h1 $ showFolder $ map T.unpack $ filter (not . T.null) pieces
+                 H.h1 $ showFolder $ map (T.unpack . piecePretty) $ filter (not . T.null . piecePretty) pieces -- FIXME don't unpack
                  renderDirectoryContentsTable haskellSrc folderSrc $ catMaybes fps''
   where
     image x = T.unpack $ T.concat [(relativeDirFromPieces pieces), ".hidden/", x, ".png"]
@@ -631,7 +644,7 @@ renderDirectoryContentsTable haskellSrc folderSrc fps =
                               then return ()
                               else H.img ! A.src (H.stringValue folderSrc)
                                          ! A.alt (H.stringValue "Folder")
-                   H.td (H.a ! A.href (H.stringValue $ mdName' md ++ if mdIsFile md then "" else "/")  $ H.string $ mdName' md)
+                   H.td (H.a ! A.href (H.stringValue $ T.unpack (mdName md) ++ if mdIsFile md then "" else "/")  $ H.string $ T.unpack (mdName md))
                    H.td ! A.class_ (H.stringValue "date") $ H.string $
                        if mdIsFile md
                            then formatCalendarTime defaultTimeLocale "%d-%b-%Y %X" $ mdModified md
@@ -655,17 +668,14 @@ renderDirectoryContentsTable haskellSrc folderSrc fps =
       addCommas' (a:b:c:d:e) = a : b : c : ',' : addCommas' (d : e)
       addCommas' x = x
 
-mdName' :: MetaData -> FilePath
-mdName' = fixPathName . mdName
-
 data MetaData =
     FileMetaData
-        { mdName :: FilePath
+        { mdName :: T.Text
         , mdModified :: EpochTime
         , mdSize :: FileOffset
         }
   | FolderMetaData
-        { mdName :: FilePath
+        { mdName :: T.Text
         }
   deriving Show
 
@@ -681,12 +691,13 @@ getMetaData _ ('.':_) = return Nothing
 getMetaData localPath fp = do
     let fp' = localPath ++ '/' : fp
     fe <- doesFileExist fp'
+    let fpPretty = T.pack $ fixPathName fp
     if fe
         then do
             fs <- getFileStatus fp'
             let modTime = modificationTime fs
             let count = fileSize fs
-            return $ Just $ FileMetaData fp modTime count
+            return $ Just $ FileMetaData fpPretty modTime count
         else do
             de <- doesDirectoryExist fp'
-            return $ if de then Just (FolderMetaData fp) else Nothing
+            return $ if de then Just (FolderMetaData fpPretty) else Nothing
