@@ -36,8 +36,10 @@ module Network.Wai.Application.Static
     , unfixPathName
       -- new stuff to be sorted
     , fileSystemLookup
+    , embeddedLookup
     , defaultMkRedirect
     , File (..)
+    , toEmbedded
     ) where
 
 import qualified Network.Wai as W
@@ -59,7 +61,7 @@ import qualified Text.Blaze.Html5            as H
 import qualified Text.Blaze.Renderer.Utf8    as HU
 import qualified Text.Blaze.Html5.Attributes as A
 
-import Blaze.ByteString.Builder (toByteString, copyByteString)
+import Blaze.ByteString.Builder (toByteString, copyByteString, fromByteString)
 import Data.Monoid (mappend)
 
 import Data.Time
@@ -72,6 +74,11 @@ import Data.FileEmbed (embedFile)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import qualified Data.Text.Encoding.Error as TEE
+
+import Control.Arrow ((&&&), second)
+import Data.List (groupBy, sortBy)
+import Data.Function (on)
+import Data.Ord (comparing)
 
 #ifdef PRINT
 import Debug.Trace
@@ -376,6 +383,72 @@ fileSystemLookup prefix pieces = do
                             })
                     return $ FLFolder $ Folder entries
                 else return FLDoesNotExist
+
+type Embedded = Map.Map T.Text EmbeddedEntry
+
+data EmbeddedEntry = EEFile S8.ByteString | EEFolder Embedded
+
+embeddedLookup :: Embedded -> Pieces -> IO FileLookup -- FIXME broken for unicode path names
+embeddedLookup root pieces =
+    return $ elookup pieces root
+  where
+    elookup [] x = FLFolder $ Folder $ map toEntry $ Map.toList x
+    elookup (p:ps) x =
+        case Map.lookup p x of
+            Nothing -> FLDoesNotExist
+            Just (EEFile f) ->
+                case ps of
+                    [] -> FLFile $ bsToFile p f
+                    _ -> FLDoesNotExist
+            Just (EEFolder y) -> elookup ps y
+
+toEntry :: (T.Text, EmbeddedEntry) -> FolderEntry
+toEntry (name, ee) = FolderEntry
+    { feName = name
+    , feIsFile =
+        case ee of
+            EEFile{} -> True
+            EEFolder{} -> False
+    , feGetMetaData = return $ Just $
+        case ee of
+            EEFile bs -> FileMetaData
+                { mdName = T.unpack name
+                , mdModified = 0 -- FIXME
+                , mdSize = fromIntegral $ S8.length bs
+                }
+            EEFolder _ -> FolderMetaData
+                { mdName = T.unpack name
+                }
+    }
+
+toEmbedded :: [(FilePath, S8.ByteString)] -> Embedded
+toEmbedded fps =
+    go texts
+  where
+    texts = map (\(x, y) -> (filter (not . T.null) $ toPieces x, y)) fps
+    toPieces "" = []
+    toPieces x =
+        let (y, z) = break (== '/') x
+         in T.pack y : toPieces (drop 1 z)
+    go :: [(Pieces, S8.ByteString)] -> Embedded
+    go orig =
+        Map.fromList $ map (second go') hoisted
+      where
+        next = map (\(x, y) -> (head x, (tail x, y))) orig
+        grouped :: [[(T.Text, (Pieces, S8.ByteString))]]
+        grouped = groupBy ((==) `on` fst) $ sortBy (comparing fst) next
+        hoisted :: [(T.Text, [(Pieces, S8.ByteString)])]
+        hoisted = map (fst . head &&& map snd) grouped
+    go' :: [(Pieces, S8.ByteString)] -> EmbeddedEntry
+    go' [([], content)] = EEFile content
+    go' x = EEFolder $ go $ filter (\y -> not $ null $ fst y) x
+
+bsToFile :: T.Text -> S8.ByteString -> File
+bsToFile name bs = File
+    { fileGetSize = return $ S8.length bs
+    , fileToResponse = \s h -> W.ResponseBuilder s h $ fromByteString bs
+    , fileName = name
+    }
 
 staticApp :: StaticSettings -> W.Application
 staticApp set req = do
