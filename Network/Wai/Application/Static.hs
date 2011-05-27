@@ -252,7 +252,6 @@ checkPieces fileLookup indices pieces cache req
                         | T.null $ piecePretty (last pieces) -> (False, True)
                         | otherwise -> (True, False)
 
-        let fp = undefined
         if not isFile then uncached isFile isFolder
            else
              case cache of
@@ -311,7 +310,8 @@ defaultDirListing :: StaticDirListing
 defaultDirListing = StaticDirListing defaultListing []
 
 -- IO is for development mode
-type CheckHashParam = (File -> S8.ByteString -> Bool)
+-- FIXME: Greg
+type CheckHashParam = (File -> S8.ByteString -> Bool) -- FIXME Greg: Can you explain the purposes of the parameters here?
 data CacheSettings = NoCache | Forever CheckHashParam | ETag (File -> IO (Maybe S8.ByteString))
 
 oneYear :: Int
@@ -379,7 +379,7 @@ fileSystemLookup prefix pieces = do
             if de
                 then do
                     entries <- getDirectoryContents fp >>= (mapM $ \name -> do
-                        let name' = T.pack name -- FIXME fix/unfix, not sure which
+                        let name' = T.pack name
                         let fp' = fp ++ '/' : name
                         fe' <- doesFileExist fp'
                         return FolderEntry
@@ -394,12 +394,13 @@ type Embedded = Map.Map T.Text EmbeddedEntry
 
 data EmbeddedEntry = EEFile S8.ByteString | EEFolder Embedded
 
-embeddedLookup :: Embedded -> Pieces -> IO FileLookup -- FIXME broken for unicode path names
+embeddedLookup :: Embedded -> Pieces -> IO FileLookup
 embeddedLookup root pieces =
     return $ elookup (map piecePretty pieces) root
   where
+    modified = 0 -- FIXME
     elookup  :: [T.Text] -> Embedded -> FileLookup
-    elookup [] x = FLFolder $ Folder $ map toEntry $ Map.toList x
+    elookup [] x = FLFolder $ Folder $ map (toEntry modified) $ Map.toList x
     elookup [""] x = elookup [] x
     elookup (p:ps) x =
         case Map.lookup p x of
@@ -410,8 +411,8 @@ embeddedLookup root pieces =
                     _ -> FLDoesNotExist
             Just (EEFolder y) -> elookup ps y
 
-toEntry :: (T.Text, EmbeddedEntry) -> FolderEntry
-toEntry (name, ee) = FolderEntry
+toEntry :: EpochTime -> (T.Text, EmbeddedEntry) -> FolderEntry
+toEntry modified (name, ee) = FolderEntry
     { feName = name
     , feIsFile =
         case ee of
@@ -421,7 +422,7 @@ toEntry (name, ee) = FolderEntry
         case ee of
             EEFile bs -> FileMetaData
                 { mdName = name
-                , mdModified = 0 -- FIXME
+                , mdModified = modified
                 , mdSize = fromIntegral $ S8.length bs
                 }
             EEFolder _ -> FolderMetaData
