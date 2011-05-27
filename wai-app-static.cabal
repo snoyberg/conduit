@@ -1,5 +1,5 @@
 name:            wai-app-static
-version:         0.4
+version:         0.3.0
 license:         BSD3
 license-file:    LICENSE
 author:          Michael Snoyman <michael@snoyman.com>
