@@ -68,7 +68,6 @@ import Data.Time
 import Data.Time.Clock.POSIX
 import System.Locale (defaultTimeLocale)
 
-import Data.List (sortBy)
 import Data.FileEmbed (embedFile)
 
 import qualified Data.Text as T
@@ -252,39 +251,33 @@ checkPieces fileLookup indices pieces cache req
                         | T.null $ piecePretty (last pieces) -> (False, True)
                         | otherwise -> (True, False)
 
-        if not isFile then uncached isFile isFolder
-           else
-             case cache of
-               ETag ioLookup -> do
-                 -- No support for If-Match
-                 let mlastEtag = lookup "If-None-Match" (W.requestHeaders req)
-                 metag <- ioLookup fp
-                 case debug (metag, mlastEtag) of
-                   (Just hash, Just lastHash) | hash == lastHash -> return NotModified
-                   _ -> trace "ETAG: no cache match" uncached isFile isFolder
-               Forever isStaticFile -> 
-                   if isStaticFile fp (S8.drop 1 $ W.rawQueryString req) &&
-                       (isJust $ lookup "If-Modified-Since" (W.requestHeaders req)) &&
-                       (isNothing $ lookup "If-Unmodified-Since" (W.requestHeaders req))
-                       then return NotModified
-                       else trace "Static: no cache match" uncached isFile isFolder
-               NoCache    -> trace "NoCache" uncached isFile isFolder
-
-
+        fl <- fileLookup pieces
+        case (fl, isFile) of
+            (FLDoesNotExist, _) -> return NotFound
+            (FLFile file, True)  -> handleCache file cache
+            (FLFile{}, False) -> return $ Redirect $ init pieces
+            (FLFolder folder@(Folder contents), _) -> do
+                case checkIndices $ map feName $ filter feIsFile contents of
+                    Just index -> return $ Redirect $ setLast pieces $ Piece (T.unpack index) index
+                    Nothing ->
+                        if isFolder
+                            then return $ DirectoryResponse folder
+                            else return $ Redirect $ pieces ++ [Piece "" ""]
   where
-    uncached isFile isFolder = do
-      fl <- fileLookup pieces
-      case (fl, isFile) of
-          (FLDoesNotExist, _) -> return NotFound
-          (FLFile file, True)  -> return $ FileResponse file
-          (FLFile{}, False) -> return $ Redirect $ init pieces
-          (FLFolder folder@(Folder contents), _) -> do
-              case checkIndices $ map feName $ filter feIsFile contents of
-                  Just index -> return $ Redirect $ setLast pieces $ Piece (T.unpack index) index
-                  Nothing ->
-                      if isFolder
-                          then return $ DirectoryResponse folder
-                          else return $ Redirect $ pieces ++ [Piece "" ""]
+    handleCache file NoCache = trace "NoCache" $ return (FileResponse file)
+    handleCache file (ETag ioLookup) = do
+        -- No support for If-Match
+         let mlastEtag = lookup "If-None-Match" (W.requestHeaders req)
+         metag <- ioLookup file
+         case debug (metag, mlastEtag) of
+           (Just hash, Just lastHash) | hash == lastHash -> return NotModified
+           _ -> trace "ETAG: no cache match" (return $ FileResponse file)
+    handleCache file (Forever isStaticFile) = do
+           if isStaticFile file (S8.drop 1 $ W.rawQueryString req) &&
+               (isJust $ lookup "If-Modified-Since" (W.requestHeaders req)) &&
+               (isNothing $ lookup "If-Unmodified-Since" (W.requestHeaders req))
+               then return NotModified
+               else trace "Static: no cache match" (return $ FileResponse file)
 
     setLast [] x = [x]
     setLast [Piece "" ""] x = [x]
@@ -517,12 +510,14 @@ staticAppPieces ss@StaticSettings{} pieces req = liftIO $ do
         Redirect pieces' -> do
             let loc = (ssMkRedirect ss) pieces' $ toByteString (H.encodePathSegments $ map piecePretty pieces')
 
+            {- FIXME seems unnecessary
             let loc' =
                     -- relativeDirFromPieces pieces = T.concat $ map (const "../") (drop 1 pieces) -- last piece is not a dir
                     -- (ssMkRedirect ss) pieces' $ encodePathInfo pieces' [] 
                     toByteString $
                     foldr mappend (H.encodePathSegments $ map piecePretty pieces') -- FIXME is this correct?
                     $ map (const $ copyByteString "../") $ drop 1 pieces
+            -}
             return $ W.responseLBS H.status301
                 [ ("Content-Type", "text/plain")
                 , ("Location", loc)
