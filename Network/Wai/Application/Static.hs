@@ -40,6 +40,7 @@ module Network.Wai.Application.Static
     , defaultMkRedirect
     , File (..)
     , toEmbedded
+    , StaticDirListing (..)
     ) where
 
 import qualified Network.Wai as W
@@ -294,13 +295,13 @@ checkPieces fileLookup indices pieces cache req
 
 type Listing = (Pieces -> Folder -> IO L.ByteString)
 
-data StaticDirListing = ListingForbidden | StaticDirListing {
-    ssListing :: Listing
+data StaticDirListing = StaticDirListing {
+    ssListing :: Maybe Listing
   , ssIndices :: [T.Text]
 }
 
 defaultDirListing :: StaticDirListing
-defaultDirListing = StaticDirListing defaultListing []
+defaultDirListing = StaticDirListing (Just defaultListing) []
 
 -- IO is for development mode
 
@@ -358,7 +359,7 @@ defaultPublicSettings :: CacheSettings -> StaticSettings
 defaultPublicSettings etags = StaticSettings { ssFolder = fileSystemLookup "public"
   , ssMkRedirect = defaultMkRedirect
   , ssGetMimeType = return . defaultMimeTypeByExt . T.unpack . fileName
-  , ssDirListing = ListingForbidden
+  , ssDirListing = StaticDirListing Nothing []
   , ssCacheSettings = etags
 }
 
@@ -482,7 +483,6 @@ staticAppPieces ss@StaticSettings{} pieces req = liftIO $ do
     let cache = ssCacheSettings ss
     let indices = case ssDirListing ss of
                       StaticDirListing _ is -> is
-                      ListingForbidden      -> []
     cp <- checkPieces (ssFolder ss) indices pieces cache req
     case cp of
         FileResponse file -> do
@@ -499,12 +499,12 @@ staticAppPieces ss@StaticSettings{} pieces req = liftIO $ do
                         ] "Not Modified"
         DirectoryResponse fp ->
             case ssDirListing ss of
-                StaticDirListing f _ -> do
+                StaticDirListing (Just f) _ -> do
                     lbs <- f pieces fp
                     return $ W.responseLBS H.status200
                         [ ("Content-Type", "text/html; charset=utf-8")
                         ] lbs
-                ListingForbidden -> return $ W.responseLBS H.status403
+                StaticDirListing Nothing _ -> return $ W.responseLBS H.status403
                         [ ("Content-Type", "text/plain")
                         ] "Directory listings disabled"
         SendContent mt lbs -> do
