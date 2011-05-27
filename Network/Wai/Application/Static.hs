@@ -303,7 +303,13 @@ defaultDirListing :: StaticDirListing
 defaultDirListing = StaticDirListing defaultListing []
 
 -- IO is for development mode
--- FIXME: Greg
+
+-- FIXME: Greg: Is the idea with ETag that an implementation could cache the
+-- hashes at compile time and then not need to recompute them? It might make
+-- more sense to include that as part of the File datatype itself. If we do
+-- something like that, would it be possible to get rid of CacheSettings
+-- altogether?
+
 type CheckHashParam = (File -> S8.ByteString -> Bool) -- FIXME Greg: Can you explain the purposes of the parameters here?
 data CacheSettings = NoCache | Forever CheckHashParam | ETag (File -> IO (Maybe S8.ByteString))
 
