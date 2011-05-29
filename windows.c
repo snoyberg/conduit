@@ -3,5 +3,5 @@
 
 void launch(void)
 {
-    ShellExecute(NULL, "open", "http://localhost:4587/", NULL, NULL, SW_SHOWNORMAL);
+    ShellExecute(NULL, "open", "http://127.0.0.1:4587/", NULL, NULL, SW_SHOWNORMAL);
 }

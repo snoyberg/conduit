@@ -124,7 +124,7 @@ launch = forkIO (rawSystem
 #else
     "xdg-open"
 #endif
-    ["http://localhost:4587/"] >> return ()) >> return ()
+    ["http://127.0.0.1:4587/"] >> return ()) >> return ()
 #endif
 
 run :: Application -> IO ()
@@ -133,6 +133,7 @@ run app = do
     forkIO $ Warp.runSettings Warp.defaultSettings
         { Warp.settingsPort = 4587
         , Warp.settingsOnException = const $ return ()
+        , Warp.settingsHost = "127.0.0.1"
         } $ ping x app
     launch
     loop x
