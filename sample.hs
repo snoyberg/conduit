@@ -7,5 +7,5 @@ main = run 3000 $ staticApp StaticSettings
     , ssMkRedirect = defaultMkRedirect
     , ssGetMimeType = return . defaultMimeTypeByExt . T.unpack . fileName
     , ssDirListing = defaultDirListing
-    , ssCacheSettings = NoCache
+    , ssMaxAge = MaxAgeForever
     }
