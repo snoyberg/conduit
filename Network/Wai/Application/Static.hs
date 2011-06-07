@@ -5,8 +5,14 @@ module Network.Wai.Application.Static
     ( -- * WAI application
       staticApp
       -- ** Settings
-    , StaticSettings (..)
     , defaultStaticSettings
+    , StaticSettings
+    , ssFolder
+    , ssMkRedirect
+    , ssGetMimeType
+    , ssListing
+    , ssIndices
+    , ssMaxAge
       -- * Generic, non-WAI code
       -- ** Mime types
     , MimeType
