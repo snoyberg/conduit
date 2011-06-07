@@ -614,8 +614,8 @@ defaultListing pieces (Folder _ contents) = do
              H.head $ do
                  let title = T.unpack $ T.intercalate "/" $ map piecePretty pieces
                  let title' = if null title then "root folder" else title
-                 H.title $ H.string title'
-                 H.style $ H.string $ unlines [ "table { margin: 0 auto; width: 760px; border-collapse: collapse; font-family: 'sans-serif'; }"
+                 H.title $ H.toHtml title'
+                 H.style $ H.toHtml $ unlines [ "table { margin: 0 auto; width: 760px; border-collapse: collapse; font-family: 'sans-serif'; }"
                                               , "table, th, td { border: 1px solid #353948; }" 
                                               , "td.size { text-align: right; font-size: 0.7em; width: 50px }"
                                               , "td.date { text-align: right; font-size: 0.7em; width: 130px }"
@@ -638,12 +638,12 @@ defaultListing pieces (Folder _ contents) = do
     haskellSrc = image "haskell"
     showName "" = "root"
     showName x = x
-    showFolder [] = H.string "/"
-    showFolder [x] = H.string $ showName x
+    showFolder [] = "/"
+    showFolder [x] = H.toHtml $ showName x
     showFolder (x:xs) = do
-        let href = concat $ replicate (length xs) "../"
-        H.a ! A.href (H.stringValue href) $ H.string $ showName x
-        H.string " / "
+        let href = concat $ replicate (length xs) "../" :: String
+        H.a ! A.href (H.toValue href) $ H.toHtml $ showName x
+        " / "
         showFolder xs
 
 -- | a function to generate an HTML table showing the contents of a directory on the disk
@@ -659,10 +659,10 @@ renderDirectoryContentsTable :: String
                              -> [Either Folder File]
                              -> H.Html
 renderDirectoryContentsTable haskellSrc folderSrc fps =
-           H.table $ do H.thead $ do H.th ! (A.class_ $ H.stringValue "first") $ H.img ! (A.src $ H.stringValue haskellSrc)
-                                     H.th $ H.string "Name"
-                                     H.th $ H.string "Modified"
-                                     H.th $ H.string "Size"
+           H.table $ do H.thead $ do H.th ! (A.class_ "first") $ H.img ! (A.src $ H.toValue haskellSrc)
+                                     H.th "Name"
+                                     H.th "Modified"
+                                     H.th "Size"
                         H.tbody $ mapM_ mkRow (zip (sortBy sortMD fps) $ cycle [False, True])
     where
       sortMD :: Either Folder File -> Either Folder File -> Ordering
@@ -672,12 +672,12 @@ renderDirectoryContentsTable haskellSrc folderSrc fps =
       sortMD (Right a) (Right b) = compare (fileName a) (fileName b)
       mkRow :: (Either Folder File, Bool) -> H.Html
       mkRow (md, alt) =
-          (if alt then (! A.class_ (H.stringValue "alt")) else id) $
+          (if alt then (! A.class_ "alt") else id) $
           H.tr $ do
-                   H.td ! A.class_ (H.stringValue "first")
+                   H.td ! A.class_ "first"
                         $ case md of
-                            Left{} -> H.img ! A.src (H.stringValue folderSrc)
-                                            ! A.alt (H.stringValue "Folder")
+                            Left{} -> H.img ! A.src (H.toValue folderSrc)
+                                            ! A.alt "Folder"
                             Right{} -> return ()
                    let name = either folderName fileName md
                    let isFile = either (const False) (const True) md
