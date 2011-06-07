@@ -329,12 +329,6 @@ data Folder = Folder
     , folderContents :: [Either Folder File] -- FIXME remove?
     }
 
-data FolderEntry = FolderEntry -- FIXME remove
-    { feName :: T.Text
-    , feIsFile :: Bool
-    --, feGetMetaData :: IO (Maybe MetaData)
-    }
-
 data File = File
     { fileGetSize :: Int
     , fileToResponse :: H.Status -> H.ResponseHeaders -> W.Response
@@ -374,24 +368,27 @@ defaultStaticSettings = StaticSettings
     , ssMaxAge = MaxAgeSeconds $ 60 * 60
     }
 
+fileHelper :: FilePath -> T.Text -> IO File
+fileHelper fp name = do
+    fs <- getFileStatus fp
+    return File
+        { fileGetSize = fromIntegral $ fileSize fs
+        , fileToResponse = \s h -> W.ResponseFile s h fp Nothing
+        , fileName = name
+        , fileGetHash = Just $ do
+            -- FIXME replace lazy IO with enumerators
+            -- FIXME let's use a dictionary to cache these values?
+            l <- L.readFile fp
+            return $ runHashL l
+        , fileGetModified = Just $ modificationTime fs
+        }
+
 fileSystemLookup :: FilePath -> Pieces -> IO FileLookup
 fileSystemLookup prefix pieces = do
     let fp = pathFromPieces prefix pieces
     fe <- doesFileExist fp
     if fe
-        then do
-            fs <- getFileStatus fp
-            return $ Just $ Right File
-                { fileGetSize = fromIntegral $ fileSize fs
-                , fileToResponse = \s h -> W.ResponseFile s h fp Nothing
-                , fileName = piecePretty $ last pieces
-                , fileGetHash = Just $ do
-                    -- FIXME replace lazy IO with enumerators
-                    -- FIXME let's use a dictionary to cache these values?
-                    l <- L.readFile fp
-                    return $ runHashL l
-                , fileGetModified = Just $ modificationTime fs
-                }
+        then fmap (Just . Right) $ fileHelper fp (piecePretty $ last pieces)
         else do
             de <- doesDirectoryExist fp
             if de
@@ -404,19 +401,7 @@ fileSystemLookup prefix pieces = do
                         let fp' = fp ++ '/' : name
                         fe' <- doesFileExist fp'
                         if fe'
-                            then do
-                                fs <- getFileStatus fp'
-                                return $ Right File
-                                    { fileGetSize = fromIntegral $ fileSize fs
-                                    , fileToResponse = \s h -> W.ResponseFile s h fp' Nothing
-                                    , fileName = name'
-                                    , fileGetHash = Just $ do
-                                        -- FIXME replace lazy IO with enumerators
-                                        -- FIXME let's use a dictionary to cache these values?
-                                        l <- L.readFile fp'
-                                        return $ runHashL l
-                                    , fileGetModified = Just $ modificationTime fs
-                                    }
+                            then fmap Right $ fileHelper fp' name'
                             else return $ Left $ Folder name' [])
                     return $ Just $ Left $ Folder (error "413") entries
                 else return Nothing
@@ -543,14 +528,6 @@ staticAppPieces ss pieces req = liftIO $ do
         Redirect pieces' -> do
             let loc = (ssMkRedirect ss) pieces' $ toByteString (H.encodePathSegments $ map piecePretty pieces')
 
-            {- FIXME seems unnecessary
-            let loc' =
-                    -- relativeDirFromPieces pieces = T.concat $ map (const "../") (drop 1 pieces) -- last piece is not a dir
-                    -- (ssMkRedirect ss) pieces' $ encodePathInfo pieces' [] 
-                    toByteString $
-                    foldr mappend (H.encodePathSegments $ map piecePretty pieces') -- FIXME is this correct?
-                    $ map (const $ copyByteString "../") $ drop 1 pieces
-            -}
             return $ W.responseLBS H.status301
                 [ ("Content-Type", "text/plain")
                 , ("Location", loc)
@@ -561,21 +538,6 @@ staticAppPieces ss pieces req = liftIO $ do
         NotFound -> return $ W.responseLBS H.status404
                         [ ("Content-Type", "text/plain")
                         ] "File not found"
-    where
-        {-
-      -- expires header: formatTime "%a, %d-%b-%Y %X GMT"
-        setCacheHeaders :: CacheSettings -> File -> IO H.ResponseHeaders
-        setCacheHeaders (Forever isStaticFile) fp = return $
-            if isStaticFile fp (S8.drop 1 $ W.rawQueryString req)
-              then [("Cache-Control", S8.append "max-age=" $ S8.pack $ show oneYear)]
-              else []
-        setCacheHeaders NoCache _ = return []
-        setCacheHeaders (ETag ioLookup) fp = do
-            etag <- ioLookup fp
-            return $ case etag of
-              Just hash -> [("ETag", hash)]
-              Nothing -> []
-        -}
 
 {-
 The problem is that the System.Directory functions are a lie: they
@@ -628,7 +590,7 @@ defaultListing pieces (Folder _ contents) = do
                                               , "a { text-decoration: none }"
                                               ]
              H.body $ do
-                 H.h1 $ showFolder $ map (T.unpack . piecePretty) $ filter (not . T.null . piecePretty) pieces -- FIXME don't unpack
+                 H.h1 $ showFolder $ map piecePretty $ filter (not . T.null . piecePretty) pieces
                  renderDirectoryContentsTable haskellSrc folderSrc fps''
   where
     image x = T.unpack $ T.concat [(relativeDirFromPieces pieces), ".hidden/", x, ".png"]
