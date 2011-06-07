@@ -253,10 +253,10 @@ checkPieces fileLookup indices pieces req ss
 
         fl <- fileLookup pieces
         case (fl, isFile) of
-            (FLDoesNotExist, _) -> return NotFound
-            (FLFile file, True)  -> handleCache file
-            (FLFile{}, False) -> return $ Redirect $ init pieces
-            (FLFolder folder@(Folder _ contents), _) -> do
+            (Nothing, _) -> return NotFound
+            (Just (Right file), True)  -> handleCache file
+            (Just Right{}, False) -> return $ Redirect $ init pieces
+            (Just (Left folder@(Folder _ contents)), _) -> do
                 case checkIndices $ map fileName $ rights contents of
                     Just index -> return $ Redirect $ setLast pieces $ Piece (T.unpack index) index
                     Nothing ->
@@ -324,7 +324,7 @@ defaultDirListing = StaticDirListing (Just defaultListing) []
 oneYear :: Int
 oneYear = 60 * 60 * 24 * 365
 
-data FileLookup = FLFolder Folder | FLFile File | FLDoesNotExist -- FIXME remove
+type FileLookup = Maybe (Either Folder File)
 
 data Folder = Folder
     { folderName :: T.Text
@@ -383,7 +383,7 @@ fileSystemLookup prefix pieces = do
     if fe
         then do
             fs <- getFileStatus fp
-            return $ FLFile File
+            return $ Just $ Right File
                 { fileGetSize = fromIntegral $ fileSize fs
                 , fileToResponse = \s h -> W.ResponseFile s h fp Nothing
                 , fileName = piecePretty $ last pieces
@@ -420,8 +420,8 @@ fileSystemLookup prefix pieces = do
                                     , fileGetModified = Just $ modificationTime fs
                                     }
                             else return $ Left $ Folder name' [])
-                    return $ FLFolder $ Folder (error "413") entries
-                else return FLDoesNotExist
+                    return $ Just $ Left $ Folder (error "413") entries
+                else return Nothing
 
 type Embedded = Map.Map T.Text EmbeddedEntry
 
@@ -432,19 +432,19 @@ embeddedLookup root pieces =
     return $ elookup "<root>" (map piecePretty pieces) root
   where
     elookup  :: T.Text -> [T.Text] -> Embedded -> FileLookup
-    elookup p [] x = FLFolder $ Folder p $ map toEntry $ Map.toList x
+    elookup p [] x = Just $ Left $ Folder p $ map toEntry $ Map.toList x
     elookup p [""] x = elookup p [] x
     elookup _ (p:ps) x =
         case Map.lookup p x of
-            Nothing -> FLDoesNotExist
+            Nothing -> Nothing
             Just (EEFile f) ->
                 case ps of
-                    [] -> FLFile $ bsToFile p f
-                    _ -> FLDoesNotExist
+                    [] -> Just $ Right $ bsToFile p f
+                    _ -> Nothing
             Just (EEFolder y) -> elookup p ps y
 
 toEntry :: (T.Text, EmbeddedEntry) -> Either Folder File
-toEntry (name, EEFolder e) = Left $ Folder name (error "toEntry")
+toEntry (name, EEFolder e) = Left $ Folder name []
 toEntry (name, EEFile bs) = Right $ File
     { fileGetSize = S8.length bs
     , fileToResponse = \s h -> W.ResponseBuilder s h $ fromByteString bs
