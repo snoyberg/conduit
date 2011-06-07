@@ -16,10 +16,6 @@ module Network.Wai.Application.Static
       -- ** Finding files
     , Pieces
     , pathFromPieces
-      -- ** File/folder metadata
-    , MetaData (..)
-    , mdIsFile
-    , getMetaData
       -- ** Directory listings
     , Listing
     , defaultListing
@@ -56,6 +52,7 @@ import System.Posix.Types (FileOffset, EpochTime)
 import Control.Monad.IO.Class (liftIO)
 import Data.Maybe (catMaybes, isNothing, isJust)
 import qualified Crypto.Hash.MD5 as MD5
+import Control.Monad (filterM)
 
 import           Text.Blaze                  ((!))
 import qualified Text.Blaze.Html5            as H
@@ -80,6 +77,7 @@ import Data.List (groupBy, sortBy)
 import Data.Function (on)
 import Data.Ord (comparing)
 import qualified Data.ByteString.Base64 as B64
+import Data.Either (rights)
 
 #ifdef PRINT
 import Debug.Trace
@@ -258,8 +256,8 @@ checkPieces fileLookup indices pieces req ss
             (FLDoesNotExist, _) -> return NotFound
             (FLFile file, True)  -> handleCache file
             (FLFile{}, False) -> return $ Redirect $ init pieces
-            (FLFolder folder@(Folder contents), _) -> do
-                case checkIndices $ map feName $ filter feIsFile contents of
+            (FLFolder folder@(Folder _ contents), _) -> do
+                case checkIndices $ map fileName $ rights contents of
                     Just index -> return $ Redirect $ setLast pieces $ Piece (T.unpack index) index
                     Nothing ->
                         if isFolder
@@ -276,8 +274,7 @@ checkPieces fileLookup indices pieces req ss
                     else return $ FileResponse file $ cc [("ETag", hash)]
             _ ->
                 case (lookup "if-modified-since" headers >>= parseDate, fileGetModified file) of
-                    (Just lastSent, Just getMod) -> do
-                        modified <- getMod
+                    (Just lastSent, Just modified) -> do
                         if lastSent >= modified
                             then return NotModified
                             else respond file
@@ -327,22 +324,25 @@ defaultDirListing = StaticDirListing (Just defaultListing) []
 oneYear :: Int
 oneYear = 60 * 60 * 24 * 365
 
-data FileLookup = FLFolder Folder | FLFile File | FLDoesNotExist
+data FileLookup = FLFolder Folder | FLFile File | FLDoesNotExist -- FIXME remove
 
-data Folder = Folder [FolderEntry] -- Bool: True = file, False = folder
+data Folder = Folder
+    { folderName :: T.Text
+    , folderContents :: [Either Folder File]
+    }
 
-data FolderEntry = FolderEntry
+data FolderEntry = FolderEntry -- FIXME remove
     { feName :: T.Text
     , feIsFile :: Bool
-    , feGetMetaData :: IO (Maybe MetaData)
+    --, feGetMetaData :: IO (Maybe MetaData)
     }
 
 data File = File
-    { fileGetSize :: IO Int
+    { fileGetSize :: Int
     , fileToResponse :: H.Status -> H.ResponseHeaders -> W.Response
     , fileName :: T.Text
     , fileGetHash :: Maybe (IO ByteString)
-    , fileGetModified :: Maybe (IO EpochTime)
+    , fileGetModified :: Maybe EpochTime
     }
 
 parseDate :: ByteString -> Maybe EpochTime
@@ -382,8 +382,9 @@ fileSystemLookup prefix pieces = do
     fe <- doesFileExist fp
     if fe
         then do
+            fs <- getFileStatus fp
             return $ FLFile File
-                { fileGetSize = fmap (fromIntegral . fileSize) $ getFileStatus fp
+                { fileGetSize = fromIntegral $ fileSize fs
                 , fileToResponse = \s h -> W.ResponseFile s h fp Nothing
                 , fileName = piecePretty $ last pieces
                 , fileGetHash = Just $ do
@@ -391,22 +392,35 @@ fileSystemLookup prefix pieces = do
                     -- FIXME let's use a dictionary to cache these values?
                     l <- L.readFile fp
                     return $ runHashL l
-                , fileGetModified = Just $ fmap modificationTime $ getFileStatus fp
+                , fileGetModified = Just $ modificationTime fs
                 }
         else do
             de <- doesDirectoryExist fp
             if de
                 then do
-                    entries <- getDirectoryContents fp >>= (mapM $ \name -> do
-                        let name' = T.pack name
+                    let isVisible ('.':_) = return False
+                        isVisible "" = return False
+                        isVisible _ = return True
+                    entries <- getDirectoryContents fp >>= filterM isVisible >>= (mapM $ \name -> do
+                        let name' = T.pack $ fixPathName name
                         let fp' = fp ++ '/' : name
                         fe' <- doesFileExist fp'
-                        return FolderEntry
-                            { feName = name'
-                            , feIsFile = fe'
-                            , feGetMetaData = getMetaData fp name
-                            })
-                    return $ FLFolder $ Folder entries
+                        if fe'
+                            then do
+                                fs <- getFileStatus fp'
+                                return $ Right File
+                                    { fileGetSize = fromIntegral $ fileSize fs
+                                    , fileToResponse = \s h -> W.ResponseFile s h fp' Nothing
+                                    , fileName = name'
+                                    , fileGetHash = Just $ do
+                                        -- FIXME replace lazy IO with enumerators
+                                        -- FIXME let's use a dictionary to cache these values?
+                                        l <- L.readFile fp'
+                                        return $ runHashL l
+                                    , fileGetModified = Just $ modificationTime fs
+                                    }
+                            else return $ Left $ Folder name' [])
+                    return $ FLFolder $ Folder (error "413") entries
                 else return FLDoesNotExist
 
 type Embedded = Map.Map T.Text EmbeddedEntry
@@ -415,37 +429,28 @@ data EmbeddedEntry = EEFile S8.ByteString | EEFolder Embedded
 
 embeddedLookup :: Embedded -> Pieces -> IO FileLookup
 embeddedLookup root pieces =
-    return $ elookup (map piecePretty pieces) root
+    return $ elookup "<root>" (map piecePretty pieces) root
   where
-    elookup  :: [T.Text] -> Embedded -> FileLookup
-    elookup [] x = FLFolder $ Folder $ map toEntry $ Map.toList x
-    elookup [""] x = elookup [] x
-    elookup (p:ps) x =
+    elookup  :: T.Text -> [T.Text] -> Embedded -> FileLookup
+    elookup p [] x = FLFolder $ Folder p $ map toEntry $ Map.toList x
+    elookup p [""] x = elookup p [] x
+    elookup _ (p:ps) x =
         case Map.lookup p x of
             Nothing -> FLDoesNotExist
             Just (EEFile f) ->
                 case ps of
                     [] -> FLFile $ bsToFile p f
                     _ -> FLDoesNotExist
-            Just (EEFolder y) -> elookup ps y
+            Just (EEFolder y) -> elookup p ps y
 
-toEntry :: (T.Text, EmbeddedEntry) -> FolderEntry
-toEntry (name, ee) = FolderEntry
-    { feName = name
-    , feIsFile =
-        case ee of
-            EEFile{} -> True
-            EEFolder{} -> False
-    , feGetMetaData = return $ Just $
-        case ee of
-            EEFile bs -> FileMetaData
-                { mdName = name
-                , mdModified = Nothing
-                , mdSize = fromIntegral $ S8.length bs
-                }
-            EEFolder _ -> FolderMetaData
-                { mdName = name
-                }
+toEntry :: (T.Text, EmbeddedEntry) -> Either Folder File
+toEntry (name, EEFolder e) = Left $ Folder name (error "toEntry")
+toEntry (name, EEFile bs) = Right $ File
+    { fileGetSize = S8.length bs
+    , fileToResponse = \s h -> W.ResponseBuilder s h $ fromByteString bs
+    , fileName = name
+    , fileGetHash = Just $ return $ runHash bs
+    , fileGetModified = Nothing
     }
 
 toEmbedded :: [(FilePath, S8.ByteString)] -> Embedded
@@ -473,7 +478,7 @@ toEmbedded fps =
 
 bsToFile :: T.Text -> S8.ByteString -> File
 bsToFile name bs = File
-    { fileGetSize = return $ S8.length bs
+    { fileGetSize = S8.length bs
     , fileToResponse = \s h -> W.ResponseBuilder s h $ fromByteString bs
     , fileName = name
     , fileGetHash = Just $ return $ runHash bs
@@ -512,7 +517,7 @@ staticAppPieces ss pieces req = liftIO $ do
     case cp of
         FileResponse file ch -> do
             mimetype <- ssGetMimeType ss file
-            filesize <- fileGetSize file
+            let filesize = fileGetSize file
             let headers = ("Content-Type", mimetype)
                         : ("Content-Length", S8.pack $ show filesize)
                         : ch
@@ -600,10 +605,10 @@ unfixPathName = S8.unpack . TE.encodeUtf8 . T.pack
 
 -- Code below taken from Happstack: http://patch-tag.com/r/mae/happstack/snapshot/current/content/pretty/happstack-server/src/Happstack/Server/FileServe/BuildingBlocks.hs
 defaultListing :: Listing
-defaultListing pieces (Folder contents) = do
-    fps' <- mapM feGetMetaData contents
+defaultListing pieces (Folder _ contents) = do
     let isTop = null pieces || pieces == [Piece "" ""]
-    let fps'' = if isTop then fps' else Just (FolderMetaData "..") : fps'
+    let fps'' :: [Either Folder File]
+        fps'' = (if isTop then id else (Left (Folder ".." []) :)) contents
     return $ HU.renderHtml
            $ H.html $ do
              H.head $ do
@@ -626,7 +631,7 @@ defaultListing pieces (Folder contents) = do
                                               ]
              H.body $ do
                  H.h1 $ showFolder $ map (T.unpack . piecePretty) $ filter (not . T.null . piecePretty) pieces -- FIXME don't unpack
-                 renderDirectoryContentsTable haskellSrc folderSrc $ catMaybes fps''
+                 renderDirectoryContentsTable haskellSrc folderSrc fps''
   where
     image x = T.unpack $ T.concat [(relativeDirFromPieces pieces), ".hidden/", x, ".png"]
     folderSrc = image "folder"
@@ -651,7 +656,7 @@ defaultListing pieces (Folder contents) = do
 -- see also: 'getMetaData', 'renderDirectoryContents'
 renderDirectoryContentsTable :: String
                              -> String
-                             -> [MetaData] -- ^ list of files+meta data, see 'getMetaData'
+                             -> [Either Folder File]
                              -> H.Html
 renderDirectoryContentsTable haskellSrc folderSrc fps =
            H.table $ do H.thead $ do H.th ! (A.class_ $ H.stringValue "first") $ H.img ! (A.src $ H.stringValue haskellSrc)
@@ -660,30 +665,32 @@ renderDirectoryContentsTable haskellSrc folderSrc fps =
                                      H.th $ H.string "Size"
                         H.tbody $ mapM_ mkRow (zip (sortBy sortMD fps) $ cycle [False, True])
     where
-      sortMD FolderMetaData{} FileMetaData{} = LT
-      sortMD FileMetaData{} FolderMetaData{} = GT
-      sortMD x y = mdName x `compare` mdName y
-      mkRow :: (MetaData, Bool) -> H.Html
+      sortMD :: Either Folder File -> Either Folder File -> Ordering
+      sortMD Left{} Right{} = LT
+      sortMD Right{} Left{} = GT
+      sortMD (Left a) (Left b) = compare (folderName a) (folderName b)
+      sortMD (Right a) (Right b) = compare (fileName a) (fileName b)
+      mkRow :: (Either Folder File, Bool) -> H.Html
       mkRow (md, alt) =
           (if alt then (! A.class_ (H.stringValue "alt")) else id) $
           H.tr $ do
                    H.td ! A.class_ (H.stringValue "first")
-                        $ if mdIsFile md
-                              then return ()
-                              else H.img ! A.src (H.stringValue folderSrc)
-                                         ! A.alt (H.stringValue "Folder")
-                   H.td (H.a ! A.href (H.stringValue $ T.unpack (mdName md) ++ if mdIsFile md then "" else "/")  $ H.string $ T.unpack (mdName md))
-                   H.td ! A.class_ (H.stringValue "date") $ H.string $
-                       if mdIsFile md
-                           then
-                               case mdModified md of
-                                   Nothing -> ""
-                                   Just t -> formatCalendarTime defaultTimeLocale "%d-%b-%Y %X" t
-                           else ""
-                   H.td ! A.class_ (H.stringValue "size") $ H.string $
-                       if mdIsFile md
-                           then prettyShow $ mdSize md
-                           else ""
+                        $ case md of
+                            Left{} -> H.img ! A.src (H.stringValue folderSrc)
+                                            ! A.alt (H.stringValue "Folder")
+                            Right{} -> return ()
+                   let name = either folderName fileName md
+                   let isFile = either (const False) (const True) md
+                   H.td (H.a ! A.href (H.toValue $ name `T.append` if isFile then "" else "/") $ H.toHtml name)
+                   H.td ! A.class_ "date" $ H.toHtml $
+                       case md of
+                           Right File { fileGetModified = Just t } ->
+                                   formatCalendarTime defaultTimeLocale "%d-%b-%Y %X" t
+                           _ -> ""
+                   H.td ! A.class_ "size" $ H.toHtml $
+                       case md of
+                           Right File { fileGetSize = s } -> prettyShow s
+                           Left{} -> ""
       formatCalendarTime a b c =  formatTime a b $ posixSecondsToUTCTime (realToFrac c :: POSIXTime)
       prettyShow x
         | x > 1024 = prettyShowK $ x `div` 1024
@@ -699,17 +706,7 @@ renderDirectoryContentsTable haskellSrc folderSrc fps =
       addCommas' (a:b:c:d:e) = a : b : c : ',' : addCommas' (d : e)
       addCommas' x = x
 
-data MetaData =
-    FileMetaData
-        { mdName :: T.Text
-        , mdModified :: Maybe EpochTime
-        , mdSize :: FileOffset
-        }
-  | FolderMetaData
-        { mdName :: T.Text
-        }
-  deriving Show
-
+{-
 mdIsFile :: MetaData -> Bool
 mdIsFile FileMetaData{} = True
 mdIsFile FolderMetaData{} = False
@@ -732,3 +729,4 @@ getMetaData localPath fp = do
         else do
             de <- doesDirectoryExist fp'
             return $ if de then Just (FolderMetaData fpPretty) else Nothing
+-}
