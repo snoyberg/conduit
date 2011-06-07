@@ -48,9 +48,8 @@ import qualified Data.ByteString.Char8 as S8
 import qualified Data.ByteString.Lazy as L
 import Data.ByteString.Lazy.Char8 ()
 import System.PosixCompat.Files (fileSize, getFileStatus, modificationTime)
-import System.Posix.Types (FileOffset, EpochTime)
+import System.Posix.Types (EpochTime)
 import Control.Monad.IO.Class (liftIO)
-import Data.Maybe (catMaybes, isNothing, isJust)
 import qualified Crypto.Hash.MD5 as MD5
 import Control.Monad (filterM)
 
@@ -59,8 +58,7 @@ import qualified Text.Blaze.Html5            as H
 import qualified Text.Blaze.Renderer.Utf8    as HU
 import qualified Text.Blaze.Html5.Attributes as A
 
-import Blaze.ByteString.Builder (toByteString, copyByteString, fromByteString)
-import Data.Monoid (mappend)
+import Blaze.ByteString.Builder (toByteString, fromByteString)
 
 import Data.Time
 import Data.Time.Clock.POSIX
@@ -328,7 +326,7 @@ type FileLookup = Maybe (Either Folder File)
 
 data Folder = Folder
     { folderName :: T.Text
-    , folderContents :: [Either Folder File]
+    , folderContents :: [Either Folder File] -- FIXME remove?
     }
 
 data FolderEntry = FolderEntry -- FIXME remove
@@ -444,7 +442,7 @@ embeddedLookup root pieces =
             Just (EEFolder y) -> elookup p ps y
 
 toEntry :: (T.Text, EmbeddedEntry) -> Either Folder File
-toEntry (name, EEFolder e) = Left $ Folder name []
+toEntry (name, EEFolder{}) = Left $ Folder name []
 toEntry (name, EEFile bs) = Right $ File
     { fileGetSize = S8.length bs
     , fileToResponse = \s h -> W.ResponseBuilder s h $ fromByteString bs
@@ -643,7 +641,7 @@ defaultListing pieces (Folder _ contents) = do
     showFolder (x:xs) = do
         let href = concat $ replicate (length xs) "../" :: String
         H.a ! A.href (H.toValue href) $ H.toHtml $ showName x
-        " / "
+        () <- " / "
         showFolder xs
 
 -- | a function to generate an HTML table showing the contents of a directory on the disk
