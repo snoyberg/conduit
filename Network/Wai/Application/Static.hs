@@ -2,9 +2,14 @@
 {-# LANGUAGE TemplateHaskell, CPP #-}
 -- | Static file serving for WAI.
 module Network.Wai.Application.Static
-    ( -- * Generic, non-WAI code
+    ( -- * WAI application
+      staticApp
+      -- ** Settings
+    , StaticSettings (..)
+    , defaultStaticSettings
+      -- * Generic, non-WAI code
       -- ** Mime types
-      MimeType
+    , MimeType
     , defaultMimeType
       -- ** Mime type by file extension
     , Extension
@@ -16,25 +21,21 @@ module Network.Wai.Application.Static
       -- ** Finding files
     , Pieces
     , pathFromPieces
+    , unfixPathName
       -- ** Directory listings
     , Listing
     , defaultListing
-    , defaultDirListing
-      -- * WAI application
-    , staticApp
-    , staticAppPieces
-      -- ** Settings
-    , StaticSettings (..)
-    , defaultStaticSettings
-      -- should be moved to common helper
-    , unfixPathName
-      -- new stuff to be sorted
+      -- ** Lookup functions
     , fileSystemLookup
     , embeddedLookup
-    , defaultMkRedirect
-    , File (..)
+      -- ** Embedded
+    , Embedded
+    , EmbeddedEntry (..)
     , toEmbedded
-    , StaticDirListing (..)
+      -- ** Redirecting
+    , defaultMkRedirect
+      -- * Other data types
+    , File (..)
     , MaxAge (..)
     ) where
 
@@ -311,14 +312,6 @@ checkPieces fileLookup indices pieces req ss
 
 type Listing = (Pieces -> Folder -> IO L.ByteString)
 
-data StaticDirListing = StaticDirListing {
-    ssListing :: Maybe Listing
-  , ssIndices :: [T.Text]
-}
-
-defaultDirListing :: StaticDirListing
-defaultDirListing = StaticDirListing (Just defaultListing) []
-
 oneYear :: Int
 oneYear = 60 * 60 * 24 * 365
 
@@ -326,7 +319,7 @@ type FileLookup = Maybe (Either Folder File)
 
 data Folder = Folder
     { folderName :: T.Text
-    , folderContents :: [Either Folder File] -- FIXME remove?
+    , folderContents :: [Either Folder File]
     }
 
 data File = File
@@ -344,7 +337,8 @@ data StaticSettings = StaticSettings
     { ssFolder :: Pieces -> IO FileLookup
     , ssMkRedirect :: Pieces -> ByteString -> ByteString
     , ssGetMimeType :: File -> IO MimeType
-    , ssDirListing :: StaticDirListing
+    , ssListing :: Maybe Listing
+    , ssIndices :: [T.Text]
     , ssMaxAge :: MaxAge
     }
 
@@ -364,8 +358,9 @@ defaultStaticSettings = StaticSettings
     { ssFolder = fileSystemLookup "static"
     , ssMkRedirect = defaultMkRedirect
     , ssGetMimeType = return . defaultMimeTypeByExt . T.unpack . fileName
-    , ssDirListing = defaultDirListing
     , ssMaxAge = MaxAgeSeconds $ 60 * 60
+    , ssListing = Just defaultListing
+    , ssIndices = ["index.html", "index.htm"]
     }
 
 fileHelper :: FilePath -> T.Text -> IO File
@@ -494,8 +489,7 @@ staticAppPieces _ _ req
         [("Content-Type", "text/plain")]
         "Only GET is supported"
 staticAppPieces ss pieces req = liftIO $ do
-    let indices = case ssDirListing ss of
-                      StaticDirListing _ is -> is
+    let indices = ssIndices ss
     cp <- checkPieces (ssFolder ss) indices pieces req ss
     case cp of
         FileResponse file ch -> do
@@ -510,13 +504,13 @@ staticAppPieces ss pieces req = liftIO $ do
                         [ ("Content-Type", "text/plain")
                         ] "Not Modified"
         DirectoryResponse fp ->
-            case ssDirListing ss of
-                StaticDirListing (Just f) _ -> do
+            case ssListing ss of
+                (Just f) -> do
                     lbs <- f pieces fp
                     return $ W.responseLBS H.status200
                         [ ("Content-Type", "text/html; charset=utf-8")
                         ] lbs
-                StaticDirListing Nothing _ -> return $ W.responseLBS H.status403
+                Nothing -> return $ W.responseLBS H.status403
                         [ ("Content-Type", "text/plain")
                         ] "Directory listings disabled"
         SendContent mt lbs -> do
