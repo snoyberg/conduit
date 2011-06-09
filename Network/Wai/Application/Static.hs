@@ -167,6 +167,7 @@ defaultMimeTypes = Map.fromList [
   ( "wma"     , "audio/x-ms-wma"                    ),
   ( "wmv"     , "video/x-ms-wmv"                    ),
   ( "xbm"     , "image/x-xbitmap"                   ),
+  ( "xhtml"   , "application/xhtml+xml"             ),
   ( "xml"     , "text/xml"                          ),
   ( "xpm"     , "image/x-xpixmap"                   ),
   ( "xwd"     , "image/x-xwindowdump"               ),
