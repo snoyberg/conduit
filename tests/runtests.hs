@@ -4,9 +4,10 @@ import Network.Wai.Application.Static
 import Test.Hspec.Monadic
 import Test.Hspec.QuickCheck
 import Test.Hspec.HUnit ()
-import Test.HUnit ((@?=))
+import Test.HUnit ((@?=), assert)
 import Distribution.Simple.Utils (isInfixOf)
 import qualified Data.ByteString.Char8 as S8
+import qualified Data.ByteString.Lazy.Char8 as L8
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 
@@ -16,6 +17,7 @@ import Network.Wai.Test
 
 import Network.Socket.Internal as Sock
 import qualified Network.HTTP.Types as H
+import Control.Monad.IO.Class (liftIO)
 
 defRequest :: Request
 defRequest = Request {
@@ -37,8 +39,12 @@ setRawPathInfo r rawPinfo =
   let pInfo = T.split (== '/') $ TE.decodeUtf8 rawPinfo
   in  r { rawPathInfo = rawPinfo, pathInfo = pInfo }
 
+
+
 main :: IO a
 main = hspecX $ do
+  let must = liftIO . assert
+
   describe "Pieces: pathFromPieces" $ do
     it "converts to a file path" $
       (pathFromPieces "prefix" ["a", "bc"]) @?= "prefix/a/bc"
@@ -46,7 +52,6 @@ main = hspecX $ do
     prop "each piece is in file path" $ \pieces ->
       let piecesT = (map T.pack pieces) in
       all (\p -> ("/" ++ (unfixPathName $ T.unpack p)) `isInfixOf` (pathFromPieces "root" $ piecesT)) piecesT
-
 
 
   let cacheLookup = Forever (\fp h -> fp == "tests/runtests.hs" && h == "cached")
@@ -61,6 +66,15 @@ main = hspecX $ do
       flip mapM_ [".hidden/folder.png", ".hidden/haskell.png"] $ \path ->
         assertStatus 200 =<<
           request (setRawPathInfo defRequest path)
+
+    it "directory listing for index" $ statApp $ do
+      resp <- request (setRawPathInfo defRequest "a/")
+      assertStatus 200 resp
+      let body = simpleBody resp
+      let contains a b = isInfixOf b (L8.unpack a)
+      must $ body `contains` "<img src=\"../.hidden/haskell.png\" />"
+      must $ body `contains` "<img src=\"../.hidden/folder.png\" alt=\"Folder\" />"
+      must $ body `contains` "<a href=\"b\">b</a>"
 
     it "404 for non-existant files" $ statApp $
       assertStatus 404 =<<
