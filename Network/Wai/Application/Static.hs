@@ -78,7 +78,7 @@ import qualified Data.Text.Encoding as TE
 import qualified Data.Text.Encoding.Error as TEE
 
 import Control.Arrow ((&&&), second)
-import Data.List (groupBy, sortBy)
+import Data.List (groupBy, sortBy, find)
 import Data.Function (on)
 import Data.Ord (comparing)
 import qualified Data.ByteString.Base64 as B64
@@ -89,8 +89,6 @@ import Debug.Trace
 debug :: (Show a) => a -> a
 debug a = trace ("DEBUG: " ++ show a) a
 #else
-trace :: String -> a -> a 
-trace _ x = x
 debug :: a -> a
 debug = id
 #endif
@@ -235,17 +233,20 @@ pathFromPieces :: FilePath -> Pieces -> FilePath
 pathFromPieces prefix pieces =
         concat $ prefix : map ((:) '/') (map pieceRaw pieces)
 
+checkSpecialDirListing :: Pieces -> Maybe CheckPieces
+checkSpecialDirListing [Piece _ ".hidden", Piece _ "folder.png"]  =
+    Just $ SendContent "image/png" $ L.fromChunks [$(embedFile "folder.png")]
+checkSpecialDirListing [Piece _ ".hidden", Piece _ "haskell.png"] =
+    Just $ SendContent "image/png" $ L.fromChunks [$(embedFile "haskell.png")]
+checkSpecialDirListing _ =  Nothing
+
 checkPieces :: (Pieces -> IO FileLookup) -- ^ file lookup function
             -> [T.Text]                  -- ^ List of default index files. Cannot contain slashes.
             -> Pieces                    -- ^ parsed request
             -> W.Request
-            -> StaticSettings
+            -> MaxAge
             -> IO CheckPieces
-checkPieces _ _ [Piece _ ".hidden", Piece _ "folder.png"] _ _ =
-    return $ SendContent "image/png" $ L.fromChunks [$(embedFile "folder.png")]
-checkPieces _ _ [Piece _ ".hidden", Piece _ "haskell.png"] _ _ =
-    return $ SendContent "image/png" $ L.fromChunks [$(embedFile "haskell.png")]
-checkPieces fileLookup indices pieces req ss
+checkPieces fileLookup indices pieces req maxAge
     | any (unsafe . piecePretty) pieces = return Forbidden
     | any (T.null . piecePretty) $ safeInit pieces =
         return $ Redirect $ filterButLast (not . T.null . piecePretty) pieces
@@ -277,7 +278,7 @@ checkPieces fileLookup indices pieces req ss
                 hash <- getHash
                 if hash == lastHash
                     then return NotModified
-                    else return $ FileResponse file $ cc [("ETag", hash)]
+                    else return $ FileResponse file $ [("ETag", hash)] ++ cacheControl
             _ ->
                 case (lookup "if-modified-since" headers >>= parseDate, fileGetModified file) of
                     (Just lastSent, Just modified) -> do
@@ -290,37 +291,32 @@ checkPieces fileLookup indices pieces req ss
         mhash <- maybe (return Nothing) (fmap Just) $ fileGetHash file
         let hash =
                 case mhash of
-                    Just h -> (:) ("ETag", h)
-                    Nothing -> id
-        return $ FileResponse file $ hash $ cc []
+                    Just h -> [("ETag", h)]
+                    Nothing -> []
+        return $ FileResponse file $ hash ++ cacheControl
 
-    ccInt =
-        case ssMaxAge ss of
-            NoMaxAge -> Nothing
-            MaxAgeSeconds i -> Just i
-            MaxAgeForever -> Just oneYear
-    cc =
-        case ccInt of
-            Nothing -> id
-            Just i -> (:) ("Cache-Control", S8.append "max-age" $ S8.pack $ show i)
-
+    setLast :: Pieces -> Piece -> Pieces
     setLast [] x = [x]
     setLast [Piece "" ""] x = [x]
     setLast (a:b) x = a : setLast b x
 
     checkIndices :: [T.Text] -> Maybe T.Text
-    checkIndices contents =
-        go indices
+    checkIndices contents = find (flip elem indices) contents
+
+    cacheControl = case ccInt of
+        Nothing -> []
+        Just i  -> [("Cache-Control", S8.append "max-age" $ S8.pack $ show i)]
       where
-        go [] = Nothing
-        go (i:is)
-            | i `elem` contents = Just i
-            | otherwise = go is
+        ccInt =
+            case maxAge of
+                NoMaxAge -> Nothing
+                MaxAgeSeconds i -> Just i
+                MaxAgeForever -> Just oneYear
+        oneYear :: Int
+        oneYear = 60 * 60 * 24 * 365
 
 type Listing = (Pieces -> Folder -> IO L.ByteString)
 
-oneYear :: Int
-oneYear = 60 * 60 * 24 * 365
 
 type FileLookup = Maybe (Either Folder File)
 
@@ -345,7 +341,7 @@ data StaticSettings = StaticSettings
     , ssMkRedirect :: Pieces -> ByteString -> ByteString
     , ssGetMimeType :: File -> IO MimeType
     , ssListing :: Maybe Listing
-    , ssIndices :: [T.Text]
+    , ssIndices :: [T.Text] -- index.html
     , ssMaxAge :: MaxAge
     }
 
@@ -497,8 +493,11 @@ staticAppPieces _ _ req
         "Only GET is supported"
 staticAppPieces ss pieces req = liftIO $ do
     let indices = ssIndices ss
-    cp <- checkPieces (ssFolder ss) indices pieces req ss
-    case cp of
+    case checkSpecialDirListing pieces of
+         Just res ->  response res
+         Nothing  ->  checkPieces (ssFolder ss) indices pieces req (ssMaxAge ss) >>= response
+  where
+    response cp = case cp of
         FileResponse file ch -> do
             mimetype <- ssGetMimeType ss file
             let filesize = fileGetSize file
