@@ -47,15 +47,17 @@ main = hspecX $ do
 
   describe "Pieces: pathFromPieces" $ do
     it "converts to a file path" $
-      (pathFromPieces "prefix" ["a", "bc"]) @?= "prefix/a/bc"
+      (pathFromPieces "prefix" [Piece "a" "a", Piece "bc" "bc"]) @?= "prefix/a/bc"
 
+{-
     prop "each piece is in file path" $ \pieces ->
-      let piecesT = (map T.pack pieces) in
-      all (\p -> ("/" ++ (unfixPathName $ T.unpack p)) `isInfixOf` (pathFromPieces "root" $ piecesT)) piecesT
+      let piecesT = (map piecePretty pieces) in
+      all (\p -> ("/" ++ (unfixPathName $ T.unpack p)) `isInfixOf` (pathFromPieces "root" $ pieces)) piecesT
+      -}
 
 
-  let cacheLookup = Forever (\fp h -> fp == "tests/runtests.hs" && h == "cached")
-  let statApp = flip runSession $ staticApp $ (defaultStaticSettings cacheLookup) {ssFolder = "tests"}
+  let cacheLookup = MaxAgeForever -- (\fp h -> fp == "tests/runtests.hs" && h == "cached")
+  let statApp = flip runSession $ staticApp defaultWebAppSettings  -- cacheLookup) {ssFolder = "tests"}
   describe "staticApp" $ do
     it "403 for unsafe paths" $ statApp $
       flip mapM_ ["..", "."] $ \path ->
@@ -85,9 +87,9 @@ main = hspecX $ do
       assertStatus 301 req
       assertHeader "Location" "../../a/b/c" req
 
-    let absoluteApp = flip runSession $ staticApp $ (defaultStaticSettings cacheLookup) {
-          ssFolder = "tests", ssMkRedirect = \_ u -> S8.append "http://www.example.com" u
-        }
+    let absoluteApp = flip runSession $ staticApp $ defaultWebAppSettings -- cacheLookup) {
+          -- ssFolder = "tests", ssMkRedirect = \_ u -> S8.append "http://www.example.com" u
+        -- }
     it "301 redirect when multiple slashes" $ absoluteApp $
       flip mapM_ ["/a//b/c", "a//b/c"] $ \path -> do
         req <- request (setRawPathInfo defRequest path)
@@ -122,7 +124,7 @@ main = hspecX $ do
       assertStatus 304 req
       assertNoHeader "Cache-Control" req
 
-  let pubApp = flip runSession $ staticApp (defaultPublicSettings $ ETag (\_ -> return $ Just "hash")) {ssFolder = "tests"}
+  let pubApp = flip runSession $ staticApp defaultWebAppSettings -- $ ETag (\_ -> return $ Just "hash")) {ssFolder = "tests"}
   describe "staticApp when requesting a public asset - etags" $ do
     it "200 when no etag parameters" $ pubApp $ do
       req <- request (setRawPathInfo defRequest "runtests.hs")

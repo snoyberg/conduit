@@ -5,7 +5,8 @@ module Network.Wai.Application.Static
     ( -- * WAI application
       staticApp
       -- ** Settings
-    , defaultStaticSettings
+    , defaultWebAppSettings
+    , defaultFileServerSettings
     , StaticSettings
     , ssFolder
     , ssMkRedirect
@@ -25,6 +26,7 @@ module Network.Wai.Application.Static
     , mimeTypeByExt
     , defaultMimeTypeByExt
       -- ** Finding files
+    , Piece (..)
     , Pieces
     , pathFromPieces
     , unfixPathName
@@ -223,7 +225,7 @@ data Piece = Piece
     { pieceRaw :: FilePath
     , piecePretty :: T.Text
     }
-    deriving (Eq, Ord)
+    deriving (Eq, Ord, Show)
 type Pieces = [Piece]
 
 relativeDirFromPieces :: Pieces -> T.Text
@@ -272,6 +274,14 @@ checkPieces fileLookup indices pieces req maxAge
                             else return $ Redirect $ pieces ++ [Piece "" ""]
   where
     headers = W.requestHeaders req
+
+    -- HTTP caching has a cache control header that you can set an expire time for a resource.
+    --   Max-Age is easiest because it is a simple number
+    --   a cache-control asset will only be downloaded once (if the browser maintains its cache)
+    --   and the server will never be contacted for the resource again
+    -- A second caching mechanism is ETag and last-modified
+    --   this form of caching is not as good as the static- the browser can avoid downloading the file, but it always need to send a request with the etag value or the last-modified value to the server to see if its copy is up to date
+    -- We should set a cache control and one of ETag or last-modifed whenever possible
     handleCache file =
         case (lookup "if-none-match" headers, fileGetHash file) of
             (Just lastHash, Just getHash) -> do
@@ -356,8 +366,18 @@ defaultMkRedirect pieces newPath
   where
     relDir = TE.encodeUtf8 (relativeDirFromPieces pieces)
 
-defaultStaticSettings :: StaticSettings
-defaultStaticSettings = StaticSettings
+defaultWebAppSettings :: StaticSettings
+defaultWebAppSettings = StaticSettings
+    { ssFolder = fileSystemLookup "static"
+    , ssMkRedirect  = defaultMkRedirect
+    , ssGetMimeType = return . defaultMimeTypeByExt . T.unpack . fileName
+    , ssMaxAge  = MaxAgeForever
+    , ssListing = Nothing
+    , ssIndices = []
+    }
+
+defaultFileServerSettings :: StaticSettings
+defaultFileServerSettings = StaticSettings
     { ssFolder = fileSystemLookup "static"
     , ssMkRedirect = defaultMkRedirect
     , ssGetMimeType = return . defaultMimeTypeByExt . T.unpack . fileName
