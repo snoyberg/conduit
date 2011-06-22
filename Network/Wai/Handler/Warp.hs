@@ -62,7 +62,7 @@ import Control.Exception
     ( bracket, finally, Exception, SomeException, catch
     , fromException
     )
-import Control.Concurrent (forkIO, threadWaitWrite)
+import Control.Concurrent (forkIO)
 import qualified Data.Char as C
 import Data.Maybe (fromMaybe)
 
@@ -79,7 +79,7 @@ import Blaze.ByteString.Builder
     (copyByteString, Builder, toLazyByteString, toByteStringIO)
 import Blaze.ByteString.Builder.Char8 (fromChar, fromShow)
 import Data.Monoid (mappend, mconcat)
-import Network.Socket.SendFile (sendFileIterWith,sendFileIterWith', Iter (..))
+import Network.Sendfile
 
 import Control.Monad.IO.Class (liftIO)
 import qualified Timeout as T
@@ -182,9 +182,6 @@ parseRequest port remoteHost' = do
 bytesPerRead, maxTotalHeaderLength :: Int
 bytesPerRead = 4096
 maxTotalHeaderLength = 50 * 1024
-
-sendFileCount :: Integer
-sendFileCount = 65536
 
 data InvalidRequest =
     NotEnoughLines [String]
@@ -303,23 +300,14 @@ sendResponse th req hv socket (ResponseFile s hs fp mpart) = do
     if hasBody s req
         then do
             case mpart of
-                Nothing -> sendFileIterWith tickler socket fp sendFileCount
-                Just part ->
-                    sendFileIterWith' tickler socket fp sendFileCount
-                        (filePartOffset part)
-                        (filePartByteCount part)
+                Nothing   -> sendfile socket fp EntireFile (T.tickle th)
+                Just part -> sendfile socket fp PartOfFile {
+                    rangeOffset = filePartOffset part
+                  , rangeLength = filePartByteCount part
+                  } (T.tickle th)
+            T.tickle th
             return $ lookup "content-length" hs /= Nothing
         else return True
-  where
-    tickler iter = do
-        r <- iter
-        case r of
-            Done _ -> return ()
-            Sent _ cont -> T.tickle th >> tickler cont
-            WouldBlock _ fd cont -> do
-                -- FIXME do we want to tickle here?
-                threadWaitWrite fd
-                tickler cont
 sendResponse th req hv socket (ResponseBuilder s hs b)
     | hasBody s req = do
           toByteStringIO (\bs -> do
