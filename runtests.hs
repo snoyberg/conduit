@@ -3,11 +3,13 @@
 {-# LANGUAGE OverloadedStrings #-}
 import Test.Framework (defaultMain, testGroup, Test)
 import Test.Framework.Providers.HUnit
+import Test.Framework.Providers.QuickCheck2
 import Test.HUnit hiding (Test)
 
-import Network.Wai.Handler.Warp (takeHeaders, InvalidRequest (..))
+import Network.Wai.Handler.Warp (takeHeaders, InvalidRequest (..), readInt)
 import Data.Enumerator (run_, ($$), enumList, run)
 import Control.Exception (fromException)
+import qualified Data.ByteString.Char8 as S8
 
 main :: IO ()
 main = defaultMain [testSuite]
@@ -17,6 +19,9 @@ testSuite = testGroup "Text.Hamlet"
     [ testCase "takeUntilBlank safe" caseTakeUntilBlankSafe
     , testCase "takeUntilBlank too many lines" caseTakeUntilBlankTooMany
     , testCase "takeUntilBlank too large" caseTakeUntilBlankTooLarge
+    , testProperty "takeInt" $ \i' ->
+        let i = abs i'
+         in i == readInt (S8.pack $ show i)
     ]
 
 caseTakeUntilBlankSafe = do

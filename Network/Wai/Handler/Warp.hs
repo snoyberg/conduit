@@ -39,6 +39,7 @@ module Network.Wai.Handler.Warp
     , InvalidRequest (..)
 #if TEST
     , takeHeaders
+    , readInt
 #endif
     ) where
 
@@ -299,7 +300,7 @@ sendResponse :: T.Handle
              -> Request -> H.HttpVersion -> Socket -> Response -> IO Bool
 sendResponse th req hv socket (ResponseFile s hs fp mpart) = do
     (hs', cl) <-
-        case (mcl, mpart) of
+        case (readInt `fmap` lookup "content-length" hs, mpart) of
             (Just cl, _) -> return (hs, cl)
             (Nothing, Nothing) -> do
                 cl <- P.fileSize `fmap` P.getFileStatus fp
@@ -322,14 +323,6 @@ sendResponse th req hv socket (ResponseFile s hs fp mpart) = do
             T.tickle th
             return True
         else return True
-  where
-    clS = lookup "content-length" hs
-    mcl = clS >>= readInt
-    -- FIXME make this more efficient
-    readInt bs =
-        case reads $ B.unpack bs of
-            (i, _):_ -> Just i
-            [] -> Nothing
 sendResponse th req hv socket (ResponseBuilder s hs b)
     | hasBody s req = do
           toByteStringIO (\bs -> do
@@ -519,3 +512,8 @@ checkCR bs pos =
         then p
         else pos
 {-# INLINE checkCR #-}
+
+-- Note: This function produces garbage on invalid input. But serving an
+-- invalid content-length is a bad idea, mkay?
+readInt :: S.ByteString -> Integer
+readInt = S.foldl' (\x w -> x * 10 + fromIntegral w - 48) 0
