@@ -295,16 +295,17 @@ hasBody s req = s /= (H.Status 204 "") && requestMethod req /= "HEAD"
 
 sendResponse :: T.Handle
              -> Request -> H.HttpVersion -> Socket -> Response -> IO Bool
-sendResponse _ req hv socket (ResponseFile s hs fp mpart) = do
+sendResponse th req hv socket (ResponseFile s hs fp mpart) = do
     Sock.sendMany socket $ L.toChunks $ toLazyByteString $ headers hv s hs False
     if hasBody s req
         then do
             case mpart of
-                Nothing   -> sendfile socket fp EntireFile
+                Nothing   -> sendfile socket fp EntireFile (T.tickle th)
                 Just part -> sendfile socket fp PartOfFile {
                     rangeOffset = filePartOffset part
                   , rangeLength = filePartByteCount part
-                  }
+                  } (T.tickle th)
+            T.tickle th
             return $ lookup "content-length" hs /= Nothing
         else return True
 sendResponse th req hv socket (ResponseBuilder s hs b)
