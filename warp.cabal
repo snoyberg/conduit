@@ -25,6 +25,7 @@ Library
                    , simple-sendfile               >= 0.1      && < 0.2
                    , http-types                    >= 0.6      && < 0.7
                    , case-insensitive              >= 0.2      && < 0.3
+                   , unix-compat                   >= 0.2      && < 0.3
   if flag(network-bytestring)
       build-depends: network               >= 2.2.1   && < 2.2.3
                    , network-bytestring    >= 0.1.3   && < 0.1.4

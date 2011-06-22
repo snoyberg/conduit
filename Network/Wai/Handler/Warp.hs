@@ -39,6 +39,7 @@ module Network.Wai.Handler.Warp
     , InvalidRequest (..)
 #if TEST
     , takeHeaders
+    , readInt
 #endif
     ) where
 
@@ -80,6 +81,8 @@ import Blaze.ByteString.Builder
 import Blaze.ByteString.Builder.Char8 (fromChar, fromShow)
 import Data.Monoid (mappend, mconcat)
 import Network.Sendfile
+
+import qualified System.PosixCompat.Files as P
 
 import Control.Monad.IO.Class (liftIO)
 import qualified Timeout as T
@@ -296,17 +299,29 @@ hasBody s req = s /= (H.Status 204 "") && requestMethod req /= "HEAD"
 sendResponse :: T.Handle
              -> Request -> H.HttpVersion -> Socket -> Response -> IO Bool
 sendResponse th req hv socket (ResponseFile s hs fp mpart) = do
-    Sock.sendMany socket $ L.toChunks $ toLazyByteString $ headers hv s hs False
+    (hs', cl) <-
+        case (readInt `fmap` lookup "content-length" hs, mpart) of
+            (Just cl, _) -> return (hs, cl)
+            (Nothing, Nothing) -> do
+                cl <- P.fileSize `fmap` P.getFileStatus fp
+                return (("Content-Length", B.pack $ show cl):hs, fromIntegral cl)
+            (Nothing, Just part) -> do
+                let cl = filePartByteCount part
+                return (("Content-Length", B.pack $ show cl):hs, fromIntegral cl)
+    Sock.sendMany socket $ L.toChunks $ toLazyByteString $ headers hv s hs' False
     if hasBody s req
         then do
             case mpart of
-                Nothing   -> sendfile socket fp EntireFile (T.tickle th)
+                Nothing   -> sendfile socket fp PartOfFile {
+                    rangeOffset = 0
+                  , rangeLength = cl
+                  } (T.tickle th)
                 Just part -> sendfile socket fp PartOfFile {
                     rangeOffset = filePartOffset part
                   , rangeLength = filePartByteCount part
                   } (T.tickle th)
             T.tickle th
-            return $ lookup "content-length" hs /= Nothing
+            return True
         else return True
 sendResponse th req hv socket (ResponseBuilder s hs b)
     | hasBody s req = do
@@ -497,3 +512,8 @@ checkCR bs pos =
         then p
         else pos
 {-# INLINE checkCR #-}
+
+-- Note: This function produces garbage on invalid input. But serving an
+-- invalid content-length is a bad idea, mkay?
+readInt :: S.ByteString -> Integer
+readInt = S.foldl' (\x w -> x * 10 + fromIntegral w - 48) 0
