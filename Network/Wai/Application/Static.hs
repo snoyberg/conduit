@@ -315,7 +315,7 @@ checkPieces fileLookup indices pieces req maxAge
 
     cacheControl = case ccInt of
         Nothing -> []
-        Just i  -> [("Cache-Control", S8.append "max-age" $ S8.pack $ show i)]
+        Just i  -> [("Cache-Control", S8.append "max-age=" $ S8.pack $ show i)]
       where
         ccInt =
             case maxAge of
@@ -344,7 +344,10 @@ data File = File
     }
 
 parseDate :: ByteString -> Maybe EpochTime
-parseDate = error "parseDate"
+parseDate =
+    fmap (fromIntegral . fromEnum . utcTimeToPOSIXSeconds) . parseTime defaultTimeLocale format . S8.unpack
+  where
+    format = "%a, %d %b %Y %X %Z"
 
 data StaticSettings = StaticSettings
     { ssFolder :: Pieces -> IO FileLookup
