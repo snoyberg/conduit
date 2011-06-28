@@ -278,19 +278,31 @@ checkPieces fileLookup indices pieces req maxAge
     -- HTTP caching has a cache control header that you can set an expire time for a resource.
     --   Max-Age is easiest because it is a simple number
     --   a cache-control asset will only be downloaded once (if the browser maintains its cache)
-    --   and the server will never be contacted for the resource again
+    --   and the server will never be contacted for the resource again (until it expires)
+    --
     -- A second caching mechanism is ETag and last-modified
     --   this form of caching is not as good as the static- the browser can avoid downloading the file, but it always need to send a request with the etag value or the last-modified value to the server to see if its copy is up to date
+    --
     -- We should set a cache control and one of ETag or last-modifed whenever possible
+    --
+    -- in a Yesod web application we append an etag parameter to static assets.
+    -- This should set both a max-age and ETag header
+    -- if there is no etag parameter
+    -- * don't set the max-age
+    -- * set ETag or last-modified
+    --   * ETag must be calculated ahead of time.
+    --   * last-modified is just the file mtime.
     handleCache file =
         case (lookup "if-none-match" headers, fileGetHash file) of
+            -- etag
             (Just lastHash, Just getHash) -> do
                 hash <- getHash
                 if hash == lastHash
                     then return NotModified
-                    else return $ FileResponse file $ [("ETag", hash)] ++ cacheControl
+                    else return $ FileResponse file $ ("ETag", hash):cacheControl
             _ ->
                 case (lookup "if-modified-since" headers >>= parseDate, fileGetModified file) of
+                    -- last-modified
                     (Just lastSent, Just modified) -> do
                         if lastSent >= modified
                             then return NotModified
@@ -299,11 +311,10 @@ checkPieces fileLookup indices pieces req maxAge
 
     respond file = do
         mhash <- maybe (return Nothing) (fmap Just) $ fileGetHash file
-        let hash =
-                case mhash of
-                    Just h -> [("ETag", h)]
-                    Nothing -> []
-        return $ FileResponse file $ hash ++ cacheControl
+        return $ FileResponse file $
+            case mhash of
+                Just h -> [("ETag", h)]
+                Nothing -> []
 
     setLast :: Pieces -> Piece -> Pieces
     setLast [] x = [x]

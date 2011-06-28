@@ -10,6 +10,7 @@ import qualified Data.ByteString.Char8 as S8
 import qualified Data.ByteString.Lazy.Char8 as L8
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
+import System.IO (stderr, hPutStrLn)
 
 
 import Network.Wai
@@ -40,23 +41,20 @@ setRawPathInfo r rawPinfo =
   in  r { rawPathInfo = rawPinfo, pathInfo = pInfo }
 
 
-
 main :: IO a
 main = hspecX $ do
   let must = liftIO . assert
+  let info = liftIO . hPutStrLn stderr
 
   describe "Pieces: pathFromPieces" $ do
     it "converts to a file path" $
       (pathFromPieces "prefix" [Piece "a" "a", Piece "bc" "bc"]) @?= "prefix/a/bc"
 
-{-
-    prop "each piece is in file path" $ \pieces ->
-      let piecesT = (map piecePretty pieces) in
-      all (\p -> ("/" ++ (unfixPathName $ T.unpack p)) `isInfixOf` (pathFromPieces "root" $ pieces)) piecesT
-      -}
+    prop "each piece is in file path" $ \piecesS ->
+      let pieces = map (\p -> Piece p "") piecesS
+      in  all (\p -> ("/" ++ p) `isInfixOf` (pathFromPieces "root" $ pieces)) piecesS
 
 
-  let cacheLookup = MaxAgeForever -- (\fp h -> fp == "tests/runtests.hs" && h == "cached")
   let statApp = flip runSession $ staticApp defaultFileServerSettings  {ssFolder = fileSystemLookup "tests"}
   describe "staticApp" $ do
     it "403 for unsafe paths" $ statApp $
@@ -99,21 +97,37 @@ main = hspecX $ do
   describe "when requesting a static asset" $ do
     let runtests = setRawPathInfo defRequest "runtests.hs"
     it "200 when no query parameters" $ statApp $ do
+      req <- request runtests
+      assertStatus 200 req
+      assertNoHeader "Cache-Control" req
+
+    it "200 when invalid if-modified-since header" $ statApp $ do
       req <- request runtests {
         requestHeaders = [("If-Modified-Since", "")]
       }
       assertStatus 200 req
       assertNoHeader "Cache-Control" req
 
-    it "200 when no cache headers sent" $ statApp $ do
-      req <- request runtests { rawQueryString ="?cached" }
+    it "200 when no cache headers and no cache query string" $ statApp $ do
+      req <- request runtests { rawQueryString ="?foo" }
+      assertStatus 200 req
+      assertNoHeader "Cache-Control" req
+
+    it "200 when no cache headers and bad cache query string" $ statApp $ do
+      req <- request runtests { rawQueryString ="?etag=cached" }
+      assertStatus 200 req
+      assertNoHeader "Cache-Control" req
+
+    it "200 when no cache headers and bad cache query string" $ statApp $ do
+      req <- request runtests { rawQueryString ="?etag=" }
       assertStatus 200 req
       assertHeader "Cache-Control" "max-age=31536000" req
 
-    it "200 when If-Unmodified-Since" $ statApp $ do
+    it "200 when empty If-Unmodified-Since" $ statApp $ do
       req <- request runtests { rawQueryString ="?cached",
         requestHeaders = [("If-Unmodified-Since", "")]
       }
+      info "WTF??***"
       assertStatus 200 req
       assertHeader "Cache-Control" "max-age=31536000" req
 
