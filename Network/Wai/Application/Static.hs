@@ -314,7 +314,7 @@ checkPieces fileLookup indices pieces req maxAge
                         then return NotModified
                         else return $ FileResponse file $ [("ETag", hash)]
                 _ ->
-                    case (lookup "if-modified-since" headers >>= parseDate, fileGetModified file) of
+                    case (lookup "if-modified-since" headers >>= parseModifiedDate, fileGetModified file) of
                         -- last-modified
                         (Just lastSent, Just modified) -> do
                             if lastSent >= modified
@@ -367,8 +367,8 @@ data File = File
     , fileGetModified :: Maybe EpochTime
     }
 
-parseDate :: ByteString -> Maybe EpochTime
-parseDate =
+parseModifiedDate :: ByteString -> Maybe EpochTime
+parseModifiedDate =
     fmap (fromIntegral . fromEnum . utcTimeToPOSIXSeconds) . parseTime defaultTimeLocale format . S8.unpack
   where
     format = "%a, %d %b %Y %X %Z"
