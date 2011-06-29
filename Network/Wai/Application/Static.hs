@@ -85,15 +85,13 @@ import Data.Function (on)
 import Data.Ord (comparing)
 import qualified Data.ByteString.Base64 as B64
 import Data.Either (rights)
+import Data.Maybe (isJust, fromJust)
 
-#ifdef PRINT
+{-
 import Debug.Trace
 debug :: (Show a) => a -> a
 debug a = trace ("DEBUG: " ++ show a) a
-#else
-debug :: a -> a
-debug = id
-#endif
+-}
 
 -- | A list of all possible extensions, starting from the largest.
 takeExtensions :: FilePath -> [String]
@@ -189,8 +187,9 @@ mimeTypeByExt mm def =
 defaultMimeTypeByExt :: FilePath -> MimeType
 defaultMimeTypeByExt = mimeTypeByExt defaultMimeTypes defaultMimeType
 
-data CheckPieces
-    = Redirect Pieces
+data CheckPieces =
+      -- | Just the etag hash or Nothing for no etag hash
+      Redirect Pieces (Maybe ByteString)
     | Forbidden
     | NotFound
     | FileResponse File H.ResponseHeaders
@@ -251,7 +250,7 @@ checkPieces :: (Pieces -> IO FileLookup) -- ^ file lookup function
 checkPieces fileLookup indices pieces req maxAge
     | any (unsafe . piecePretty) pieces = return Forbidden
     | any (T.null . piecePretty) $ safeInit pieces =
-        return $ Redirect $ filterButLast (not . T.null . piecePretty) pieces
+        return $ Redirect (filterButLast (not . T.null . piecePretty) pieces) Nothing
     | otherwise = do
         let (isFile, isFolder) =
                 case () of
@@ -264,16 +263,17 @@ checkPieces fileLookup indices pieces req maxAge
         case (fl, isFile) of
             (Nothing, _) -> return NotFound
             (Just (Right file), True)  -> handleCache file
-            (Just Right{}, False) -> return $ Redirect $ init pieces
+            (Just Right{}, False) -> return $ Redirect (init pieces) Nothing
             (Just (Left folder@(Folder _ contents)), _) -> do
                 case checkIndices $ map fileName $ rights contents of
-                    Just index -> return $ Redirect $ setLast pieces $ Piece (T.unpack index) index
+                    Just index -> return $ Redirect (setLast pieces $ Piece (T.unpack index) index) Nothing
                     Nothing ->
                         if isFolder
                             then return $ DirectoryResponse folder
-                            else return $ Redirect $ pieces ++ [Piece "" ""]
+                            else return $ Redirect (pieces ++ [Piece "" ""]) Nothing
   where
     headers = W.requestHeaders req
+    queryString = W.queryString req
 
     -- HTTP caching has a cache control header that you can set an expire time for a resource.
     --   Max-Age is easiest because it is a simple number
@@ -285,29 +285,42 @@ checkPieces fileLookup indices pieces req maxAge
     --
     -- We should set a cache control and one of ETag or last-modifed whenever possible
     --
-    -- in a Yesod web application we append an etag parameter to static assets.
-    -- This should set both a max-age and ETag header
+    -- In a Yesod web application we can append an etag parameter to static assets.
+    -- This signals that both a max-age and ETag header should be set
     -- if there is no etag parameter
     -- * don't set the max-age
     -- * set ETag or last-modified
     --   * ETag must be calculated ahead of time.
     --   * last-modified is just the file mtime.
-    handleCache file =
-        case (lookup "if-none-match" headers, fileGetHash file) of
-            -- etag
-            (Just lastHash, Just getHash) -> do
-                hash <- getHash
-                if hash == lastHash
-                    then return NotModified
-                    else return $ FileResponse file $ ("ETag", hash):cacheControl
-            _ ->
-                case (lookup "if-modified-since" headers >>= parseDate, fileGetModified file) of
-                    -- last-modified
-                    (Just lastSent, Just modified) -> do
-                        if lastSent >= modified
-                            then return NotModified
-                            else respond file
-                    _ -> respond file
+    handleCache file = do
+        let mGetHash  = fileGetHash file
+        let etagParam = lookup "etag" queryString
+
+        case (etagParam, mGetHash) of
+          (Just mEtag, Just getHash) -> do
+              hash <- getHash
+              if isJust mEtag && hash == fromJust mEtag
+                then return $ FileResponse file $ ("ETag", hash):cacheControl
+                else return $ Redirect pieces (Just hash)
+          -- a file used to have an etag parameter, but no longer does
+          (Just _, Nothing) -> return $ Redirect pieces Nothing
+
+          _ ->
+            case (lookup "if-none-match" headers, mGetHash) of
+                -- etag
+                (Just lastHash, Just getHash) -> do
+                    hash <- getHash
+                    if hash == lastHash
+                        then return NotModified
+                        else return $ FileResponse file $ [("ETag", hash)]
+                _ ->
+                    case (lookup "if-modified-since" headers >>= parseDate, fileGetModified file) of
+                        -- last-modified
+                        (Just lastSent, Just modified) -> do
+                            if lastSent >= modified
+                                then return NotModified
+                                else respond file
+                        _ -> respond file
 
     respond file = do
         mhash <- maybe (return Nothing) (fmap Just) $ fileGetHash file
@@ -519,6 +532,18 @@ status304, statusNotModified :: H.Status
 status304 = H.Status 304 "Not Modified"
 statusNotModified = status304
 
+-- alist helper functions
+replace :: Eq a => a -> b -> [(a, b)] -> [(a, b)]
+replace k v [] = [(k,v)]
+replace k v (x:xs) | fst x == k = (k,v):xs
+                   | otherwise  = x:replace k v xs
+
+remove :: Eq a => a -> [(a, b)] -> [(a, b)]
+remove _ [] = []
+remove k (x:xs) | fst x == k = xs
+                  | otherwise  = x:remove k xs
+
+
 staticAppPieces :: StaticSettings -> Pieces -> W.Application
 staticAppPieces _ _ req
     | W.requestMethod req /= "GET" = return $ W.responseLBS
@@ -559,12 +584,16 @@ staticAppPieces ss pieces req = liftIO $ do
                 [ ("Content-Type", mt)
                   -- TODO: set Content-Length
                 ] lbs
-        Redirect pieces' -> do
+
+        Redirect pieces' mHash -> do
             let loc = (ssMkRedirect ss) pieces' $ toByteString (H.encodePathSegments $ map piecePretty pieces')
+            let qString = case mHash of
+                  Just hash -> replace "etag" (Just hash) (W.queryString req)
+                  Nothing   -> remove "etag" (W.queryString req)
 
             return $ W.responseLBS H.status301
                 [ ("Content-Type", "text/plain")
-                , ("Location", loc)
+                , ("Location", S8.append loc $ H.renderQuery True qString)
                 ] "Redirect"
         Forbidden -> return $ W.responseLBS H.status403
                         [ ("Content-Type", "text/plain")

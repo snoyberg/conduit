@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, NoMonomorphismRestriction #-}
 import Network.Wai.Application.Static
 
 import Test.Hspec.Monadic
@@ -41,11 +41,14 @@ setRawPathInfo r rawPinfo =
   in  r { rawPathInfo = rawPinfo, pathInfo = pInfo }
 
 
+-- debug :: String -> m0 ()
+debug = liftIO . hPutStrLn stderr
+
 main :: IO a
 main = hspecX $ do
   let must = liftIO . assert
-  let info = liftIO . hPutStrLn stderr
 
+{-
   describe "Pieces: pathFromPieces" $ do
     it "converts to a file path" $
       (pathFromPieces "prefix" [Piece "a" "a", Piece "bc" "bc"]) @?= "prefix/a/bc"
@@ -53,21 +56,13 @@ main = hspecX $ do
     prop "each piece is in file path" $ \piecesS ->
       let pieces = map (\p -> Piece p "") piecesS
       in  all (\p -> ("/" ++ p) `isInfixOf` (pathFromPieces "root" $ pieces)) piecesS
+-}
 
 
-  let statApp = flip runSession $ staticApp defaultFileServerSettings  {ssFolder = fileSystemLookup "tests"}
-  describe "staticApp" $ do
-    it "403 for unsafe paths" $ statApp $
-      flip mapM_ ["..", "."] $ \path ->
-        assertStatus 403 =<<
-          request (setRawPathInfo defRequest path)
+  let fileServerApp = flip runSession $ staticApp defaultFileServerSettings  {ssFolder = fileSystemLookup "tests"}
 
-    it "200 for hidden paths" $ statApp $
-      flip mapM_ [".hidden/folder.png", ".hidden/haskell.png"] $ \path ->
-        assertStatus 200 =<<
-          request (setRawPathInfo defRequest path)
-
-    it "directory listing for index" $ statApp $ do
+  describe "fileServerApp" $ do
+    it "directory listing for index" $ fileServerApp $ do
       resp <- request (setRawPathInfo defRequest "a/")
       assertStatus 200 resp
       let body = simpleBody resp
@@ -76,11 +71,28 @@ main = hspecX $ do
       must $ body `contains` "<img src=\"../.hidden/folder.png\" alt=\"Folder\" />"
       must $ body `contains` "<a href=\"b\">b</a>"
 
-    it "404 for non-existant files" $ statApp $
+  let webApp = flip runSession $ staticApp defaultWebAppSettings  {ssFolder = fileSystemLookup "tests"}
+
+  {-
+  describe "webApp" $ do
+    it "403 for unsafe paths" $ webApp $
+      flip mapM_ ["..", "."] $ \path ->
+        assertStatus 403 =<<
+          request (setRawPathInfo defRequest path)
+
+    it "200 for hidden paths" $ webApp $
+      flip mapM_ [".hidden/folder.png", ".hidden/haskell.png"] $ \path ->
+        assertStatus 200 =<<
+          request (setRawPathInfo defRequest path)
+
+-}
+
+{-
+    it "404 for non-existant files" $ webApp $
       assertStatus 404 =<<
         request (setRawPathInfo defRequest "doesNotExist")
 
-    it "301 redirect when multiple slashes" $ statApp $ do
+    it "301 redirect when multiple slashes" $ webApp $ do
       req <- request (setRawPathInfo defRequest "a//b/c")
       assertStatus 301 req
       assertHeader "Location" "../../a/b/c" req
@@ -93,52 +105,57 @@ main = hspecX $ do
         req <- request (setRawPathInfo defRequest path)
         assertStatus 301 req
         assertHeader "Location" "http://www.example.com/a/b/c" req
+-}
 
-  describe "when requesting a static asset" $ do
-    let runtests = setRawPathInfo defRequest "runtests.hs"
-    it "200 when no query parameters" $ statApp $ do
-      req <- request runtests
+  describe "webApp when requesting a static asset" $ do
+    let statFile = setRawPathInfo defRequest "a/b"
+    {-
+    it "200 when no query parameters" $ webApp $ do
+      req <- request statFile
       assertStatus 200 req
       assertNoHeader "Cache-Control" req
 
-    it "200 when invalid if-modified-since header" $ statApp $ do
-      req <- request runtests {
-        requestHeaders = [("If-Modified-Since", "")]
+    it "200 when no cache headers and bad cache query string" $ webApp $ do
+      req <- request statFile { queryString = [("etag", Just "cached")] }
+      assertStatus 301 req
+      assertHeader "Location" "../a/b?etag=1B2M2Y8AsgTpgAmY7PhCfg%3D%3D" req
+      assertNoHeader "Cache-Control" req
+
+    it "200 when no cache headers and empty cache query string" $ webApp $ do
+      req <- request statFile { queryString = [("etag", Nothing)] }
+      assertStatus 301 req
+      assertHeader "Location" "../a/b?etag=1B2M2Y8AsgTpgAmY7PhCfg%3D%3D" req
+      assertNoHeader "Cache-Control" req
+
+    it "Cache-Control set when etag parameter is correct" $ webApp $ do
+      req <- request statFile { queryString = [("etag", Just "1B2M2Y8AsgTpgAmY7PhCfg==")] }
+      assertStatus 200 req
+      assertHeader "Cache-Control" "max-age=31536000" req
+      -}
+
+    it "200 when invalid if-modified-since header" $ webApp $ do
+      req <- request statFile {
+        requestHeaders = [("If-Modified-Since", "123")]
       }
       assertStatus 200 req
       assertNoHeader "Cache-Control" req
 
-    it "200 when no cache headers and no cache query string" $ statApp $ do
-      req <- request runtests { rawQueryString ="?foo" }
-      assertStatus 200 req
-      assertNoHeader "Cache-Control" req
-
-    it "200 when no cache headers and bad cache query string" $ statApp $ do
-      req <- request runtests { rawQueryString ="?etag=cached" }
-      assertStatus 200 req
-      assertNoHeader "Cache-Control" req
-
-    it "200 when no cache headers and bad cache query string" $ statApp $ do
-      req <- request runtests { rawQueryString ="?etag=" }
-      assertStatus 200 req
-      assertHeader "Cache-Control" "max-age=31536000" req
-
-    it "200 when empty If-Unmodified-Since" $ statApp $ do
-      req <- request runtests { rawQueryString ="?cached",
+    it "200 when empty If-Unmodified-Since" $ webApp $ do
+      req <- request statFile {
         requestHeaders = [("If-Unmodified-Since", "")]
       }
-      info "WTF??***"
       assertStatus 200 req
-      assertHeader "Cache-Control" "max-age=31536000" req
+      assertNoHeader "Cache-Control" req
 
-    it "304 when cache header and query parameter sent" $ statApp $ do
-      req <- request runtests {  rawQueryString ="?cached",
+    it "304 when if-modified-since matches" $ webApp $ do
+      req <- request statFile {
         requestHeaders = [("If-Modified-Since", "")]
       }
       assertStatus 304 req
       assertNoHeader "Cache-Control" req
+{-
 
-  let pubApp = flip runSession $ staticApp defaultWebAppSettings {ssFolder = fileSystemLookup "tests"}
+  let pubApp = flip runSession $ staticApp defaultFileServerSettings {ssFolder = fileSystemLookup "tests"}
   describe "staticApp when requesting a public asset - etags" $ do
     it "200 when no etag parameters" $ pubApp $ do
       req <- request (setRawPathInfo defRequest "runtests.hs")
@@ -149,3 +166,4 @@ main = hspecX $ do
       req <- request (setRawPathInfo defRequest "runtests.hs") { requestHeaders  = [("If-None-Match", "hash")] }
       assertStatus 304 req
       assertNoHeader "Etag" req
+      -}
