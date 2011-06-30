@@ -13,6 +13,9 @@ import qualified Data.Text.Encoding as TE
 import System.PosixCompat.Files (getFileStatus, modificationTime)
 import System.IO (stderr, hPutStrLn)
 
+import Network.HTTP.Date
+{-import System.Locale (defaultTimeLocale)-}
+{-import Data.Time.Format (formatTime)-}
 
 import Network.Wai
 import Network.Wai.Test
@@ -33,7 +36,7 @@ defRequest = Request {
 , httpVersion = H.http11
 , serverPort = 80
 , isSecure = False
-, remoteHost = Sock.SockAddrUnix "/dev/null"
+, remoteHost = Sock.SockAddrInet 1 2
 }
 
 setRawPathInfo :: Request -> S8.ByteString -> Request
@@ -143,10 +146,11 @@ main = hspecX $ do
         assertNoHeader "Cache-Control" req
 
     it "304 when if-modified-since matches" $ fileServerApp $ do
-      stat <- liftIO $ getFileStatus file
+      --  formatTime defaultTimeLocale format $ 
+      -- let format = "%a, %d %b %Y %X %Z"
+      stat <- liftIO $ getFileStatus $ "tests/" ++ file
       req <- request statFile {
-        -- TODO: need actual time String
-        requestHeaders = [("If-Modified-Since", S8.pack $ show $ modificationTime stat)]
+        requestHeaders = [("If-Modified-Since", formatHTTPDate . epochTimeToHTTPDate $ modificationTime stat)]
       }
       assertStatus 304 req
       assertNoHeader "Cache-Control" req
