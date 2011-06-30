@@ -77,7 +77,6 @@ import Data.FileEmbed (embedFile)
 
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
-import qualified Data.Text.Encoding.Error as TEE
 
 import Control.Arrow ((&&&), second)
 import Data.List (groupBy, sortBy, find)
@@ -369,7 +368,7 @@ data File = File
 
 parseModifiedDate :: ByteString -> Maybe EpochTime
 parseModifiedDate =
-    fmap (fromIntegral . fromEnum . utcTimeToPOSIXSeconds) . parseTime defaultTimeLocale format . S8.unpack
+    fmap (fromInteger . round . utcTimeToPOSIXSeconds) . parseTime defaultTimeLocale format . S8.unpack
   where
     format = "%a, %d %b %Y %X %Z"
 
