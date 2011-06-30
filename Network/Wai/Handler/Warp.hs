@@ -61,7 +61,7 @@ import qualified Network.Socket
 import qualified Network.Socket.ByteString as Sock
 import Control.Exception
     ( bracket, finally, Exception, SomeException, catch
-    , fromException
+    , fromException, AsyncException (ThreadKilled)
     )
 import Control.Concurrent (forkIO)
 import qualified Data.Char as C
@@ -437,12 +437,17 @@ defaultSettings = Settings
     , settingsOnException = \e ->
         case fromException e of
             Just x -> go x
-            Nothing -> hPutStrLn stderr $ show e
+            Nothing ->
+                if go' $ fromException e
+                    then hPutStrLn stderr $ show e
+                    else return ()
     , settingsTimeout = 30
     }
   where
     go :: InvalidRequest -> IO ()
     go _ = return ()
+    go' (Just ThreadKilled) = False
+    go' _ = True
 
 takeHeaders :: E.Iteratee ByteString IO [ByteString]
 takeHeaders = do
