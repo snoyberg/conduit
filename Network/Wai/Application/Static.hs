@@ -372,12 +372,6 @@ data File = File
     , fileGetModified :: Maybe EpochTime
     }
 
-parseModifiedDate :: ByteString -> Maybe EpochTime
-parseModifiedDate =
-    fmap (fromInteger . round . utcTimeToPOSIXSeconds) . parseTime defaultTimeLocale format . S8.unpack
-  where
-    format = "%a, %d %b %Y %X %Z"
-
 data StaticSettings = StaticSettings
     { ssFolder :: Pieces -> IO FileLookup
     , ssMkRedirect :: Pieces -> ByteString -> ByteString
