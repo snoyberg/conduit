@@ -103,6 +103,7 @@ main = hspecX $ do
       assertStatus 200 req
       assertNoHeader "Cache-Control" req
       assertHeader "ETag" etag req
+      assertNoHeader "Last-Modified" req
 
     it "200 when no cache headers and bad cache query string" $ webApp $ do
       flip mapM_ [Just "cached", Nothing] $ \badETag -> do
@@ -110,24 +111,32 @@ main = hspecX $ do
         assertStatus 301 req
         assertHeader "Location" "../a/b?etag=1B2M2Y8AsgTpgAmY7PhCfg%3D%3D" req
         assertNoHeader "Cache-Control" req
+        assertNoHeader "Last-Modified" req
 
     it "Cache-Control set when etag parameter is correct" $ webApp $ do
       req <- request statFile { queryString = [("etag", Just etag)] }
       assertStatus 200 req
       assertHeader "Cache-Control" "max-age=31536000" req
+      assertNoHeader "Last-Modified" req
 
     it "200 when invalid in-none-match sent" $ webApp $
       flip mapM_ ["cached", ""] $ \badETag -> do
         req <- request statFile { requestHeaders  = [("If-None-Match", badETag)] }
         assertStatus 200 req
         assertHeader "ETag" etag req
+        assertNoHeader "Last-Modified" req
 
     it "304 when valid if-none-match sent" $ webApp $ do
       req <- request statFile { requestHeaders  = [("If-None-Match", etag)] }
       assertStatus 304 req
       assertNoHeader "Etag" req
+      assertNoHeader "Last-Modified" req
 
   describe "fileServerApp" $ do
+    let fileDate = do
+          stat <- liftIO $ getFileStatus $ "tests/" ++ file
+          return $ formatHTTPDate . epochTimeToHTTPDate $ modificationTime stat
+
     it "directory listing for index" $ fileServerApp $ do
       resp <- request (setRawPathInfo defRequest "a/")
       assertStatus 200 resp
@@ -144,13 +153,13 @@ main = hspecX $ do
         }
         assertStatus 200 req
         assertNoHeader "Cache-Control" req
+        fdate <- fileDate
+        assertHeader "Last-Modified" fdate req
 
     it "304 when if-modified-since matches" $ fileServerApp $ do
-      --  formatTime defaultTimeLocale format $ 
-      -- let format = "%a, %d %b %Y %X %Z"
-      stat <- liftIO $ getFileStatus $ "tests/" ++ file
+      fdate <- fileDate
       req <- request statFile {
-        requestHeaders = [("If-Modified-Since", formatHTTPDate . epochTimeToHTTPDate $ modificationTime stat)]
+        requestHeaders = [("If-Modified-Since", fdate)]
       }
       assertStatus 304 req
       assertNoHeader "Cache-Control" req

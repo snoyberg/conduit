@@ -77,6 +77,7 @@ import Data.FileEmbed (embedFile)
 
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
+import qualified Data.Text.Encoding.Error as TEE
 
 import Control.Arrow ((&&&), second)
 import Data.List (groupBy, sortBy, find)
@@ -85,11 +86,12 @@ import Data.Ord (comparing)
 import qualified Data.ByteString.Base64 as B64
 import Data.Either (rights)
 import Data.Maybe (isJust, fromJust)
+import Network.HTTP.Date (parseHTTPDate, epochTimeToHTTPDate, formatHTTPDate)
 
-{-
 import Debug.Trace
 debug :: (Show a) => a -> a
 debug a = trace ("DEBUG: " ++ show a) a
+{-
 -}
 
 -- | A list of all possible extensions, starting from the largest.
@@ -245,8 +247,9 @@ checkPieces :: (Pieces -> IO FileLookup) -- ^ file lookup function
             -> Pieces                    -- ^ parsed request
             -> W.Request
             -> MaxAge
+            -> Bool
             -> IO CheckPieces
-checkPieces fileLookup indices pieces req maxAge
+checkPieces fileLookup indices pieces req maxAge useHash
     | any (unsafe . piecePretty) pieces = return Forbidden
     | any (T.null . piecePretty) $ safeInit pieces =
         return $ Redirect (filterButLast (not . T.null . piecePretty) pieces) Nothing
@@ -291,42 +294,45 @@ checkPieces fileLookup indices pieces req maxAge
     -- * set ETag or last-modified
     --   * ETag must be calculated ahead of time.
     --   * last-modified is just the file mtime.
-    handleCache file = do
-        let mGetHash  = fileGetHash file
-        let etagParam = lookup "etag" queryString
+    handleCache file =
+      if not useHash then lastModifiedCache file
+        else do
+          let mGetHash  = fileGetHash file
+          let etagParam = lookup "etag" queryString
 
-        case (etagParam, mGetHash) of
-          (Just mEtag, Just getHash) -> do
-              hash <- getHash
-              if isJust mEtag && hash == fromJust mEtag
-                then return $ FileResponse file $ ("ETag", hash):cacheControl
-                else return $ Redirect pieces (Just hash)
-          -- a file used to have an etag parameter, but no longer does
-          (Just _, Nothing) -> return $ Redirect pieces Nothing
+          case (etagParam, mGetHash) of
+            (Just mEtag, Just getHash) -> do
+                hash <- getHash
+                if isJust mEtag && hash == fromJust mEtag
+                  then return $ FileResponse file $ ("ETag", hash):cacheControl
+                  else return $ Redirect pieces (Just hash)
+            -- a file used to have an etag parameter, but no longer does
+            (Just _, Nothing) -> return $ Redirect pieces Nothing
 
-          _ ->
-            case (lookup "if-none-match" headers, mGetHash) of
-                -- etag
-                (Just lastHash, Just getHash) -> do
-                    hash <- getHash
-                    if hash == lastHash
-                        then return NotModified
-                        else return $ FileResponse file $ [("ETag", hash)]
-                _ ->
-                    case (lookup "if-modified-since" headers >>= parseModifiedDate, fileGetModified file) of
-                        -- last-modified
-                        (Just lastSent, Just modified) -> do
-                            if lastSent >= modified
+            _ -> 
+                case (lookup "if-none-match" headers, mGetHash) of
+                    -- etag
+                    (mLastHash, Just getHash) -> do
+                        hash <- getHash
+                        case mLastHash of
+                          Just lastHash ->
+                            if hash == lastHash
                                 then return NotModified
-                                else respond file
-                        _ -> respond file
+                                else return $ FileResponse file $ [("ETag", hash)]
+                          Nothing -> return $ FileResponse file $ [("ETag", hash)]
+                    (_, Nothing) -> lastModifiedCache file
 
-    respond file = do
-        mhash <- maybe (return Nothing) (fmap Just) $ fileGetHash file
-        return $ FileResponse file $
-            case mhash of
-                Just h -> [("ETag", h)]
-                Nothing -> []
+    lastModifiedCache file =
+      case (lookup "if-modified-since" headers >>= parseHTTPDate, fileGetModified file) of
+          (mLastSent, Just modified) -> do
+            let mdate = epochTimeToHTTPDate modified in
+              case mLastSent of
+                Just lastSent ->
+                  if lastSent == mdate
+                      then return NotModified
+                      else return $ FileResponse file $ [("last-modified", formatHTTPDate mdate)]
+                Nothing -> return $ FileResponse file $ [("last-modified", formatHTTPDate mdate)]
+          _ -> return $ FileResponse file []
 
     setLast :: Pieces -> Piece -> Pieces
     setLast [] x = [x]
@@ -379,6 +385,7 @@ data StaticSettings = StaticSettings
     , ssListing :: Maybe Listing
     , ssIndices :: [T.Text] -- index.html
     , ssMaxAge :: MaxAge
+    , ssUseHash :: Bool
     }
 
 data MaxAge = NoMaxAge | MaxAgeSeconds Int | MaxAgeForever
@@ -400,6 +407,7 @@ defaultWebAppSettings = StaticSettings
     , ssMaxAge  = MaxAgeForever
     , ssListing = Nothing
     , ssIndices = []
+    , ssUseHash = True
     }
 
 defaultFileServerSettings :: StaticSettings
@@ -410,6 +418,7 @@ defaultFileServerSettings = StaticSettings
     , ssMaxAge = MaxAgeSeconds $ 60 * 60
     , ssListing = Just defaultListing
     , ssIndices = ["index.html", "index.htm"]
+    , ssUseHash = False
     }
 
 fileHelper :: FilePath -> T.Text -> IO File
@@ -553,7 +562,7 @@ staticAppPieces ss pieces req = liftIO $ do
     let indices = ssIndices ss
     case checkSpecialDirListing pieces of
          Just res ->  response res
-         Nothing  ->  checkPieces (ssFolder ss) indices pieces req (ssMaxAge ss) >>= response
+         Nothing  ->  checkPieces (ssFolder ss) indices pieces req (ssMaxAge ss) (ssUseHash ss) >>= response
   where
     response cp = case cp of
         FileResponse file ch -> do
