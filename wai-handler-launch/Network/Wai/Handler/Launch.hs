@@ -1,7 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
 {-# LANGUAGE CPP #-}
-module Network.Wai.Handler.Launch (run) where
+module Network.Wai.Handler.Launch
+    ( run
+    , runUrl
+    ) where
 
 import Network.Wai
 import Network.HTTP.Types
@@ -115,27 +118,35 @@ fixHeaders front (x:xs) = fixHeaders (front . (:) x) xs
 
 #if WINDOWS
 foreign import ccall "launch"
-    launch :: IO ()
+    launch' :: Int -> CString -> IO ()
+#endif
+
+launch :: String -> IO ()
+
+#if WINDOWS
+launch s = withCString s $ launch' 4587
 #else
-launch :: IO ()
-launch = forkIO (rawSystem
+launch s = forkIO (rawSystem
 #if MAC
     "open"
 #else
     "xdg-open"
 #endif
-    ["http://127.0.0.1:4587/"] >> return ()) >> return ()
+    ["http://127.0.0.1:4587/" ++ s] >> return ()) >> return ()
 #endif
 
 run :: Application -> IO ()
-run app = do
+run = runUrl ""
+
+runUrl :: String -> Application -> IO ()
+runUrl url app = do
     x <- newIORef True
     forkIO $ Warp.runSettings Warp.defaultSettings
         { Warp.settingsPort = 4587
         , Warp.settingsOnException = const $ return ()
         , Warp.settingsHost = "127.0.0.1"
         } $ ping x app
-    launch
+    launch url
     loop x
 
 loop :: IORef Bool -> IO ()
