@@ -21,6 +21,7 @@ import Network.Wai.Zlib
 import Data.Maybe (fromMaybe)
 import Data.Enumerator (($$), joinI)
 import qualified Data.ByteString.Char8 as S8
+import qualified Data.ByteString as S
 
 -- | Use gzip to compress the body of the response.
 --
@@ -39,12 +40,14 @@ gzip files app env = do
     return $
         case res of
             ResponseFile{} | not files -> res
-            _ -> if "gzip" `elem` enc
+            _ -> if "gzip" `elem` enc && not isMSIE6
                     then ResponseEnumerator $ compressE $ responseEnumerator res
                     else res
   where
     enc = fromMaybe [] $ (splitCommas . S8.unpack)
                     `fmap` lookup "Accept-Encoding" (requestHeaders env)
+    ua = fromMaybe "" $ lookup "user-agent" $ requestHeaders env
+    isMSIE6 = "MSIE 6" `S.isInfixOf` ua
 
 compressE :: (forall a. ResponseEnumerator a)
           -> (forall a. ResponseEnumerator a)

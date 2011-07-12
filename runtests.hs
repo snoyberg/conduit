@@ -42,6 +42,7 @@ testSuite = testGroup "Network.Wai.Parse"
     , testCase "takeLine" caseTakeLine
     , testCase "jsonp" caseJsonp
     , testCase "gzip" caseGzip
+    , testCase "gzip not for MSIE" caseGzipMSIE
     , testCase "vhost" caseVhost
     , testCase "autohead" caseAutohead
     , testCase "method override" caseMethodOverride
@@ -258,6 +259,17 @@ caseGzip = flip runSession gzipApp $ do
                 }
     assertNoHeader "Content-Encoding" sres2
     assertBody "test" sres2
+
+caseGzipMSIE :: Assertion
+caseGzipMSIE = flip runSession gzipApp $ do
+    sres1 <- request Request
+                { requestHeaders =
+                    [ ("Accept-Encoding", "gzip")
+                    , ("User-Agent", "Mozilla/4.0 (Windows; MSIE 6.0; Windows NT 6.0)")
+                    ]
+                }
+    assertNoHeader "Content-Encoding" sres1
+    liftIO $ simpleBody sres1 @?= "test"
 
 vhostApp1 = const $ return $ responseLBS status200 [] "app1"
 vhostApp2 = const $ return $ responseLBS status200 [] "app2"
