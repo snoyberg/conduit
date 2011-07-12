@@ -64,4 +64,4 @@ splitCommas :: String -> [String]
 splitCommas [] = []
 splitCommas x =
     let (y, z) = break (== ',') x
-     in y : splitCommas (drop 1 z)
+     in y : splitCommas (dropWhile (== ' ') $ drop 1 z)
