@@ -95,7 +95,7 @@ data Request = Request
   -- | Parsed query string information
   ,  queryString    :: H.Query
   }
-  deriving Typeable
+  deriving (Show, Typeable)
 
 data Response
     = ResponseFile H.Status H.ResponseHeaders FilePath (Maybe FilePart)
@@ -106,7 +106,7 @@ data Response
 data FilePart = FilePart
     { filePartOffset :: Integer
     , filePartByteCount :: Integer
-    }
+    } deriving Show
 
 type ResponseEnumerator a =
     (H.Status -> H.ResponseHeaders -> Iteratee Builder IO a) -> IO a
