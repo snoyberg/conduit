@@ -146,6 +146,7 @@ defaultMimeTypes = Map.fromList [
   ( "pac"     , "application/x-ns-proxy-autoconfig" ),
   ( "pdf"     , "application/pdf"                   ),
   ( "png"     , "image/png"                         ),
+  ( "bmp"     , "image/bmp"                         ),
   ( "ps"      , "application/postscript"            ),
   ( "qt"      , "video/quicktime"                   ),
   ( "sig"     , "application/pgp-signature"         ),
