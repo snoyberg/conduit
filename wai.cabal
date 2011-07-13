@@ -1,5 +1,5 @@
 Name:                wai
-Version:             0.4.0
+Version:             0.4.1
 Synopsis:            Web Application Interface.
 Description:         Provides a common protocol for communication between web aplications and web servers.
 License:             BSD3
