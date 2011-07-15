@@ -30,6 +30,7 @@ module Network.Wai.Application.Static
     , Pieces
     , pathFromPieces
     , unfixPathName
+    , toPiece
       -- ** Directory listings
     , Listing
     , defaultListing
@@ -489,11 +490,11 @@ toEmbedded fps =
     go texts
   where
     texts = map (\(x, y) -> (filter (not . T.null) $ toPieces x, y)) fps
-    toPiece fp = T.pack $ fixPathName fp
+    toPiece' fp = T.pack $ fixPathName fp
     toPieces "" = []
     toPieces x =
         let (y, z) = break (== '/') x
-         in toPiece y : toPieces (drop 1 z)
+         in toPiece' y : toPieces (drop 1 z)
     go :: [([T.Text], S8.ByteString)] -> Embedded
     go orig =
         Map.fromList $ map (second go') hoisted
@@ -523,13 +524,13 @@ runHashL :: L.ByteString -> ByteString
 runHashL = B64.encode . MD5.hashlazy
 
 staticApp :: StaticSettings -> W.Application
-staticApp set req =
-    staticAppPieces set (map toPiece $ W.pathInfo req) req
-  where
-    toPiece t = Piece
-        { piecePretty = t
-        , pieceRaw = unfixPathName $ T.unpack t
-        }
+staticApp set req = staticAppPieces set (map toPiece $ W.pathInfo req) req
+
+toPiece :: T.Text -> Piece
+toPiece t = Piece
+    { piecePretty = t
+    , pieceRaw = unfixPathName $ T.unpack t
+    }
 
 status304, statusNotModified :: H.Status
 status304 = H.Status 304 "Not Modified"
