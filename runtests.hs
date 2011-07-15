@@ -18,6 +18,7 @@ import Network.Wai.Middleware.Vhost
 import Network.Wai.Middleware.Autohead
 import Network.Wai.Middleware.MethodOverride
 import Network.Wai.Middleware.AcceptOverride
+import Network.Wai.Middleware.Debug (debug)
 import Codec.Compression.GZip (decompress)
 
 import Data.Enumerator (run_, enumList, ($$), Iteratee)
@@ -48,6 +49,7 @@ testSuite = testGroup "Network.Wai.Parse"
     , testCase "method override" caseMethodOverride
     , testCase "accept override" caseAcceptOverride
     , testCase "dalvik multipart" caseDalvikMultipart
+    , testCase "debug request body" caseDebugRequestBody
     ]
 
 caseParseQueryString :: Assertion
@@ -160,6 +162,9 @@ caseParseRequestBody = run_ t where
 toRequest :: S8.ByteString -> S8.ByteString -> SRequest
 toRequest ctype content = SRequest (Request
     { requestHeaders = [("Content-Type", ctype)]
+    , requestMethod = "POST"
+    , rawPathInfo = ""
+    , rawQueryString = ""
     }) (L.fromChunks [content])
 
 toRequest' :: S8.ByteString -> S8.ByteString -> SRequest
@@ -376,3 +381,16 @@ caseDalvikMultipart = do
     lookup "geoLong" params @?= Just "0"
     lookup "geoLat" params @?= Just "0"
     length files @?= 1
+
+caseDebugRequestBody :: Assertion
+caseDebugRequestBody = flip runSession debugApp $ do
+    let req = toRequest "application/x-www-form-urlencoded" "foo=bar&baz=bin"
+    res <- srequest req
+    assertStatus 200 res
+    assertHeader "Parsed" (S8.pack $ show ([("foo", "bar"), ("baz", "bin")], [] :: [Int])) res
+
+debugApp = debug $ \req -> do
+    x <- parseRequestBody lbsSink req
+    return $ responseLBS status200
+        [ ("Parsed", S8.pack $ show x)
+        ] ""
