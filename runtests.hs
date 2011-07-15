@@ -10,6 +10,7 @@ import qualified Data.ByteString as S
 import qualified Data.ByteString.Char8 as S8
 import qualified Data.ByteString.Lazy.Char8 as L8
 import qualified Data.ByteString.Lazy as L
+import qualified Data.Text.Lazy as T
 import Control.Arrow
 
 import Network.Wai.Middleware.Jsonp
@@ -18,7 +19,7 @@ import Network.Wai.Middleware.Vhost
 import Network.Wai.Middleware.Autohead
 import Network.Wai.Middleware.MethodOverride
 import Network.Wai.Middleware.AcceptOverride
-import Network.Wai.Middleware.Debug (debug)
+import Network.Wai.Middleware.Debug (debug, debugDest)
 import Codec.Compression.GZip (decompress)
 
 import Data.Enumerator (run_, enumList, ($$), Iteratee)
@@ -36,11 +37,13 @@ testSuite = testGroup "Network.Wai.Parse"
     , testCase "parseQueryString with question mark" caseParseQueryStringQM
     , testCase "parseHttpAccept" caseParseHttpAccept
     , testCase "parseRequestBody" caseParseRequestBody
+    {-
     , testCase "findBound" caseFindBound
     , testCase "sinkTillBound" caseSinkTillBound
     , testCase "killCR" caseKillCR
     , testCase "killCRLF" caseKillCRLF
     , testCase "takeLine" caseTakeLine
+    -}
     , testCase "jsonp" caseJsonp
     , testCase "gzip" caseGzip
     , testCase "gzip not for MSIE" caseGzipMSIE
@@ -165,6 +168,7 @@ toRequest ctype content = SRequest (Request
     , requestMethod = "POST"
     , rawPathInfo = ""
     , rawQueryString = ""
+    , queryString = []
     }) (L.fromChunks [content])
 
 toRequest' :: S8.ByteString -> S8.ByteString -> SRequest
@@ -172,6 +176,7 @@ toRequest' ctype content = SRequest (Request
     { requestHeaders = [("Content-Type", ctype)]
     }) (L.fromChunks $ map S.singleton $ S.unpack content)
 
+{-
 caseFindBound :: Assertion
 caseFindBound = do
     findBound (S8.pack "def") (S8.pack "abcdefghi") @?=
@@ -220,6 +225,7 @@ caseTakeLine = do
     helper haystack needle = do
         x <- run_ $ enumList 1 [haystack] $$ takeLine
         Just needle @=? x
+-}
 
 jsonpApp = jsonp $ const $ return $ responseLBS
     status200
@@ -387,10 +393,11 @@ caseDebugRequestBody = flip runSession debugApp $ do
     let req = toRequest "application/x-www-form-urlencoded" "foo=bar&baz=bin"
     res <- srequest req
     assertStatus 200 res
-    assertHeader "Parsed" (S8.pack $ show ([("foo", "bar"), ("baz", "bin")], [] :: [Int])) res
+  where
+    params = [("foo", "bar"), ("baz", "bin")]
+    debugOutput = T.pack $ "POST \nAccept: \n" ++ (show params)
 
-debugApp = debug $ \req -> do
-    x <- parseRequestBody lbsSink req
-    return $ responseLBS status200
-        [ ("Parsed", S8.pack $ show x)
-        ] ""
+    debugApp = debugDest (\t -> liftIO $ assertEqual "debug" debugOutput t) $ \req -> do
+        return $ responseLBS status200 [ ] ""
+    {-debugApp = debug $ \req -> do-}
+        {-return $ responseLBS status200 [ ] ""-}
