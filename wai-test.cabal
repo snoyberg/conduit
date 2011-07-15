@@ -1,5 +1,5 @@
 name:            wai-test
-version:         0.1.0.1
+version:         0.1.0.2
 license:         BSD3
 license-file:    LICENSE
 author:          Michael Snoyman <michael@snoyman.com>
@@ -19,7 +19,7 @@ library
                    , transformers              >= 0.2      && < 0.3
                    , containers                >= 0.2      && < 0.5
                    , enumerator                >= 0.4.7    && < 0.5
-                   , cookie                    >= 0.2      && < 0.3
+                   , cookie                    >= 0.2      && < 0.4
                    , blaze-builder-enumerator  >= 0.2      && < 0.3
                    , HUnit                     >= 1.2      && < 1.3
                    , http-types                >= 0.6      && < 0.7
