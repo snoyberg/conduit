@@ -37,6 +37,16 @@ module Network.Wai.Handler.Warp
       -- * Datatypes
     , Port
     , InvalidRequest (..)
+      -- * Internal
+    , Manager
+    , withManager
+    , parseRequest
+    , sendResponse
+    , registerKillThread
+    , bindPort
+    , enumSocket
+    , pause
+    , resume
 #if TEST
     , takeHeaders
     , readInt
@@ -86,6 +96,7 @@ import qualified System.PosixCompat.Files as P
 
 import Control.Monad.IO.Class (liftIO)
 import qualified Timeout as T
+import Timeout (Manager, registerKillThread, pause, resume)
 import Data.Word (Word8)
 import Data.List (foldl')
 import Control.Monad (forever)
@@ -173,7 +184,7 @@ serveConnection th onException port app conn remoteHost' = do
         liftIO $ T.pause th
         res <- E.joinI $ EB.isolate len $$ app env
         liftIO $ T.resume th
-        keepAlive <- liftIO $ sendResponse th env (httpVersion env) conn res
+        keepAlive <- liftIO $ sendResponse th env conn res
         if keepAlive then serveConnection' else return ()
 
 parseRequest :: Port -> SockAddr -> E.Iteratee S.ByteString IO (Integer, Request)
@@ -297,8 +308,8 @@ hasBody :: H.Status -> Request -> Bool
 hasBody s req = s /= (H.Status 204 "") && requestMethod req /= "HEAD"
 
 sendResponse :: T.Handle
-             -> Request -> H.HttpVersion -> Socket -> Response -> IO Bool
-sendResponse th req hv socket (ResponseFile s hs fp mpart) = do
+             -> Request -> Socket -> Response -> IO Bool
+sendResponse th req socket (ResponseFile s hs fp mpart) = do
     (hs', cl) <-
         case (readInt `fmap` lookup "content-length" hs, mpart) of
             (Just cl, _) -> return (hs, cl)
@@ -308,7 +319,7 @@ sendResponse th req hv socket (ResponseFile s hs fp mpart) = do
             (Nothing, Just part) -> do
                 let cl = filePartByteCount part
                 return (("Content-Length", B.pack $ show cl):hs, fromIntegral cl)
-    Sock.sendMany socket $ L.toChunks $ toLazyByteString $ headers hv s hs' False
+    Sock.sendMany socket $ L.toChunks $ toLazyByteString $ headers (httpVersion req) s hs' False
     if hasBody s req
         then do
             case mpart of
@@ -323,7 +334,7 @@ sendResponse th req hv socket (ResponseFile s hs fp mpart) = do
             T.tickle th
             return True
         else return True
-sendResponse th req hv socket (ResponseBuilder s hs b)
+sendResponse th req socket (ResponseBuilder s hs b)
     | hasBody s req = do
           toByteStringIO (\bs -> do
             Sock.sendAll socket bs
@@ -333,35 +344,35 @@ sendResponse th req hv socket (ResponseBuilder s hs b)
         Sock.sendMany socket
             $ L.toChunks
             $ toLazyByteString
-            $ headers hv s hs False
+            $ headers (httpVersion req) s hs False
         T.tickle th
         return True
   where
-    headers' = headers hv s hs isChunked'
+    headers' = headers (httpVersion req) s hs isChunked'
     b' = if isChunked'
             then headers'
                  `mappend` chunkedTransferEncoding b
                  `mappend` chunkedTransferTerminator
-            else headers hv s hs False `mappend` b
+            else headers (httpVersion req) s hs False `mappend` b
     hasLength = lookup "content-length" hs /= Nothing
-    isChunked' = isChunked hv && not hasLength
+    isChunked' = isChunked (httpVersion req) && not hasLength
     isKeepAlive = isChunked' || hasLength
-sendResponse th req hv socket (ResponseEnumerator res) =
+sendResponse th req socket (ResponseEnumerator res) =
     res go
   where
     -- FIXME perhaps alloca a buffer per thread and reuse that in all functiosn below. Should lessen greatly the GC burden (I hope)
     go s hs | not (hasBody s req) = do
             liftIO $ Sock.sendMany socket
                    $ L.toChunks $ toLazyByteString
-                   $ headers hv s hs False
+                   $ headers (httpVersion req) s hs False
             return True
     go s hs = chunk'
-          $ E.enumList 1 [headers hv s hs isChunked']
+          $ E.enumList 1 [headers (httpVersion req) s hs isChunked']
          $$ E.joinI $ builderToByteString -- FIXME unsafeBuilderToByteString
          $$ (iterSocket th socket >> return isKeepAlive)
       where
         hasLength = lookup "content-length" hs /= Nothing
-        isChunked' = isChunked hv && not hasLength
+        isChunked' = isChunked (httpVersion req) && not hasLength
         isKeepAlive = isChunked' || hasLength
         chunk' i = if isChunked'
                       then E.joinI $ chunk $$ i
@@ -522,3 +533,12 @@ checkCR bs pos =
 -- invalid content-length is a bad idea, mkay?
 readInt :: S.ByteString -> Integer
 readInt = S.foldl' (\x w -> x * 10 + fromIntegral w - 48) 0
+
+-- | Call the inner function with a timeout manager.
+withManager :: Int -- ^ timeout in microseconds
+            -> (Manager -> IO a)
+            -> IO a
+withManager timeout f = do
+    -- FIXME when stopManager is available, use it
+    man <- T.initialize timeout
+    f man

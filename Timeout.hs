@@ -17,6 +17,7 @@ import qualified Control.Exception as E
 
 -- FIXME implement stopManager
 
+-- | A timeout manager
 newtype Manager = Manager (I.IORef [Handle])
 data Handle = Handle (IO ()) (I.IORef State)
 data State = Active | Inactive | Paused | Canceled
