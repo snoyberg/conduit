@@ -1,5 +1,5 @@
 name:            wai-test
-version:         0.1.0
+version:         0.1.0.1
 license:         BSD3
 license-file:    LICENSE
 author:          Michael Snoyman <michael@snoyman.com>
@@ -23,7 +23,7 @@ library
                    , blaze-builder-enumerator  >= 0.2      && < 0.3
                    , HUnit                     >= 1.2      && < 1.3
                    , http-types                >= 0.6      && < 0.7
-                   , case-insensitive          >= 0.2      && < 0.3
+                   , case-insensitive          >= 0.2      && < 0.4
     exposed-modules: Network.Wai.Test
     ghc-options:     -Wall
 
