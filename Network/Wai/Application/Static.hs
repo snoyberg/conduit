@@ -29,6 +29,7 @@ module Network.Wai.Application.Static
     , Piece (..)
     , Pieces
     , pathFromPieces
+    , fixPathName
     , unfixPathName
     , toPiece
       -- ** Directory listings
