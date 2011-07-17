@@ -26,29 +26,29 @@ debugDest :: (T.Text -> IO ()) -> Middleware
 debugDest cb app req = do
     body <- consume
     params <- if any (requestMethod req ==) ["GET", "HEAD"]
-      then return []
+      then return $ map emptyGetParam $ queryString req
       else do postParams <- liftIO $ allPostParams req body
               return $ collectPostParams postParams
-    let allParams = params ++ (map emptyGetParam $ queryString req)
+    let paramS = if null params then "" else "\n" ++ (show params)
 
     liftIO $ cb $ T.pack $ concat
         [ unpack $ requestMethod req
         , " "
         , unpack $ rawPathInfo req
+        , unpack $ rawQueryString req
         , "\n"
         , (++) "Accept: " $ maybe "" unpack $ lookup "Accept" $ requestHeaders req
-        , "\n"
-        , show allParams
+        , paramS
         ]
     -- we just consumed the body- fill the enumerator back up so it is available again
     liftIO $ run_ $ enumList 1 body $$ app req
   where
     allPostParams req body = run_ $ enumList 1 body $$ parseRequestBody lbsSink req
 
-    collectPostParams :: ([Param], [File L.ByteString]) -> [Param]
-    collectPostParams (postParams, files) = postParams ++
-      (map (\(k,v) -> (k, S.append "FILE: " (fileName v))) files)
-
     emptyGetParam :: (S.ByteString, Maybe S.ByteString) -> (S.ByteString, S.ByteString)
     emptyGetParam (k, Just v) = (k,v)
     emptyGetParam (k, Nothing) = (k,"")
+
+    collectPostParams :: ([Param], [File L.ByteString]) -> [Param]
+    collectPostParams (postParams, files) = postParams ++
+      (map (\(k,v) -> (k, S.append "FILE: " (fileName v))) files)

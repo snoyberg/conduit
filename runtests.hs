@@ -389,15 +389,27 @@ caseDalvikMultipart = do
     length files @?= 1
 
 caseDebugRequestBody :: Assertion
-caseDebugRequestBody = flip runSession debugApp $ do
-    let req = toRequest "application/x-www-form-urlencoded" "foo=bar&baz=bin"
-    res <- srequest req
-    assertStatus 200 res
+caseDebugRequestBody = do
+    flip runSession (debugApp postOutput) $ do
+        let req = toRequest "application/x-www-form-urlencoded" "foo=bar&baz=bin"
+        res <- srequest req
+        assertStatus 200 res
+
+    let qs = "?foo=bar&baz=bin"
+    flip runSession (debugApp $ getOutput qs) $ do
+        assertStatus 200 =<< request Request
+                { requestMethod = "GET"
+                , queryString = map (\(k,v) -> (k, Just v)) params
+                , rawQueryString = qs
+                , requestHeaders = []
+                , rawPathInfo = "/location"
+                }
   where
     params = [("foo", "bar"), ("baz", "bin")]
-    debugOutput = T.pack $ "POST \nAccept: \n" ++ (show params)
+    postOutput = T.pack $ "POST \nAccept: \n" ++ (show params)
+    getOutput qs = T.pack $ "GET /location" ++ S8.unpack qs ++ "\nAccept: \n" ++ (show params) -- \nAccept: \n" ++ (show params)
 
-    debugApp = debugDest (\t -> liftIO $ assertEqual "debug" debugOutput t) $ \req -> do
+    debugApp output = debugDest (\t -> liftIO $ assertEqual "debug" output t) $ \req -> do
         return $ responseLBS status200 [ ] ""
     {-debugApp = debug $ \req -> do-}
         {-return $ responseLBS status200 [ ] ""-}
