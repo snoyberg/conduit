@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 import Network.Wai
 import Network.Wai.Handler.Warp
+import Network.HTTP.Types (status200)
 import Blaze.ByteString.Builder (copyByteString)
 import Data.Monoid
 import Data.Enumerator (run_, enumList, ($$))
@@ -8,14 +9,14 @@ import Data.Enumerator (run_, enumList, ($$))
 main = run 3000 app
 
 app req = return $
-    case pathInfo req of
+    case rawPathInfo req of
         "/builder/withlen" -> builderWithLen
         "/builder/nolen" -> builderNoLen
         "/enum/withlen" -> enumWithLen
         "/enum/nolen" -> enumNoLen
         "/file/withlen" -> fileWithLen
         "/file/nolen" -> fileNoLen
-        _ -> index $ pathInfo req
+        x -> index x
 
 builderWithLen = ResponseBuilder
     status200
@@ -36,12 +37,14 @@ fileWithLen = ResponseFile
     , ("Content-Length", "4")
     ]
     "pong.txt"
+    Nothing
 
 fileNoLen = ResponseFile
     status200
     [ ("Content-Type", "text/plain")
     ]
     "pong.txt"
+    Nothing
 
 enumWithLen = ResponseEnumerator $ \f ->
     run_ $ (enumList 1 $ map copyByteString ["P", "O", "NG"]) $$ f
