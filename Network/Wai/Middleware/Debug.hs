@@ -25,24 +25,26 @@ debug = debugDest $ hPutStrLn stderr . T.unpack
 debugDest :: (T.Text -> IO ()) -> Middleware
 debugDest cb app req = do
     body <- consume
-    params <- if any (requestMethod req ==) ["GET", "HEAD"]
-      then return $ map emptyGetParam $ queryString req
+    postParams <- if any (requestMethod req ==) ["GET", "HEAD"]
+      then return []
       else do postParams <- liftIO $ allPostParams req body
               return $ collectPostParams postParams
-    let paramS = if null params then "" else "\n" ++ (show params)
+    let getParams = map emptyGetParam $ queryString req
 
     liftIO $ cb $ T.pack $ concat
         [ unpack $ requestMethod req
         , " "
         , unpack $ rawPathInfo req
-        , unpack $ rawQueryString req
         , "\n"
         , (++) "Accept: " $ maybe "" unpack $ lookup "Accept" $ requestHeaders req
-        , paramS
+        , paramsToStr  "GET " getParams
+        , paramsToStr "POST " postParams
         ]
     -- we just consumed the body- fill the enumerator back up so it is available again
     liftIO $ run_ $ enumList 1 body $$ app req
   where
+    paramsToStr prefix params = if null params then "" else "\n" ++ prefix ++ (show params)
+
     allPostParams req body = run_ $ enumList 1 body $$ parseRequestBody lbsSink req
 
     emptyGetParam :: (S.ByteString, Maybe S.ByteString) -> (S.ByteString, S.ByteString)

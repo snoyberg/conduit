@@ -406,8 +406,8 @@ caseDebugRequestBody = do
                 }
   where
     params = [("foo", "bar"), ("baz", "bin")]
-    postOutput = T.pack $ "POST \nAccept: \n" ++ (show params)
-    getOutput qs = T.pack $ "GET /location" ++ S8.unpack qs ++ "\nAccept: \n" ++ (show params) -- \nAccept: \n" ++ (show params)
+    postOutput = T.pack $ "POST \nAccept: \nPOST " ++ (show params)
+    getOutput qs = T.pack $ "GET /location" ++ "\nAccept: \nGET " ++ (show params) -- \nAccept: \n" ++ (show params)
 
     debugApp output = debugDest (\t -> liftIO $ assertEqual "debug" output t) $ \req -> do
         return $ responseLBS status200 [ ] ""
