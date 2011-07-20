@@ -301,6 +301,20 @@ responseHeaderToBuilder b (x, y) = b
   `mappend` copyByteString y
   `mappend` newlineBuilder
 
+checkPersist :: Request -> Bool
+checkPersist req
+    | ver == H.http11 = checkPersist11 conn
+    | otherwise       = checkPersist10 conn
+  where
+    ver = httpVersion req
+    conn = lookup "connection" $ requestHeaders req
+    checkPersist11 (Just x)
+        | CI.foldCase x == "close"      = False
+    checkPersist11 _                    = True
+    checkPersist10 (Just x)
+        | CI.foldCase x == "keep-alive" = True
+    checkPersist10 _                    = False
+
 isChunked :: H.HttpVersion -> Bool
 isChunked = (==) H.http11
 
@@ -320,6 +334,7 @@ sendResponse th req socket (ResponseFile s hs fp mpart) = do
                 let cl = filePartByteCount part
                 return (("Content-Length", B.pack $ show cl):hs, fromIntegral cl)
     Sock.sendMany socket $ L.toChunks $ toLazyByteString $ headers (httpVersion req) s hs' False
+    let isPersist= checkPersist req
     if hasBody s req
         then do
             case mpart of
@@ -332,8 +347,8 @@ sendResponse th req socket (ResponseFile s hs fp mpart) = do
                   , rangeLength = filePartByteCount part
                   } (T.tickle th)
             T.tickle th
-            return True
-        else return True
+            return isPersist
+        else return isPersist
 sendResponse th req socket (ResponseBuilder s hs b)
     | hasBody s req = do
           toByteStringIO (\bs -> do
@@ -356,7 +371,8 @@ sendResponse th req socket (ResponseBuilder s hs b)
             else headers (httpVersion req) s hs False `mappend` b
     hasLength = lookup "content-length" hs /= Nothing
     isChunked' = isChunked (httpVersion req) && not hasLength
-    isKeepAlive = isChunked' || hasLength
+    isPersist = checkPersist req
+    isKeepAlive = isPersist && (isChunked' || hasLength)
 sendResponse th req socket (ResponseEnumerator res) =
     res go
   where
@@ -373,7 +389,8 @@ sendResponse th req socket (ResponseEnumerator res) =
       where
         hasLength = lookup "content-length" hs /= Nothing
         isChunked' = isChunked (httpVersion req) && not hasLength
-        isKeepAlive = isChunked' || hasLength
+        isPersist = checkPersist req
+        isKeepAlive = isPersist && (isChunked' || hasLength)
         chunk' i = if isChunked'
                       then E.joinI $ chunk $$ i
                       else i
