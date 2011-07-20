@@ -63,15 +63,17 @@ import qualified Data.ByteString.Char8 as B
 import qualified Data.ByteString.Lazy as L
 import Network (sClose, Socket)
 import Network.Socket
-    ( accept, SockAddr (SockAddrInet), Family (AF_INET)
-    , SocketType (Stream), listen, bindSocket, setSocketOption
-    , SocketOption (ReuseAddr), iNADDR_ANY, inet_addr, SockAddr (SockAddrInet)
+    ( accept, Family (..)
+    , SocketType (Stream), listen, bindSocket, setSocketOption, maxListenQueue
+    , SockAddr, SocketOption (ReuseAddr)
+    , AddrInfo(..), AddrInfoFlag(..), defaultHints, getAddrInfo
     )
 import qualified Network.Socket
 import qualified Network.Socket.ByteString as Sock
 import Control.Exception
     ( bracket, finally, Exception, SomeException, catch
     , fromException, AsyncException (ThreadKilled)
+    , bracketOnError
     )
 import Control.Concurrent (forkIO)
 import qualified Data.Char as C
@@ -112,13 +114,26 @@ import Network.Socket (withSocketsDo)
 
 bindPort :: Int -> String -> IO Socket
 bindPort p s = do
-    sock <- Network.Socket.socket AF_INET Stream 0
-    h <- if s == "*" then return iNADDR_ANY else inet_addr s
-    let addr = SockAddrInet (fromIntegral p) h
-    setSocketOption sock ReuseAddr 1
-    bindSocket sock addr
-    listen sock 150
-    return sock
+    let hints = defaultHints { addrFlags = [AI_PASSIVE
+                                         , AI_NUMERICSERV
+                                         , AI_NUMERICHOST]
+                             , addrSocketType = Stream }
+        host = if s == "*" then Nothing else Just s
+        port = Just . show $ p
+    addrs <- getAddrInfo (Just hints) host port
+    -- Choose an IPv6 socket if exists.  This ensures the socket can
+    -- handle both IPv4 and IPv6 if v6only is false.
+    let addrs' = filter (\x -> addrFamily x == AF_INET6) addrs
+        addr = if null addrs' then head addrs else head addrs'
+    bracketOnError
+        (Network.Socket.socket (addrFamily addr) (addrSocketType addr) (addrProtocol addr))
+        (sClose)
+        (\sock -> do
+            setSocketOption sock ReuseAddr 1
+            bindSocket sock (addrAddress addr)
+            listen sock maxListenQueue
+            return sock
+        )
 
 -- | Run an 'Application' on the given port. This calls 'runSettings' with
 -- 'defaultSettings'.
