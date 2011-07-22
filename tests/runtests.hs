@@ -11,7 +11,6 @@ import qualified Data.ByteString.Lazy.Char8 as L8
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import System.PosixCompat.Files (getFileStatus, modificationTime)
-import System.IO (stderr, hPutStrLn)
 
 import Network.HTTP.Date
 {-import System.Locale (defaultTimeLocale)-}
@@ -45,9 +44,6 @@ setRawPathInfo r rawPinfo =
   in  r { rawPathInfo = rawPinfo, pathInfo = pInfo }
 
 
--- debug :: String -> m0 ()
-debug = liftIO . hPutStrLn stderr
-
 main :: IO a
 main = hspecX $ do
   let must = liftIO . assert
@@ -62,11 +58,11 @@ main = hspecX $ do
 
   describe "Pieces: pathFromPieces" $ do
     it "converts to a file path" $
-      (pathFromPieces "prefix" [Piece "a" "a", Piece "bc" "bc"]) @?= "prefix/a/bc"
+      (pathFromPieces "prefix" ["a", "bc"]) @?= "prefix/a/bc"
 
     prop "each piece is in file path" $ \piecesS ->
-      let pieces = map (\p -> Piece p "") piecesS
-      in  all (\p -> ("/" ++ p) `isInfixOf` (pathFromPieces "root" $ pieces)) piecesS
+      let pieces = map (FilePath . T.pack) piecesS
+      in  all (\p -> ("/" ++ p) `isInfixOf` (T.unpack $ unFilePath $ pathFromPieces "root" $ pieces)) piecesS
 
   describe "webApp" $ do
     it "403 for unsafe paths" $ webApp $
