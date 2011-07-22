@@ -671,7 +671,7 @@ defaultListing pieces (Folder _ contents) = do
     showFolder (x:xs) = do
         let href = concat $ replicate (length xs) "../" :: String
         H.a ! A.href (H.toValue href) $ H.toHtml $ showName x
-        () <- " / "
+        " / " :: H.Html
         showFolder xs
 
 -- | a function to generate an HTML table showing the contents of a directory on the disk
