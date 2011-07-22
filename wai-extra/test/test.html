@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <script src="http://ajax.googleapis.com/ajax/libs/jquery/1.4.2/jquery.js"></script>
+    <script>
+      $(function(){
+        $.getJSON("/json?callback=?", function(o){
+          $("#dest").html(o.data);
+        });
+      });
+    </script>
+  </head>
+  <body>
+    There should be some content loaded below:
+    <div id="dest"></div>
+  </body>
+</html>
