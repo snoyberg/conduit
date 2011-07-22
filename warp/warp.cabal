@@ -1,0 +1,42 @@
+Name:                warp
+Version:             0.4.3
+Synopsis:            A fast, light-weight web server for WAI applications.
+License:             BSD3
+License-file:        LICENSE
+Author:              Michael Snoyman, Matt Brown
+Maintainer:          michael@snoyman.com
+Homepage:            http://github.com/snoyberg/warp
+Category:            Web, Yesod
+Build-Type:          Simple
+Cabal-Version:       >=1.6
+Stability:           Stable
+
+flag network-bytestring
+    Default: False
+
+Library
+  Build-Depends:     base                          >= 3        && < 5
+                   , bytestring                    >= 0.9      && < 0.10
+                   , wai                           >= 0.4      && < 0.5
+                   , blaze-builder-enumerator      >= 0.2      && < 0.3
+                   , transformers                  >= 0.2      && < 0.3
+                   , enumerator                    >= 0.4.5    && < 0.5
+                   , blaze-builder                 >= 0.2.1.4  && < 0.4
+                   , simple-sendfile               >= 0.1      && < 0.2
+                   , http-types                    >= 0.6      && < 0.7
+                   , case-insensitive              >= 0.2      && < 0.4
+                   , unix-compat                   >= 0.2      && < 0.3
+  if flag(network-bytestring)
+      build-depends: network               >= 2.2.1   && < 2.2.3
+                   , network-bytestring    >= 0.1.3   && < 0.1.4
+  else
+      build-depends: network               >= 2.3     && < 2.4
+  Exposed-modules:   Network.Wai.Handler.Warp
+  Other-modules:     Timeout
+  ghc-options:       -Wall
+  if os(windows)
+      Cpp-options: -DWINDOWS
+
+source-repository head
+  type:     git
+  location: git://github.com/snoyberg/warp.git
