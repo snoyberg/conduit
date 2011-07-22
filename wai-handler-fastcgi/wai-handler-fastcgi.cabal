@@ -10,7 +10,7 @@ stability:       stable
 cabal-version:   >= 1.2
 build-type:      Configure
 extra-source-files: configure fastcgi.buildinfo.in
-homepage:        http://github.com/snoyberg/wai-handler-fastcgi
+homepage:        http://www.yesodweb.com/book/wai
 
 library
     build-depends:   base              >= 4           && < 5

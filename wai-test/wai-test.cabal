@@ -9,7 +9,7 @@ category:        Testing, Web, Yesod
 stability:       Stable
 cabal-version:   >= 1.6
 build-type:      Simple
-homepage:        http://github.com/snoyberg/wai-test/
+homepage:        http://www.yesodweb.com/book/wai
 
 library
     build-depends:   base                      >= 4        && < 5
@@ -29,4 +29,4 @@ library
 
 source-repository head
   type:     git
-  location: git://github.com/snoyberg/wai-test.git
+  location: git://github.com/yesodweb/wai.git
