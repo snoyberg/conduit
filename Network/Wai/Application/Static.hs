@@ -26,12 +26,8 @@ module Network.Wai.Application.Static
     , mimeTypeByExt
     , defaultMimeTypeByExt
       -- ** Finding files
-    , Piece (..)
     , Pieces
     , pathFromPieces
-    , fixPathName
-    , unfixPathName
-    , toPiece
       -- ** Directory listings
     , Listing
     , defaultListing
@@ -46,9 +42,14 @@ module Network.Wai.Application.Static
     , defaultMkRedirect
       -- * Other data types
     , File (..)
+    , FilePath (..)
+    , toFilePath
+    , fromFilePath
     , MaxAge (..)
     ) where
 
+import Prelude hiding (FilePath)
+import qualified Prelude
 import qualified Network.Wai as W
 import qualified Network.HTTP.Types as H
 import Data.Map (Map)
@@ -77,34 +78,38 @@ import System.Locale (defaultTimeLocale)
 
 import Data.FileEmbed (embedFile)
 
+import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import qualified Data.Text.Encoding.Error as TEE
 
 import Control.Arrow ((&&&), second)
-import Data.List (groupBy, sortBy, find)
+import Data.List (groupBy, sortBy, find, foldl')
 import Data.Function (on)
 import Data.Ord (comparing)
 import qualified Data.ByteString.Base64 as B64
 import Data.Either (rights)
 import Data.Maybe (isJust, fromJust)
 import Network.HTTP.Date (parseHTTPDate, epochTimeToHTTPDate, formatHTTPDate)
+import Data.String (IsString (..))
 
-import Debug.Trace
-debug :: (Show a) => a -> a
-debug a = trace ("DEBUG: " ++ show a) a
-{-
--}
+newtype FilePath = FilePath { unFilePath :: Text }
+    deriving (Ord, Eq, Show)
+instance IsString FilePath where
+    fromString = toFilePath
+
+(</>) :: FilePath -> FilePath -> FilePath
+(FilePath a) </> (FilePath b) = FilePath $ T.concat [a, "/", b]
 
 -- | A list of all possible extensions, starting from the largest.
-takeExtensions :: FilePath -> [String]
-takeExtensions s =
-    case break (== '.') s of
-        (_, '.':x) -> x : takeExtensions x
-        (_, _) -> []
+takeExtensions :: FilePath -> [FilePath]
+takeExtensions (FilePath s) =
+    case T.break (== '.') s of
+        (_, "") -> []
+        (_, x) -> FilePath (T.drop 1 x) : takeExtensions (FilePath $ T.drop 1 x)
 
 type MimeType = ByteString
-type Extension = String
+type Extension = FilePath
 type MimeMap = Map Extension MimeType
 
 defaultMimeType :: MimeType
@@ -214,54 +219,52 @@ filterButLast f (x:xs)
     | otherwise = filterButLast f xs
 
 
-unsafe :: T.Text -> Bool
-unsafe s | T.null s = False
-         | T.head s == '.' = True
-         | otherwise = T.any (== '/') s
+unsafe :: FilePath -> Bool
+unsafe (FilePath s)
+    | T.null s = False
+    | T.head s == '.' = True
+    | otherwise = T.any (== '/') s
+
+nullFilePath :: FilePath -> Bool
+nullFilePath = T.null . unFilePath
 
 stripTrailingSlash :: FilePath -> FilePath
-stripTrailingSlash "/" = ""
-stripTrailingSlash "" = ""
-stripTrailingSlash (x:xs) = x : stripTrailingSlash xs
+stripTrailingSlash fp@(FilePath t)
+    | T.null t || T.last t /= '/' = fp
+    | otherwise = FilePath $ T.init t
 
-data Piece = Piece
-    { pieceRaw :: FilePath
-    , piecePretty :: T.Text
-    }
-    deriving (Eq, Ord, Show)
-type Pieces = [Piece]
+type Pieces = [FilePath]
 
 relativeDirFromPieces :: Pieces -> T.Text
 relativeDirFromPieces pieces = T.concat $ map (const "../") (drop 1 pieces) -- last piece is not a dir
 
 pathFromPieces :: FilePath -> Pieces -> FilePath
-pathFromPieces prefix pieces =
-        concat $ prefix : map ((:) '/') (map pieceRaw pieces)
+pathFromPieces = foldl' (</>)
 
 checkSpecialDirListing :: Pieces -> Maybe CheckPieces
-checkSpecialDirListing [Piece _ ".hidden", Piece _ "folder.png"]  =
+checkSpecialDirListing [".hidden", "folder.png"]  =
     Just $ SendContent "image/png" $ L.fromChunks [$(embedFile "folder.png")]
-checkSpecialDirListing [Piece _ ".hidden", Piece _ "haskell.png"] =
+checkSpecialDirListing [".hidden", "haskell.png"] =
     Just $ SendContent "image/png" $ L.fromChunks [$(embedFile "haskell.png")]
 checkSpecialDirListing _ =  Nothing
 
 checkPieces :: (Pieces -> IO FileLookup) -- ^ file lookup function
-            -> [T.Text]                  -- ^ List of default index files. Cannot contain slashes.
+            -> [FilePath]                -- ^ List of default index files. Cannot contain slashes.
             -> Pieces                    -- ^ parsed request
             -> W.Request
             -> MaxAge
             -> Bool
             -> IO CheckPieces
 checkPieces fileLookup indices pieces req maxAge useHash
-    | any (unsafe . piecePretty) pieces = return Forbidden
-    | any (T.null . piecePretty) $ safeInit pieces =
-        return $ Redirect (filterButLast (not . T.null . piecePretty) pieces) Nothing
+    | any unsafe pieces = return Forbidden
+    | any nullFilePath $ safeInit pieces =
+        return $ Redirect (filterButLast (not . nullFilePath) pieces) Nothing
     | otherwise = do
         let (isFile, isFolder) =
                 case () of
                     ()
                         | null pieces -> (True, True)
-                        | T.null $ piecePretty (last pieces) -> (False, True)
+                        | nullFilePath (last pieces) -> (False, True)
                         | otherwise -> (True, False)
 
         fl <- fileLookup pieces
@@ -271,11 +274,11 @@ checkPieces fileLookup indices pieces req maxAge useHash
             (Just Right{}, False) -> return $ Redirect (init pieces) Nothing
             (Just (Left folder@(Folder _ contents)), _) -> do
                 case checkIndices $ map fileName $ rights contents of
-                    Just index -> return $ Redirect (setLast pieces $ Piece (T.unpack index) index) Nothing
+                    Just index -> return $ Redirect (setLast pieces index) Nothing
                     Nothing ->
                         if isFolder
                             then return $ DirectoryResponse folder
-                            else return $ Redirect (pieces ++ [Piece "" ""]) Nothing
+                            else return $ Redirect (pieces ++ [""]) Nothing
   where
     headers = W.requestHeaders req
     queryString = W.queryString req
@@ -337,12 +340,12 @@ checkPieces fileLookup indices pieces req maxAge useHash
                 Nothing -> return $ FileResponse file $ [("last-modified", formatHTTPDate mdate)]
           _ -> return $ FileResponse file []
 
-    setLast :: Pieces -> Piece -> Pieces
+    setLast :: Pieces -> FilePath -> Pieces
     setLast [] x = [x]
-    setLast [Piece "" ""] x = [x]
+    setLast [""] x = [x]
     setLast (a:b) x = a : setLast b x
 
-    checkIndices :: [T.Text] -> Maybe T.Text
+    checkIndices :: [FilePath] -> Maybe FilePath
     checkIndices contents = find (flip elem indices) contents
 
     cacheControl = case ccInt of
@@ -363,14 +366,14 @@ type Listing = (Pieces -> Folder -> IO L.ByteString)
 type FileLookup = Maybe (Either Folder File)
 
 data Folder = Folder
-    { folderName :: T.Text
+    { folderName :: FilePath
     , folderContents :: [Either Folder File]
     }
 
 data File = File
     { fileGetSize :: Int
     , fileToResponse :: H.Status -> H.ResponseHeaders -> W.Response
-    , fileName :: T.Text
+    , fileName :: FilePath
     , fileGetHash :: Maybe (IO ByteString)
     , fileGetModified :: Maybe EpochTime
     }
@@ -400,7 +403,7 @@ defaultWebAppSettings :: StaticSettings
 defaultWebAppSettings = StaticSettings
     { ssFolder = fileSystemLookup "static"
     , ssMkRedirect  = defaultMkRedirect
-    , ssGetMimeType = return . defaultMimeTypeByExt . T.unpack . fileName
+    , ssGetMimeType = return . defaultMimeTypeByExt . fileName
     , ssMaxAge  = MaxAgeForever
     , ssListing = Nothing
     , ssIndices = []
@@ -411,24 +414,24 @@ defaultFileServerSettings :: StaticSettings
 defaultFileServerSettings = StaticSettings
     { ssFolder = fileSystemLookup "static"
     , ssMkRedirect = defaultMkRedirect
-    , ssGetMimeType = return . defaultMimeTypeByExt . T.unpack . fileName
+    , ssGetMimeType = return . defaultMimeTypeByExt . fileName
     , ssMaxAge = MaxAgeSeconds $ 60 * 60
     , ssListing = Just defaultListing
     , ssIndices = ["index.html", "index.htm"]
     , ssUseHash = False
     }
 
-fileHelper :: FilePath -> T.Text -> IO File
+fileHelper :: FilePath -> FilePath -> IO File
 fileHelper fp name = do
-    fs <- getFileStatus fp
+    fs <- getFileStatus $ fromFilePath fp
     return File
         { fileGetSize = fromIntegral $ fileSize fs
-        , fileToResponse = \s h -> W.ResponseFile s h fp Nothing
+        , fileToResponse = \s h -> W.ResponseFile s h (fromFilePath fp) Nothing
         , fileName = name
         , fileGetHash = Just $ do
             -- FIXME replace lazy IO with enumerators
             -- FIXME let's use a dictionary to cache these values?
-            l <- L.readFile fp
+            l <- L.readFile $ fromFilePath fp
             return $ runHashL l
         , fileGetModified = Just $ modificationTime fs
         }
@@ -436,35 +439,35 @@ fileHelper fp name = do
 fileSystemLookup :: FilePath -> Pieces -> IO FileLookup
 fileSystemLookup prefix pieces = do
     let fp = pathFromPieces prefix pieces
-    fe <- doesFileExist fp
+    fe <- doesFileExist $ fromFilePath fp
     if fe
-        then fmap (Just . Right) $ fileHelper fp (piecePretty $ last pieces)
+        then fmap (Just . Right) $ fileHelper fp $ last pieces
         else do
-            de <- doesDirectoryExist fp
+            de <- doesDirectoryExist $ fromFilePath fp
             if de
                 then do
                     let isVisible ('.':_) = return False
                         isVisible "" = return False
                         isVisible _ = return True
-                    entries <- getDirectoryContents fp >>= filterM isVisible >>= (mapM $ \name -> do
-                        let name' = T.pack $ fixPathName name
-                        let fp' = fp ++ '/' : name
-                        fe' <- doesFileExist fp'
+                    entries <- getDirectoryContents (fromFilePath fp) >>= filterM isVisible >>= mapM (\nameRaw -> do
+                        let name = toFilePath nameRaw
+                        let fp' = fp </> name
+                        fe' <- doesFileExist $ fromFilePath fp'
                         if fe'
-                            then fmap Right $ fileHelper fp' name'
-                            else return $ Left $ Folder name' [])
+                            then fmap Right $ fileHelper fp' name
+                            else return $ Left $ Folder name [])
                     return $ Just $ Left $ Folder (error "413") entries
                 else return Nothing
 
-type Embedded = Map.Map T.Text EmbeddedEntry
+type Embedded = Map.Map FilePath EmbeddedEntry
 
 data EmbeddedEntry = EEFile S8.ByteString | EEFolder Embedded
 
 embeddedLookup :: Embedded -> Pieces -> IO FileLookup
 embeddedLookup root pieces =
-    return $ elookup "<root>" (map piecePretty pieces) root
+    return $ elookup "<root>" pieces root
   where
-    elookup  :: T.Text -> [T.Text] -> Embedded -> FileLookup
+    elookup  :: FilePath -> [FilePath] -> Embedded -> FileLookup
     elookup p [] x = Just $ Left $ Folder p $ map toEntry $ Map.toList x
     elookup p [""] x = elookup p [] x
     elookup _ (p:ps) x =
@@ -476,7 +479,7 @@ embeddedLookup root pieces =
                     _ -> Nothing
             Just (EEFolder y) -> elookup p ps y
 
-toEntry :: (T.Text, EmbeddedEntry) -> Either Folder File
+toEntry :: (FilePath, EmbeddedEntry) -> Either Folder File
 toEntry (name, EEFolder{}) = Left $ Folder name []
 toEntry (name, EEFile bs) = Right $ File
     { fileGetSize = S8.length bs
@@ -486,30 +489,29 @@ toEntry (name, EEFile bs) = Right $ File
     , fileGetModified = Nothing
     }
 
-toEmbedded :: [(FilePath, S8.ByteString)] -> Embedded
+toEmbedded :: [(Prelude.FilePath, S8.ByteString)] -> Embedded
 toEmbedded fps =
     go texts
   where
-    texts = map (\(x, y) -> (filter (not . T.null) $ toPieces x, y)) fps
-    toPiece' fp = T.pack $ fixPathName fp
+    texts = map (\(x, y) -> (filter (not . T.null . unFilePath) $ toPieces x, y)) fps
     toPieces "" = []
     toPieces x =
         let (y, z) = break (== '/') x
-         in toPiece' y : toPieces (drop 1 z)
-    go :: [([T.Text], S8.ByteString)] -> Embedded
+         in toFilePath y : toPieces (drop 1 z)
+    go :: [([FilePath], S8.ByteString)] -> Embedded
     go orig =
         Map.fromList $ map (second go') hoisted
       where
         next = map (\(x, y) -> (head x, (tail x, y))) orig
-        grouped :: [[(T.Text, ([T.Text], S8.ByteString))]]
+        grouped :: [[(FilePath, ([FilePath], S8.ByteString))]]
         grouped = groupBy ((==) `on` fst) $ sortBy (comparing fst) next
-        hoisted :: [(T.Text, [([T.Text], S8.ByteString)])]
+        hoisted :: [(FilePath, [([FilePath], S8.ByteString)])]
         hoisted = map (fst . head &&& map snd) grouped
-    go' :: [([T.Text], S8.ByteString)] -> EmbeddedEntry
+    go' :: [([FilePath], S8.ByteString)] -> EmbeddedEntry
     go' [([], content)] = EEFile content
     go' x = EEFolder $ go $ filter (\y -> not $ null $ fst y) x
 
-bsToFile :: T.Text -> S8.ByteString -> File
+bsToFile :: FilePath -> S8.ByteString -> File
 bsToFile name bs = File
     { fileGetSize = S8.length bs
     , fileToResponse = \s h -> W.ResponseBuilder s h $ fromByteString bs
@@ -525,13 +527,7 @@ runHashL :: L.ByteString -> ByteString
 runHashL = B64.encode . MD5.hashlazy
 
 staticApp :: StaticSettings -> W.Application
-staticApp set req = staticAppPieces set (map toPiece $ W.pathInfo req) req
-
-toPiece :: T.Text -> Piece
-toPiece t = Piece
-    { piecePretty = t
-    , pieceRaw = unfixPathName $ T.unpack t
-    }
+staticApp set req = staticAppPieces set (map FilePath $ W.pathInfo req) req
 
 status304, statusNotModified :: H.Status
 status304 = H.Status 304 "Not Modified"
@@ -559,7 +555,7 @@ staticAppPieces ss pieces req = liftIO $ do
     let indices = ssIndices ss
     case checkSpecialDirListing pieces of
          Just res ->  response res
-         Nothing  ->  checkPieces (ssFolder ss) indices pieces req (ssMaxAge ss) (ssUseHash ss) >>= response
+         Nothing  ->  checkPieces (ssFolder ss) (map FilePath indices) pieces req (ssMaxAge ss) (ssUseHash ss) >>= response
   where
     response cp = case cp of
         FileResponse file ch -> do
@@ -573,7 +569,7 @@ staticAppPieces ss pieces req = liftIO $ do
             return $ W.responseLBS statusNotModified
                         [ ("Content-Type", "text/plain")
                         ] "Not Modified"
-        DirectoryResponse fp ->
+        DirectoryResponse fp -> do
             case ssListing ss of
                 (Just f) -> do
                     lbs <- f pieces fp
@@ -591,7 +587,7 @@ staticAppPieces ss pieces req = liftIO $ do
                 ] lbs
 
         Redirect pieces' mHash -> do
-            let loc = (ssMkRedirect ss) pieces' $ toByteString (H.encodePathSegments $ map piecePretty pieces')
+            let loc = (ssMkRedirect ss) pieces' $ toByteString (H.encodePathSegments $ map unFilePath pieces')
             let qString = case mHash of
                   Just hash -> replace "etag" (Just hash) (W.queryString req)
                   Nothing   -> remove "etag" (W.queryString req)
@@ -617,34 +613,34 @@ case for fixPathName/unfixPathName. I'm starting to use John
 Millikin's system-filepath package for some stuff with work, and might
 consider migrating over to it for this in the future.
 -}
-fixPathName :: FilePath -> FilePath
+toFilePath :: Prelude.FilePath -> FilePath
 #if defined(mingw32_HOST_OS)
-fixPathName = id
+toFilePath = FilePath . T.pack
 #else
-fixPathName = T.unpack . TE.decodeUtf8With TEE.lenientDecode . S8.pack
+toFilePath = FilePath . TE.decodeUtf8With TEE.lenientDecode . S8.pack
 #endif
 
-unfixPathName :: FilePath -> FilePath
+fromFilePath :: FilePath -> Prelude.FilePath
 #if defined(mingw32_HOST_OS)
-unfixPathName = id
+fromFilePath = T.unpack . unFilePath
 #else
-unfixPathName = S8.unpack . TE.encodeUtf8 . T.pack
+fromFilePath = S8.unpack . TE.encodeUtf8 . unFilePath
 #endif
 
 -- Code below taken from Happstack: http://patch-tag.com/r/mae/happstack/snapshot/current/content/pretty/happstack-server/src/Happstack/Server/FileServe/BuildingBlocks.hs
 defaultListing :: Listing
 defaultListing pieces (Folder _ contents) = do
-    let isTop = null pieces || pieces == [Piece "" ""]
+    let isTop = null pieces || pieces == [""]
     let fps'' :: [Either Folder File]
         fps'' = (if isTop then id else (Left (Folder ".." []) :)) contents
     return $ HU.renderHtml
            $ H.html $ do
              H.head $ do
-                 let title = T.unpack $ T.intercalate "/" $ map piecePretty pieces
+                 let title = T.unpack $ T.intercalate "/" $ map unFilePath pieces
                  let title' = if null title then "root folder" else title
                  H.title $ H.toHtml title'
                  H.style $ H.toHtml $ unlines [ "table { margin: 0 auto; width: 760px; border-collapse: collapse; font-family: 'sans-serif'; }"
-                                              , "table, th, td { border: 1px solid #353948; }" 
+                                              , "table, th, td { border: 1px solid #353948; }"
                                               , "td.size { text-align: right; font-size: 0.7em; width: 50px }"
                                               , "td.date { text-align: right; font-size: 0.7em; width: 130px }"
                                               , "td { padding-right: 1em; padding-left: 1em; }"
@@ -658,7 +654,7 @@ defaultListing pieces (Folder _ contents) = do
                                               , "a { text-decoration: none }"
                                               ]
              H.body $ do
-                 H.h1 $ showFolder $ map piecePretty $ filter (not . T.null . piecePretty) pieces
+                 H.h1 $ showFolder $ map unFilePath $ filter (not . nullFilePath) pieces
                  renderDirectoryContentsTable haskellSrc folderSrc fps''
   where
     image x = T.unpack $ T.concat [(relativeDirFromPieces pieces), ".hidden/", x, ".png"]
@@ -709,7 +705,7 @@ renderDirectoryContentsTable haskellSrc folderSrc fps =
                             Right{} -> return ()
                    let name = either folderName fileName md
                    let isFile = either (const False) (const True) md
-                   H.td (H.a ! A.href (H.toValue $ name `T.append` if isFile then "" else "/") $ H.toHtml name)
+                   H.td (H.a ! A.href (H.toValue $ unFilePath name `T.append` if isFile then "" else "/") $ H.toHtml $ unFilePath name)
                    H.td ! A.class_ "date" $ H.toHtml $
                        case md of
                            Right File { fileGetModified = Just t } ->
