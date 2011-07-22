@@ -1,0 +1,9 @@
+#!/bin/sh
+#
+
+# subst standard header path variables
+if test -n "$CPPFLAGS" ; then
+    echo "Found CPPFLAGS in environment: '$CPPFLAGS'"
+    sed 's,@CPPFLAGS@,'"$CPPFLAGS"',g;s,@LDFLAGS@,'"$LDFLAGS"',g'  \
+        < fastcgi.buildinfo.in > fastcgi.buildinfo
+fi
