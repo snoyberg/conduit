@@ -1,5 +1,5 @@
 Name:                warp-static
-Version:             0.1.1
+Version:             0.2.0
 Synopsis:            Static file server based on Warp and wai-app-static
 Homepage:            http://github.com/snoyberg/warp-static
 License:             BSD3
@@ -15,9 +15,10 @@ Executable warp
   Main-is:       warp.hs
   Build-depends: base            >= 4                  && < 5
                , warp            >= 0.4                && < 0.5
-               , wai-app-static  >= 0.1                && < 0.2
+               , wai-app-static  >= 0.3                && < 0.4
                , wai-extra       >= 0.4                && < 0.5
                , cmdargs         >= 0.6.7              && < 0.8
                , directory       >= 1.0                && < 1.2
                , containers      >= 0.2                && < 0.5
                , bytestring      >= 0.9                && < 0.10
+               , text                                     < 1.0

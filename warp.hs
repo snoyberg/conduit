@@ -2,6 +2,8 @@
 import Network.Wai.Application.Static
     ( StaticSettings (..), staticApp, defaultMimeType, defaultListing
     , defaultMimeTypes, mimeTypeByExt
+    , defaultFileServerSettings, fileSystemLookup
+    , fileName, toFilePath
     )
 import Network.Wai.Handler.Warp (run)
 import System.Environment (getArgs)
@@ -14,7 +16,8 @@ import Network.Wai.Middleware.Debug
 import Network.Wai.Middleware.Gzip
 import qualified Data.Map as Map
 import qualified Data.ByteString.Char8 as S8
-import Control.Arrow (second)
+import Control.Arrow ((***))
+import Data.Text (pack, unpack)
 
 data Args = Args
     { docroot :: FilePath
@@ -32,7 +35,7 @@ defaultArgs = Args "." ["index.html", "index.htm"] 3000 False False False []
 main :: IO ()
 main = do
     Args {..} <- cmdArgs defaultArgs
-    let mime' = map (second S8.pack) mime
+    let mime' = map (toFilePath *** S8.pack) mime
     let mimeMap = Map.fromList mime' `Map.union` defaultMimeTypes
     docroot' <- canonicalizePath docroot
     args <- getArgs
@@ -40,9 +43,9 @@ main = do
     let middle = gzip False
                . (if verbose then debug else id)
                . autohead
-    run port $ middle $ staticApp StaticSettings
-        { ssFolder = docroot
-        , ssIndices = if noindex then [] else index
+    run port $ middle $ staticApp defaultFileServerSettings
+        { ssFolder = fileSystemLookup $ toFilePath docroot
+        , ssIndices = if noindex then [] else map pack index
         , ssListing = Just defaultListing
-        , ssGetMimeType = return . mimeTypeByExt mimeMap defaultMimeType
+        , ssGetMimeType = return . mimeTypeByExt mimeMap defaultMimeType . fileName
         }
