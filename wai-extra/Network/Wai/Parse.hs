@@ -8,6 +8,8 @@ module Network.Wai.Parse
     , Sink (..)
     , lbsSink
     , tempFileSink
+    , Param
+    , File
     , FileInfo (..)
 #if TEST
     , Bound (..)
