@@ -9,7 +9,7 @@ Maintainer:          michael@snoyman.com
 Homepage:            http://github.com/snoyberg/wai-extra
 Category:            Web
 Build-Type:          Simple
-Cabal-Version:       >=1.6
+Cabal-Version:       >=1.8
 Stability:           Stable
 
 Library
@@ -41,6 +41,31 @@ Library
                      Network.Wai.Zlib
                      Network.Wai.Parse
   ghc-options:       -Wall
+
+
+test-suite runtests
+    hs-source-dirs: .
+    main-is: runtests.hs
+    type: exitcode-stdio-1.0
+
+    build-depends:   base                      >= 4        && < 5
+                   , wai-extra
+                   , wai-test
+                   , test-framework
+                   , test-framework-hunit
+                   , HUnit
+
+                   , wai
+                   , http-types
+                   , transformers
+                   , enumerator
+                   , zlib
+                   , text
+                   , bytestring
+                   , directory 
+                   , zlib-bindings
+                   , blaze-builder-enumerator
+                   , blaze-builder
 
 source-repository head
   type:     git
