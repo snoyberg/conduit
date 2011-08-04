@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Network.Wai.Middleware.Debug
     ( debug
-    , debugDest
+    , debugHandle
     ) where
 
 import Network.Wai (Request(..), Middleware)
@@ -17,13 +17,13 @@ import Data.Enumerator.List (consume)
 
 -- | Prints a message to 'stderr' for each request.
 debug :: Middleware
-debug = debugDest $ hPutStrLn stderr . T.unpack
+debug = debugHandle $ hPutStrLn stderr . T.unpack
 
 -- | Prints a message using the given callback function for each request.
 -- This is not for serious production use- it is inefficient.
 -- It immediately consumes a POST body and fills it back in and is otherwise inefficient
-debugDest :: (T.Text -> IO ()) -> Middleware
-debugDest cb app req = do
+debugHandle :: (T.Text -> IO ()) -> Middleware
+debugHandle cb app req = do
     body <- consume
     postParams <- if any (requestMethod req ==) ["GET", "HEAD"]
       then return []

@@ -19,7 +19,7 @@ import Network.Wai.Middleware.Vhost
 import Network.Wai.Middleware.Autohead
 import Network.Wai.Middleware.MethodOverride
 import Network.Wai.Middleware.AcceptOverride
-import Network.Wai.Middleware.Debug (debug, debugDest)
+import Network.Wai.Middleware.Debug (debug, debugHandle)
 import Codec.Compression.GZip (decompress)
 
 import Data.Enumerator (run_, enumList, ($$), Iteratee)
@@ -409,7 +409,7 @@ caseDebugRequestBody = do
     postOutput = T.pack $ "POST \nAccept: \nPOST " ++ (show params)
     getOutput qs = T.pack $ "GET /location" ++ "\nAccept: \nGET " ++ (show params) -- \nAccept: \n" ++ (show params)
 
-    debugApp output = debugDest (\t -> liftIO $ assertEqual "debug" output t) $ \req -> do
+    debugApp output = debugHandle (\t -> liftIO $ assertEqual "debug" output t) $ \req -> do
         return $ responseLBS status200 [ ] ""
     {-debugApp = debug $ \req -> do-}
         {-return $ responseLBS status200 [ ] ""-}
