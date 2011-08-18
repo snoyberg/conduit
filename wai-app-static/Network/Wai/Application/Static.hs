@@ -33,6 +33,7 @@ module Network.Wai.Application.Static
     , defaultListing
       -- ** Lookup functions
     , fileSystemLookup
+    , fileSystemLookupHash
     , embeddedLookup
       -- ** Embedded
     , Embedded
@@ -253,7 +254,7 @@ checkPieces :: (Pieces -> IO FileLookup) -- ^ file lookup function
             -> Pieces                    -- ^ parsed request
             -> W.Request
             -> MaxAge
-            -> Bool
+            -> Bool                      -- ^ use hash?
             -> IO CheckPieces
 checkPieces fileLookup indices pieces req maxAge useHash
     | any unsafe pieces = return Forbidden
@@ -421,27 +422,35 @@ defaultFileServerSettings = StaticSettings
     , ssUseHash = False
     }
 
-fileHelper :: FilePath -> FilePath -> IO File
-fileHelper fp name = do
+fileHelper :: (FilePath -> Maybe (IO ByteString)) -- ^ hash function
+           -> FilePath -> FilePath -> IO File
+fileHelper hashFunc fp name = do
     fs <- getFileStatus $ fromFilePath fp
     return File
         { fileGetSize = fromIntegral $ fileSize fs
         , fileToResponse = \s h -> W.ResponseFile s h (fromFilePath fp) Nothing
         , fileName = name
-        , fileGetHash = Just $ do
-            -- FIXME replace lazy IO with enumerators
-            -- FIXME let's use a dictionary to cache these values?
-            l <- L.readFile $ fromFilePath fp
-            return $ runHashL l
+        , fileGetHash = hashFunc fp
         , fileGetModified = Just $ modificationTime fs
         }
 
+defaultFileSystemHash :: FilePath -> Maybe (IO ByteString)
+defaultFileSystemHash fp = Just $ do
+    -- FIXME replace lazy IO with enumerators
+    -- FIXME let's use a dictionary to cache these values?
+    l <- L.readFile $ fromFilePath fp
+    return $ runHashL l
+
 fileSystemLookup :: FilePath -> Pieces -> IO FileLookup
-fileSystemLookup prefix pieces = do
+fileSystemLookup = fileSystemLookupHash defaultFileSystemHash
+
+fileSystemLookupHash :: (FilePath -> Maybe (IO ByteString)) -- ^ hash function
+                     -> FilePath -> Pieces -> IO FileLookup
+fileSystemLookupHash hashFunc prefix pieces = do
     let fp = pathFromPieces prefix pieces
     fe <- doesFileExist $ fromFilePath fp
     if fe
-        then fmap (Just . Right) $ fileHelper fp $ last pieces
+        then fmap (Just . Right) $ fileHelper hashFunc fp $ last pieces
         else do
             de <- doesDirectoryExist $ fromFilePath fp
             if de
@@ -454,9 +463,9 @@ fileSystemLookup prefix pieces = do
                         let fp' = fp </> name
                         fe' <- doesFileExist $ fromFilePath fp'
                         if fe'
-                            then fmap Right $ fileHelper fp' name
+                            then fmap Right $ fileHelper hashFunc fp' name
                             else return $ Left $ Folder name [])
-                    return $ Just $ Left $ Folder (error "413") entries
+                    return $ Just $ Left $ Folder (error "Network.Wai.Application.Static.fileSystemLookup") entries
                 else return Nothing
 
 type Embedded = Map.Map FilePath EmbeddedEntry
