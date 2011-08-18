@@ -105,6 +105,8 @@ import Control.Monad (forever)
 import qualified Network.HTTP.Types as H
 import qualified Data.CaseInsensitive as CI
 import System.IO (hPutStrLn, stderr)
+import qualified Paths_warp
+import Data.Version (showVersion)
 
 #if WINDOWS
 import Control.Concurrent (threadDelay)
@@ -303,7 +305,7 @@ headers !httpversion !status !responseHeaders !isChunked' = {-# SCC "headers" #-
                 `mappend` spaceBuilder
                 `mappend` copyByteString (H.statusMessage status)
                 `mappend` newlineBuilder
-        !start' = foldl' responseHeaderToBuilder start responseHeaders
+        !start' = foldl' responseHeaderToBuilder start (serverHeader : responseHeaders)
         !end = if isChunked'
                  then transferEncodingBuilder
                  else newlineBuilder
@@ -574,3 +576,6 @@ withManager timeout f = do
     -- FIXME when stopManager is available, use it
     man <- T.initialize timeout
     f man
+
+serverHeader :: (CI.CI H.Ascii, ByteString)
+serverHeader = ("Server", B.pack $ "Warp/" ++ showVersion Paths_warp.version)
