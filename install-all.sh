@@ -2,7 +2,7 @@
 
 CABAL=cabal
 # Note: Ignoring wai-handler-devel, wai-handler-webkit
-PACKAGES="wai wai-test wai-extra wai-app-static wai-handler-fastcgi wai-handler-launch wai-handler-scgi warp warp-static"
+PACKAGES="wai wai-test wai-extra warp wai-app-static wai-handler-fastcgi wai-handler-launch wai-handler-scgi warp-static"
 for package in $PACKAGES
 do
     echo Installing $package
