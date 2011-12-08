@@ -1,0 +1,24 @@
+Name:                conduit
+Version:             0.0.0
+Synopsis:            Put something in here.
+-- Description:         
+License:             BSD3
+License-file:        LICENSE
+Author:              Michael Snoyman
+Maintainer:          michael@snoyman.com
+-- Copyright:           
+Category:            Data
+Build-type:          Simple
+-- Extra-source-files:  
+Cabal-version:       >=1.2
+
+Library
+  Exposed-modules:     Data.Conduit
+                       Data.Conduit.List
+                       Control.Monad.Trans.Resource
+  Build-depends:       base                     >= 4            && < 5
+                     , lifted-base              >= 0.1          && < 0.2
+                     , transformers-base        >= 0.4          && < 0.5
+                     , monad-control            >= 0.3          && < 0.4
+                     , containers
+                     , transformers             >= 0.2.2        && < 0.3
