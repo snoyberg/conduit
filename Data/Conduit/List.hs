@@ -2,8 +2,10 @@
 module Data.Conduit.List
     ( fold
     , fromList
+    , take
     ) where
 
+import Prelude hiding (take)
 import Data.Conduit
 import Control.Monad.Trans.Control (MonadBaseControl)
 import Control.Monad.Base (liftBase)
@@ -43,5 +45,9 @@ take count0 = Sink $ do
   where
     go istate EOF = SinkResult [] . Just . snd <$> liftBase (I.readIORef istate)
     go istate (Chunks cs) = do
-        (count, rest) <- liftBase $ I.readIORef
-        undefined
+        (count, rest', b) <- liftBase $ I.atomicModifyIORef istate $ \(count, rest) ->
+            let (a, b) = splitAt count cs
+                count' = count - length a
+                rest' = rest ++ a
+             in ((count', rest'), (count', rest', b))
+        return $ SinkResult b $ if count == 0 then Just rest' else Nothing
