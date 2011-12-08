@@ -1,4 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 module Data.Conduit
     ( -- * Helper types
@@ -19,7 +22,8 @@ module Data.Conduit
 
 import Control.Monad.Trans.Resource
 import Control.Monad.Trans.Control (MonadBaseControl)
-import Control.Monad.Base (liftBase)
+import Control.Monad.Trans.Class (MonadTrans (lift))
+import Control.Monad.Base (MonadBase (liftBase))
 import Control.Exception.Lifted (throwIO, Exception)
 import qualified Data.IORef as I
 import Data.Typeable (Typeable)
@@ -53,14 +57,15 @@ instance Monad m => Functor (Sink input m) where
 instance MonadBaseControl IO m => Applicative (Sink input m) where
     pure x =
         Sink (return (\s -> return (SinkResult (toList s) (Just x))))
-      where
-        toList EOF = []
-        toList (Chunks a) = a
     Sink mf <*> Sink ma = Sink $ do
         istate <- liftBase $ I.newIORef Nothing
         f <- mf
         a <- ma
         return $ appHelper istate f a
+
+toList :: Stream a -> [a]
+toList EOF = []
+toList (Chunks a) = a
 
 appHelper :: MonadBaseControl IO m
           => I.IORef (Maybe (Either (b -> c) ()))
@@ -85,6 +90,14 @@ appHelper istate f a stream = do
 instance MonadBaseControl IO m => Monad (Sink input m) where
     return = pure
     x >>= f = sinkJoin (fmap f x)
+
+instance MonadBaseControl IO m => MonadBase IO (Sink input m) where
+    liftBase = lift . liftBase
+
+instance MonadTrans (Sink input) where
+    lift f = Sink $ do
+        x <- lift f
+        return $ \s -> return (SinkResult (toList s) (Just x))
 
 sinkJoin :: MonadBaseControl IO m => Sink a m (Sink a m b) -> Sink a m b
 sinkJoin (Sink mmsink) = Sink $ do
