@@ -1,13 +1,12 @@
-import Prelude hiding (take)
 import Data.Conduit
-import Data.Conduit.List
+import qualified Data.Conduit.List as CL
 import Control.Monad.Trans.Resource
 
 main :: IO ()
 main = do
-    runResourceT (fromList [1..10] $$ do
-        _ <- take 5
-        sum') >>= putStrLn
+    runResourceT (CL.fromList [1..10] $= CL.concatMap (replicate 2) $$ do
+        _ <- CL.take 10
+        CL.map (* 2) =$ sum') >>= putStrLn
 
 sum' :: Sink Int IO String
-sum' = fmap show $ fold (+) 0
+sum' = fmap show $ CL.fold (+) 0

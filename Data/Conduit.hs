@@ -11,8 +11,8 @@ module Data.Conduit
     , Conduit
       -- * Connect pieces together
     , ($$)
-    , connectLeft
-    , connectRight
+    , ($=)
+    , (=$)
       -- * Helper functions
     , mkSource
     ) where
@@ -128,6 +128,8 @@ mkSource pull = Source $ do
                     I.atomicModifyIORef buffer (\a -> (s ++ a, ()))
         }
 
+infixr 0 $$
+
 ($$) :: MonadBaseControl IO m => Source m a -> Sink a m b -> ResourceT m b
 Source msource $$ Sink msink = do
     sink <- msink
@@ -147,11 +149,13 @@ data NothingAfterEOF = NothingAfterEOF
     deriving (Show, Typeable)
 instance Exception NothingAfterEOF
 
-connectLeft :: MonadBaseControl IO m
-            => Source m a
-            -> Conduit a m b
-            -> Source m b
-connectLeft (Source msource) pipe = Source $ do
+infixl 1 $=
+
+($=) :: MonadBaseControl IO m
+     => Source m a
+     -> Conduit a m b
+     -> Source m b
+Source msource $= pipe = Source $ do
     source <- msource
     source' <- unSource $ mkSource $ do
         ConduitResult leftover result <- sourcePull source >>= pipe
@@ -161,8 +165,10 @@ connectLeft (Source msource) pipe = Source $ do
   where
     unSource (Source s) = s
 
-connectRight :: MonadBaseControl IO m => Conduit a m b -> Sink b m c -> Sink a m c
-connectRight pipe (Sink msink) = Sink $ do
+infixr 0 =$
+
+(=$) :: MonadBaseControl IO m => Conduit a m b -> Sink b m c -> Sink a m c
+pipe =$ Sink msink = Sink $ do
     sink <- msink
     return $ \stream -> do
         ConduitResult leftover stream' <- pipe stream

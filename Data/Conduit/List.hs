@@ -3,9 +3,12 @@ module Data.Conduit.List
     ( fold
     , fromList
     , take
+    , map
+    , concatMap
     ) where
 
-import Prelude hiding (take)
+import qualified Prelude
+import Prelude hiding (take, map, concatMap)
 import Data.Conduit
 import Control.Monad.Trans.Control (MonadBaseControl)
 import Control.Monad.Base (liftBase)
@@ -51,3 +54,10 @@ take count0 = Sink $ do
                 rest' = rest ++ a
              in ((count', rest'), (count', rest', b))
         return $ SinkResult b $ if count == 0 then Just rest' else Nothing
+
+map :: Monad m => (a -> b) -> Conduit a m b
+map f a = return $ ConduitResult [] $ fmap f a
+
+concatMap :: Monad m => (a -> [b]) -> Conduit a m b
+concatMap _ EOF = return $ ConduitResult [] EOF
+concatMap f (Chunks l) = return $ ConduitResult [] $ Chunks $ Prelude.concatMap f l
