@@ -83,9 +83,7 @@ appHelper istate f a stream = do
             Just res -> do
                 let state' = Just $ Left res
                 liftBase $ I.writeIORef istate state'
-                if null leftover
-                    then return $ SinkResult [] Nothing
-                    else go state' $ Chunks leftover
+                go state' $ Chunks leftover
 
 instance MonadBaseControl IO m => Monad (Sink input m) where
     return = pure

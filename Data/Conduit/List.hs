@@ -5,10 +5,11 @@ module Data.Conduit.List
     , take
     , map
     , concatMap
+    , head
     ) where
 
 import qualified Prelude
-import Prelude hiding (take, map, concatMap)
+import Prelude hiding (take, map, concatMap, head)
 import Data.Conduit
 import Control.Monad.Trans.Control (MonadBaseControl)
 import Control.Monad.Base (liftBase)
@@ -54,6 +55,14 @@ take count0 = Sink $ do
                 rest' = rest ++ a
              in ((count', rest'), (count', rest', b))
         return $ SinkResult b $ if count == 0 then Just rest' else Nothing
+
+head :: MonadBaseControl IO m => Sink a m (Maybe a)
+head =
+    Sink $ return $ return . go
+  where
+    go EOF = SinkResult [] $ Just Nothing
+    go (Chunks []) = SinkResult [] Nothing
+    go (Chunks (a:as)) = SinkResult as (Just (Just a))
 
 map :: Monad m => (a -> b) -> Conduit a m b
 map f a = return $ ConduitResult [] $ fmap f a
