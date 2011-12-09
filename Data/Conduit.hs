@@ -47,7 +47,7 @@ data SourceInside m a = SourceInside
     { sourcePull :: ResourceT m (Stream a)
     , sourcePush :: [a] -> ResourceT m ()
     }
-newtype Source m a = Source (ResourceT m (SourceInside m a))
+newtype Source m a = Source { unSource :: ResourceT m (SourceInside m a) }
 
 type SinkInsideData a m b = Stream a -> ResourceT m (SinkResult a b)
 data SinkInside a m b =
@@ -201,8 +201,6 @@ Source msource $= pipe = Source $ do
         sourcePush source leftover
         return result
     return source'
-  where
-    unSource (Source s) = s
 
 infixr 0 =$
 

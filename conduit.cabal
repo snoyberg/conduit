@@ -1,19 +1,19 @@
 Name:                conduit
 Version:             0.0.0
-Synopsis:            Put something in here.
--- Description:         
+Synopsis:            A pull-based approach to streaming data.
+Description:         Conduits are an approach to the streaming data problem. It is meant as an alternative to enumerators/iterators, hoping to address the same issues with different trade-offs based on real-world experience with enumerators. See the README.md file for more details.
 License:             BSD3
 License-file:        LICENSE
 Author:              Michael Snoyman
 Maintainer:          michael@snoyman.com
--- Copyright:           
 Category:            Data
 Build-type:          Simple
--- Extra-source-files:  
-Cabal-version:       >=1.2
+Cabal-version:       >=1.8
+Homepage:            http://github.com/yesodweb/wai
 
 Library
   Exposed-modules:     Data.Conduit
+                       Data.Conduit.Binary
                        Data.Conduit.List
                        Control.Monad.Trans.Resource
   Build-depends:       base                     >= 4            && < 5
@@ -22,3 +22,10 @@ Library
                      , monad-control            >= 0.3          && < 0.4
                      , containers
                      , transformers             >= 0.2.2        && < 0.3
+                     , system-fileio            >= 0.3.3        && < 0.4
+                     , system-filepath          >= 0.4.3        && < 0.5
+                     , bytestring               >= 0.9
+
+source-repository head
+  type:     git
+  location: git://github.com/yesodweb/wai.git
