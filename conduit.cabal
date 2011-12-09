@@ -10,6 +10,7 @@ Category:            Data
 Build-type:          Simple
 Cabal-version:       >=1.8
 Homepage:            http://github.com/yesodweb/wai
+extra-source-files:  test/main.hs
 
 Library
   Exposed-modules:     Data.Conduit
@@ -25,6 +26,19 @@ Library
                      , system-fileio            >= 0.3.3        && < 0.4
                      , system-filepath          >= 0.4.3        && < 0.5
                      , bytestring               >= 0.9
+  ghc-options:     -Wall
+
+test-suite test
+    hs-source-dirs: test
+    main-is: main.hs
+    type: exitcode-stdio-1.0
+    cpp-options:   -DTEST
+    build-depends:   conduit
+                   , base
+                   , hspec
+                   , HUnit
+                   , QuickCheck
+    ghc-options:     -Wall
 
 source-repository head
   type:     git

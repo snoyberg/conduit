@@ -6,6 +6,7 @@ module Data.Conduit.List
     , map
     , concatMap
     , head
+    , consume
     ) where
 
 import qualified Prelude
@@ -68,3 +69,13 @@ map f a = return $ ConduitResult [] $ fmap f a
 concatMap :: Monad m => (a -> [b]) -> Conduit a m b
 concatMap _ EOF = return $ ConduitResult [] EOF
 concatMap f (Chunks l) = return $ ConduitResult [] $ Chunks $ Prelude.concatMap f l
+
+consume :: MonadBaseControl IO m => Sink a m [a]
+consume = Sink $ do
+    ifront <- liftBase $ I.newIORef id
+    return $ SinkData $ go ifront
+  where
+    go ifront EOF = SinkResult [] . Just . ($ []) <$> liftBase (I.readIORef ifront)
+    go ifront (Chunks cs) = do
+        liftBase $ I.atomicModifyIORef ifront $ \front -> (front . (cs ++), ())
+        return $ SinkResult [] Nothing
