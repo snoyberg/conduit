@@ -11,6 +11,7 @@ module Data.Conduit
       -- * Main types
     , Source (..)
     , Sink (..)
+    , SinkInside (..)
     , Conduit
       -- * Connect pieces together
     , ($$)
@@ -48,42 +49,58 @@ data SourceInside m a = SourceInside
     }
 newtype Source m a = Source (ResourceT m (SourceInside m a))
 
-type SinkInside a m b = (Stream a -> ResourceT m (SinkResult a b))
+type SinkInsideData a m b = Stream a -> ResourceT m (SinkResult a b)
+data SinkInside a m b =
+    SinkData (SinkInsideData a m b)
+  | SinkNoData b
 newtype Sink input m output = Sink (ResourceT m (SinkInside input m output))
 instance Monad m => Functor (Sink input m) where
     fmap f (Sink msink) = Sink $ do
-        sink <- msink
-        return $ \stream -> liftM (fmap f) (sink stream)
+        sinkI <- msink
+        return $ case sinkI of
+            SinkData sink -> SinkData $ liftM (fmap f) . sink
+            SinkNoData x -> SinkNoData $ f x
 instance MonadBaseControl IO m => Applicative (Sink input m) where
-    pure x =
-        Sink (return (\s -> return (SinkResult (toList s) (Just x))))
+    pure x = Sink $ return $ SinkNoData x
     Sink mf <*> Sink ma = Sink $ do
-        istate <- liftBase $ I.newIORef Nothing
         f <- mf
         a <- ma
-        return $ appHelper istate f a
-
-toList :: Stream a -> [a]
-toList EOF = []
-toList (Chunks a) = a
+        case (f, a) of
+            (SinkNoData f', SinkNoData a') -> return $ SinkNoData (f' a')
+            _ -> do
+                let toEither (SinkData x) = Left x
+                    toEither (SinkNoData x) = Right x
+                istate <- liftBase $ I.newIORef (toEither f, toEither a)
+                return $ appHelper istate
 
 appHelper :: MonadBaseControl IO m
-          => I.IORef (Maybe (Either (b -> c) ()))
-          -> SinkInside a m (b -> c)
-          -> SinkInside a m b
-          -> SinkInside a m c
-appHelper istate f a stream = do
+          => I.IORef
+                ( Either (SinkInsideData input m (a -> b)) (a -> b)
+                , Either (SinkInsideData input m a) a
+                )
+          -> SinkInside input m b
+appHelper istate = SinkData $ \stream0 -> do
     state <- liftBase $ I.readIORef istate
-    go state stream
+    go state stream0
   where
-    go Nothing stream = do
+    go (Left f, eb) stream = do
         SinkResult leftover mres <- f stream
         case mres of
             Nothing -> return $ SinkResult leftover Nothing
             Just res -> do
-                let state' = Just $ Left res
+                let state' = (Right res, eb)
                 liftBase $ I.writeIORef istate state'
                 go state' $ Chunks leftover
+    go (f@Right{}, Left b) stream = do
+        SinkResult leftover mres <- b stream
+        case mres of
+            Nothing -> return $ SinkResult leftover Nothing
+            Just res -> do
+                let state' = (f, Right res)
+                liftBase $ I.writeIORef istate state'
+                go state' $ Chunks leftover
+    go (Right f, Right b) EOF = return $ SinkResult [] (Just $ f b)
+    go (Right f, Right b) (Chunks s) = return $ SinkResult s (Just $ f b)
 
 instance MonadBaseControl IO m => Monad (Sink input m) where
     return = pure
@@ -93,24 +110,31 @@ instance MonadBaseControl IO m => MonadBase IO (Sink input m) where
     liftBase = lift . liftBase
 
 instance MonadTrans (Sink input) where
-    lift f = Sink $ do
-        x <- lift f
-        return $ \s -> return (SinkResult (toList s) (Just x))
+    lift f = Sink (lift (liftM SinkNoData f))
 
 sinkJoin :: MonadBaseControl IO m => Sink a m (Sink a m b) -> Sink a m b
-sinkJoin (Sink mmsink) = Sink $ do
-    istate <- liftBase $ I.newIORef Nothing
-    msink <- mmsink
-    return $ go istate msink
+sinkJoin (Sink msinkI) = Sink $ do
+    sinkI <- msinkI
+    case sinkI of
+        SinkNoData (Sink inner) -> inner
+        SinkData _msink -> do
+            undefined
+            {-
+            istate <- liftBase $ I.newIORef Nothing
+            return $ go istate msink
   where
-    go :: MonadBaseControl IO m => I.IORef (Maybe (SinkInside a m b)) -> SinkInside a m (Sink a m b) -> SinkInside a m b
+    go :: MonadBaseControl IO m
+       => I.IORef (Maybe (SinkInside a m b))
+       -> (Stream a -> ResourceT m (SinkResult a (Sink a m b)))
+       -> Stream a
+       -> ResourceT m (SinkResult a b)
     go istate outer stream = do
         state <- liftBase $ I.readIORef istate
         case state of
             Nothing -> do
-                SinkResult leftover minner <- outer stream
-                case minner of
-                    Just (Sink minner) -> do
+                SinkResult leftover minner' <- outer stream
+                case minner' of
+                    Just (SinkData minner) -> do
                         inner <- minner
                         liftBase $ I.writeIORef istate $ Just inner
                         if null leftover
@@ -118,6 +142,7 @@ sinkJoin (Sink mmsink) = Sink $ do
                             else go istate outer $ Chunks leftover
                     Nothing -> return $ SinkResult leftover Nothing
             Just inner -> inner stream
+            -}
 
 type Conduit a m b = Stream a -> ResourceT m (ConduitResult a b)
 
@@ -143,9 +168,12 @@ infixr 0 $$
 
 ($$) :: MonadBaseControl IO m => Source m a -> Sink a m b -> ResourceT m b
 Source msource $$ Sink msink = do
-    sink <- msink
-    source <- msource
-    connect' source sink
+    sinkI <- msink
+    case sinkI of
+        SinkNoData output -> return output
+        SinkData sink -> do
+            source <- msource
+            connect' source sink
   where
     connect' source sink = do
         stream <- sourcePull source
@@ -180,8 +208,10 @@ infixr 0 =$
 
 (=$) :: MonadBaseControl IO m => Conduit a m b -> Sink b m c -> Sink a m c
 pipe =$ Sink msink = Sink $ do
-    sink <- msink
-    return $ \stream -> do
-        ConduitResult leftover stream' <- pipe stream
-        SinkResult _thisislost mres <- sink stream'
-        return $ SinkResult leftover mres
+    sinkI <- msink
+    case sinkI of
+        SinkData sink -> return $ SinkData $ \stream -> do
+            ConduitResult leftover stream' <- pipe stream
+            SinkResult _thisislost mres <- sink stream'
+            return $ SinkResult leftover mres
+        SinkNoData mres -> return $ SinkNoData mres

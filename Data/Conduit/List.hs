@@ -23,7 +23,7 @@ fold :: MonadBaseControl IO m
      -> Sink a m b
 fold f accum0 = Sink $ do
     iaccum <- liftBase $ I.newIORef accum0
-    return $ go iaccum
+    return $ SinkData $ go iaccum
   where
     go iaccum EOF = SinkResult [] . Just <$> liftBase (I.readIORef iaccum)
     go iaccum (Chunks cs) = do
@@ -45,7 +45,7 @@ take :: MonadBaseControl IO m
      -> Sink a m [a]
 take count0 = Sink $ do
     istate <- liftBase $ I.newIORef (count0, [])
-    return $ go istate
+    return $ SinkData $ go istate
   where
     go istate EOF = SinkResult [] . Just . snd <$> liftBase (I.readIORef istate)
     go istate (Chunks cs) = do
@@ -58,7 +58,7 @@ take count0 = Sink $ do
 
 head :: MonadBaseControl IO m => Sink a m (Maybe a)
 head =
-    Sink $ return $ return . go
+    Sink $ return $ SinkData $ return . go
   where
     go EOF = SinkResult [] $ Just Nothing
     go (Chunks []) = SinkResult [] Nothing
