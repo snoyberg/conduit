@@ -30,6 +30,7 @@ import qualified Data.IORef as I
 import Data.Typeable (Typeable)
 import Control.Monad (liftM)
 import Control.Applicative (Applicative (..))
+import Data.Monoid (Monoid (mempty, mappend, mconcat))
 
 data Stream a = EOF | Chunks [a]
     deriving Show
@@ -48,6 +49,31 @@ data SourceInside m a = SourceInside
     , sourcePush :: [a] -> ResourceT m ()
     }
 newtype Source m a = Source { unSource :: ResourceT m (SourceInside m a) }
+instance MonadBaseControl IO m => Monoid (Source m a) where
+    mempty = mkSource $ return EOF
+    mappend a b = mconcat [a, b]
+    mconcat [] = mempty
+    mconcat (Source mnext:rest0) = Source $ do
+        next0 <- mnext
+        istate <- liftBase $ I.newIORef $ Just (next0, rest0)
+        unSource $ mkSource $ go istate
+      where
+        go istate = do
+            state <- liftBase $ I.readIORef istate
+            case state of
+                Nothing -> return EOF
+                Just (next, rest) -> do
+                    stream <- sourcePull next
+                    case stream of
+                        EOF ->
+                            case rest of
+                                Source a:as -> do
+                                    a' <- a
+                                    liftBase $ I.writeIORef istate $ Just (a', as)
+                                    go istate
+                                [] -> do
+                                    liftBase $ I.writeIORef istate Nothing
+                                    return EOF
 
 type SinkInsideData a m b = Stream a -> ResourceT m (SinkResult a b)
 data SinkInside a m b =
