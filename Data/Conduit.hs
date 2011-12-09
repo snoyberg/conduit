@@ -74,6 +74,7 @@ instance MonadBaseControl IO m => Monoid (Source m a) where
                                 [] -> do
                                     liftBase $ I.writeIORef istate Nothing
                                     return EOF
+                        Chunks _ -> return stream
 
 type SinkInsideData a m b = Stream a -> ResourceT m (SinkResult a b)
 data SinkInside a m b =
@@ -143,32 +144,31 @@ sinkJoin (Sink msinkI) = Sink $ do
     sinkI <- msinkI
     case sinkI of
         SinkNoData (Sink inner) -> inner
-        SinkData _msink -> do
-            undefined
-            {-
+        SinkData msink -> do
             istate <- liftBase $ I.newIORef Nothing
-            return $ go istate msink
+            return $ SinkData $ go istate msink
   where
     go :: MonadBaseControl IO m
-       => I.IORef (Maybe (SinkInside a m b))
+       => I.IORef (Maybe (SinkInsideData a m b))
        -> (Stream a -> ResourceT m (SinkResult a (Sink a m b)))
-       -> Stream a
-       -> ResourceT m (SinkResult a b)
+       -> SinkInsideData a m b
     go istate outer stream = do
         state <- liftBase $ I.readIORef istate
         case state of
             Nothing -> do
                 SinkResult leftover minner' <- outer stream
                 case minner' of
-                    Just (SinkData minner) -> do
-                        inner <- minner
-                        liftBase $ I.writeIORef istate $ Just inner
-                        if null leftover
-                            then return $ SinkResult [] Nothing
-                            else go istate outer $ Chunks leftover
+                    Just (Sink msink) -> do
+                        sink <- msink
+                        case sink of
+                            SinkData inner -> do
+                                liftBase $ I.writeIORef istate $ Just inner
+                                if null leftover
+                                    then return $ SinkResult [] Nothing
+                                    else go istate outer $ Chunks leftover
+                            SinkNoData x -> return $ SinkResult leftover $ Just x
                     Nothing -> return $ SinkResult leftover Nothing
             Just inner -> inner stream
-            -}
 
 type Conduit a m b = Stream a -> ResourceT m (ConduitResult a b)
 

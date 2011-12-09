@@ -37,8 +37,6 @@ fromList l = Source $ do
     unSource $ mkSource $ do
         l' <- liftBase $ I.atomicModifyIORef il $ \x -> ([], x)
         return $ if null l' then EOF else Chunks l'
-  where
-    unSource (Source s) = s
 
 take :: MonadBaseControl IO m
      => Int
