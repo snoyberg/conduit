@@ -42,3 +42,9 @@ main = hspecX $ do
             bs1 <- S.readFile "conduit.cabal"
             bs2 <- S.readFile "tmp"
             bs1 @=? bs2
+    describe "Monad instance for Sink" $ do
+        it "binding" $ do
+            x <- runResourceT $ CL.fromList [1..10] C.<$$> do
+                _ <- CL.take 5
+                CL.fold (+) (0 :: Int)
+            x @?= sum [6..10]

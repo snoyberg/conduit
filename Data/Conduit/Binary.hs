@@ -8,6 +8,7 @@ import Prelude hiding (FilePath)
 import System.IO (hClose)
 import Filesystem.Path.CurrentOS (FilePath)
 import qualified Data.ByteString as S
+import qualified Data.ByteString.Lazy as L
 import Filesystem (openFile, IOMode (ReadMode, WriteMode))
 import Data.Conduit
 import Control.Monad.Trans.Control (MonadBaseControl)
@@ -28,10 +29,9 @@ sourceFile fp = sourceM
 
 sinkFile :: MonadBaseControl IO m
          => FilePath
-         -> Sink S.ByteString m ()
-sinkFile fp = Sink $ do
-    (key, handle) <- with (liftBase $ openFile fp WriteMode) (liftBase . hClose)
-    return $ SinkData $ \stream -> do
-        case stream of
-            EOF -> release key >> return (SinkResult [] (Just ()))
-            Chunks bss -> mapM_ (liftBase . S.hPut handle) bss >> return (SinkResult [] Nothing)
+         -> SinkM S.ByteString m ()
+sinkFile fp = sinkM
+    (with (liftBase $ openFile fp WriteMode) (liftBase . hClose))
+    (\(key, _) -> release key)
+    (\(_, handle) bss -> liftBase (L.hPut handle $ L.fromChunks bss) >> return (SinkResult [] Nothing))
+    (const $ return $ SinkResult [] ())

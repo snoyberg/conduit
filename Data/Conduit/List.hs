@@ -21,13 +21,15 @@ import Data.List (foldl')
 fold :: MonadBaseControl IO m
      => (b -> a -> b)
      -> b
-     -> Sink a m b
-fold f accum0 = Sink $ do
-    iaccum <- liftBase $ I.newIORef accum0
-    return $ SinkData $ go iaccum
+     -> SinkM a m b
+fold f accum0 = sinkM
+    (liftBase $ I.newIORef accum0)
+    (const $ return ())
+    push
+    close
   where
-    go iaccum EOF = SinkResult [] . Just <$> liftBase (I.readIORef iaccum)
-    go iaccum (Chunks cs) = do
+    close iaccum = SinkResult [] <$> liftBase (I.readIORef iaccum)
+    push iaccum cs = do
         liftBase $ I.atomicModifyIORef iaccum $
             \accum -> (foldl' f accum cs, ())
         return $ SinkResult [] Nothing
@@ -42,13 +44,15 @@ fromList l = sourceM
 
 take :: MonadBaseControl IO m
      => Int
-     -> Sink a m [a]
-take count0 = Sink $ do
-    istate <- liftBase $ I.newIORef (count0, [])
-    return $ SinkData $ go istate
+     -> SinkM a m [a]
+take count0 = sinkM
+    (liftBase $ I.newIORef (count0, []))
+    (const $ return ())
+    push
+    close
   where
-    go istate EOF = SinkResult [] . Just . snd <$> liftBase (I.readIORef istate)
-    go istate (Chunks cs) = do
+    close istate = SinkResult [] . snd <$> liftBase (I.readIORef istate)
+    push istate cs = do
         (count, rest', b) <- liftBase $ I.atomicModifyIORef istate $ \(count, rest) ->
             let (a, b) = splitAt count cs
                 count' = count - length a
@@ -56,13 +60,14 @@ take count0 = Sink $ do
              in ((count', rest'), (count', rest', b))
         return $ SinkResult b $ if count == 0 then Just rest' else Nothing
 
-head :: MonadBaseControl IO m => Sink a m (Maybe a)
-head =
-    Sink $ return $ SinkData $ return . go
+head :: MonadBaseControl IO m => SinkM a m (Maybe a)
+head = SinkM $ return $ SinkData
+    { sinkPush = return . push
+    , sinkClose = return $ SinkResult [] Nothing
+    }
   where
-    go EOF = SinkResult [] $ Just Nothing
-    go (Chunks []) = SinkResult [] Nothing
-    go (Chunks (a:as)) = SinkResult as (Just (Just a))
+    push [] = SinkResult [] Nothing
+    push (a:as) = SinkResult as (Just (Just a))
 
 map :: Monad m => (a -> b) -> Conduit a m b
 map f a = return $ ConduitResult [] $ fmap f a
@@ -71,12 +76,14 @@ concatMap :: Monad m => (a -> [b]) -> Conduit a m b
 concatMap _ EOF = return $ ConduitResult [] EOF
 concatMap f (Chunks l) = return $ ConduitResult [] $ Chunks $ Prelude.concatMap f l
 
-consume :: MonadBaseControl IO m => Sink a m [a]
-consume = Sink $ do
-    ifront <- liftBase $ I.newIORef id
-    return $ SinkData $ go ifront
+consume :: MonadBaseControl IO m => SinkM a m [a]
+consume = sinkM
+    (liftBase $ I.newIORef id)
+    (const $ return ())
+    push
+    close
   where
-    go ifront EOF = SinkResult [] . Just . ($ []) <$> liftBase (I.readIORef ifront)
-    go ifront (Chunks cs) = do
+    close ifront = SinkResult [] . ($ []) <$> liftBase (I.readIORef ifront)
+    push ifront cs = do
         liftBase $ I.atomicModifyIORef ifront $ \front -> (front . (cs ++), ())
         return $ SinkResult [] Nothing
