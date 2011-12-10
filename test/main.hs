@@ -15,27 +15,30 @@ import qualified Data.ByteString as S
 main :: IO ()
 main = hspecX $ do
     describe "sum" $ do
+        it "works for 1..10" $ do
+            x <- runResourceT $ CL.fromList [1..10] C.<$$> CL.fold (+) (0 :: Int)
+            x @?= sum [1..10]
         prop "is idempotent" $ \list ->
-            (unsafePerformIO $ runResourceT $ CL.fromList list C.$$ CL.fold (+) (0 :: Int))
+            (unsafePerformIO $ runResourceT $ CL.fromList list C.<$$> CL.fold (+) (0 :: Int))
             == sum list
     describe "Monoid instance for Source" $ do
         it "mappend" $ do
-            x <- runResourceT $ (CL.fromList [1..5 :: Int] `mappend` CL.fromList [6..10]) C.$$ CL.fold (+) 0
+            x <- runResourceT $ (CL.fromList [1..5 :: Int] `mappend` CL.fromList [6..10]) C.<$$> CL.fold (+) 0
             x @?= sum [1..10]
         it "mconcat" $ do
             x <- runResourceT $ mconcat
                 [ CL.fromList [1..5 :: Int]
                 , CL.fromList [6..10]
                 , CL.fromList [11..20]
-                ] C.$$ CL.fold (+) 0
+                ] C.<$$> CL.fold (+) 0
             x @?= sum [1..20]
     describe "file access" $ do
         it "read" $ do
             bs <- S.readFile "conduit.cabal"
-            bss <- runResourceT $ CB.sourceFile "conduit.cabal" C.$$ CL.consume
+            bss <- runResourceT $ CB.sourceFile "conduit.cabal" C.<$$> CL.consume
             bs @=? S.concat bss
         it "write" $ do
-            runResourceT $ CB.sourceFile "conduit.cabal" C.$$ CB.sinkFile "tmp"
+            runResourceT $ CB.sourceFile "conduit.cabal" C.<$$> CB.sinkFile "tmp"
             bs1 <- S.readFile "conduit.cabal"
             bs2 <- S.readFile "tmp"
             bs1 @=? bs2

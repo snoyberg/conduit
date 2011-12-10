@@ -16,15 +16,15 @@ import Control.Monad.Trans.Resource (with, release)
 
 sourceFile :: MonadBaseControl IO m
            => FilePath
-           -> Source m S.ByteString
-sourceFile fp = Source $ do
-    (key, handle) <- with (liftBase $ openFile fp ReadMode) (liftBase . hClose)
-    unSource $ mkSource $ do
+           -> SourceM m S.ByteString
+sourceFile fp = sourceM
+    (with (liftBase $ openFile fp ReadMode) (liftBase . hClose))
+    (\(key, _) -> release key)
+    (\(_, handle) -> do
         bs <- liftBase $ S.hGetSome handle 50
-        -- FIXME protection against being called after close?
         if S.null bs
-            then release key >> return EOF
-            else return $ Chunks [bs]
+            then return EOF
+            else return $ Chunks [bs])
 
 sinkFile :: MonadBaseControl IO m
          => FilePath

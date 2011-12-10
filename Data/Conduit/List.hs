@@ -32,12 +32,13 @@ fold f accum0 = Sink $ do
             \accum -> (foldl' f accum cs, ())
         return $ SinkResult [] Nothing
 
-fromList :: MonadBaseControl IO m => [a] -> Source m a
-fromList l = Source $ do
-    il <- liftBase $ I.newIORef l
-    unSource $ mkSource $ do
+fromList :: MonadBaseControl IO m => [a] -> SourceM m a
+fromList l = sourceM
+    (liftBase (I.newIORef l))
+    (const (return ()))
+    (\il -> do
         l' <- liftBase $ I.atomicModifyIORef il $ \x -> ([], x)
-        return $ if null l' then EOF else Chunks l'
+        return $ if null l' then EOF else Chunks l')
 
 take :: MonadBaseControl IO m
      => Int
