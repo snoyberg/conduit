@@ -151,35 +151,45 @@ instance MonadTrans (SinkM input) where
     lift f = SinkM (lift (liftM SinkNoData f))
 
 sinkJoin :: MonadBase IO m => SinkM a m (SinkM a m b) -> SinkM a m b
-sinkJoin = error "sinkJoin"
-{-
-sinkJoin (Sink msinkI) = Sink $ do
-    sinkI <- msinkI
-    case sinkI of
-        SinkNoData (Sink inner) -> inner
-        SinkData msink -> do
+sinkJoin (SinkM msink) = SinkM $ do
+    sink <- msink
+    case sink of
+        SinkNoData (SinkM inner) -> inner
+        SinkData pushO closeO -> do
             istate <- liftBase $ I.newIORef Nothing
-            return $ SinkData $ go istate msink
+            return $ SinkData (push istate pushO) (close istate closeO)
   where
-    go :: MonadBaseControl IO m
-       => I.IORef (Maybe (SinkInsideData a m b))
-       -> (Stream a -> ResourceT m (SinkResult a (Sink a m b)))
-       -> SinkInsideData a m b
-    go istate outer stream = do
+    push istate pushO stream = do
         state <- liftBase $ I.readIORef istate
         case state of
+            Just (pushI, _) -> pushI stream
             Nothing -> do
-                SinkResult leftover minner' <- outer stream
+                SinkResult leftover minner' <- pushO stream
                 case minner' of
-                    Just (Sink msink) -> do
-                        sink <- msink
+                    Nothing -> return $ SinkResult leftover Nothing
+                    Just (SinkM msink') -> do
+                        sink <- msink'
                         case sink of
-                            SinkData inner -> do
-                                liftBase $ I.writeIORef istate $ Just inner
+                            SinkData pushI closeI -> do
+                                liftBase $ I.writeIORef istate $ Just (pushI, closeI)
                                 if null leftover
                                     then return $ SinkResult [] Nothing
-                                    else go istate outer $ Chunks leftover
+                                    else push istate pushO leftover
                             SinkNoData x -> return $ SinkResult leftover $ Just x
-                    Nothing -> return $ SinkResult leftover Nothing
-            Just inner -> inner stream
-            -}
+    close istate closeO = do
+        state <- liftBase $ I.readIORef istate
+        case state of
+            Just (_, closeI) -> closeI
+            Nothing -> do
+                SinkResult leftover (SinkM minner) <- closeO
+                inner <- minner
+                case inner of
+                    SinkData pushI closeI -> closeHelper' leftover pushI closeI
+                    SinkNoData x -> return $ SinkResult leftover x
+    closeHelper' stream pushI closeI
+        | null stream = closeI
+        | otherwise = do
+            SinkResult leftover mres <- pushI stream
+            case mres of
+                Nothing -> closeHelper' leftover pushI closeI
+                Just res -> return $ SinkResult leftover res
