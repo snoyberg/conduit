@@ -3,6 +3,11 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE DeriveDataTypeable #-}
+-- | Note: although this module does expose a resumable source, this source is
+-- /not/ threadsafe. It can only be used within a single thread.
+--
+-- Non-resumable sources are also not-thread-safe, but reusing them in multiple
+-- threads is impossible at the type level.
 module Data.Conduit
     ( -- * Connect pieces together
       ($$)
