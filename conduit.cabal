@@ -17,6 +17,7 @@ Library
                        Data.Conduit.Binary
                        Data.Conduit.List
                        Control.Monad.Trans.Resource
+                       Data.Conduit.Attoparsec
   Other-modules:       Data.Conduit.Types.Source
                        Data.Conduit.Types.Sink
                        Data.Conduit.Types.Conduit
@@ -32,6 +33,8 @@ Library
                      , system-fileio            >= 0.3.3        && < 0.4
                      , system-filepath          >= 0.4.3        && < 0.5
                      , bytestring               >= 0.9
+                     , attoparsec               >= 0.10
+                     , text                     >= 0.10
   ghc-options:     -Wall
 
 test-suite test
