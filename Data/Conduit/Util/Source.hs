@@ -1,3 +1,4 @@
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE FlexibleContexts #-}
 -- | Utilities for constructing and converting 'Source', 'SourceM' and
 -- 'BSource' types. Please see "Data.Conduit.Types.Source" for more information
@@ -6,12 +7,14 @@ module Data.Conduit.Util.Source
     ( sourceM
     , bsource
     , bsourceM
+    , transSourceM
     ) where
 
-import Control.Monad.Trans.Resource (ResourceT)
+import Control.Monad.Trans.Resource (ResourceT, transResourceT)
 import Data.Conduit.Types.Source
 import Control.Monad.Base (MonadBase (liftBase))
 import qualified Data.IORef as I
+import Control.Monad (liftM)
 
 -- | Construct a 'SourceM'.
 sourceM :: Monad m
@@ -81,3 +84,16 @@ bsourceM :: MonadBase IO m
          => SourceM m output
          -> ResourceT m (BSource m output)
 bsourceM (SourceM msrc) = msrc >>= bsource
+
+-- | Transform the monad a 'SourceM' lives in.
+transSourceM :: Monad m
+             => (forall a. m a -> n a)
+             -> SourceM m output
+             -> SourceM n output
+transSourceM f (SourceM mc) =
+    SourceM (transResourceT f (liftM go mc))
+  where
+    go c = c
+        { sourcePull = transResourceT f (sourcePull c)
+        , sourceClose = transResourceT f (sourceClose c)
+        }

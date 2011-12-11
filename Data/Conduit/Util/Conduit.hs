@@ -1,17 +1,20 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE RankNTypes #-}
 -- | Utilities for constructing and covnerting conduits. Please see
 -- "Data.Conduit.Types.Conduit" for more information on the base types.
 module Data.Conduit.Util.Conduit
     ( bconduitM
     , bconduit
     , conduitM
+    , transConduitM
     ) where
 
-import Control.Monad.Trans.Resource (ResourceT)
+import Control.Monad.Trans.Resource (ResourceT, transResourceT)
 import Data.Conduit.Types.Conduit
 import Data.Conduit.Types.Source (Stream (..))
 import Control.Monad.Base (MonadBase (liftBase))
 import qualified Data.IORef as I
+import Control.Monad (liftM)
 
 -- | Construct a 'ConduitM'.
 conduitM :: Monad m
@@ -88,4 +91,17 @@ bconduit con = do
             if null buffer
                 then conduitPush con x
                 else return $ ConduitResult x (Chunks buffer)
+        }
+
+-- | Transform the monad a 'ConduitM' lives in.
+transConduitM :: Monad m
+              => (forall a. m a -> n a)
+              -> ConduitM input m output
+              -> ConduitM input n output
+transConduitM f (ConduitM mc) =
+    ConduitM (transResourceT f (liftM go mc))
+  where
+    go c = c
+        { conduitPush = transResourceT f . conduitPush c
+        , conduitClose = transResourceT f (conduitClose c)
         }

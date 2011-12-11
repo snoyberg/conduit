@@ -13,6 +13,8 @@ module Control.Monad.Trans.Resource
     , with
     , register
     , release
+      -- * Monad transformation
+    , transResourceT
     ) where
 
 import Data.IntMap (IntMap)
@@ -99,6 +101,11 @@ try' :: MonadBaseControl IO m
      => m a
      -> m (Either SomeException a)
 try' = try
+
+transResourceT :: (m a -> n a)
+               -> ResourceT m a
+               -> ResourceT n a
+transResourceT f (ResourceT mx) = ResourceT (\r -> f (mx r))
 
 -------- All of our monad et al instances
 instance Monad m => Functor (ResourceT m) where
