@@ -16,6 +16,12 @@ Library
   Exposed-modules:     Data.Conduit
                        Data.Conduit.Binary
                        Data.Conduit.List
+                       Data.Conduit.Types.Source
+                       Data.Conduit.Types.Sink
+                       Data.Conduit.Types.Conduit
+                       Data.Conduit.Util.Source
+                       Data.Conduit.Util.Sink
+                       Data.Conduit.Util.Conduit
                        Control.Monad.Trans.Resource
   Build-depends:       base                     >= 4            && < 5
                      , lifted-base              >= 0.1          && < 0.2
