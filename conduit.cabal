@@ -16,6 +16,7 @@ Library
   Exposed-modules:     Data.Conduit
                        Data.Conduit.Binary
                        Data.Conduit.List
+                       Data.Conduit.Lazy
                        Control.Monad.Trans.Resource
                        Data.Conduit.Attoparsec
   Other-modules:       Data.Conduit.Types.Source

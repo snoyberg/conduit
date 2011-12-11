@@ -13,6 +13,8 @@ module Control.Monad.Trans.Resource
     , with
     , register
     , release
+      -- * Internal
+    , ResourceTT (..)
     ) where
 
 import Data.IntMap (IntMap)
@@ -34,11 +36,11 @@ newtype ReleaseKey = ReleaseKey Int
 
 -- I'd rather just have a type synonym around ReaderT, but that makes so ugly
 -- error messages.
-newtype ResourceTT m' m a = ResourceT (I.IORef (ReleaseMap m') -> m a)
+newtype ResourceTT m' m a = ResourceTT (I.IORef (ReleaseMap m') -> m a)
 type ResourceT m = ResourceTT m m
 
 ask :: Monad m => ResourceT m (I.IORef (ReleaseMap m))
-ask = ResourceT return
+ask = ResourceTT return
 
 with :: MonadBaseControl IO m
      => ResourceT m a -- ^ allocate
@@ -82,7 +84,7 @@ runResourceT :: MonadBaseControl IO m
           -> m a
 runResourceT r = do
     istate <- liftBase $ I.newIORef $ ReleaseMap minBound IntMap.empty
-    let ResourceT f = r `finally` cleanup
+    let ResourceTT f = r `finally` cleanup
     f istate
   where
     cleanup = do
@@ -101,24 +103,24 @@ try' = try
 
 -------- All of our monad et al instances
 instance Monad m => Functor (ResourceTT m' m) where
-    fmap f (ResourceT m) = ResourceT $ \r -> liftM f (m r)
+    fmap f (ResourceTT m) = ResourceTT $ \r -> liftM f (m r)
 
 instance Monad m => Applicative (ResourceTT m' m) where
-    pure = ResourceT . const . return
-    ResourceT mf <*> ResourceT ma = ResourceT $ \r -> do
+    pure = ResourceTT . const . return
+    ResourceTT mf <*> ResourceTT ma = ResourceTT $ \r -> do
         f <- mf r
         a <- ma r
         return $ f a
 
 instance Monad m => Monad (ResourceTT m' m) where
     return = pure
-    ResourceT ma >>= f =
-        ResourceT $ \r -> ma r >>= flip un r . f
+    ResourceTT ma >>= f =
+        ResourceTT $ \r -> ma r >>= flip un r . f
       where
-        un (ResourceT x) = x
+        un (ResourceTT x) = x
 
 instance MonadTrans (ResourceTT m') where
-    lift = ResourceT . const
+    lift = ResourceTT . const
 
 instance MonadIO m => MonadIO (ResourceTT m' m) where
     liftIO = lift . liftIO
@@ -128,8 +130,8 @@ instance MonadBase b m => MonadBase b (ResourceTT m' m) where
 
 instance MonadTransControl (ResourceTT m') where
     newtype StT (ResourceTT m') a = StReader {unStReader :: a}
-    liftWith f = ResourceT $ \r -> f $ \(ResourceT t) -> liftM StReader $ t r
-    restoreT = ResourceT . const . liftM unStReader
+    liftWith f = ResourceTT $ \r -> f $ \(ResourceTT t) -> liftM StReader $ t r
+    restoreT = ResourceTT . const . liftM unStReader
     {-# INLINE liftWith #-}
     {-# INLINE restoreT #-}
 

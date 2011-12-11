@@ -6,6 +6,7 @@ import Test.HUnit
 
 import qualified Data.Conduit as C
 import qualified Data.Conduit.List as CL
+import qualified Data.Conduit.Lazy as CLazy
 import qualified Data.Conduit.Binary as CB
 import Data.Conduit (runResourceT)
 import System.IO.Unsafe (unsafePerformIO)
@@ -104,3 +105,10 @@ main = hspecX $ do
                 return (x, y)
             x @?= [1..5]
             y @?= [6..10]
+    describe "lazy" $ do
+        it "works inside a ResourceT" $ runResourceT $ do
+            nums <- CLazy.lazyConsume $ mconcat $ map (\i -> CL.fromList [i]) [1..10 :: Int]
+            C.liftBase $ nums @?= [1..10]
+        it "does not work outside a ResourceT" $ do
+            nums <- runResourceT $ CLazy.lazyConsume $ mconcat $ map (\i -> CL.fromList [i]) [1..10 :: Int]
+            nums @?= []
