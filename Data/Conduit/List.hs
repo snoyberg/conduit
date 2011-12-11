@@ -5,16 +5,24 @@ module Data.Conduit.List
     , take
     , map
     , concatMap
+    , concatMapM
     , head
     , consume
     , isolate
     ) where
 
-import Prelude hiding (take, map, concatMap, head)
+import Prelude
+    ( ($), return, length, splitAt, (==), (-), IO, Int
+    , (.), id, const, Maybe (..), (>>=), fmap, (++), Monad
+    , null, snd
+    )
+import qualified Prelude
+import qualified Control.Monad as Monad
 import Data.Conduit
 import qualified Data.IORef as I
 import Control.Applicative ((<$>))
 import Data.List (foldl')
+import Control.Monad.Trans.Class (lift)
 
 fold :: MonadBaseControl IO m
      => (b -> a -> b)
@@ -76,6 +84,12 @@ map f = ConduitM $ return $ Conduit
 concatMap :: Monad m => (a -> [b]) -> ConduitM a m b
 concatMap f = ConduitM $ return $ Conduit
     { conduitPush = return . ConduitResult [] . Chunks . (>>= f)
+    , conduitClose = return []
+    }
+
+concatMapM :: Monad m => (a -> m [b]) -> ConduitM a m b
+concatMapM f = ConduitM $ return $ Conduit
+    { conduitPush = fmap (ConduitResult [] . Chunks . Prelude.concat) . lift . Monad.mapM f
     , conduitClose = return []
     }
 
