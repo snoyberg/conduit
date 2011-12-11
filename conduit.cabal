@@ -44,6 +44,7 @@ test-suite test
                    , hspec
                    , HUnit
                    , QuickCheck
+                   , bytestring
     ghc-options:     -Wall
 
 source-repository head
