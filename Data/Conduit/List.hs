@@ -12,8 +12,6 @@ module Data.Conduit.List
 
 import Prelude hiding (take, map, concatMap, head)
 import Data.Conduit
-import Control.Monad.Trans.Control (MonadBaseControl)
-import Control.Monad.Base (liftBase)
 import qualified Data.IORef as I
 import Control.Applicative ((<$>))
 import Data.List (foldl')

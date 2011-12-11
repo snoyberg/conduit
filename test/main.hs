@@ -7,7 +7,7 @@ import Test.HUnit
 import qualified Data.Conduit as C
 import qualified Data.Conduit.List as CL
 import qualified Data.Conduit.Binary as CB
-import Control.Monad.Trans.Resource (runResourceT)
+import Data.Conduit (runResourceT)
 import System.IO.Unsafe (unsafePerformIO)
 import Data.Monoid
 import qualified Data.ByteString as S

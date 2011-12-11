@@ -11,8 +11,6 @@ import qualified Data.ByteString as S
 import qualified Data.ByteString.Lazy as L
 import Filesystem (openFile, IOMode (ReadMode, WriteMode))
 import Data.Conduit
-import Control.Monad.Trans.Control (MonadBaseControl)
-import Control.Monad.Base (liftBase)
 import Control.Monad.Trans.Resource (with, release)
 
 sourceFile :: MonadBaseControl IO m

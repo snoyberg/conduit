@@ -16,7 +16,7 @@ module Data.Conduit
     , (<$=>)
     , (=$)
     , (<=$>)
-      -- * Other modules
+      -- * Conduit Types
       -- ** Source
     , module Data.Conduit.Types.Source
     , module Data.Conduit.Util.Source
@@ -26,6 +26,12 @@ module Data.Conduit
       -- ** Conduit
     , module Data.Conduit.Types.Conduit
     , module Data.Conduit.Util.Conduit
+      -- * Convenience re-exports
+    , ResourceT
+    , runResourceT
+    , MonadBase
+    , MonadBaseControl
+    , liftBase
     ) where
 
 import Control.Monad.Trans.Resource
@@ -37,7 +43,7 @@ import Data.Conduit.Util.Sink
 import Data.Conduit.Types.Conduit
 import Data.Conduit.Util.Conduit
 import qualified Data.IORef as I
-import Control.Monad.Base (liftBase)
+import Control.Monad.Base (MonadBase, liftBase)
 
 infixr 0 $$
 
