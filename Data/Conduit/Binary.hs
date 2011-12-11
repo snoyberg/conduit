@@ -22,7 +22,7 @@ sourceFile fp = sourceM
     (with (liftBase $ openFile fp ReadMode) (liftBase . hClose))
     (\(key, _) -> release key)
     (\(_, handle) -> do
-        bs <- liftBase $ S.hGetSome handle 50
+        bs <- liftBase $ S.hGetSome handle 4096
         if S.null bs
             then return EOF
             else return $ Chunks [bs])
