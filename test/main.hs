@@ -59,3 +59,43 @@ main = hspecX $ do
             x @?= [1..5] :: IO ()
             y @?= sum [6..10]
             z @?= []
+    describe "conduits" $ do
+        it "map, left" $ do
+            x <- runResourceT $
+                CL.fromList [1..10]
+                    C.<$=> CL.map (* 2)
+                    C.<$$> CL.fold (+) 0
+            x @?= 2 * sum [1..10]
+        it "map, right" $ do
+            x <- runResourceT $
+                CL.fromList [1..10]
+                    C.<$$> CL.map (* 2)
+                    C.<=$> CL.fold (+) 0
+            x @?= 2 * sum [1..10]
+    {-
+    describe "isolate" $ do
+        it "bound to resumable source" $ do
+            (x, y) <- runResourceT $ do
+                bsrc <- C.bsourceM $ CL.fromList [1..10 :: Int]
+                x <- bsrc C.$= CL.isolate 5 C.$$ CL.consume
+                y <- bsrc C.$$ CL.consume
+                return (x, y)
+            x @?= [1..5]
+            y @?= [6..10]
+        it "bound to sink, non-resumable" $ do
+            (x, y) <- runResourceT $ do
+                CL.fromList [1..10 :: Int] C.<$$> do
+                    x <- CL.isolate 5 C.=$ CL.consume
+                    y <- CL.consume
+                    return (x, y)
+            x @?= [1..5]
+            y @?= [6..10]
+        it "bound to sink, resumable" $ do
+            (x, y) <- runResourceT $ do
+                bsrc <- C.bsourceM $ CL.fromList [1..10 :: Int]
+                x <- bsrc C.$$ CL.isolate 5 C.=$ CL.consume
+                y <- bsrc C.$$ CL.consume
+                return (x, y)
+            x @?= [1..5]
+            y @?= [6..10]
+            -}

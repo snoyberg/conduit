@@ -38,7 +38,6 @@ bsource :: MonadBase IO m
         => Source m output
         -> ResourceT m (BSource m output)
 bsource src = do
-    -- state is a boolean indicating whether EOF was reached, and a buffer
     istate <- liftBase (I.newIORef EmptyOpen)
     return BSource
         { bsourcePull = do

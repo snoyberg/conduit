@@ -7,6 +7,7 @@ module Data.Conduit.List
     , concatMap
     , head
     , consume
+    , isolate
     ) where
 
 import qualified Prelude
@@ -69,12 +70,18 @@ head = SinkM $ return $ SinkData
     push [] = SinkResult [] Nothing
     push (a:as) = SinkResult as (Just (Just a))
 
-map :: Monad m => (a -> b) -> Conduit a m b
-map f a = return $ ConduitResult [] $ fmap f a
+map :: Monad m => (a -> b) -> ConduitM a m b
+map f = ConduitM $ return $ Conduit
+    { conduitPush = return . ConduitResult [] . Chunks . fmap f
+    , conduitClose = return []
+    }
 
 concatMap :: Monad m => (a -> [b]) -> Conduit a m b
+concatMap = undefined
+{-
 concatMap _ EOF = return $ ConduitResult [] EOF
 concatMap f (Chunks l) = return $ ConduitResult [] $ Chunks $ Prelude.concatMap f l
+-}
 
 consume :: MonadBaseControl IO m => SinkM a m [a]
 consume = sinkM
@@ -87,3 +94,6 @@ consume = sinkM
     push ifront cs = do
         liftBase $ I.atomicModifyIORef ifront $ \front -> (front . (cs ++), ())
         return $ SinkResult [] Nothing
+
+isolate :: Int -> Conduit a m b
+isolate = undefined
