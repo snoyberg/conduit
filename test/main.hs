@@ -65,13 +65,13 @@ main = hspecX $ do
                 CL.fromList [1..10]
                     C.<$=> CL.map (* 2)
                     C.<$$> CL.fold (+) 0
-            x @?= 2 * sum [1..10]
+            x @?= 2 * sum [1..10 :: Int]
         it "map, right" $ do
             x <- runResourceT $
                 CL.fromList [1..10]
                     C.<$$> CL.map (* 2)
                     C.<=$> CL.fold (+) 0
-            x @?= 2 * sum [1..10]
+            x @?= 2 * sum [1..10 :: Int]
         it "concatMap" $ do
             let input = [1, 11, 21]
             x <- runResourceT $ CL.fromList input

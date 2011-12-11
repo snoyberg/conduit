@@ -4,6 +4,7 @@
 module Data.Conduit.Util.Conduit
     ( bconduitM
     , bconduit
+    , conduitM
     ) where
 
 import Control.Monad.Trans.Resource (ResourceT)
@@ -11,6 +12,28 @@ import Data.Conduit.Types.Conduit
 import Data.Conduit.Types.Source (Stream (..))
 import Control.Monad.Base (MonadBase (liftBase))
 import qualified Data.IORef as I
+
+-- | Construct a 'ConduitM'.
+conduitM :: Monad m
+         => ResourceT m state -- ^ resource and/or state allocation
+         -> (state -> ResourceT m ()) -- ^ resource and/or state cleanup
+         -> (state -> [input] -> ResourceT m (ConduitResult input output)) -- ^ Push function. Note that this need not explicitly perform any cleanup.
+         -> (state -> ResourceT m [output]) -- ^ Close function. Note that this need not explicitly perform any cleanup.
+         -> ConduitM input m output
+conduitM alloc cleanup push close = ConduitM $ do
+    state <- alloc
+    return Conduit
+        { conduitPush = \input -> do
+            ConduitResult leftover stream <- push state input
+            case stream of
+                EOF -> cleanup state
+                _ -> return ()
+            return $ ConduitResult leftover stream
+        , conduitClose = do
+            output <- close state
+            cleanup state
+            return output
+        }
 
 bconduitM :: MonadBase IO m
           => ConduitM input m output

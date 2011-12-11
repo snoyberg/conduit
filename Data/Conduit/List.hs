@@ -10,7 +10,6 @@ module Data.Conduit.List
     , isolate
     ) where
 
-import qualified Prelude
 import Prelude hiding (take, map, concatMap, head)
 import Data.Conduit
 import Control.Monad.Trans.Control (MonadBaseControl)
@@ -94,5 +93,19 @@ consume = sinkM
         liftBase $ I.atomicModifyIORef ifront $ \front -> (front . (cs ++), ())
         return $ SinkResult [] Nothing
 
-isolate :: Int -> ConduitM a m b
-isolate = error "isolate"
+isolate :: MonadBaseControl IO m => Int -> ConduitM a m a
+isolate count0 = conduitM
+    (liftBase $ I.newIORef count0)
+    (const $ return ())
+    push
+    close
+  where
+    close _ = return []
+    push istate cs = do
+        count <- liftBase $ I.readIORef istate
+        if count == 0
+            then return $ ConduitResult cs EOF
+            else do
+                let (a, b) = splitAt count cs
+                liftBase $ I.writeIORef istate $ count - length a
+                return $ ConduitResult b (Chunks a)

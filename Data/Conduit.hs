@@ -111,8 +111,26 @@ infixl 1 $=
      => BSource m a
      -> BConduit a m b
      -> BSource m b
-_ $= _ =
-    error "$="
+bsrc $= bcon = BSource
+    { bsourcePull = do
+        output <- bconduitPull bcon
+        if null output
+            then do
+                sinput <- bsourcePull bsrc
+                case sinput of
+                    Chunks input -> do
+                        ConduitResult leftover output' <- bconduitPush bcon input
+                        bsourceUnpull bsrc leftover
+                        return output'
+                    EOF -> do
+                        s <- bconduitClose bcon
+                        return $ if null s then EOF else Chunks s
+            else return $ Chunks output
+    , bsourceUnpull = bconduitUnpull bcon
+    , bsourceClose = do
+        _ignored <- bconduitClose bcon
+        bsourceClose bsrc
+    }
     {-
     source' <- unSource $ mkSource $ do
         ConduitResult leftover result <- sourcePull source >>= pipe
@@ -139,6 +157,7 @@ c =$ (SinkM ms) = SinkM $ do
         SinkNoData mres -> return $ SinkNoData mres
   where
     push pushI closeI stream = do
+        -- FIXME bconduitPull
         ConduitResult leftover stream' <- bconduitPush c stream
         case stream' of
             Chunks cs -> do
