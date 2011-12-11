@@ -5,7 +5,7 @@
 {-# LANGUAGE TypeFamilies #-}
 module Control.Monad.Trans.Resource
     ( -- * Data types
-      ResourceT
+      ResourceT (..)
     , ReleaseKey
       -- * Unwrap
     , runResourceT
@@ -13,8 +13,6 @@ module Control.Monad.Trans.Resource
     , with
     , register
     , release
-      -- * Internal
-    , ResourceTT (..)
     ) where
 
 import Data.IntMap (IntMap)
@@ -31,36 +29,35 @@ import Control.Monad.Trans.Class (MonadTrans (..))
 import Control.Monad.IO.Class (MonadIO (..))
 import Control.Monad (liftM)
 
-data ReleaseMap m = ReleaseMap !Int !(IntMap (ResourceT m ()))
+data ReleaseMap = ReleaseMap !Int !(IntMap (IO ()))
 newtype ReleaseKey = ReleaseKey Int
 
 -- I'd rather just have a type synonym around ReaderT, but that makes so ugly
 -- error messages.
-newtype ResourceTT m' m a = ResourceTT (I.IORef (ReleaseMap m') -> m a)
-type ResourceT m = ResourceTT m m
+newtype ResourceT m a = ResourceT (I.IORef ReleaseMap -> m a)
 
-ask :: Monad m => ResourceT m (I.IORef (ReleaseMap m))
-ask = ResourceTT return
+ask :: Monad m => ResourceT m (I.IORef ReleaseMap)
+ask = ResourceT return
 
 with :: MonadBaseControl IO m
-     => ResourceT m a -- ^ allocate
-     -> (a -> ResourceT m ()) -- ^ free resource
+     => IO a -- ^ allocate
+     -> (a -> IO ()) -- ^ free resource
      -> ResourceT m (ReleaseKey, a)
 with acquire rel = mask_ $ do
-    a <- acquire
+    a <- liftBase acquire
     key <- register $ rel a
     return (key, a)
 
-modify :: MonadBase IO m => (ReleaseMap m -> (ReleaseMap m, a)) -> ResourceT m a
+modify :: MonadBase IO m => (ReleaseMap -> (ReleaseMap, a)) -> ResourceT m a
 modify f = do
     istate <- ask
     liftBase $ I.atomicModifyIORef istate $ \a -> f a
 
-get :: MonadBase IO m => ResourceT m (ReleaseMap m)
+get :: MonadBase IO m => ResourceT m ReleaseMap
 get = ask >>= liftBase . I.readIORef
 
 register :: MonadBaseControl IO m
-         => ResourceT m ()
+         => IO ()
          -> ResourceT m ReleaseKey
 register rel = mask_ $
     modify $ \(ReleaseMap key m) ->
@@ -75,7 +72,9 @@ release (ReleaseKey key) = mask $ \restore -> do
     ReleaseMap _ m <- get
     case IntMap.lookup key m of
         Nothing -> return () -- maybe we should throw an exception?
-        Just r -> modify (delete key) >> restore (try' r >> return ())
+        Just r -> do
+            modify (delete key)
+            restore (liftBase (try' r) >> return ())
   where
     delete k (ReleaseMap next m) = (ReleaseMap next $ IntMap.delete k m, ())
 
@@ -84,7 +83,7 @@ runResourceT :: MonadBaseControl IO m
           -> m a
 runResourceT r = do
     istate <- liftBase $ I.newIORef $ ReleaseMap minBound IntMap.empty
-    let ResourceTT f = r `finally` cleanup
+    let ResourceT f = r `finally` cleanup
     f istate
   where
     cleanup = do
@@ -102,40 +101,40 @@ try' :: MonadBaseControl IO m
 try' = try
 
 -------- All of our monad et al instances
-instance Monad m => Functor (ResourceTT m' m) where
-    fmap f (ResourceTT m) = ResourceTT $ \r -> liftM f (m r)
+instance Monad m => Functor (ResourceT m) where
+    fmap f (ResourceT m) = ResourceT $ \r -> liftM f (m r)
 
-instance Monad m => Applicative (ResourceTT m' m) where
-    pure = ResourceTT . const . return
-    ResourceTT mf <*> ResourceTT ma = ResourceTT $ \r -> do
+instance Monad m => Applicative (ResourceT m) where
+    pure = ResourceT . const . return
+    ResourceT mf <*> ResourceT ma = ResourceT $ \r -> do
         f <- mf r
         a <- ma r
         return $ f a
 
-instance Monad m => Monad (ResourceTT m' m) where
+instance Monad m => Monad (ResourceT m) where
     return = pure
-    ResourceTT ma >>= f =
-        ResourceTT $ \r -> ma r >>= flip un r . f
+    ResourceT ma >>= f =
+        ResourceT $ \r -> ma r >>= flip un r . f
       where
-        un (ResourceTT x) = x
+        un (ResourceT x) = x
 
-instance MonadTrans (ResourceTT m') where
-    lift = ResourceTT . const
+instance MonadTrans ResourceT where
+    lift = ResourceT . const
 
-instance MonadIO m => MonadIO (ResourceTT m' m) where
+instance MonadIO m => MonadIO (ResourceT m) where
     liftIO = lift . liftIO
 
-instance MonadBase b m => MonadBase b (ResourceTT m' m) where
+instance MonadBase b m => MonadBase b (ResourceT m) where
     liftBase = lift . liftBase
 
-instance MonadTransControl (ResourceTT m') where
-    newtype StT (ResourceTT m') a = StReader {unStReader :: a}
-    liftWith f = ResourceTT $ \r -> f $ \(ResourceTT t) -> liftM StReader $ t r
-    restoreT = ResourceTT . const . liftM unStReader
+instance MonadTransControl ResourceT where
+    newtype StT ResourceT a = StReader {unStReader :: a}
+    liftWith f = ResourceT $ \r -> f $ \(ResourceT t) -> liftM StReader $ t r
+    restoreT = ResourceT . const . liftM unStReader
     {-# INLINE liftWith #-}
     {-# INLINE restoreT #-}
 
-instance MonadBaseControl b m => MonadBaseControl b (ResourceTT m' m) where
-     newtype StM (ResourceTT m' m) a = StMT {unStMT :: ComposeSt (ResourceTT m') m a}
+instance MonadBaseControl b m => MonadBaseControl b (ResourceT m) where
+     newtype StM (ResourceT m) a = StMT {unStMT :: ComposeSt ResourceT m a}
      liftBaseWith = defaultLiftBaseWith StMT
      restoreM     = defaultRestoreM   unStMT
