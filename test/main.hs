@@ -72,12 +72,18 @@ main = hspecX $ do
                     C.<$$> CL.map (* 2)
                     C.<=$> CL.fold (+) 0
             x @?= 2 * sum [1..10]
-    {-
+        it "concatMap" $ do
+            let input = [1, 11, 21]
+            x <- runResourceT $ CL.fromList input
+                    C.<$$> CL.concatMap (\i -> enumFromTo i (i + 9))
+                    C.<=$> CL.fold (+) (0 :: Int)
+            x @?= sum [1..30]
     describe "isolate" $ do
         it "bound to resumable source" $ do
             (x, y) <- runResourceT $ do
                 bsrc <- C.bsourceM $ CL.fromList [1..10 :: Int]
-                x <- bsrc C.$= CL.isolate 5 C.$$ CL.consume
+                bcon <- C.bconduitM $ CL.isolate 5
+                x <- bsrc C.$= bcon C.$$ CL.consume
                 y <- bsrc C.$$ CL.consume
                 return (x, y)
             x @?= [1..5]
@@ -85,7 +91,7 @@ main = hspecX $ do
         it "bound to sink, non-resumable" $ do
             (x, y) <- runResourceT $ do
                 CL.fromList [1..10 :: Int] C.<$$> do
-                    x <- CL.isolate 5 C.=$ CL.consume
+                    x <- CL.isolate 5 C.<=$> CL.consume
                     y <- CL.consume
                     return (x, y)
             x @?= [1..5]
@@ -93,9 +99,8 @@ main = hspecX $ do
         it "bound to sink, resumable" $ do
             (x, y) <- runResourceT $ do
                 bsrc <- C.bsourceM $ CL.fromList [1..10 :: Int]
-                x <- bsrc C.$$ CL.isolate 5 C.=$ CL.consume
+                x <- bsrc C.$$ CL.isolate 5 C.<=$> CL.consume
                 y <- bsrc C.$$ CL.consume
                 return (x, y)
             x @?= [1..5]
             y @?= [6..10]
-            -}

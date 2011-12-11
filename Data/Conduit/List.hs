@@ -76,12 +76,11 @@ map f = ConduitM $ return $ Conduit
     , conduitClose = return []
     }
 
-concatMap :: Monad m => (a -> [b]) -> Conduit a m b
-concatMap = undefined
-{-
-concatMap _ EOF = return $ ConduitResult [] EOF
-concatMap f (Chunks l) = return $ ConduitResult [] $ Chunks $ Prelude.concatMap f l
--}
+concatMap :: Monad m => (a -> [b]) -> ConduitM a m b
+concatMap f = ConduitM $ return $ Conduit
+    { conduitPush = return . ConduitResult [] . Chunks . (>>= f)
+    , conduitClose = return []
+    }
 
 consume :: MonadBaseControl IO m => SinkM a m [a]
 consume = sinkM
@@ -95,5 +94,5 @@ consume = sinkM
         liftBase $ I.atomicModifyIORef ifront $ \front -> (front . (cs ++), ())
         return $ SinkResult [] Nothing
 
-isolate :: Int -> Conduit a m b
-isolate = undefined
+isolate :: Int -> ConduitM a m b
+isolate = error "isolate"
