@@ -48,3 +48,14 @@ main = hspecX $ do
                 _ <- CL.take 5
                 CL.fold (+) (0 :: Int)
             x @?= sum [6..10]
+    describe "resumable sources" $ do
+        it "simple" $ do
+            (x, y, z) <- runResourceT $ do
+                bs <- C.bsourceM $ CL.fromList [1..10 :: Int]
+                x <- bs C.$$ CL.take 5
+                y <- bs C.$$ CL.fold (+) 0
+                z <- bs C.$$ CL.consume
+                return (x, y, z)
+            x @?= [1..5] :: IO ()
+            y @?= sum [6..10]
+            z @?= []

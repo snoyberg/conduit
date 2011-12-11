@@ -35,16 +35,14 @@ type Conduit a m b = Stream a -> ResourceT m (ConduitResult a b)
 
 infixr 0 $$
 
-($$) :: MonadBaseControl IO m => Source m a -> SinkM a m b -> ResourceT m b
-source $$ SinkM msink = do
+($$) :: MonadBaseControl IO m => BSource m a -> SinkM a m b -> ResourceT m b
+bs $$ SinkM msink = do
     sinkI <- msink
     case sinkI of
         SinkNoData output -> return output
-        SinkData push close -> do
-            bs <- bsource source
-            connect' bs push close
+        SinkData push close -> connect' push close
   where
-    connect' bs push close = do
+    connect' push close = do
         stream <- bsourcePull bs
         case stream of
             EOF -> do
@@ -56,12 +54,12 @@ source $$ SinkM msink = do
                 bsourceUnpull bs leftover
                 case mres of
                     Just res -> return res
-                    Nothing -> connect' bs push close
+                    Nothing -> connect' push close
 
 infixr 0 <$$>
 
 (<$$>) :: MonadBaseControl IO m => SourceM m a -> SinkM a m b -> ResourceT m b
-SourceM msrc <$$> sink = msrc >>= ($$ sink)
+msrc <$$> sink = bsourceM msrc >>= ($$ sink)
 
 infixl 1 $=
 
