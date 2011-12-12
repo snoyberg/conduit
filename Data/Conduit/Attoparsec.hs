@@ -25,7 +25,6 @@ import qualified Data.Attoparsec.Types as A
 import qualified Data.Conduit as C
 
 import Control.Monad.Base (MonadBase (liftBase))
-import qualified Data.IORef as I
 import Control.Exception (throwIO)
 
 -- | The context and message from a 'A.Fail' value.
@@ -67,27 +66,20 @@ instance AttoparsecInput T.Text where
 -- If parsing fails, a 'ParseError' will be thrown with 'E.throwError'. Use
 -- 'E.catchError' to catch it.
 sinkParser :: (AttoparsecInput a, MonadBase IO m) => A.Parser a b -> C.SinkM a m b
-sinkParser p0 = C.sinkM
-    (liftBase $ I.newIORef $ parseA p0)
-    (const $ return ())
+sinkParser p0 = C.sinkMState
+    (parseA p0)
     push
     close
   where
-    push istate cs0 =
-        liftBase (I.readIORef istate) >>= push' cs0
-      where
-        push' [] parser = do
-            liftBase $ I.writeIORef istate parser
-            return $ C.SinkResult [] Nothing
-        push' (c:cs) parser =
-            case parser c of
-                A.Done leftover x ->
-                    let lo = if null cs && isNull leftover then [] else leftover:cs
-                     in return $ C.SinkResult lo (Just x)
-                A.Fail _ contexts msg -> liftBase $ throwIO $ ParseError contexts msg
-                A.Partial p -> push' cs p
-    close istate = do
-        parser <- liftBase $ I.readIORef istate
+    push parser [] = return (parser, C.SinkResult [] Nothing)
+    push parser (c:cs) =
+        case parser c of
+            A.Done leftover x ->
+                let lo = if null cs && isNull leftover then [] else leftover:cs
+                 in return (parser, C.SinkResult lo (Just x))
+            A.Fail _ contexts msg -> liftBase $ throwIO $ ParseError contexts msg
+            A.Partial p -> push p cs
+    close parser = do
         case parser empty of
             A.Done leftover x -> return $ C.SinkResult (toList leftover) x
             A.Fail _ contexts msg -> liftBase $ throwIO $ ParseError contexts msg
