@@ -12,6 +12,7 @@ import Data.Conduit (runResourceT)
 import System.IO.Unsafe (unsafePerformIO)
 import Data.Monoid
 import qualified Data.ByteString as S
+import qualified Data.IORef as I
 
 main :: IO ()
 main = hspecX $ do
@@ -107,8 +108,20 @@ main = hspecX $ do
             y @?= [6..10]
     describe "lazy" $ do
         it "works inside a ResourceT" $ runResourceT $ do
-            nums <- CLazy.lazyConsume $ mconcat $ map (\i -> CL.fromList [i]) [1..10 :: Int]
+            counter <- C.liftBase $ I.newIORef 0
+            let incr i = C.sourceM
+                    (C.liftBase $ I.newIORef $ C.Chunks [i :: Int])
+                    (const $ return ())
+                    (\istate -> do
+                        state <- C.liftBase $ I.atomicModifyIORef istate
+                            (\state -> (C.EOF, state))
+                        case state of
+                            C.EOF -> return ()
+                            _ -> do
+                                count <- C.liftBase $ I.atomicModifyIORef counter
+                                    (\j -> (j + 1, j + 1))
+                                C.liftBase $ count @?= i
+                        return state
+                            )
+            nums <- CLazy.lazyConsume $ mconcat $ map incr [1..10]
             C.liftBase $ nums @?= [1..10]
-        it "does not work outside a ResourceT" $ do
-            nums <- runResourceT $ CLazy.lazyConsume $ mconcat $ map (\i -> CL.fromList [i]) [1..10 :: Int]
-            nums @?= []
