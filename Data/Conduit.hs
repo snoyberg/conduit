@@ -26,6 +26,8 @@ module Data.Conduit
       -- ** Conduit
     , module Data.Conduit.Types.Conduit
     , module Data.Conduit.Util.Conduit
+      -- * Other utils
+    , sequence
       -- * Convenience re-exports
     , ResourceT
     , runResourceT
@@ -34,6 +36,7 @@ module Data.Conduit
     , liftBase
     ) where
 
+import Prelude hiding (sequence)
 import Control.Monad.Trans.Resource
 import Control.Monad.Trans.Control (MonadBaseControl)
 import Data.Conduit.Types.Source
@@ -183,3 +186,25 @@ c =$ (SinkM ms) = SinkM $ do
         SinkResult leftover res <- closeI
         bconduitUnpull c leftover
         return $ SinkResult [] res
+
+sequence :: MonadBaseControl IO m
+         => SinkM a m b
+         -> ConduitM a m b
+sequence (SinkM sm) = ConduitM $ do
+    sink <- sm
+    genConduit $ conduitMState sink push close
+  where
+    push (SinkNoData output) input = do
+        sink <- sm
+        return (sink, ConduitResult input $ Chunks [output])
+    push sink@(SinkData p _) input = do
+        SinkResult leftover mres <- p input
+        case mres of
+            Nothing -> return (sink, ConduitResult leftover $ Chunks [])
+            Just res -> do
+                sink' <- sm
+                return (sink', ConduitResult leftover $ Chunks [res])
+    close (SinkNoData output) = return [output]
+    close (SinkData _ c) = do
+        SinkResult _ res <- c
+        return [res]

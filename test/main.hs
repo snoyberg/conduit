@@ -17,6 +17,7 @@ import qualified Data.IORef as I
 import Blaze.ByteString.Builder (fromByteString, toLazyByteString, insertLazyByteString)
 import qualified Data.ByteString.Lazy as L
 import Data.ByteString.Lazy.Char8 ()
+import Data.Maybe (catMaybes)
 
 main :: IO ()
 main = hspecX $ do
@@ -129,6 +130,16 @@ main = hspecX $ do
                             )
             nums <- CLazy.lazyConsume $ mconcat $ map incr [1..10]
             C.liftBase $ nums @?= [1..10]
+    describe "isolate" $ do
+        it "works" $ do
+            let sink = do
+                    _ <- CL.take 2
+                    CL.head
+            let conduit = C.sequence sink
+            res <- runResourceT $ CL.fromList [1..10]
+                           C.<$=> conduit
+                           C.<$$> CL.consume
+            catMaybes res @?= [3, 6, 9]
     describe "binary isolate" $ do
         it "works" $ do
             bss <- runResourceT $ CL.fromList (replicate 1000 "X")
