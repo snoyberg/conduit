@@ -19,6 +19,7 @@ import Blaze.ByteString.Builder (fromByteString, toLazyByteString, insertLazyByt
 import qualified Data.ByteString.Lazy as L
 import Data.ByteString.Lazy.Char8 ()
 import Data.Maybe (catMaybes)
+import Control.Monad.Trans.Writer (Writer)
 
 main :: IO ()
 main = hspecX $ do
@@ -113,7 +114,7 @@ main = hspecX $ do
             x @?= [1..5]
             y @?= [6..10]
     describe "lazy" $ do
-        it "works inside a ResourceT" $ runResourceT $ do
+        it' "works inside a ResourceT" $ runResourceT $ do
             counter <- C.liftBase $ I.newIORef 0
             let incr i = C.sourceM
                     (C.liftBase $ I.newIORef $ C.SourceResult C.StreamOpen [i :: Int])
@@ -174,3 +175,6 @@ main = hspecX $ do
             let src = mconcat $ map (CL.fromList . return) builders
             outBss <- src C.<$=> builderToByteString C.<$$> CL.consume :: C.ResourceT IO [S.ByteString]
             C.liftBase $ lbs @=? L.fromChunks outBss
+
+it' :: String -> IO () -> Writer [Spec] ()
+it' = it

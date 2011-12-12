@@ -54,6 +54,7 @@ test-suite test
                    , QuickCheck
                    , bytestring
                    , blaze-builder
+                   , transformers
     ghc-options:     -Wall
 
 source-repository head

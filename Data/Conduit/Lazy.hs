@@ -7,20 +7,16 @@ module Data.Conduit.Lazy
 
 import Data.Conduit
 import System.IO.Unsafe (unsafeInterleaveIO)
-import Control.Monad.Trans.Resource
+import Control.Monad.Trans.Control
 
-lazyConsume :: SourceM IO a -> ResourceT IO [a]
+lazyConsume :: MonadBaseControl IO m => SourceM m a -> ResourceT m [a]
 lazyConsume (SourceM msrc) = msrc >>= go
 
-go :: Source IO a -> ResourceT IO [a]
-go src =
-    ResourceT go'
-  where
-    go' r = unsafeInterleaveIO $ do
-        let (ResourceT msx) = sourcePull src
-        SourceResult state x <- msx r
-        case state of
-            StreamClosed -> return x
-            StreamOpen -> do
-                y <- go' r
-                return $ x ++ y
+go :: MonadBaseControl IO m => Source m a -> ResourceT m [a]
+go src = liftBaseOp_ unsafeInterleaveIO $ do
+    SourceResult state x <- sourcePull src
+    case state of
+        StreamClosed -> return x
+        StreamOpen -> do
+            y <- go src
+            return $ x ++ y
