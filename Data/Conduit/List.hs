@@ -35,8 +35,8 @@ fromList :: MonadBaseControl IO m => [a] -> SourceM m a
 fromList l0 = sourceMState
     l0
     (\l -> return $ if null l
-            then ([], EOF [])
-            else ([], Chunks l))
+            then ([], SourceResult StreamClosed [])
+            else ([], SourceResult StreamOpen l))
 
 take :: MonadBaseControl IO m
      => Int
@@ -71,19 +71,19 @@ head = sinkMState
 
 map :: Monad m => (a -> b) -> ConduitM a m b
 map f = ConduitM $ return $ Conduit
-    { conduitPush = return . ConduitResult [] . Chunks . fmap f
+    { conduitPush = return . ConduitResult StreamOpen [] . fmap f
     , conduitClose = \x -> return $ ConduitCloseResult [] $ fmap f x
     }
 
 concatMap :: Monad m => (a -> [b]) -> ConduitM a m b
 concatMap f = ConduitM $ return $ Conduit
-    { conduitPush = return . ConduitResult [] . Chunks . (>>= f)
+    { conduitPush = return . ConduitResult StreamOpen [] . (>>= f)
     , conduitClose = \input -> return $ ConduitCloseResult [] (input >>= f)
     }
 
 concatMapM :: Monad m => (a -> m [b]) -> ConduitM a m b
 concatMapM f = ConduitM $ return $ Conduit
-    { conduitPush = fmap (ConduitResult [] . Chunks . Prelude.concat) . lift . Monad.mapM f
+    { conduitPush = fmap (ConduitResult StreamOpen [] . Prelude.concat) . lift . Monad.mapM f
     , conduitClose = \input -> do
         x <- lift $ Monad.mapM f input
         return $ ConduitCloseResult [] $ Prelude.concat x
@@ -106,7 +106,7 @@ isolate count0 = conduitMState
         return $ ConduitCloseResult b a
     push count cs = do
         if count == 0
-            then return (count, ConduitResult cs $ EOF [])
+            then return (count, ConduitResult StreamClosed cs [])
             else do
                 let (a, b) = splitAt count cs
-                return (count - length a, ConduitResult b (Chunks a))
+                return (count - length a, ConduitResult StreamOpen b a)

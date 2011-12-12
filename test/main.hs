@@ -116,13 +116,13 @@ main = hspecX $ do
         it "works inside a ResourceT" $ runResourceT $ do
             counter <- C.liftBase $ I.newIORef 0
             let incr i = C.sourceM
-                    (C.liftBase $ I.newIORef $ C.Chunks [i :: Int])
+                    (C.liftBase $ I.newIORef $ C.SourceResult C.StreamOpen [i :: Int])
                     (const $ return ())
                     (\istate -> do
-                        state <- C.liftBase $ I.atomicModifyIORef istate
-                            (\state -> (C.EOF [], state))
-                        case state of
-                            C.EOF [] -> return ()
+                        state@(C.SourceResult sstate _) <- C.liftBase $ I.atomicModifyIORef istate
+                            (\state -> (C.SourceResult C.StreamClosed [], state))
+                        case sstate of
+                            C.StreamClosed -> return ()
                             _ -> do
                                 count <- C.liftBase $ I.atomicModifyIORef counter
                                     (\j -> (j + 1, j + 1))

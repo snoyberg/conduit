@@ -22,7 +22,7 @@ import Control.Monad (liftM)
 sourceMState
     :: MonadBase IO m
     => state -- ^ Initial state
-    -> (state -> ResourceT m (state, Stream output)) -- ^ Pull function
+    -> (state -> ResourceT m (state, SourceResult output)) -- ^ Pull function
     -> SourceM m output
 sourceMState state0 pull = sourceM
     (liftBase $ I.newIORef state0)
@@ -37,7 +37,7 @@ sourceMState state0 pull = sourceM
 sourceM :: Monad m
         => ResourceT m state -- ^ resource and/or state allocation
         -> (state -> ResourceT m ()) -- ^ resource and/or state cleanup
-        -> (state -> ResourceT m (Stream output)) -- ^ Pull function. Note that this need not explicitly perform any cleanup.
+        -> (state -> ResourceT m (SourceResult output)) -- ^ Pull function. Note that this need not explicitly perform any cleanup.
         -> SourceM m output
 sourceM alloc cleanup pull = SourceM $ do
     state <- alloc
@@ -63,18 +63,17 @@ bsource src = do
         { bsourcePull = do
             mresult <- liftBase $ I.atomicModifyIORef istate $ \state ->
                 case state of
-                    Open buffer -> (EmptyOpen, Just (Chunks buffer))
-                    Closed buffer -> (EmptyClosed, Just (Chunks buffer))
+                    Open buffer -> (EmptyOpen, Just $ SourceResult StreamOpen buffer)
+                    Closed buffer -> (EmptyClosed, Just $ SourceResult StreamClosed buffer)
                     EmptyOpen -> (EmptyOpen, Nothing)
-                    EmptyClosed -> (EmptyClosed, Just $ EOF [])
+                    EmptyClosed -> (EmptyClosed, Just $ SourceResult StreamClosed [])
             case mresult of
                 Nothing -> do
-                    result <- sourcePull src
-                    case result of
-                        EOF _ -> do
-                            liftBase $ I.writeIORef istate EmptyClosed
-                            return result
-                        _ -> return result
+                    result@(SourceResult state _) <- sourcePull src
+                    case state of
+                        StreamClosed -> liftBase $ I.writeIORef istate EmptyClosed
+                        StreamOpen -> return ()
+                    return result
                 Just result -> return result
         , bsourceUnpull =
             \x ->

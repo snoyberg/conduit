@@ -111,7 +111,7 @@ builderToByteStringWith (ioBuf0, nextBuf) = conduitMState
 
     push ioBuf xs = liftBase $ do
         (ioBuf', front) <- go (unBuilder (mconcat xs) (buildStep finalStep)) ioBuf id
-        return (ioBuf', ConduitResult [] $ Chunks $ front [])
+        return (ioBuf', ConduitResult StreamOpen [] $ front [])
 
     go bStep ioBuf front = do
         !buf   <- ioBuf

@@ -24,8 +24,8 @@ sourceFile fp = sourceM
     (\(_, handle) -> do
         bs <- liftBase $ S.hGetSome handle 4096
         if S.null bs
-            then return $ EOF []
-            else return $ Chunks [bs])
+            then return $ SourceResult StreamClosed []
+            else return $ SourceResult StreamOpen [bs])
 
 sinkFile :: MonadBaseControl IO m
          => FilePath
@@ -46,11 +46,11 @@ isolate count0 = conduitMState
     push
     close
   where
-    push 0 bss = return (0, ConduitResult bss $ EOF [])
+    push 0 bss = return (0, ConduitResult StreamClosed bss [])
     push count bss = do
         let (a, b) = L.splitAt count $ L.fromChunks bss
         let count' = count - L.length a
-        return (count', ConduitResult (L.toChunks b) (Chunks $ L.toChunks a))
+        return (count', ConduitResult StreamOpen (L.toChunks b) (L.toChunks a))
     close count bss = do
         let (a, b) = L.splitAt count $ L.fromChunks bss
         return $ ConduitCloseResult (L.toChunks b) (L.toChunks a)

@@ -34,7 +34,7 @@ decompress config = conduitM
     (push id)
     (close id)
   where
-    push front _ [] = return $ ConduitResult [] $ Chunks $ front []
+    push front _ [] = return $ ConduitResult StreamOpen [] $ front []
     push front inf (x:xs) = do
         chunks <- liftBase $ withInflateInput inf x callback
         push (front . (chunks ++)) inf xs
@@ -60,7 +60,7 @@ compress level config = conduitM
     (push id)
     (close id)
   where
-    push front _ [] = return $ ConduitResult [] $ Chunks $ front []
+    push front _ [] = return $ ConduitResult StreamOpen [] $ front []
     push front def (x:xs) = do
         chunks <- liftBase $ withDeflateInput def x callback
         push (front . (chunks ++)) def xs

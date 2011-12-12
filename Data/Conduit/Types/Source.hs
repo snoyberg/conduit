@@ -2,7 +2,8 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 -- | Defines the types for a source, which is a producer of data.
 module Data.Conduit.Types.Source
-    ( Stream (..)
+    ( StreamState (..)
+    , SourceResult (..)
     , Source (..)
     , SourceM (..)
     , BSource (..)
@@ -17,15 +18,16 @@ import Control.Monad (liftM)
 import Data.Typeable (Typeable)
 import Control.Exception (Exception, throw)
 
--- | In general, a source represents a producer of a stream of data. A source
--- can either produce output, or indicate that there is no more data. This type
--- represents the output from a 'Source'.
-data Stream a = EOF [a] -- ^ no more data
-              | Chunks [a] -- ^ produced some data
+-- | A stream can be in one of two states: open or closed.
+data StreamState = StreamOpen | StreamClosed
 
-instance Functor Stream where
-    fmap f (EOF a) = EOF (map f a)
-    fmap f (Chunks a) = Chunks (map f a)
+-- | When pulling data from a source, it returns back a list of values pulled
+-- from the stream. It also indicates whether or not the stream has been
+-- closed.
+data SourceResult a = SourceResult StreamState [a]
+
+instance Functor SourceResult where
+    fmap f (SourceResult x a) = SourceResult x (map f a)
 
 -- | A 'Source' has two operations on it: pull some data, and close the
 -- 'Source'. Since 'Source' is built on top of 'ResourceT', all acquired
@@ -34,15 +36,15 @@ instance Functor Stream where
 --
 -- A 'Source' has two invariants:
 --
--- * It is illegal to call 'sourcePull' after a previous call returns 'EOF'.
+-- * It is illegal to call 'sourcePull' after a previous call returns 'StreamClosed'.
 --
 -- * It is legal to call 'sourceClose' multiple times.
 --
--- 'Source's are not expected to call 'sourceClose' when they return an 'EOF'
--- from 'sourcePull', though based on the second invariant, they are free to do
--- so.
+-- 'Source's are not expected to call 'sourceClose' when they return an
+-- 'SourceClosed' from 'sourcePull', though based on the second invariant, they
+-- are free to do so.
 data Source m a = Source
-    { sourcePull :: ResourceT m (Stream a)
+    { sourcePull :: ResourceT m (SourceResult a)
     , sourceClose :: ResourceT m ()
     }
 
@@ -72,7 +74,7 @@ instance Monad m => Functor (SourceM m) where
 
 instance MonadBase IO m => Monoid (SourceM m a) where
     mempty = SourceM (return Source
-        { sourcePull = return $ EOF []
+        { sourcePull = return $ SourceResult StreamClosed []
         , sourceClose = return ()
         })
     mappend a b = mconcat [a, b]
@@ -92,10 +94,10 @@ instance MonadBase IO m => Monoid (SourceM m a) where
             liftBase (I.readIORef istate) >>= pull'
           where
             pull' (current, rest) = do
-                stream <- sourcePull current
-                case stream of
+                stream@(SourceResult state _) <- sourcePull current
+                case state of
                     -- end of the current Source
-                    EOF _ -> do
+                    StreamClosed -> do
                         -- close the current Source
                         sourceClose current
                         case rest of
@@ -109,9 +111,10 @@ instance MonadBase IO m => Monoid (SourceM m a) where
                             [] -> do
                                 -- give an error message if the first Source
                                 -- invariant is violated (read data after EOF)
-                                liftBase (I.writeIORef istate (throw (PullAfterEOF "SourceM:mconcat")))
+                                liftBase $ I.writeIORef istate $
+                                    throw $ PullAfterEOF "SourceM:mconcat"
                                 return stream
-                    Chunks _ -> return stream
+                    StreamOpen -> return stream
         close istate = do
             -- we only need to close the current Source, since they are opened
             -- one at a time
@@ -128,7 +131,7 @@ instance MonadBase IO m => Monoid (SourceM m a) where
 -- Finally, a 'BSource' relaxes one of the invariants of a 'Source': calling
 -- 'bsourcePull' after an 'EOF' will simply return another 'EOF'.
 data BSource m a = BSource
-    { bsourcePull :: ResourceT m (Stream a)
+    { bsourcePull :: ResourceT m (SourceResult a)
     , bsourceUnpull :: [a] -> ResourceT m () -- ^ It is the responsibility of the 'BSource' to check if the argument is null.
     , bsourceClose :: ResourceT m ()
     }

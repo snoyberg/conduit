@@ -12,7 +12,7 @@ module Data.Conduit.Util.Conduit
 
 import Control.Monad.Trans.Resource (ResourceT, transResourceT)
 import Data.Conduit.Types.Conduit
-import Data.Conduit.Types.Source (Stream (..))
+import Data.Conduit.Types.Source (StreamState (..))
 import Control.Monad.Base (MonadBase (liftBase))
 import qualified Data.IORef as I
 import Control.Monad (liftM)
@@ -46,11 +46,11 @@ conduitM alloc cleanup push close = ConduitM $ do
     state <- alloc
     return Conduit
         { conduitPush = \input -> do
-            ConduitResult leftover stream <- push state input
-            case stream of
-                EOF _ -> cleanup state
-                _ -> return ()
-            return $ ConduitResult leftover stream
+            res@(ConduitResult sstate _ _) <- push state input
+            case sstate of
+                StreamClosed -> cleanup state
+                StreamOpen -> return ()
+            return res
         , conduitClose = \input -> do
             output <- close state input
             cleanup state
@@ -109,7 +109,7 @@ bconduit con = do
                     EmptyClosed -> (EmptyClosed, [])
             if null buffer
                 then conduitPush con x
-                else return $ ConduitResult x (Chunks buffer)
+                else return $ ConduitResult StreamOpen x buffer
         }
 
 -- | Transform the monad a 'ConduitM' lives in.

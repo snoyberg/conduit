@@ -9,15 +9,16 @@ module Data.Conduit.Types.Conduit
     ) where
 
 import Control.Monad.Trans.Resource (ResourceT)
-import Data.Conduit.Types.Source (Stream (..))
+import Data.Conduit.Types.Source (StreamState (..))
 import Control.Monad (liftM)
 
 -- | A conduit can return both leftover input data and a new stream of output
--- data.
-data ConduitResult input output = ConduitResult [input] (Stream output)
+-- data, as well as signal that it will provide no more data (via
+-- 'StreamClosed').
+data ConduitResult input output = ConduitResult StreamState [input] [output]
 
 instance Functor (ConduitResult input) where
-    fmap f (ConduitResult i o) = ConduitResult i (fmap f o)
+    fmap f (ConduitResult s i o) = ConduitResult s i (fmap f o)
 
 -- | When a conduit it closed, it can also return leftover input data and
 -- output data. However, the output data always signifies an 'EOF', and

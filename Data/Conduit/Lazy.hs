@@ -18,9 +18,9 @@ go src =
   where
     go' r = unsafeInterleaveIO $ do
         let (ResourceT msx) = sourcePull src
-        sx <- msx r
-        case sx of
-            EOF x -> return x
-            Chunks x -> do
+        SourceResult state x <- msx r
+        case state of
+            StreamClosed -> return x
+            StreamOpen -> do
                 y <- go' r
                 return $ x ++ y
