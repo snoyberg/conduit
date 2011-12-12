@@ -60,8 +60,8 @@ bs $$ SinkM msink = do
     connect' push close = do
         stream <- bsourcePull bs
         case stream of
-            EOF -> do
-                SinkResult leftover res <- close
+            EOF a -> do
+                SinkResult leftover res <- close a
                 bsourceUnpull bs leftover
                 return res
             Chunks a -> do
@@ -91,31 +91,30 @@ srcm <$=> ConduitM mc = SourceM $ do
             state <- liftBase $ I.readIORef istate
             if state
                 -- already closed
-                then return EOF
+                then return $ EOF []
                 else do
                     stream <- bsourcePull bsrc
                     case stream of
-                        EOF -> do
+                        EOF input -> do
                             liftBase $ I.writeIORef istate True
-                            o <- conduitClose c
-                            if null o
-                                then return EOF
-                                else return $ Chunks o
+                            ConduitCloseResult leftover o <- conduitClose c input
+                            bsourceUnpull bsrc leftover
+                            return $ EOF o
                         Chunks cs -> do
                             ConduitResult leftover output <-
                                 conduitPush c cs
                             bsourceUnpull bsrc leftover
                             case output of
-                                EOF -> do
+                                EOF _ -> do
                                     bsourceClose bsrc
                                     liftBase $ I.writeIORef istate True
-                                    return EOF
+                                    return output
                                 Chunks _ -> return output
         , sourceClose = do
             -- Invariant: sourceClose cannot be called twice, so we will assume
             -- it is currently open. We could add a sanity check here.
             liftBase $ I.writeIORef istate True
-            _ignored <- conduitClose c
+            _ignored <- conduitClose c []
             bsourceClose bsrc
         }
 
@@ -136,22 +135,16 @@ bsrc $= bcon = BSource
                         ConduitResult leftover output' <- bconduitPush bcon input
                         bsourceUnpull bsrc leftover
                         return output'
-                    EOF -> do
-                        s <- bconduitClose bcon
-                        return $ if null s then EOF else Chunks s
+                    EOF input -> do
+                        ConduitCloseResult leftover s <- bconduitClose bcon input
+                        bsourceUnpull bsrc leftover
+                        return $ EOF s
             else return $ Chunks output
     , bsourceUnpull = bconduitUnpull bcon
     , bsourceClose = do
-        _ignored <- bconduitClose bcon
+        _ignored <- bconduitClose bcon []
         bsourceClose bsrc
     }
-    {-
-    source' <- unSource $ mkSource $ do
-        ConduitResult leftover result <- sourcePull source >>= pipe
-        sourcePush source leftover
-        return result
-    return source'
-    -}
 
 infixr 0 <=$>
 
@@ -178,14 +171,15 @@ c =$ (SinkM ms) = SinkM $ do
                 SinkResult leftover' mres <- pushI cs
                 bconduitUnpull c leftover'
                 return $ SinkResult leftover mres
-            EOF -> do
-                SinkResult leftover' res <- closeI
+            EOF cs -> do
+                SinkResult leftover' res <- closeI cs
                 bconduitUnpull c leftover'
                 return $ SinkResult leftover (Just res)
-    close closeI = do
-        SinkResult leftover res <- closeI
-        bconduitUnpull c leftover
-        return $ SinkResult [] res
+    close closeI input = do
+        ConduitCloseResult leftover input' <- bconduitClose c input
+        SinkResult leftover' res <- closeI input'
+        bconduitUnpull c leftover'
+        return $ SinkResult leftover res
 
 sequence :: MonadBaseControl IO m
          => SinkM a m b
@@ -204,7 +198,7 @@ sequence (SinkM sm) = ConduitM $ do
             Just res -> do
                 sink' <- sm
                 return (sink', ConduitResult leftover $ Chunks [res])
-    close (SinkNoData output) = return [output]
-    close (SinkData _ c) = do
-        SinkResult _ res <- c
-        return [res]
+    close (SinkNoData output) input = return $ ConduitCloseResult input [output]
+    close (SinkData _ c) input = do
+        SinkResult leftover res <- c input
+        return $ ConduitCloseResult leftover [res]

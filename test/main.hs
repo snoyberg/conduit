@@ -119,9 +119,9 @@ main = hspecX $ do
                     (const $ return ())
                     (\istate -> do
                         state <- C.liftBase $ I.atomicModifyIORef istate
-                            (\state -> (C.EOF, state))
+                            (\state -> (C.EOF [], state))
                         case state of
-                            C.EOF -> return ()
+                            C.EOF [] -> return ()
                             _ -> do
                                 count <- C.liftBase $ I.atomicModifyIORef counter
                                     (\j -> (j + 1, j + 1))
@@ -136,7 +136,7 @@ main = hspecX $ do
                     _ <- CL.take 2
                     CL.head
             let conduit = C.sequence sink
-            res <- runResourceT $ CL.fromList [1..10]
+            res <- runResourceT $ CL.fromList [1..10 :: Int]
                            C.<$=> conduit
                            C.<$$> CL.consume
             catMaybes res @?= [3, 6, 9]

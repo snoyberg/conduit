@@ -79,11 +79,16 @@ sinkParser p0 = C.sinkMState
                  in return (parser, C.SinkResult lo (Just x))
             A.Fail _ contexts msg -> liftBase $ throwIO $ ParseError contexts msg
             A.Partial p -> push p cs
-    close parser = do
-        case parser empty of
-            A.Done leftover x -> return $ C.SinkResult (toList leftover) x
-            A.Fail _ contexts msg -> liftBase $ throwIO $ ParseError contexts msg
-            A.Partial _ -> liftBase $ throwIO DivergentParser
+    close parser x = do
+        (parser', sres) <- push parser x
+        case sres of
+            C.SinkResult leftover (Just res) -> return $ C.SinkResult leftover res
+            C.SinkResult _leftover_must_be_empty Nothing ->
+                -- by definition leftover from before is null
+                case parser' empty of
+                    A.Done leftover y -> return $ C.SinkResult (toList leftover) y
+                    A.Fail _ contexts msg -> liftBase $ throwIO $ ParseError contexts msg
+                    A.Partial _ -> liftBase $ throwIO DivergentParser
     toList x
         | isNull x = []
         | otherwise = [x]

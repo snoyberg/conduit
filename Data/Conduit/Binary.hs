@@ -24,7 +24,7 @@ sourceFile fp = sourceM
     (\(_, handle) -> do
         bs <- liftBase $ S.hGetSome handle 4096
         if S.null bs
-            then return EOF
+            then return $ EOF []
             else return $ Chunks [bs])
 
 sinkFile :: MonadBaseControl IO m
@@ -34,7 +34,9 @@ sinkFile fp = sinkM
     (with (liftBase $ openFile fp WriteMode) (liftBase . hClose))
     (\(key, _) -> release key)
     (\(_, handle) bss -> liftBase (L.hPut handle $ L.fromChunks bss) >> return (SinkResult [] Nothing))
-    (const $ return $ SinkResult [] ())
+    (\(_, handle) bss -> do
+        liftBase $ L.hPut handle $ L.fromChunks bss
+        return $ SinkResult [] ())
 
 isolate :: MonadBaseControl IO m
         => Int64
@@ -42,10 +44,13 @@ isolate :: MonadBaseControl IO m
 isolate count0 = conduitMState
     count0
     push
-    (const $ return [])
+    close
   where
-    push 0 bss = return (0, ConduitResult bss EOF)
+    push 0 bss = return (0, ConduitResult bss $ EOF [])
     push count bss = do
         let (a, b) = L.splitAt count $ L.fromChunks bss
         let count' = count - L.length a
         return (count', ConduitResult (L.toChunks b) (Chunks $ L.toChunks a))
+    close count bss = do
+        let (a, b) = L.splitAt count $ L.fromChunks bss
+        return $ ConduitCloseResult (L.toChunks b) (L.toChunks a)

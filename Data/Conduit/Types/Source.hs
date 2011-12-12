@@ -20,11 +20,11 @@ import Control.Exception (Exception, throw)
 -- | In general, a source represents a producer of a stream of data. A source
 -- can either produce output, or indicate that there is no more data. This type
 -- represents the output from a 'Source'.
-data Stream a = EOF -- ^ no more data
+data Stream a = EOF [a] -- ^ no more data
               | Chunks [a] -- ^ produced some data
 
 instance Functor Stream where
-    fmap _ EOF = EOF
+    fmap f (EOF a) = EOF (map f a)
     fmap f (Chunks a) = Chunks (map f a)
 
 -- | A 'Source' has two operations on it: pull some data, and close the
@@ -72,7 +72,7 @@ instance Monad m => Functor (SourceM m) where
 
 instance MonadBase IO m => Monoid (SourceM m a) where
     mempty = SourceM (return Source
-        { sourcePull = return EOF
+        { sourcePull = return $ EOF []
         , sourceClose = return ()
         })
     mappend a b = mconcat [a, b]
@@ -95,7 +95,7 @@ instance MonadBase IO m => Monoid (SourceM m a) where
                 stream <- sourcePull current
                 case stream of
                     -- end of the current Source
-                    EOF -> do
+                    EOF _ -> do
                         -- close the current Source
                         sourceClose current
                         case rest of
@@ -110,7 +110,7 @@ instance MonadBase IO m => Monoid (SourceM m a) where
                                 -- give an error message if the first Source
                                 -- invariant is violated (read data after EOF)
                                 liftBase (I.writeIORef istate (throw (PullAfterEOF "SourceM:mconcat")))
-                                return EOF
+                                return stream
                     Chunks _ -> return stream
         close istate = do
             -- we only need to close the current Source, since they are opened

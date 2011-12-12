@@ -66,14 +66,14 @@ bsource src = do
                     Open buffer -> (EmptyOpen, Just (Chunks buffer))
                     Closed buffer -> (EmptyClosed, Just (Chunks buffer))
                     EmptyOpen -> (EmptyOpen, Nothing)
-                    EmptyClosed -> (EmptyClosed, Just EOF)
+                    EmptyClosed -> (EmptyClosed, Just $ EOF [])
             case mresult of
                 Nothing -> do
                     result <- sourcePull src
                     case result of
-                        EOF -> do
+                        EOF _ -> do
                             liftBase $ I.writeIORef istate EmptyClosed
-                            return EOF
+                            return result
                         _ -> return result
                 Just result -> return result
         , bsourceUnpull =

@@ -20,7 +20,7 @@ go src =
         let (ResourceT msx) = sourcePull src
         sx <- msx r
         case sx of
-            EOF -> return []
+            EOF x -> return x
             Chunks x -> do
                 y <- go' r
                 return $ x ++ y

@@ -23,7 +23,7 @@ conduitMState
     :: MonadBase IO m
     => state -- ^ initial state
     -> (state -> [input] -> ResourceT m (state, ConduitResult input output)) -- ^ Push function.
-    -> (state -> ResourceT m [output]) -- ^ Close function. The state need not be returned, since it will not be used again.
+    -> (state -> [input] -> ResourceT m (ConduitCloseResult input output)) -- ^ Close function. The state need not be returned, since it will not be used again.
     -> ConduitM input m output
 conduitMState state0 push close = conduitM
     (liftBase $ I.newIORef state0)
@@ -33,14 +33,14 @@ conduitMState state0 push close = conduitM
         (state', res) <- push state input
         liftBase $ I.writeIORef istate state'
         return res)
-    (\istate -> liftBase (I.readIORef istate) >>= close)
+    (\istate input -> liftBase (I.readIORef istate) >>= flip close input)
 
 -- | Construct a 'ConduitM'.
 conduitM :: Monad m
          => ResourceT m state -- ^ resource and/or state allocation
          -> (state -> ResourceT m ()) -- ^ resource and/or state cleanup
          -> (state -> [input] -> ResourceT m (ConduitResult input output)) -- ^ Push function. Note that this need not explicitly perform any cleanup.
-         -> (state -> ResourceT m [output]) -- ^ Close function. Note that this need not explicitly perform any cleanup.
+         -> (state -> [input] -> ResourceT m (ConduitCloseResult input output)) -- ^ Close function. Note that this need not explicitly perform any cleanup.
          -> ConduitM input m output
 conduitM alloc cleanup push close = ConduitM $ do
     state <- alloc
@@ -48,11 +48,11 @@ conduitM alloc cleanup push close = ConduitM $ do
         { conduitPush = \input -> do
             ConduitResult leftover stream <- push state input
             case stream of
-                EOF -> cleanup state
+                EOF _ -> cleanup state
                 _ -> return ()
             return $ ConduitResult leftover stream
-        , conduitClose = do
-            output <- close state
+        , conduitClose = \input -> do
+            output <- close state input
             cleanup state
             return output
         }
@@ -92,13 +92,13 @@ bconduit con = do
                         Closed buffer -> (Closed (x ++ buffer), ())
                         EmptyOpen -> (Open x, ())
                         EmptyClosed -> (Closed x, ())
-        , bconduitClose = do
+        , bconduitClose = \input -> do
             action <- liftBase $ I.atomicModifyIORef istate $ \state ->
                 case state of
-                    Open x -> (Closed x, conduitClose con)
-                    Closed _ -> (state, return [])
-                    EmptyOpen -> (EmptyClosed, conduitClose con)
-                    EmptyClosed -> (state, return [])
+                    Open x -> (Closed x, conduitClose con input)
+                    Closed _ -> (state, return $ ConduitCloseResult input [])
+                    EmptyOpen -> (EmptyClosed, conduitClose con input)
+                    EmptyClosed -> (state, return $ ConduitCloseResult input [])
             action
         , bconduitPush = \x -> do
             buffer <- liftBase $ I.atomicModifyIORef istate $ \state ->
@@ -122,5 +122,5 @@ transConduitM f (ConduitM mc) =
   where
     go c = c
         { conduitPush = transResourceT f . conduitPush c
-        , conduitClose = transResourceT f (conduitClose c)
+        , conduitClose = transResourceT f . conduitClose c
         }

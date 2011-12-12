@@ -13,14 +13,12 @@ module Data.Conduit.List
 
 import Prelude
     ( ($), return, length, splitAt, (==), (-), IO, Int
-    , (.), id, const, Maybe (..), (>>=), fmap, (++), Monad
-    , null, snd
+    , (.), id, Maybe (..), (>>=), fmap, (++), Monad
+    , null, Bool (..), error
     )
 import qualified Prelude
 import qualified Control.Monad as Monad
 import Data.Conduit
-import qualified Data.IORef as I
-import Control.Applicative ((<$>))
 import Data.List (foldl')
 import Control.Monad.Trans.Class (lift)
 
@@ -31,13 +29,13 @@ fold :: MonadBaseControl IO m
 fold f accum0 = sinkMState
     accum0
     (\accum input -> return (foldl' f accum input, SinkResult [] Nothing))
-    (return . SinkResult [])
+    (\accum input -> return $ SinkResult [] (foldl' f accum input))
 
 fromList :: MonadBaseControl IO m => [a] -> SourceM m a
 fromList l0 = sourceMState
     l0
     (\l -> return $ if null l
-            then ([], EOF)
+            then ([], EOF [])
             else ([], Chunks l))
 
 take :: MonadBaseControl IO m
@@ -46,7 +44,7 @@ take :: MonadBaseControl IO m
 take count0 = sinkMState
     (count0, id)
     push
-    (\(_, x) -> return $ SinkResult [] $ x [])
+    close
   where
     push (count, front) cs = do
         let (a, b) = splitAt count cs
@@ -54,39 +52,48 @@ take count0 = sinkMState
             front' = front . (a ++)
             res = if count' == 0 then Just (front' []) else Nothing
         return ((count', front'), SinkResult b res)
+    close (count, front) cs = do
+        let (a, b) = splitAt count cs
+        return $ SinkResult b $ front a
 
 head :: MonadBaseControl IO m => SinkM a m (Maybe a)
-head = SinkM $ return $ SinkData
-    { sinkPush = return . push
-    , sinkClose = return $ SinkResult [] Nothing
-    }
+head = sinkMState
+    False
+    push
+    close
   where
-    push [] = SinkResult [] Nothing
-    push (a:as) = SinkResult as (Just (Just a))
+    push True _ = error "head: called after result given"
+    push False [] = return (False, SinkResult [] Nothing)
+    push False (a:as) = return (True, SinkResult as (Just (Just a)))
+    close True _ = error "head: called after result given"
+    close False [] = return $ SinkResult [] Nothing
+    close False (a:as) = return $ SinkResult as (Just a)
 
 map :: Monad m => (a -> b) -> ConduitM a m b
 map f = ConduitM $ return $ Conduit
     { conduitPush = return . ConduitResult [] . Chunks . fmap f
-    , conduitClose = return []
+    , conduitClose = \x -> return $ ConduitCloseResult [] $ fmap f x
     }
 
 concatMap :: Monad m => (a -> [b]) -> ConduitM a m b
 concatMap f = ConduitM $ return $ Conduit
     { conduitPush = return . ConduitResult [] . Chunks . (>>= f)
-    , conduitClose = return []
+    , conduitClose = \input -> return $ ConduitCloseResult [] (input >>= f)
     }
 
 concatMapM :: Monad m => (a -> m [b]) -> ConduitM a m b
 concatMapM f = ConduitM $ return $ Conduit
     { conduitPush = fmap (ConduitResult [] . Chunks . Prelude.concat) . lift . Monad.mapM f
-    , conduitClose = return []
+    , conduitClose = \input -> do
+        x <- lift $ Monad.mapM f input
+        return $ ConduitCloseResult [] $ Prelude.concat x
     }
 
 consume :: MonadBaseControl IO m => SinkM a m [a]
 consume = sinkMState
     id
     (\front input -> return (front . (input ++), SinkResult [] Nothing))
-    (\front -> return $ SinkResult [] $ front [])
+    (\front input -> return $ SinkResult [] $ front input)
 
 isolate :: MonadBaseControl IO m => Int -> ConduitM a m a
 isolate count0 = conduitMState
@@ -94,10 +101,12 @@ isolate count0 = conduitMState
     push
     close
   where
-    close _ = return []
+    close count cs = do
+        let (a, b) = splitAt count cs
+        return $ ConduitCloseResult b a
     push count cs = do
         if count == 0
-            then return (count, ConduitResult cs EOF)
+            then return (count, ConduitResult cs $ EOF [])
             else do
                 let (a, b) = splitAt count cs
                 return (count - length a, ConduitResult b (Chunks a))

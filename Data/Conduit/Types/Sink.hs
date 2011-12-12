@@ -47,14 +47,14 @@ data Sink input m output =
     SinkNoData output
   | SinkData
         { sinkPush :: [input] -> ResourceT m (SinkResult input (Maybe output))
-        , sinkClose :: ResourceT m (SinkResult input output)
+        , sinkClose :: [input] -> ResourceT m (SinkResult input output)
         }
 
 instance Monad m => Functor (Sink input m) where
     fmap f (SinkNoData x) = SinkNoData (f x)
     fmap f (SinkData p c) = SinkData
         { sinkPush = liftM (fmap (fmap f)) . p
-        , sinkClose = liftM (fmap f) c
+        , sinkClose = liftM (fmap f) . c
         }
 
 -- | Most 'Sink's require some type of state, similar to 'Source's. Like a
@@ -83,7 +83,7 @@ instance MonadBase IO m => Applicative (SinkM input m) where
                 return $ appHelper istate
 
 type SinkPush input m output = [input] -> ResourceT m (SinkResult input (Maybe output))
-type SinkClose input m output = ResourceT m (SinkResult input output)
+type SinkClose input m output = [input] -> ResourceT m (SinkResult input output)
 data SinkEither input m output = SinkPair (SinkPush input m output) (SinkClose input m output) | SinkOutput output
 type SinkState input m a b = I.IORef (SinkEither input m (a -> b), SinkEither input m a)
 
@@ -118,27 +118,20 @@ pushHelper istate stream0 = do
 
 closeHelper :: MonadBase IO m
             => SinkState input m a b
+            -> [input]
             -> ResourceT m (SinkResult input b)
-closeHelper istate = do
+closeHelper istate input0 = do
     (sf, sa) <- liftBase $ I.readIORef istate
     case sf of
-        SinkOutput f -> go' f sa
+        SinkOutput f -> go' f sa input0
         SinkPair _ close -> do
-            SinkResult leftover f <- close
-            go f leftover sa
+            SinkResult leftover f <- close input0
+            go' f sa leftover
   where
-    go f leftover sa
-        | null leftover = go' f sa
-    go f leftover (SinkOutput a) = return $ SinkResult leftover (f a)
-    go f leftover sp@(SinkPair push _) = do
-        SinkResult leftover' mres <- push leftover
-        case mres of
-            Just a -> return $ SinkResult leftover' (f a)
-            Nothing -> go f leftover' sp
-    go' f (SinkPair _ close) = do
-        SinkResult leftover a <- close
+    go' f (SinkPair _ close) input = do
+        SinkResult leftover a <- close input
         return $ SinkResult leftover (f a)
-    go' f (SinkOutput a) = return $ SinkResult [] (f a)
+    go' f (SinkOutput a) input = return $ SinkResult input (f a)
 
 instance MonadBase IO m => Monad (SinkM input m) where
     return = pure
@@ -176,20 +169,13 @@ sinkJoin (SinkM msink) = SinkM $ do
                                     then return $ SinkResult [] Nothing
                                     else push istate pushO leftover
                             SinkNoData x -> return $ SinkResult leftover $ Just x
-    close istate closeO = do
+    close istate closeO input = do
         state <- liftBase $ I.readIORef istate
         case state of
-            Just (_, closeI) -> closeI
+            Just (_, closeI) -> closeI input
             Nothing -> do
-                SinkResult leftover (SinkM minner) <- closeO
+                SinkResult leftover (SinkM minner) <- closeO input
                 inner <- minner
                 case inner of
-                    SinkData pushI closeI -> closeHelper' leftover pushI closeI
+                    SinkData _ closeI -> closeI leftover
                     SinkNoData x -> return $ SinkResult leftover x
-    closeHelper' stream pushI closeI
-        | null stream = closeI
-        | otherwise = do
-            SinkResult leftover mres <- pushI stream
-            case mres of
-                Nothing -> closeHelper' leftover pushI closeI
-                Just res -> return $ SinkResult leftover res

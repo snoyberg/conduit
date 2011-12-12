@@ -102,22 +102,22 @@ builderToByteStringWith (ioBuf0, nextBuf) = conduitMState
     push
     close
   where
-    close ioBuf = do
-        buf <- liftBase ioBuf
-        case unsafeFreezeNonEmptyBuffer buf of
-            Nothing -> return []
-            Just bs -> return [bs]
-    push ioBuf xs =
-        go (unBuilder (mconcat xs) (buildStep finalStep)) ioBuf id
-      where
-        finalStep !(BufRange pf _) = return $ Done pf ()
+    finalStep !(BufRange pf _) = return $ Done pf ()
+
+    close ioBuf xs = liftBase $ do
+        (ioBuf', front) <- go (unBuilder (mconcat xs) (buildStep finalStep)) ioBuf id
+        buf <- ioBuf'
+        return $ ConduitCloseResult [] $ front $ maybe [] return $ unsafeFreezeNonEmptyBuffer buf
+
+    push ioBuf xs = liftBase $ do
+        (ioBuf', front) <- go (unBuilder (mconcat xs) (buildStep finalStep)) ioBuf id
+        return (ioBuf', ConduitResult [] $ Chunks $ front [])
 
     go bStep ioBuf front = do
-        !buf   <- liftBase ioBuf
-        signal <- liftBase (execBuildStep bStep buf)
+        !buf   <- ioBuf
+        signal <- (execBuildStep bStep buf)
         case signal of
-            Done op' _ -> do
-                return (return $ updateEndOfSlice buf op', ConduitResult [] (Chunks $ front []))
+            Done op' _ -> return (return $ updateEndOfSlice buf op', front)
             BufferFull minSize op' bStep' -> do
                 let buf' = updateEndOfSlice buf op'
                     {-# INLINE cont #-}
@@ -125,7 +125,7 @@ builderToByteStringWith (ioBuf0, nextBuf) = conduitMState
                         -- sequencing the computation of the next buffer
                         -- construction here ensures that the reference to the
                         -- foreign pointer `fp` is lost as soon as possible.
-                        ioBuf' <- liftBase $ nextBuf minSize buf'
+                        ioBuf' <- nextBuf minSize buf'
                         go bStep' ioBuf' front'
                 case unsafeFreezeNonEmptyBuffer buf' of
                     Nothing -> cont front
@@ -134,7 +134,7 @@ builderToByteStringWith (ioBuf0, nextBuf) = conduitMState
                 let buf' = updateEndOfSlice buf op'
                     bsk  = maybe id (:) $ unsafeFreezeNonEmptyBuffer buf'
                     front' = front . bsk . (bs:)
-                ioBuf' <- liftBase $ nextBuf 1 buf'
+                ioBuf' <- nextBuf 1 buf'
                 go bStep' ioBuf' front'
 
 {- Old testing code:
