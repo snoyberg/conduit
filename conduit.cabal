@@ -17,6 +17,7 @@ Library
                        Data.Conduit.Binary
                        Data.Conduit.List
                        Data.Conduit.Lazy
+                       Data.Conduit.Blaze
                        Control.Monad.Trans.Resource
                        Data.Conduit.Attoparsec
   Other-modules:       Data.Conduit.Types.Source
@@ -36,6 +37,7 @@ Library
                      , bytestring               >= 0.9
                      , attoparsec               >= 0.10
                      , text                     >= 0.10
+                     , blaze-builder            >= 0.2.1.4      && < 0.4
   ghc-options:     -Wall
 
 test-suite test
@@ -49,6 +51,7 @@ test-suite test
                    , HUnit
                    , QuickCheck
                    , bytestring
+                   , blaze-builder
     ghc-options:     -Wall
 
 source-repository head
