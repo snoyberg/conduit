@@ -20,6 +20,7 @@ Library
                        Data.Conduit.Blaze
                        Control.Monad.Trans.Resource
                        Data.Conduit.Attoparsec
+                       Data.Conduit.Zlib
   Other-modules:       Data.Conduit.Types.Source
                        Data.Conduit.Types.Sink
                        Data.Conduit.Types.Conduit
@@ -38,6 +39,7 @@ Library
                      , attoparsec               >= 0.10
                      , text                     >= 0.10
                      , blaze-builder            >= 0.2.1.4      && < 0.4
+                     , zlib-bindings            >= 0.0.1        && < 0.1
   ghc-options:     -Wall
 
 test-suite test

@@ -8,6 +8,7 @@ import qualified Data.Conduit as C
 import qualified Data.Conduit.List as CL
 import qualified Data.Conduit.Lazy as CLazy
 import qualified Data.Conduit.Binary as CB
+import qualified Data.Conduit.Zlib as CZ
 import Data.Conduit.Blaze (builderToByteString)
 import Data.Conduit (runResourceT)
 import System.IO.Unsafe (unsafePerformIO)
@@ -140,6 +141,13 @@ main = hspecX $ do
                            C.<$=> conduit
                            C.<$$> CL.consume
             catMaybes res @?= [3, 6, 9]
+    describe "zlib" $ do
+        prop "idempotent" $ \bss' -> unsafePerformIO $ runResourceT $ do
+            let bss = map S.pack bss'
+                lbs = L.fromChunks bss
+                src = mconcat $ map (CL.fromList . return) bss
+            outBss <- src C.<$=> CZ.gzip C.<$=> CZ.ungzip C.<$$> CL.consume
+            return $ lbs == L.fromChunks outBss
     describe "binary isolate" $ do
         it "works" $ do
             bss <- runResourceT $ CL.fromList (replicate 1000 "X")
