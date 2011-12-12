@@ -16,6 +16,7 @@ module Data.Conduit
     , (<$=>)
     , (=$)
     , (<=$>)
+    , (<=$=>)
       -- * Conduit Types
       -- ** Source
     , module Data.Conduit.Types.Source
@@ -180,6 +181,34 @@ c =$ (SinkM ms) = SinkM $ do
         SinkResult leftover' res <- closeI input'
         bconduitUnpull c leftover'
         return $ SinkResult leftover res
+
+infixr 0 <=$=>
+
+(<=$=>) :: MonadBaseControl IO m => ConduitM a m b -> ConduitM b m c -> ConduitM a m c
+outerM <=$=> ConduitM innerM = ConduitM $ do
+    outer <- bconduitM outerM
+    inner <- innerM
+    return Conduit
+        { conduitPush = \a -> do
+            ConduitResult ostate leftoverO b <- bconduitPush outer a
+            case ostate of
+                StreamClosed -> do
+                    ConduitCloseResult _leftoverI c <- conduitClose inner b
+                    return $ ConduitResult StreamClosed leftoverO c
+                StreamOpen -> do
+                    ConduitResult istate leftoverI c <- conduitPush inner b
+                    case istate of
+                        StreamClosed -> do
+                            _ <- bconduitClose outer []
+                            return $ ConduitResult StreamClosed leftoverO c
+                        StreamOpen -> do
+                            bconduitUnpull outer leftoverI
+                            return $ ConduitResult StreamOpen leftoverO c
+        , conduitClose = \a -> do
+            ConduitCloseResult leftoverO b <- bconduitClose outer a
+            ConduitCloseResult _leftoverI c <- conduitClose inner b
+            return $ ConduitCloseResult leftoverO c
+        }
 
 sequence :: MonadBaseControl IO m
          => SinkM a m b

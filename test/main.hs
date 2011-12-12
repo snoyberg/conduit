@@ -87,6 +87,10 @@ main = hspecX $ do
                     C.<$$> CL.concatMap (\i -> enumFromTo i (i + 9))
                     C.<=$> CL.fold (+) (0 :: Int)
             x @?= sum [1..30]
+        it "bind together" $ do
+            let conduit = CL.map (+ 5) C.<=$=> CL.map (* 2)
+            x <- runResourceT $ CL.fromList [1..10] C.<$=> conduit C.<$$> CL.fold (+) 0
+            x @?= sum (map (* 2) $ map (+ 5) [1..10 :: Int])
     describe "isolate" $ do
         it "bound to resumable source" $ do
             (x, y) <- runResourceT $ do
