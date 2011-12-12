@@ -142,7 +142,8 @@ bsrc $= bcon = BSource
             else return $ Chunks output
     , bsourceUnpull = bconduitUnpull bcon
     , bsourceClose = do
-        _ignored <- bconduitClose bcon []
+        ConduitCloseResult leftover _ignored <- bconduitClose bcon []
+        bsourceUnpull bsrc leftover
         bsourceClose bsrc
     }
 
