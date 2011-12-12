@@ -129,6 +129,12 @@ main = hspecX $ do
                             )
             nums <- CLazy.lazyConsume $ mconcat $ map incr [1..10]
             C.liftBase $ nums @?= [1..10]
+    describe "binary isolate" $ do
+        it "works" $ do
+            bss <- runResourceT $ CL.fromList (replicate 1000 "X")
+                           C.<$=> CB.isolate 6
+                           C.<$$> CL.consume
+            S.concat bss @?= "XXXXXX"
     describe "blaze" $ do
         prop "idempotent to toLazyByteString" $ \bss' -> unsafePerformIO $ runResourceT $ do
             let bss = map S.pack bss'
