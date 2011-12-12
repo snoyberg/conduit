@@ -28,43 +28,32 @@ fold :: MonadBaseControl IO m
      => (b -> a -> b)
      -> b
      -> SinkM a m b
-fold f accum0 = sinkM
-    (liftBase $ I.newIORef accum0)
-    (const $ return ())
-    push
-    close
-  where
-    close iaccum = SinkResult [] <$> liftBase (I.readIORef iaccum)
-    push iaccum cs = do
-        liftBase $ I.atomicModifyIORef iaccum $
-            \accum -> (foldl' f accum cs, ())
-        return $ SinkResult [] Nothing
+fold f accum0 = sinkMState
+    accum0
+    (\accum input -> return (foldl' f accum input, SinkResult [] Nothing))
+    (return . SinkResult [])
 
 fromList :: MonadBaseControl IO m => [a] -> SourceM m a
-fromList l = sourceM
-    (liftBase (I.newIORef l))
-    (const (return ()))
-    (\il -> do
-        l' <- liftBase $ I.atomicModifyIORef il $ \x -> ([], x)
-        return $ if null l' then EOF else Chunks l')
+fromList l0 = sourceMState
+    l0
+    (\l -> return $ if null l
+            then ([], EOF)
+            else ([], Chunks l))
 
 take :: MonadBaseControl IO m
      => Int
      -> SinkM a m [a]
-take count0 = sinkM
-    (liftBase $ I.newIORef (count0, []))
-    (const $ return ())
+take count0 = sinkMState
+    (count0, id)
     push
-    close
+    (\(_, x) -> return $ SinkResult [] $ x [])
   where
-    close istate = SinkResult [] . snd <$> liftBase (I.readIORef istate)
-    push istate cs = do
-        (count, rest', b) <- liftBase $ I.atomicModifyIORef istate $ \(count, rest) ->
-            let (a, b) = splitAt count cs
-                count' = count - length a
-                rest' = rest ++ a
-             in ((count', rest'), (count', rest', b))
-        return $ SinkResult b $ if count == 0 then Just rest' else Nothing
+    push (count, front) cs = do
+        let (a, b) = splitAt count cs
+            count' = count - length a
+            front' = front . (a ++)
+            res = if count' == 0 then Just (front' []) else Nothing
+        return ((count', front'), SinkResult b res)
 
 head :: MonadBaseControl IO m => SinkM a m (Maybe a)
 head = SinkM $ return $ SinkData
@@ -94,30 +83,21 @@ concatMapM f = ConduitM $ return $ Conduit
     }
 
 consume :: MonadBaseControl IO m => SinkM a m [a]
-consume = sinkM
-    (liftBase $ I.newIORef id)
-    (const $ return ())
-    push
-    close
-  where
-    close ifront = SinkResult [] . ($ []) <$> liftBase (I.readIORef ifront)
-    push ifront cs = do
-        liftBase $ I.atomicModifyIORef ifront $ \front -> (front . (cs ++), ())
-        return $ SinkResult [] Nothing
+consume = sinkMState
+    id
+    (\front input -> return (front . (input ++), SinkResult [] Nothing))
+    (\front -> return $ SinkResult [] $ front [])
 
 isolate :: MonadBaseControl IO m => Int -> ConduitM a m a
-isolate count0 = conduitM
-    (liftBase $ I.newIORef count0)
-    (const $ return ())
+isolate count0 = conduitMState
+    count0
     push
     close
   where
     close _ = return []
-    push istate cs = do
-        count <- liftBase $ I.readIORef istate
+    push count cs = do
         if count == 0
-            then return $ ConduitResult cs EOF
+            then return (count, ConduitResult cs EOF)
             else do
                 let (a, b) = splitAt count cs
-                liftBase $ I.writeIORef istate $ count - length a
-                return $ ConduitResult b (Chunks a)
+                return (count - length a, ConduitResult b (Chunks a))

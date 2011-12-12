@@ -8,6 +8,7 @@ module Data.Conduit.Util.Source
     , bsource
     , bsourceM
     , transSourceM
+    , sourceMState
     ) where
 
 import Control.Monad.Trans.Resource (ResourceT, transResourceT)
@@ -15,6 +16,22 @@ import Data.Conduit.Types.Source
 import Control.Monad.Base (MonadBase (liftBase))
 import qualified Data.IORef as I
 import Control.Monad (liftM)
+
+-- | Construct a 'SourceM' with some stateful functions. This function address
+-- all mutable state for you.
+sourceMState
+    :: MonadBase IO m
+    => state -- ^ Initial state
+    -> (state -> ResourceT m (state, Stream output)) -- ^ Pull function
+    -> SourceM m output
+sourceMState state0 pull = sourceM
+    (liftBase $ I.newIORef state0)
+    (const $ return ())
+    (\istate -> do
+        state <- liftBase $ I.readIORef istate
+        (state', res) <- pull state
+        liftBase $ I.writeIORef istate state'
+        return res)
 
 -- | Construct a 'SourceM'.
 sourceM :: Monad m

@@ -6,6 +6,7 @@ module Data.Conduit.Util.Conduit
     ( bconduitM
     , bconduit
     , conduitM
+    , conduitMState
     , transConduitM
     ) where
 
@@ -15,6 +16,24 @@ import Data.Conduit.Types.Source (Stream (..))
 import Control.Monad.Base (MonadBase (liftBase))
 import qualified Data.IORef as I
 import Control.Monad (liftM)
+
+-- | Construct a 'ConduitM' with some stateful functions. This function address
+-- all mutable state for you.
+conduitMState
+    :: MonadBase IO m
+    => state -- ^ initial state
+    -> (state -> [input] -> ResourceT m (state, ConduitResult input output)) -- ^ Push function.
+    -> (state -> ResourceT m [output]) -- ^ Close function. The state need not be returned, since it will not be used again.
+    -> ConduitM input m output
+conduitMState state0 push close = conduitM
+    (liftBase $ I.newIORef state0)
+    (const $ return ())
+    (\istate input -> do
+        state <- liftBase $ I.readIORef istate
+        (state', res) <- push state input
+        liftBase $ I.writeIORef istate state'
+        return res)
+    (\istate -> liftBase (I.readIORef istate) >>= close)
 
 -- | Construct a 'ConduitM'.
 conduitM :: Monad m
