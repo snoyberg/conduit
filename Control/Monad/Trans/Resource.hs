@@ -90,12 +90,7 @@ runResourceT r = do
   where
     cleanup = do
         ReleaseMap _ m <- get
-        if IntMap.null m
-            then return ()
-            else do
-                let (key, _) = IntMap.findMin m
-                release $ ReleaseKey key
-                cleanup
+        liftBase $ mapM_ (\x -> try' x >> return ()) $ IntMap.elems m
 
 try' :: MonadBaseControl IO m
      => m a
