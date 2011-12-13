@@ -176,3 +176,15 @@ This is currently no more than a proof-of-concept, to see the differences
 between enumerators and conduits for practical problems. This may serve as a
 basis for WAI and Yesod in the future, but that will only be after careful
 vetting of the idea. Your input is greatly appreciated!
+
+Notes
+===========================
+
+This is just a collection of my personal notes, completely unorganized.
+
+*   In enumerator, it's relatively easy to combined multiple `Iteratee`s into
+    an `Enumeratee`. The equivalent (turning `Sink`s into a `Conduit`) is
+    harder.  See, for example, chunking in http-conduit. Perhaps this can be
+    improved with a better `sequence`.
+
+*   Names and operators are very long right now. Is that a feature or a bug?
