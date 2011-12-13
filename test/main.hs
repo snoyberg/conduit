@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE CPP #-}
 import Test.Hspec.Monadic
 import Test.Hspec.HUnit ()
 import Test.Hspec.QuickCheck (prop)
@@ -8,6 +9,7 @@ import qualified Data.Conduit as C
 import qualified Data.Conduit.List as CL
 import qualified Data.Conduit.Lazy as CLazy
 import qualified Data.Conduit.Binary as CB
+import qualified Data.Conduit.Text as CT
 import qualified Data.Conduit.Zlib as CZ
 import Data.Conduit.Blaze (builderToByteString)
 import Data.Conduit (runResourceT)
@@ -20,6 +22,9 @@ import qualified Data.ByteString.Lazy as L
 import Data.ByteString.Lazy.Char8 ()
 import Data.Maybe (catMaybes)
 import Control.Monad.Trans.Writer (Writer)
+import qualified Data.Text as T
+import qualified Data.Text.Lazy as TL
+import qualified Data.Text.Lazy.Encoding as TLE
 
 main :: IO ()
 main = hspecX $ do
@@ -91,6 +96,7 @@ main = hspecX $ do
             let conduit = CL.map (+ 5) C.<=$=> CL.map (* 2)
             x <- runResourceT $ CL.fromList [1..10] C.<$=> conduit C.<$$> CL.fold (+) 0
             x @?= sum (map (* 2) $ map (+ 5) [1..10 :: Int])
+#if !FAST
     describe "isolate" $ do
         it "bound to resumable source" $ do
             (x, y) <- runResourceT $ do
@@ -146,6 +152,7 @@ main = hspecX $ do
                            C.<$=> conduit
                            C.<$$> CL.consume
             catMaybes res @?= [3, 6, 9]
+#endif
     describe "zlib" $ do
         prop "idempotent" $ \bss' -> unsafePerformIO $ runResourceT $ do
             let bss = map S.pack bss'
@@ -153,12 +160,38 @@ main = hspecX $ do
                 src = mconcat $ map (CL.fromList . return) bss
             outBss <- src C.<$=> CZ.gzip C.<$=> CZ.ungzip C.<$$> CL.consume
             return $ lbs == L.fromChunks outBss
+    describe "text" $ do
+        let go enc tenc cenc = do
+                prop (enc ++ " single chunk") $ \chars -> unsafePerformIO $ runResourceT $ do
+                    let tl = TL.pack chars
+                        lbs = tenc tl
+                        src = CL.fromList $ L.toChunks lbs
+                    ts <- src C.<$=> CT.decode cenc C.<$$> CL.consume
+                    return $ TL.fromChunks ts == tl
+                prop (enc ++ " many chunks") $ \chars -> unsafePerformIO $ runResourceT $ do
+                    let tl = TL.pack chars
+                        lbs = tenc tl
+                        src = mconcat $ map (CL.fromList . return . S.singleton) $ L.unpack lbs
+                    ts <- src C.<$=> CT.decode cenc C.<$$> CL.consume
+                    return $ TL.fromChunks ts == tl
+                prop (enc ++ " encoding") $ \chars -> unsafePerformIO $ runResourceT $ do
+                    let tss = map T.pack chars
+                        lbs = tenc $ TL.fromChunks tss
+                        src = mconcat $ map (CL.fromList . return) tss
+                    bss <- src C.<$=> CT.encode cenc C.<$$> CL.consume
+                    return $ L.fromChunks bss == lbs
+        go "utf8" TLE.encodeUtf8 CT.utf8
+        go "utf16_le" TLE.encodeUtf16LE CT.utf16_le
+        go "utf16_be" TLE.encodeUtf16BE CT.utf16_be
+        go "utf32_le" TLE.encodeUtf32LE CT.utf32_le
+        go "utf32_be" TLE.encodeUtf32BE CT.utf32_be
     describe "binary isolate" $ do
         it "works" $ do
             bss <- runResourceT $ CL.fromList (replicate 1000 "X")
                            C.<$=> CB.isolate 6
                            C.<$$> CL.consume
             S.concat bss @?= "XXXXXX"
+#if !FAST
     describe "blaze" $ do
         prop "idempotent to toLazyByteString" $ \bss' -> unsafePerformIO $ runResourceT $ do
             let bss = map S.pack bss'
@@ -179,6 +212,7 @@ main = hspecX $ do
             let src = mconcat $ map (CL.fromList . return) builders
             outBss <- src C.<$=> builderToByteString C.<$$> CL.consume :: C.ResourceT IO [S.ByteString]
             C.liftBase $ lbs @=? L.fromChunks outBss
+#endif
 
 it' :: String -> IO () -> Writer [Spec] ()
 it' = it

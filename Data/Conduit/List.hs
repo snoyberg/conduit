@@ -4,6 +4,7 @@ module Data.Conduit.List
     , fromList
     , take
     , map
+    , mapM
     , concatMap
     , concatMapM
     , head
@@ -73,6 +74,12 @@ map :: Monad m => (a -> b) -> ConduitM a m b
 map f = ConduitM $ return $ Conduit
     { conduitPush = return . ConduitResult StreamOpen [] . fmap f
     , conduitClose = \x -> return $ ConduitCloseResult [] $ fmap f x
+    }
+
+mapM :: Monad m => (a -> m b) -> ConduitM a m b
+mapM f = ConduitM $ return $ Conduit
+    { conduitPush = fmap (ConduitResult StreamOpen []) . lift . Prelude.mapM f
+    , conduitClose = fmap (ConduitCloseResult []) . lift . Prelude.mapM f
     }
 
 concatMap :: Monad m => (a -> [b]) -> ConduitM a m b
