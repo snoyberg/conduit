@@ -3,6 +3,7 @@ module Data.Conduit.List
     ( fold
     , fromList
     , take
+    , drop
     , map
     , mapM
     , concatMap
@@ -38,6 +39,23 @@ fromList l0 = sourceMState
     (\l -> return $ if null l
             then ([], SourceResult StreamClosed [])
             else ([], SourceResult StreamOpen l))
+
+drop :: MonadBaseControl IO m
+     => Int
+     -> SinkM a m ()
+drop count0 = sinkMState
+    count0
+    push
+    close
+  where
+    push count cs = do
+        let (a, b) = splitAt count cs
+            count' = count - length a
+            res = if count' == 0 then Just () else Nothing
+        return (count', SinkResult b res)
+    close count cs = do
+        let (_, b) = splitAt count cs
+        return $ SinkResult b ()
 
 take :: MonadBaseControl IO m
      => Int
