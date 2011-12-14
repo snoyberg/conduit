@@ -217,17 +217,24 @@ sequence (SinkM sm) = ConduitM $ do
     sink <- sm
     genConduit $ conduitMState sink push close
   where
-    push (SinkNoData output) input = do
+    push sink input = push' sink input id
+
+    push' (SinkNoData output) input front = do
         sink <- sm
-        return (sink, ConduitResult StreamOpen input [output])
-    push sink@(SinkData p _) input = do
+        return (sink, ConduitResult StreamOpen input $ front [output])
+    push' sink@(SinkData p _) input front = do
         SinkResult leftover mres <- p input
         case mres of
-            Nothing -> return (sink, ConduitResult StreamOpen leftover [])
+            Nothing -> return (sink, ConduitResult StreamOpen leftover $ front [])
             Just res -> do
                 sink' <- sm
-                return (sink', ConduitResult StreamOpen leftover [res])
+                push' sink' leftover $ front . (res:)
     close (SinkNoData output) input = return $ ConduitCloseResult input [output]
-    close (SinkData _ c) input = do
-        SinkResult leftover res <- c input
-        return $ ConduitCloseResult leftover [res]
+    close (SinkData _ c) input0 =
+        go input0 id
+      where
+        go input front = do
+            SinkResult leftover res <- c input
+            if null leftover
+                then return $ ConduitCloseResult leftover $ front [res]
+                else go leftover $ front . (res:)

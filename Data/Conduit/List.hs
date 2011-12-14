@@ -1,6 +1,8 @@
 {-# LANGUAGE FlexibleContexts #-}
 module Data.Conduit.List
     ( fold
+    , foldM
+    , mapM_
     , fromList
     , take
     , drop
@@ -33,6 +35,31 @@ fold f accum0 = sinkMState
     accum0
     (\accum input -> return (foldl' f accum input, SinkResult [] Nothing))
     (\accum input -> return $ SinkResult [] (foldl' f accum input))
+
+foldM :: MonadBaseControl IO m
+      => (b -> a -> m b)
+      -> b
+      -> SinkM a m b
+foldM f accum0 = sinkMState
+    accum0
+    (\accum input -> do
+        accum' <- lift $ Monad.foldM f accum input
+        return (accum', SinkResult [] Nothing))
+    (\accum input -> do
+        output <- lift $ Monad.foldM f accum input
+        return $ SinkResult [] output)
+
+mapM_ :: MonadBaseControl IO m
+      => (a -> m ())
+      -> SinkM a m ()
+mapM_ f = sinkMState
+    ()
+    (\() input -> do
+        lift (Monad.mapM_ f input)
+        return ((), SinkResult [] Nothing))
+    (\() input -> do
+        lift (Monad.mapM_ f input)
+        return (SinkResult [] ()))
 
 fromList :: MonadBaseControl IO m => [a] -> SourceM m a
 fromList l0 = sourceMState
