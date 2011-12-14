@@ -188,3 +188,14 @@ This is just a collection of my personal notes, completely unorganized.
     improved with a better `sequence`.
 
 *   Names and operators are very long right now. Is that a feature or a bug?
+
+*   Should we use Vector in place of lists?
+
+*   It might be worth transitioning to RegionT. Will the extra type parameter
+    scare people away?
+
+*   Perhaps the whole BSource/BConduit concept doesn't need to be exposed to
+    the user. Advantage of exposing: it makes it obvious at the type level that
+    a source/conduit can be reused, and possibly more efficient implementations
+    (no double buffering). Disadvantage: more functions to implement/user to
+    keep track of, so harder to use.
