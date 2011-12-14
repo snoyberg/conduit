@@ -85,7 +85,7 @@ sinkParser p0 = C.sinkMState
             C.SinkResult leftover (Just res) -> return $ C.SinkResult leftover res
             C.SinkResult _leftover_must_be_empty Nothing ->
                 -- by definition leftover from before is null
-                case parser' empty of
+                case feedA (parser' empty) empty of
                     A.Done leftover y -> return $ C.SinkResult (toList leftover) y
                     A.Fail _ contexts msg -> liftBase $ throwIO $ ParseError contexts msg
                     A.Partial _ -> liftBase $ throwIO DivergentParser
