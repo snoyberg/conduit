@@ -153,6 +153,13 @@ main = hspecX $ do
                            C.<$$> CL.consume
             catMaybes res @?= [3, 6, 9]
 #endif
+    describe "peek" $ do
+        it "works" $ do
+            (a, b) <- runResourceT $ CL.fromList [1..10 :: Int] C.<$$> do
+                a <- CL.peek
+                b <- CL.consume
+                return (a, b)
+            (a, b) @?= (Just 1, [1..10])
     describe "zlib" $ do
         prop "idempotent" $ \bss' -> unsafePerformIO $ runResourceT $ do
             let bss = map S.pack bss'

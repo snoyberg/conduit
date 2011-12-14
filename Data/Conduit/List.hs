@@ -9,6 +9,7 @@ module Data.Conduit.List
     , concatMap
     , concatMapM
     , head
+    , peek
     , consume
     , isolate
     ) where
@@ -87,6 +88,15 @@ head = sinkMState
     close True _ = error "head: called after result given"
     close False [] = return $ SinkResult [] Nothing
     close False (a:as) = return $ SinkResult as (Just a)
+
+peek :: MonadBaseControl IO m => SinkM a m (Maybe a)
+peek =
+    SinkM $ return $ SinkData push close
+  where
+    push [] = return $ SinkResult [] Nothing
+    push l@(a:_) = return $ SinkResult l (Just $ Just a)
+    close [] = return $ SinkResult [] Nothing
+    close l@(a:_) = return $ SinkResult l $ Just a
 
 map :: Monad m => (a -> b) -> ConduitM a m b
 map f = ConduitM $ return $ Conduit
