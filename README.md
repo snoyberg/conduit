@@ -199,3 +199,8 @@ This is just a collection of my personal notes, completely unorganized.
     a source/conduit can be reused, and possibly more efficient implementations
     (no double buffering). Disadvantage: more functions to implement/user to
     keep track of, so harder to use.
+
+*   I dislike the travesty which is `type FilePath = [Char]`, so I'm using the
+    system-filepath package. I've used it for a lot of internal code at work,
+    and it performs wonderfully. If anyone is concerned about this approach,
+    let me know.

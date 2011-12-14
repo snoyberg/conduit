@@ -9,6 +9,7 @@ module Data.Conduit.Types.Sink
 
 import Control.Monad.Trans.Resource (ResourceT)
 import Control.Monad.Trans.Class (MonadTrans (lift))
+import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad (liftM)
 import Control.Applicative (Applicative (..))
 import Control.Monad.Base (MonadBase (liftBase))
@@ -142,6 +143,9 @@ instance MonadBase IO m => MonadBase IO (SinkM input m) where
 
 instance MonadTrans (SinkM input) where
     lift f = SinkM (lift (liftM SinkNoData f))
+
+instance MonadBase IO m => MonadIO (SinkM input m) where
+    liftIO = lift . liftBase
 
 sinkJoin :: MonadBase IO m => SinkM a m (SinkM a m b) -> SinkM a m b
 sinkJoin (SinkM msink) = SinkM $ do
