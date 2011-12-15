@@ -1,5 +1,6 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TypeFamilies #-}
 -- | Utilities for constructing 'SinkM's. Please see "Data.Conduit.Types.Sink"
 -- for more information on the base types.
 module Data.Conduit.Util.Sink
@@ -8,29 +9,27 @@ module Data.Conduit.Util.Sink
     , transSinkM
     ) where
 
-import Control.Monad.Trans.Resource (ResourceT, transResourceT)
+import Control.Monad.Trans.Resource (ResourceT, transResourceT, Resource (..))
 import Data.Conduit.Types.Sink
 import Control.Monad (liftM)
-import Control.Monad.Base (MonadBase, liftBase)
-import qualified Data.IORef as I
 
 -- | Construct a 'SinkM' with some stateful functions. This function address
 -- all mutable state for you.
 sinkMState
-    :: MonadBase IO m
+    :: Resource m
     => state -- ^ initial state
     -> (state -> [input] -> ResourceT m (state, SinkResult input (Maybe output))) -- ^ push
     -> (state -> [input] -> ResourceT m (SinkResult input output)) -- ^ Close. Note that the state is not returned, as it is not needed.
     -> SinkM input m output
 sinkMState state0 push close = sinkM
-    (liftBase $ I.newIORef state0)
+    (newRef state0)
     (const $ return ())
     (\istate input -> do
-        state <- liftBase $ I.readIORef istate
+        state <- readRef istate
         (state', res) <- push state input
-        liftBase $ I.writeIORef istate state'
+        writeRef istate state'
         return res)
-    (\istate input -> liftBase (I.readIORef istate) >>= flip close input)
+    (\istate input -> readRef istate >>= flip close input)
 
 -- | Construct a 'SinkM'. Note that your push and close functions need not
 -- explicitly perform any cleanup.
@@ -54,7 +53,7 @@ sinkM alloc cleanup push close = SinkM $ do
         }
 
 -- | Transform the monad a 'SinkM' lives in.
-transSinkM :: Monad m
+transSinkM :: (Base m ~ Base n, Monad m)
            => (forall a. m a -> n a)
            -> SinkM input m output
            -> SinkM input n output

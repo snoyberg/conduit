@@ -27,7 +27,7 @@ import Data.Conduit
 import Data.List (foldl')
 import Control.Monad.Trans.Class (lift)
 
-fold :: MonadBaseControl IO m
+fold :: Resource m
      => (b -> a -> b)
      -> b
      -> SinkM a m b
@@ -36,7 +36,7 @@ fold f accum0 = sinkMState
     (\accum input -> return (foldl' f accum input, SinkResult [] Nothing))
     (\accum input -> return $ SinkResult [] (foldl' f accum input))
 
-foldM :: MonadBaseControl IO m
+foldM :: Resource m
       => (b -> a -> m b)
       -> b
       -> SinkM a m b
@@ -49,7 +49,7 @@ foldM f accum0 = sinkMState
         output <- lift $ Monad.foldM f accum input
         return $ SinkResult [] output)
 
-mapM_ :: MonadBaseControl IO m
+mapM_ :: Resource m
       => (a -> m ())
       -> SinkM a m ()
 mapM_ f = sinkMState
@@ -61,14 +61,14 @@ mapM_ f = sinkMState
         lift (Monad.mapM_ f input)
         return (SinkResult [] ()))
 
-fromList :: MonadBaseControl IO m => [a] -> SourceM m a
+fromList :: Resource m => [a] -> SourceM m a
 fromList l0 = sourceMState
     l0
     (\l -> return $ if null l
             then ([], SourceResult StreamClosed [])
             else ([], SourceResult StreamOpen l))
 
-drop :: MonadBaseControl IO m
+drop :: Resource m
      => Int
      -> SinkM a m ()
 drop count0 = sinkMState
@@ -85,7 +85,7 @@ drop count0 = sinkMState
         let (_, b) = splitAt count cs
         return $ SinkResult b ()
 
-take :: MonadBaseControl IO m
+take :: Resource m
      => Int
      -> SinkM a m [a]
 take count0 = sinkMState
@@ -103,7 +103,7 @@ take count0 = sinkMState
         let (a, b) = splitAt count cs
         return $ SinkResult b $ front a
 
-head :: MonadBaseControl IO m => SinkM a m (Maybe a)
+head :: Resource m => SinkM a m (Maybe a)
 head = sinkMState
     False
     push
@@ -116,7 +116,7 @@ head = sinkMState
     close False [] = return $ SinkResult [] Nothing
     close False (a:as) = return $ SinkResult as (Just a)
 
-peek :: MonadBaseControl IO m => SinkM a m (Maybe a)
+peek :: Resource m => SinkM a m (Maybe a)
 peek =
     SinkM $ return $ SinkData push close
   where
@@ -151,13 +151,13 @@ concatMapM f = ConduitM $ return $ Conduit
         return $ ConduitCloseResult [] $ Prelude.concat x
     }
 
-consume :: MonadBaseControl IO m => SinkM a m [a]
+consume :: Resource m => SinkM a m [a]
 consume = sinkMState
     id
     (\front input -> return (front . (input ++), SinkResult [] Nothing))
     (\front input -> return $ SinkResult [] $ front input)
 
-isolate :: MonadBaseControl IO m => Int -> ConduitM a m a
+isolate :: Resource m => Int -> ConduitM a m a
 isolate count0 = conduitMState
     count0
     push

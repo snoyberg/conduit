@@ -139,6 +139,7 @@ import           Data.Typeable (Typeable)
 
 import qualified Data.Conduit as C
 import qualified Data.Conduit.List as CL
+import Control.Monad.Trans.Resource (throwBase)
 
 {-
 -- | Consume the entire input stream with a strict left fold, one character
@@ -831,18 +832,18 @@ instance Show Codec where
 -- not capable of representing an input character, an error will be thrown.
 --
 -- Since: 0.2
-encode :: C.MonadBase IO m => Codec
+encode :: C.Resource m => Codec
        -> C.ConduitM T.Text m B.ByteString
 encode codec = CL.mapM $ \t -> do
     let (bs, mexc) = codecEncode codec t
-    maybe (return bs) (C.liftBase . Exc.throwIO . fst) mexc
+    maybe (return bs) (C.liftBase . throwBase . fst) mexc
 
 
 -- | Convert bytes into text, using the provided codec. If the codec is
 -- not capable of decoding an input byte sequence, an error will be thrown.
 --
 -- Since: 0.2
-decode :: C.MonadBase IO m => Codec
+decode :: C.Resource m => Codec
        -> C.ConduitM B.ByteString m T.Text
 decode codec = C.conduitMState
     Nothing
@@ -856,11 +857,11 @@ decode codec = C.conduitMState
         (mb', ts) <- go' mb input
         case mb' of
             Nothing -> return $ C.ConduitCloseResult [] ts
-            Just _ -> C.liftBase $ Exc.throwIO $ DecodeException codec
+            Just _ -> C.resourceThrow $ DecodeException codec
 
     go' mb input = do
         let bss = maybe id (:) mb input
-        either (C.liftBase . Exc.throwIO) return $ go bss id
+        either (C.resourceThrow) return $ go bss id
 
     go [] front = Right (Nothing, front [])
     go (x:xs) front

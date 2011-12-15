@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE TypeFamilies #-}
 module Data.Conduit.Blaze
     (
 
@@ -69,7 +70,7 @@ import Blaze.ByteString.Builder.Internal.Buffer
 
 -- | Incrementally execute builders and pass on the filled chunks as
 -- bytestrings.
-builderToByteString :: MonadBase IO m => ConduitM Builder m S.ByteString
+builderToByteString :: (Resource m, Base m ~ IO) => ConduitM Builder m S.ByteString
 builderToByteString = 
   builderToByteStringWith (allNewBuffersStrategy defaultBufferSize)
 
@@ -80,7 +81,7 @@ builderToByteString =
 -- WARNING: This enumeratee yields bytestrings that are NOT
 -- referentially transparent. Their content will be overwritten as soon
 -- as control is returned from the inner iteratee!
-unsafeBuilderToByteString :: MonadBase IO m
+unsafeBuilderToByteString :: (Resource m, Base m ~ IO)
                           => IO Buffer  -- action yielding the inital buffer.
                           -> ConduitM Builder m S.ByteString
 unsafeBuilderToByteString = builderToByteStringWith . reuseBufferStrategy
@@ -94,7 +95,7 @@ unsafeBuilderToByteString = builderToByteStringWith . reuseBufferStrategy
 --
 -- based on the enumeratee code by Michael Snoyman <michael@snoyman.com>
 --
-builderToByteStringWith :: MonadBase IO m
+builderToByteStringWith :: (Base m ~ IO, Resource m)
                         => BufferAllocStrategy
                         -> ConduitM Builder m S.ByteString
 builderToByteStringWith (ioBuf0, nextBuf) = conduitMState

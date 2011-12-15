@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TypeFamilies #-}
 module Data.Conduit.Binary
     ( sourceFile
     , sinkFile
@@ -15,7 +16,7 @@ import Data.Conduit
 import Control.Monad.Trans.Resource (with, release)
 import Data.Int (Int64)
 
-sourceFile :: MonadBaseControl IO m
+sourceFile :: (Base m ~ IO, Resource m)
            => FilePath
            -> SourceM m S.ByteString
 sourceFile fp = sourceM
@@ -27,7 +28,7 @@ sourceFile fp = sourceM
             then return $ SourceResult StreamClosed []
             else return $ SourceResult StreamOpen [bs])
 
-sinkFile :: MonadBaseControl IO m
+sinkFile :: (Base m ~ IO, Resource m)
          => FilePath
          -> SinkM S.ByteString m ()
 sinkFile fp = sinkM
@@ -38,7 +39,7 @@ sinkFile fp = sinkM
         liftBase $ L.hPut handle $ L.fromChunks bss
         return $ SinkResult [] ())
 
-isolate :: MonadBaseControl IO m
+isolate :: Resource m
         => Int64
         -> ConduitM S.ByteString m S.ByteString
 isolate count0 = conduitMState

@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TypeFamilies #-}
 -- | Utilities for constructing and covnerting conduits. Please see
 -- "Data.Conduit.Types.Conduit" for more information on the base types.
 module Data.Conduit.Util.Conduit
@@ -10,30 +11,29 @@ module Data.Conduit.Util.Conduit
     , transConduitM
     ) where
 
-import Control.Monad.Trans.Resource (ResourceT, transResourceT)
+import Control.Monad.Trans.Resource (ResourceT, transResourceT, Resource (..))
 import Data.Conduit.Types.Conduit
 import Data.Conduit.Types.Source (StreamState (..))
-import Control.Monad.Base (MonadBase (liftBase))
-import qualified Data.IORef as I
+import Control.Monad.Trans.Class (lift)
 import Control.Monad (liftM)
 
 -- | Construct a 'ConduitM' with some stateful functions. This function address
 -- all mutable state for you.
 conduitMState
-    :: MonadBase IO m
+    :: Resource m
     => state -- ^ initial state
     -> (state -> [input] -> ResourceT m (state, ConduitResult input output)) -- ^ Push function.
     -> (state -> [input] -> ResourceT m (ConduitCloseResult input output)) -- ^ Close function. The state need not be returned, since it will not be used again.
     -> ConduitM input m output
 conduitMState state0 push close = conduitM
-    (liftBase $ I.newIORef state0)
+    (newRef state0)
     (const $ return ())
     (\istate input -> do
-        state <- liftBase $ I.readIORef istate
+        state <- readRef istate
         (state', res) <- push state input
-        liftBase $ I.writeIORef istate state'
+        writeRef istate state'
         return res)
-    (\istate input -> liftBase (I.readIORef istate) >>= flip close input)
+    (\istate input -> readRef istate >>= flip close input)
 
 -- | Construct a 'ConduitM'.
 conduitM :: Monad m
@@ -57,7 +57,7 @@ conduitM alloc cleanup push close = ConduitM $ do
             return output
         }
 
-bconduitM :: MonadBase IO m
+bconduitM :: Resource m
           => ConduitM input m output
           -> ResourceT m (BConduit input m output)
 bconduitM (ConduitM mc) = mc >>= bconduit
@@ -70,14 +70,14 @@ data BState a = EmptyOpen -- ^ nothing in buffer, EOF not received yet
     deriving Show
 
 -- | Convert a 'SourceM' into a 'BSource'.
-bconduit :: MonadBase IO m
+bconduit :: Resource m
          => Conduit input m output
          -> ResourceT m (BConduit input m output)
 bconduit con = do
-    istate <- liftBase (I.newIORef EmptyOpen)
+    istate <- newRef EmptyOpen
     return BConduit
         { bconduitPull =
-            liftBase $ I.atomicModifyIORef istate $ \state ->
+            modifyRef istate $ \state ->
                 case state of
                     Open buffer -> (EmptyOpen, buffer)
                     Closed buffer -> (EmptyClosed, buffer)
@@ -86,14 +86,14 @@ bconduit con = do
         , bconduitUnpull = \x ->
             if null x
                 then return ()
-                else liftBase $ I.atomicModifyIORef istate $ \state ->
+                else modifyRef istate $ \state ->
                     case state of
                         Open buffer -> (Open (x ++ buffer), ())
                         Closed buffer -> (Closed (x ++ buffer), ())
                         EmptyOpen -> (Open x, ())
                         EmptyClosed -> (Closed x, ())
         , bconduitClose = \input -> do
-            action <- liftBase $ I.atomicModifyIORef istate $ \state ->
+            action <- modifyRef istate $ \state ->
                 case state of
                     Open x -> (Closed x, conduitClose con input)
                     Closed _ -> (state, return $ ConduitCloseResult input [])
@@ -101,7 +101,7 @@ bconduit con = do
                     EmptyClosed -> (state, return $ ConduitCloseResult input [])
             action
         , bconduitPush = \x -> do
-            buffer <- liftBase $ I.atomicModifyIORef istate $ \state ->
+            buffer <- modifyRef istate $ \state ->
                 case state of
                     Open buffer -> (EmptyOpen, buffer)
                     Closed buffer -> (EmptyClosed, buffer)
@@ -113,7 +113,7 @@ bconduit con = do
         }
 
 -- | Transform the monad a 'ConduitM' lives in.
-transConduitM :: Monad m
+transConduitM :: (Monad m, Base m ~ Base n)
               => (forall a. m a -> n a)
               -> ConduitM input m output
               -> ConduitM input n output

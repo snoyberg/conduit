@@ -31,6 +31,7 @@ module Data.Conduit
     , sequence
       -- * Convenience re-exports
     , ResourceT
+    , Resource (..)
     , runResourceT
     , MonadBase
     , MonadBaseControl
@@ -46,12 +47,11 @@ import Data.Conduit.Types.Sink
 import Data.Conduit.Util.Sink
 import Data.Conduit.Types.Conduit
 import Data.Conduit.Util.Conduit
-import qualified Data.IORef as I
 import Control.Monad.Base (MonadBase, liftBase)
 
 infixr 0 $$
 
-($$) :: MonadBaseControl IO m => BSource m a -> SinkM a m b -> ResourceT m b
+($$) :: Resource m => BSource m a -> SinkM a m b -> ResourceT m b
 bs $$ SinkM msink = do
     sinkI <- msink
     case sinkI of
@@ -74,29 +74,29 @@ bs $$ SinkM msink = do
 
 infixr 0 <$$>
 
-(<$$>) :: MonadBaseControl IO m => SourceM m a -> SinkM a m b -> ResourceT m b
+(<$$>) :: Resource m => SourceM m a -> SinkM a m b -> ResourceT m b
 msrc <$$> sink = bsourceM msrc >>= ($$ sink)
 
 infixl 1 <$=>
 
-(<$=>) :: MonadBaseControl IO m
+(<$=>) :: Resource m
      => SourceM m a
      -> ConduitM a m b
      -> SourceM m b
 srcm <$=> ConduitM mc = SourceM $ do
-    istate <- liftBase $ I.newIORef StreamOpen
+    istate <- newRef StreamOpen
     bsrc <- bsourceM srcm
     c <- mc
     return Source
         { sourcePull = do
-            state' <- liftBase $ I.readIORef istate
+            state' <- readRef istate
             case state' of
                 StreamClosed -> return $ SourceResult StreamClosed []
                 StreamOpen -> do
                     SourceResult state input <- bsourcePull bsrc
                     case state of
                         StreamClosed -> do
-                            liftBase $ I.writeIORef istate StreamClosed
+                            writeRef istate StreamClosed
                             ConduitCloseResult leftover o <- conduitClose c input
                             bsourceUnpull bsrc leftover
                             return $ SourceResult StreamClosed o
@@ -107,20 +107,20 @@ srcm <$=> ConduitM mc = SourceM $ do
                             case cstate of
                                 StreamClosed -> do
                                     bsourceClose bsrc
-                                    liftBase $ I.writeIORef istate StreamClosed
+                                    writeRef istate StreamClosed
                                     return $ SourceResult StreamClosed output
                                 StreamOpen -> return $ SourceResult StreamOpen output
         , sourceClose = do
             -- Invariant: sourceClose cannot be called twice, so we will assume
             -- it is currently open. We could add a sanity check here.
-            liftBase $ I.writeIORef istate StreamClosed
+            writeRef istate StreamClosed
             _ignored <- conduitClose c []
             bsourceClose bsrc
         }
 
 infixl 1 $=
 
-($=) :: MonadBaseControl IO m
+($=) :: Resource m
      => BSource m a
      -> BConduit a m b
      -> BSource m b
@@ -149,12 +149,12 @@ bsrc $= bcon = BSource
 
 infixr 0 <=$>
 
-(<=$>) :: MonadBaseControl IO m => ConduitM a m b -> SinkM b m c -> SinkM a m c
+(<=$>) :: Resource m => ConduitM a m b -> SinkM b m c -> SinkM a m c
 mc <=$> s = SinkM $ bconduitM mc >>= genSink . (=$ s) -- FIXME close the conduit
 
 infixr 0 =$
 
-(=$) :: MonadBaseControl IO m => BConduit a m b -> SinkM b m c -> SinkM a m c
+(=$) :: Resource m => BConduit a m b -> SinkM b m c -> SinkM a m c
 c =$ (SinkM ms) = SinkM $ do
     s <- ms
     case s of
@@ -184,7 +184,7 @@ c =$ (SinkM ms) = SinkM $ do
 
 infixr 0 <=$=>
 
-(<=$=>) :: MonadBaseControl IO m => ConduitM a m b -> ConduitM b m c -> ConduitM a m c
+(<=$=>) :: Resource m => ConduitM a m b -> ConduitM b m c -> ConduitM a m c
 outerM <=$=> ConduitM innerM = ConduitM $ do
     outer <- bconduitM outerM
     inner <- innerM
@@ -210,7 +210,7 @@ outerM <=$=> ConduitM innerM = ConduitM $ do
             return $ ConduitCloseResult leftoverO c
         }
 
-sequence :: MonadBaseControl IO m
+sequence :: Resource m
          => SinkM a m b
          -> ConduitM a m b
 sequence (SinkM sm) = ConduitM $ do

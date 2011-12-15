@@ -24,9 +24,6 @@ import qualified Data.Attoparsec.Text
 import qualified Data.Attoparsec.Types as A
 import qualified Data.Conduit as C
 
-import Control.Monad.Base (MonadBase (liftBase))
-import Control.Exception (throwIO)
-
 -- | The context and message from a 'A.Fail' value.
 data ParseError = ParseError
     { errorContexts :: [String]
@@ -65,7 +62,7 @@ instance AttoparsecInput T.Text where
 --
 -- If parsing fails, a 'ParseError' will be thrown with 'E.throwError'. Use
 -- 'E.catchError' to catch it.
-sinkParser :: (AttoparsecInput a, MonadBase IO m) => A.Parser a b -> C.SinkM a m b
+sinkParser :: (AttoparsecInput a, C.Resource m) => A.Parser a b -> C.SinkM a m b
 sinkParser p0 = C.sinkMState
     (parseA p0)
     push
@@ -77,7 +74,7 @@ sinkParser p0 = C.sinkMState
             A.Done leftover x ->
                 let lo = if null cs && isNull leftover then [] else leftover:cs
                  in return (parser, C.SinkResult lo (Just x))
-            A.Fail _ contexts msg -> liftBase $ throwIO $ ParseError contexts msg
+            A.Fail _ contexts msg -> C.resourceThrow $ ParseError contexts msg
             A.Partial p -> push p cs
     close parser x = do
         (parser', sres) <- push parser x
@@ -87,8 +84,8 @@ sinkParser p0 = C.sinkMState
                 -- by definition leftover from before is null
                 case feedA (parser' empty) empty of
                     A.Done leftover y -> return $ C.SinkResult (toList leftover) y
-                    A.Fail _ contexts msg -> liftBase $ throwIO $ ParseError contexts msg
-                    A.Partial _ -> liftBase $ throwIO DivergentParser
+                    A.Fail _ contexts msg -> C.resourceThrow $ ParseError contexts msg
+                    A.Partial _ -> C.resourceThrow DivergentParser
     toList x
         | isNull x = []
         | otherwise = [x]

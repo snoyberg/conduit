@@ -14,6 +14,7 @@ import qualified Data.Conduit.Zlib as CZ
 import Data.Conduit.Blaze (builderToByteString)
 import Data.Conduit (runResourceT)
 import System.IO.Unsafe (unsafePerformIO)
+import Control.Monad.ST (runST)
 import Data.Monoid
 import qualified Data.ByteString as S
 import qualified Data.IORef as I
@@ -33,7 +34,7 @@ main = hspecX $ do
             x <- runResourceT $ CL.fromList [1..10] C.<$$> CL.fold (+) (0 :: Int)
             x @?= sum [1..10]
         prop "is idempotent" $ \list ->
-            (unsafePerformIO $ runResourceT $ CL.fromList list C.<$$> CL.fold (+) (0 :: Int))
+            (runST $ runResourceT $ CL.fromList list C.<$$> CL.fold (+) (0 :: Int))
             == sum list
     describe "Monoid instance for Source" $ do
         it "mappend" $ do
@@ -169,19 +170,19 @@ main = hspecX $ do
             return $ lbs == L.fromChunks outBss
     describe "text" $ do
         let go enc tenc cenc = do
-                prop (enc ++ " single chunk") $ \chars -> unsafePerformIO $ runResourceT $ do
+                prop (enc ++ " single chunk") $ \chars -> runST $ runResourceT $ do
                     let tl = TL.pack chars
                         lbs = tenc tl
                         src = CL.fromList $ L.toChunks lbs
                     ts <- src C.<$=> CT.decode cenc C.<$$> CL.consume
                     return $ TL.fromChunks ts == tl
-                prop (enc ++ " many chunks") $ \chars -> unsafePerformIO $ runResourceT $ do
+                prop (enc ++ " many chunks") $ \chars -> runST $ runResourceT $ do
                     let tl = TL.pack chars
                         lbs = tenc tl
                         src = mconcat $ map (CL.fromList . return . S.singleton) $ L.unpack lbs
                     ts <- src C.<$=> CT.decode cenc C.<$$> CL.consume
                     return $ TL.fromChunks ts == tl
-                prop (enc ++ " encoding") $ \chars -> unsafePerformIO $ runResourceT $ do
+                prop (enc ++ " encoding") $ \chars -> runST $ runResourceT $ do
                     let tss = map T.pack chars
                         lbs = tenc $ TL.fromChunks tss
                         src = mconcat $ map (CL.fromList . return) tss

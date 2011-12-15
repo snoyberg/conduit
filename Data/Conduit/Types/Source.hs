@@ -10,10 +10,9 @@ module Data.Conduit.Types.Source
     , SourceInvariantException (..)
     ) where
 
-import Control.Monad.Trans.Resource (ResourceT)
+import Control.Monad.Trans.Resource (ResourceT, Resource (..))
 import Data.Monoid (Monoid (..))
 import Control.Monad.Base (MonadBase (liftBase))
-import qualified Data.IORef as I
 import Control.Monad (liftM)
 import Data.Typeable (Typeable)
 import Control.Exception (Exception, throw)
@@ -72,7 +71,7 @@ newtype SourceM m a = SourceM { genSource :: ResourceT m (Source m a) }
 instance Monad m => Functor (SourceM m) where
     fmap f (SourceM msrc) = SourceM (liftM (fmap f) msrc)
 
-instance MonadBase IO m => Monoid (SourceM m a) where
+instance Resource m => Monoid (SourceM m a) where
     mempty = SourceM (return Source
         { sourcePull = return $ SourceResult StreamClosed []
         , sourceClose = return ()
@@ -84,14 +83,14 @@ instance MonadBase IO m => Monoid (SourceM m a) where
         next0 <- mnext
         -- and place it in a mutable reference along with all of the upcoming
         -- SourceMs
-        istate <- liftBase (I.newIORef (next0, rest0))
+        istate <- newRef (next0, rest0)
         return Source
             { sourcePull = pull istate
             , sourceClose = close istate
             }
       where
         pull istate =
-            liftBase (I.readIORef istate) >>= pull'
+            readRef istate >>= pull'
           where
             pull' (current, rest) = do
                 stream@(SourceResult state _) <- sourcePull current
@@ -104,21 +103,21 @@ instance MonadBase IO m => Monoid (SourceM m a) where
                             -- ... and open the next one
                             SourceM ma:as -> do
                                 a <- ma
-                                liftBase (I.writeIORef istate (a, as))
+                                writeRef istate (a, as)
                                 -- continue pulling base on this new state
                                 pull istate
                             -- no more source, return an EOF
                             [] -> do
                                 -- give an error message if the first Source
                                 -- invariant is violated (read data after EOF)
-                                liftBase $ I.writeIORef istate $
+                                writeRef istate $
                                     throw $ PullAfterEOF "SourceM:mconcat"
                                 return stream
                     StreamOpen -> return stream
         close istate = do
             -- we only need to close the current Source, since they are opened
             -- one at a time
-            (current, _) <- liftBase (I.readIORef istate)
+            (current, _) <- readRef istate
             sourceClose current
 
 -- | When actually interacting with 'Source's, we usually want to be able to

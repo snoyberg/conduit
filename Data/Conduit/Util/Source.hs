@@ -1,5 +1,6 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TypeFamilies #-}
 -- | Utilities for constructing and converting 'Source', 'SourceM' and
 -- 'BSource' types. Please see "Data.Conduit.Types.Source" for more information
 -- on the base types.
@@ -11,26 +12,24 @@ module Data.Conduit.Util.Source
     , sourceMState
     ) where
 
-import Control.Monad.Trans.Resource (ResourceT, transResourceT)
+import Control.Monad.Trans.Resource (ResourceT, transResourceT, Resource (..))
 import Data.Conduit.Types.Source
-import Control.Monad.Base (MonadBase (liftBase))
-import qualified Data.IORef as I
 import Control.Monad (liftM)
 
 -- | Construct a 'SourceM' with some stateful functions. This function address
 -- all mutable state for you.
 sourceMState
-    :: MonadBase IO m
+    :: Resource m
     => state -- ^ Initial state
     -> (state -> ResourceT m (state, SourceResult output)) -- ^ Pull function
     -> SourceM m output
 sourceMState state0 pull = sourceM
-    (liftBase $ I.newIORef state0)
+    (newRef state0)
     (const $ return ())
     (\istate -> do
-        state <- liftBase $ I.readIORef istate
+        state <- readRef istate
         (state', res) <- pull state
-        liftBase $ I.writeIORef istate state'
+        writeRef istate state'
         return res)
 
 -- | Construct a 'SourceM'.
@@ -54,14 +53,14 @@ data BState a = EmptyOpen -- ^ nothing in buffer, EOF not received yet
     deriving Show
 
 -- | Convert a 'SourceM' into a 'BSource'.
-bsource :: MonadBase IO m
+bsource :: Resource m
         => Source m output
         -> ResourceT m (BSource m output)
 bsource src = do
-    istate <- liftBase (I.newIORef EmptyOpen)
+    istate <- newRef EmptyOpen
     return BSource
         { bsourcePull = do
-            mresult <- liftBase $ I.atomicModifyIORef istate $ \state ->
+            mresult <- modifyRef istate $ \state ->
                 case state of
                     Open buffer -> (EmptyOpen, Just $ SourceResult StreamOpen buffer)
                     Closed buffer -> (EmptyClosed, Just $ SourceResult StreamClosed buffer)
@@ -71,7 +70,7 @@ bsource src = do
                 Nothing -> do
                     result@(SourceResult state _) <- sourcePull src
                     case state of
-                        StreamClosed -> liftBase $ I.writeIORef istate EmptyClosed
+                        StreamClosed -> writeRef istate EmptyClosed
                         StreamOpen -> return ()
                     return result
                 Just result -> return result
@@ -79,14 +78,14 @@ bsource src = do
             \x ->
                 if null x
                     then return ()
-                    else liftBase $ I.atomicModifyIORef istate $ \state ->
+                    else modifyRef istate $ \state ->
                         case state of
                             Open buffer -> (Open (x ++ buffer), ())
                             Closed buffer -> (Closed (x ++ buffer), ())
                             EmptyOpen -> (Open x, ())
                             EmptyClosed -> (Closed x, ())
         , bsourceClose = do
-            action <- liftBase $ I.atomicModifyIORef istate $ \state ->
+            action <- modifyRef istate $ \state ->
                 case state of
                     Open x -> (Closed x, sourceClose src)
                     Closed _ -> (state, return ())
@@ -96,13 +95,13 @@ bsource src = do
         }
 
 -- | Convert a 'SourceM' into a 'BSource'.
-bsourceM :: MonadBase IO m
+bsourceM :: Resource m
          => SourceM m output
          -> ResourceT m (BSource m output)
 bsourceM (SourceM msrc) = msrc >>= bsource
 
 -- | Transform the monad a 'SourceM' lives in.
-transSourceM :: Monad m
+transSourceM :: (Base m ~ Base n, Monad m)
              => (forall a. m a -> n a)
              -> SourceM m output
              -> SourceM n output
