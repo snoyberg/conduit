@@ -29,7 +29,6 @@ import qualified Data.IntMap as IntMap
 import Control.Exception (SomeException)
 import Control.Monad.Trans.Control
     ( MonadTransControl (..), MonadBaseControl (..)
-    , ComposeSt, defaultLiftBaseWith, defaultRestoreM
     , control
     )
 import qualified Data.IORef as I
@@ -39,23 +38,10 @@ import Control.Monad.Trans.Class (MonadTrans (..))
 import Control.Monad.IO.Class (MonadIO (..))
 import Control.Monad (liftM)
 import qualified Control.Exception as E
-import Control.Monad.ST (ST)
+import Control.Monad.ST (ST, unsafeIOToST)
+import qualified Control.Monad.ST.Lazy as Lazy
 import qualified Data.STRef as S
-import Data.Monoid (Monoid)
-import Control.Monad (ap)
-
-import Control.Monad.Trans.Identity ( IdentityT)
-import Control.Monad.Trans.List     ( ListT    )
-import Control.Monad.Trans.Maybe    ( MaybeT   )
-import Control.Monad.Trans.Error    ( ErrorT, Error   )
-import Control.Monad.Trans.Reader   ( ReaderT  )
-import Control.Monad.Trans.State    ( StateT   )
-import Control.Monad.Trans.Writer   ( WriterT  )
-import Control.Monad.Trans.RWS      ( RWST     )
-
-import qualified Control.Monad.Trans.RWS.Strict    as Strict ( RWST   )
-import qualified Control.Monad.Trans.State.Strict  as Strict ( StateT )
-import qualified Control.Monad.Trans.Writer.Strict as Strict ( WriterT)
+import qualified Data.STRef.Lazy as SL
 
 class Monad m => HasRef m where
     type Ref' m :: * -> *
@@ -65,9 +51,10 @@ class Monad m => HasRef m where
     writeRef' :: Ref' m a -> a -> m ()
     mask :: ((forall a. m a -> m a) -> m b) -> m b
     mask_ :: m a -> m a
-    finally :: m a -> m b -> m a
+    finally' :: m a -> m b -> m a
     try :: m a -> m (Either SomeException a)
     throwBase :: E.Exception e => e -> m a
+    unsafeFromIO' :: IO a -> m a
 
 instance HasRef IO where
     type Ref' IO = I.IORef
@@ -77,9 +64,10 @@ instance HasRef IO where
     writeRef' = I.writeIORef
     mask = E.mask
     mask_ = E.mask_
-    finally = E.finally
+    finally' = E.finally
     try = E.try
     throwBase = E.throwIO
+    unsafeFromIO' = id
 
 instance HasRef (ST s) where
     type Ref' (ST s) = S.STRef s
@@ -93,81 +81,91 @@ instance HasRef (ST s) where
     writeRef' = S.writeSTRef
     mask f = f id
     mask_ = id
-    finally ma mb = ma >>= \a -> mb >> return a
+    finally' ma mb = ma >>= \a -> mb >> return a
     try = fmap Right
     throwBase = return . E.throw
+    unsafeFromIO' = unsafeIOToST
+
+instance HasRef (Lazy.ST s) where
+    type Ref' (Lazy.ST s) = SL.STRef s
+    newRef' = SL.newSTRef
+    modifyRef' sa f = do
+        a0 <- SL.readSTRef sa
+        let (a, b) = f a0
+        SL.writeSTRef sa a
+        return b
+    readRef' = SL.readSTRef
+    writeRef' = SL.writeSTRef
+    mask f = f id
+    mask_ = id
+    finally' ma mb = ma >>= \a -> mb >> return a
+    try = fmap Right
+    throwBase = return . E.throw
+    unsafeFromIO' = Lazy.unsafeIOToST
 
 type family Ref (m :: * -> *) :: * -> *
 type instance Ref m = Ref' (Base m)
 
--- orphans
-instance MonadBase (ST s) (ST s) where
-    liftBase = id
-instance Applicative (ST s) where
-    pure = return
-    (<*>) = ap
-instance MonadBaseControl (ST s) (ST s) where
-    newtype StM (ST s) a = StST a
-    liftBaseWith f = f $ liftM StST
-    restoreM (StST x) = return x
--- end orphans
-
-class (Monad m, MonadBaseControl (Base m) m, HasRef (Base m))
+class (Monad m, HasRef (Base m))
         => Resource m where
     type Base m :: * -> *
 
     newRef :: a -> ResourceT m (Ref m a)
-    newRef = liftBase . newRef'
-
     readRef :: Ref m a -> ResourceT m a
-    readRef = liftBase . readRef'
-
     writeRef :: Ref m a -> a -> ResourceT m ()
-    writeRef r = liftBase . writeRef' r
-
     modifyRef :: Ref m a -> (a -> (a, b)) -> ResourceT m b
-    modifyRef r = liftBase . modifyRef' r
-
     resourceThrow :: E.Exception e => e -> ResourceT m a
-    resourceThrow = liftBase . throwBase
-
-{- This is what I really wanted to do, but we get conflicting family
-   instances
-instance MonadBaseControl IO m => Resource m where
-    type Base m = IO
--}
+    resourceFinally :: m a -> Base m b -> m a
+    resourceLiftBase :: Base m a -> m a
+    unsafeFromIO :: IO a -> ResourceT m a
 
 instance Resource IO where
     type Base IO = IO
 
+    newRef = lift . newRef'
+    readRef = lift . readRef'
+    writeRef r = lift . writeRef' r
+    modifyRef r = lift . modifyRef' r
+    resourceThrow = lift . throwBase
+    resourceFinally = finally'
+    resourceLiftBase = id
+    unsafeFromIO = lift
+
 instance Resource (ST s) where
     type Base (ST s) = ST s
+
+    newRef = lift . newRef'
+    readRef = lift . readRef'
+    writeRef r = lift . writeRef' r
+    modifyRef r = lift . modifyRef' r
+    resourceThrow = lift . throwBase
+    resourceFinally = finally'
+    resourceLiftBase = id
+    unsafeFromIO = lift . unsafeFromIO'
+
+instance Resource (Lazy.ST s) where
+    type Base (Lazy.ST s) = Lazy.ST s
+
+    newRef = lift . newRef'
+    readRef = lift . readRef'
+    writeRef r = lift . writeRef' r
+    modifyRef r = lift . modifyRef' r
+    resourceThrow = lift . throwBase
+    resourceFinally = finally'
+    resourceLiftBase = id
+    unsafeFromIO = lift . unsafeFromIO'
 
 instance (MonadTransControl t, MonadBaseControl (Base m) (t m), Resource m) => Resource (t m) where
     type Base (t m) = Base m
 
-{-
-#define GO(t) instance Resource m => Resource (t m) where type Base (t m) = Base m
-#define GOM(t) instance (Monoid w, MonadBaseControl IO m) => Resource (t m) where type Base (t m) = IO
-#define GOE(t) instance (Error e, MonadBaseControl IO m) => Resource (t m) where type Base (t m) = IO
-
-GO(IdentityT)
-GO(ListT)
-GO(MaybeT)
-GOE(ErrorT e)
-GO(ReaderT r)
-GO(StateT s)
-GOM(WriterT w)
-GOM(RWST r w s)
-
-GO(Strict.StateT s)
-GOM(Strict.WriterT w)
-GOM(Strict.RWST r w s)
-
-#undef GO
-#undef GOM
-#undef GOE
--}
+    newRef = liftBase . newRef'
+    readRef = liftBase . readRef'
+    writeRef r = liftBase . writeRef' r
+    modifyRef r = liftBase . modifyRef' r
+    resourceThrow = liftBase . throwBase
+    resourceFinally a b = control $ \run -> finally' (run a) (run $ liftBase b)
+    resourceLiftBase = liftBase
+    unsafeFromIO = liftBase . unsafeFromIO'
 
 data ReleaseMap base = ReleaseMap !Int !(IntMap (base ()))
 newtype ReleaseKey = ReleaseKey Int
@@ -180,7 +178,7 @@ with :: Resource m
      => Base m a -- ^ allocate
      -> (a -> Base m ()) -- ^ free resource
      -> ResourceT m (ReleaseKey, a)
-with acquire rel = ResourceT $ \istate -> liftBase $ mask $ \restore -> do
+with acquire rel = ResourceT $ \istate -> resourceLiftBase $ mask $ \restore -> do
     a <- restore acquire
     key <- register' istate $ rel a
     return (key, a)
@@ -188,7 +186,7 @@ with acquire rel = ResourceT $ \istate -> liftBase $ mask $ \restore -> do
 register :: Resource m
          => Base m ()
          -> ResourceT m ReleaseKey
-register rel = ResourceT $ \istate -> liftBase $ register' istate rel
+register rel = ResourceT $ \istate -> resourceLiftBase $ register' istate rel
 
 register' :: HasRef base
           => Ref' base (ReleaseMap base)
@@ -202,7 +200,7 @@ register' istate rel = modifyRef' istate $ \(ReleaseMap key m) ->
 release :: Resource m
         => ReleaseKey
         -> ResourceT m ()
-release rk = ResourceT $ \istate -> liftBase $ release' istate rk
+release rk = ResourceT $ \istate -> resourceLiftBase $ release' istate rk
 
 release' :: HasRef base
          => Ref' base (ReleaseMap base)
@@ -222,14 +220,16 @@ release' istate (ReleaseKey key) = mask $ \restore -> do
 
 runResourceT :: Resource m => ResourceT m a -> m a
 runResourceT (ResourceT r) = do
-    istate <- liftBase $ newRef' $ ReleaseMap minBound IntMap.empty
-    finally' (r istate) (liftBase $ cleanup istate)
+    istate <- resourceLiftBase $ newRef' $ ReleaseMap minBound IntMap.empty
+    resourceFinally (r istate) (cleanup istate)
   where
     cleanup istate = mask_ $ do
         ReleaseMap _ m <- readRef' istate
         mapM_ (\x -> try x >> return ()) $ IntMap.elems m
+    {-
     finally' a sequel = control $ \runInBase ->
                             finally (runInBase a) (runInBase sequel)
+                                -}
 
 transResourceT :: (Base m ~ Base n)
                => (m a -> n a)

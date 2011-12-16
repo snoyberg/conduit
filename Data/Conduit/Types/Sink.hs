@@ -144,8 +144,8 @@ instance Resource m => Monad (SinkM input m) where
     return = pure
     x >>= f = sinkJoin (fmap f x)
 
-instance (Resource m, Base m ~ base) => MonadBase base (SinkM input m) where
-    liftBase = lift . liftBase
+instance (Resource m, Base m ~ base, Applicative base) => MonadBase base (SinkM input m) where
+    liftBase = lift . resourceLiftBase
 
 instance MonadTrans (SinkM input) where
     lift f = SinkM (lift (liftM SinkNoData f))

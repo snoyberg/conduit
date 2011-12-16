@@ -15,15 +15,16 @@ import Filesystem (openFile, IOMode (ReadMode, WriteMode))
 import Data.Conduit
 import Control.Monad.Trans.Resource (with, release)
 import Data.Int (Int64)
+import Control.Monad.Trans.Class (lift)
 
 sourceFile :: (Base m ~ IO, Resource m)
            => FilePath
            -> SourceM m S.ByteString
 sourceFile fp = sourceM
-    (with (liftBase $ openFile fp ReadMode) (liftBase . hClose))
+    (with (openFile fp ReadMode) hClose)
     (\(key, _) -> release key)
     (\(_, handle) -> do
-        bs <- liftBase $ S.hGetSome handle 4096
+        bs <- lift $ resourceLiftBase $ S.hGetSome handle 4096
         if S.null bs
             then return $ SourceResult StreamClosed []
             else return $ SourceResult StreamOpen [bs])
@@ -32,11 +33,11 @@ sinkFile :: (Base m ~ IO, Resource m)
          => FilePath
          -> SinkM S.ByteString m ()
 sinkFile fp = sinkM
-    (with (liftBase $ openFile fp WriteMode) (liftBase . hClose))
+    (with (openFile fp WriteMode) hClose)
     (\(key, _) -> release key)
-    (\(_, handle) bss -> liftBase (L.hPut handle $ L.fromChunks bss) >> return (SinkResult [] Nothing))
+    (\(_, handle) bss -> lift $ resourceLiftBase (L.hPut handle $ L.fromChunks bss) >> return (SinkResult [] Nothing))
     (\(_, handle) bss -> do
-        liftBase $ L.hPut handle $ L.fromChunks bss
+        lift $ resourceLiftBase $ L.hPut handle $ L.fromChunks bss
         return $ SinkResult [] ())
 
 isolate :: Resource m

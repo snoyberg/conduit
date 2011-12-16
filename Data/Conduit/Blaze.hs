@@ -70,7 +70,7 @@ import Blaze.ByteString.Builder.Internal.Buffer
 
 -- | Incrementally execute builders and pass on the filled chunks as
 -- bytestrings.
-builderToByteString :: (Resource m, Base m ~ IO) => ConduitM Builder m S.ByteString
+builderToByteString :: Resource m => ConduitM Builder m S.ByteString
 builderToByteString = 
   builderToByteStringWith (allNewBuffersStrategy defaultBufferSize)
 
@@ -95,7 +95,7 @@ unsafeBuilderToByteString = builderToByteStringWith . reuseBufferStrategy
 --
 -- based on the enumeratee code by Michael Snoyman <michael@snoyman.com>
 --
-builderToByteStringWith :: (Base m ~ IO, Resource m)
+builderToByteStringWith :: Resource m
                         => BufferAllocStrategy
                         -> ConduitM Builder m S.ByteString
 builderToByteStringWith (ioBuf0, nextBuf) = conduitMState
@@ -105,12 +105,12 @@ builderToByteStringWith (ioBuf0, nextBuf) = conduitMState
   where
     finalStep !(BufRange pf _) = return $ Done pf ()
 
-    close ioBuf xs = liftBase $ do
+    close ioBuf xs = unsafeFromIO $ do
         (ioBuf', front) <- go (unBuilder (mconcat xs) (buildStep finalStep)) ioBuf id
         buf <- ioBuf'
         return $ ConduitCloseResult [] $ front $ maybe [] return $ unsafeFreezeNonEmptyBuffer buf
 
-    push ioBuf xs = liftBase $ do
+    push ioBuf xs = unsafeFromIO $ do
         (ioBuf', front) <- go (unBuilder (mconcat xs) (buildStep finalStep)) ioBuf id
         return (ioBuf', ConduitResult StreamOpen [] $ front [])
 

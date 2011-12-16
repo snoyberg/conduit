@@ -17,7 +17,7 @@ module Data.Conduit.List
     ) where
 
 import Prelude
-    ( ($), return, length, splitAt, (==), (-), IO, Int
+    ( ($), return, length, splitAt, (==), (-), Int
     , (.), id, Maybe (..), (>>=), fmap, (++), Monad
     , null, Bool (..), error
     )

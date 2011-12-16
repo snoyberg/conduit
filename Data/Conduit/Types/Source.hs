@@ -12,7 +12,6 @@ module Data.Conduit.Types.Source
 
 import Control.Monad.Trans.Resource (ResourceT, Resource (..))
 import Data.Monoid (Monoid (..))
-import Control.Monad.Base (MonadBase (liftBase))
 import Control.Monad (liftM)
 import Data.Typeable (Typeable)
 import Control.Exception (Exception, throw)

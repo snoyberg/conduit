@@ -11,15 +11,16 @@ import Control.Monad.Trans.Control
 import Control.Monad.Trans.Resource
 
 lazyConsume :: MonadBaseControl IO m => SourceM m a -> ResourceT m [a]
-lazyConsume (SourceM (ResourceT msrc)) = ResourceT $ \r -> msrc r >>= go r
+lazyConsume (SourceM (ResourceT msrc)) =
+    ResourceT $ \r -> msrc r >>= go r
+  where
 
-run r (ResourceT f) = f r
+    run r (ResourceT f) = f r
 
---go :: MonadBaseControl IO m => Source m a -> m [a]
-go r src = liftBaseOp_ unsafeInterleaveIO $ do
-    SourceResult state x <- run r $ sourcePull src
-    case state of
-        StreamClosed -> return x
-        StreamOpen -> do
-            y <- go r src
-            return $ x ++ y
+    go r src = liftBaseOp_ unsafeInterleaveIO $ do
+        SourceResult state x <- run r $ sourcePull src
+        case state of
+            StreamClosed -> return x
+            StreamOpen -> do
+                y <- go r src
+                return $ x ++ y

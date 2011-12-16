@@ -13,7 +13,6 @@ import qualified Data.Conduit.Text as CT
 import qualified Data.Conduit.Zlib as CZ
 import Data.Conduit.Blaze (builderToByteString)
 import Data.Conduit (runResourceT)
-import System.IO.Unsafe (unsafePerformIO)
 import Control.Monad.ST (runST)
 import Data.Monoid
 import qualified Data.ByteString as S
@@ -162,7 +161,7 @@ main = hspecX $ do
                 return (a, b)
             (a, b) @?= (Just 1, [1..10])
     describe "zlib" $ do
-        prop "idempotent" $ \bss' -> unsafePerformIO $ runResourceT $ do
+        prop "idempotent" $ \bss' -> runST $ runResourceT $ do
             let bss = map S.pack bss'
                 lbs = L.fromChunks bss
                 src = mconcat $ map (CL.fromList . return) bss
@@ -201,7 +200,7 @@ main = hspecX $ do
             S.concat bss @?= "XXXXXX"
 #if !FAST
     describe "blaze" $ do
-        prop "idempotent to toLazyByteString" $ \bss' -> unsafePerformIO $ runResourceT $ do
+        prop "idempotent to toLazyByteString" $ \bss' -> runST $ runResourceT $ do
             let bss = map S.pack bss'
             let builders = map fromByteString bss
             let lbs = toLazyByteString $ mconcat builders

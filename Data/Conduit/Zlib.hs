@@ -12,11 +12,11 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString as S
 
 -- | Gzip compression with default parameters.
-gzip :: MonadBase IO m => ConduitM ByteString m ByteString
+gzip :: Resource m => ConduitM ByteString m ByteString
 gzip = compress 1 (WindowBits 31)
 
 -- | Gzip decompression with default parameters.
-ungzip :: MonadBase IO m => ConduitM ByteString m ByteString
+ungzip :: Resource m => ConduitM ByteString m ByteString
 ungzip = decompress (WindowBits 31)
 
 -- |
@@ -25,24 +25,24 @@ ungzip = decompress (WindowBits 31)
 -- >    run $ enumFile "test.z" $$ decompress defaultWindowBits $$ printChunks True
 
 decompress
-    :: MonadBase IO m
+    :: Resource m
     => WindowBits -- ^ Zlib parameter (see the zlib-bindings package as well as the zlib C library)
     -> ConduitM ByteString m ByteString
 decompress config = conduitM
-    (liftBase $ initInflate config)
+    (unsafeFromIO $ initInflate config)
     (const $ return ())
     (push id)
     (close id)
   where
     push front _ [] = return $ ConduitResult StreamOpen [] $ front []
     push front inf (x:xs) = do
-        chunks <- liftBase $ withInflateInput inf x callback
+        chunks <- unsafeFromIO $ withInflateInput inf x callback
         push (front . (chunks ++)) inf xs
     close front inf (x:xs) = do
-        chunks <- liftBase $ withInflateInput inf x callback
+        chunks <- unsafeFromIO $ withInflateInput inf x callback
         close (front . (chunks ++)) inf xs
     close front inf [] = do
-        chunk <- liftBase $ finishInflate inf
+        chunk <- unsafeFromIO $ finishInflate inf
         return $ ConduitCloseResult [] $ front $ if S.null chunk then [] else [chunk]
 
 -- |
@@ -50,25 +50,25 @@ decompress config = conduitM
 -- the format (zlib vs. gzip).
 
 compress
-    :: MonadBase IO m
+    :: Resource m
     => Int         -- ^ Compression level
     -> WindowBits  -- ^ Zlib parameter (see the zlib-bindings package as well as the zlib C library)
     -> ConduitM ByteString m ByteString
 compress level config = conduitM
-    (liftBase $ initDeflate level config)
+    (unsafeFromIO $ initDeflate level config)
     (const $ return ())
     (push id)
     (close id)
   where
     push front _ [] = return $ ConduitResult StreamOpen [] $ front []
     push front def (x:xs) = do
-        chunks <- liftBase $ withDeflateInput def x callback
+        chunks <- unsafeFromIO $ withDeflateInput def x callback
         push (front . (chunks ++)) def xs
     close front def (x:xs) = do
-        chunks <- liftBase $ withDeflateInput def x callback
+        chunks <- unsafeFromIO $ withDeflateInput def x callback
         close (front . (chunks ++)) def xs
     close front def [] = do
-        chunks <- liftBase $ finishDeflate def callback
+        chunks <- unsafeFromIO $ finishDeflate def callback
         return $ ConduitCloseResult [] $ front chunks
 
 callback :: Monad m => m (Maybe a) -> m [a]
