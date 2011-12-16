@@ -36,7 +36,11 @@ in order to fully leverage enumerators:
      technique.
      
      __Practical ramification__: `Iteratee` code can be more difficult to
-     structure.
+     structure. Note that this is a subjective opinion, noted by many newcomers to
+     the enumerator paradigm.
+
+     __Requirement__: Nothing specific, likely addressing the requirements
+     below will automatically solve this.
 
 *    `Iteratee`s are not able to allocate scarce resources. Since they do not
      have any control of the flow of the program, they cannot guarantee that
@@ -47,12 +51,26 @@ in order to fully leverage enumerators:
      before entering the `Iteratee` and pass that in. In some cases, such an
      approach would mean file handles are kept open too long.
 
+     __Clarification__: It is certainly *possible* to write iterFile, but there
+     are no guarantees that it will close the allocated `Handle`, since the calling
+     `Enumerator` may throw an exception before sending an `EOF` to the `Iteratee`.
+
+     __Requirement__: We need a solution which would allow code something like
+     that following to correctly open and close file handles, even in the presence
+     of exceptions.
+
+         run $ enumFile "input.txt" $$ iterFile "output.txt"
+
 *    None of this plays nicely with monad transformers, though this does not
      seem to be an inherent problem with enumerators, instead with the current
      library.
 
      __Practical ramification__: You cannot enumerate a file when running in a
      `ReaderT IO`.
+
+    __Requirement__: The following pseudo-code should work:
+
+         runReaderT (run $ enumFile "input" $$ iterFile "output") ()
 
 *    Instead of passing around a `Handle` to pull data from, your code should
      live inside an `Iteratee`. This makes it difficult and/or impossible to
@@ -62,8 +80,32 @@ in order to fully leverage enumerators:
      (like http-enumerator and warp), it is not possible to create a proper
      streaming HTTP proxy.
 
+     __Requirement__: It should be possible to pass around some type of producer
+     which will be called piecemeal. For example, the request body in Warp should be
+     expressible as:
+
+         data Request = Request
+             { ...
+             , requestBody :: Enumerator ByteString IO ()
+             }
+
+     Applications should be able to do something like:
+
+         bs <- requestBody req $$ takeBytes 10
+         someAction bs
+         rest <- requestBody req $$ takeRest
+         finalAction rest
+
+     Note that there may be other approaches to solving the same problem, this
+     is just one possibility.
+
 *    While the concepts are simple, actually writing low-level Iteratee code is
      very complex. This in turn intimidates users from adopting the approach.
+     Again, this is a subjective measurement.
+
+     __Requirement__: Newcomers should be able to easily understand how to use
+     the package, and with a little more training feel comfortable writing their own
+     producers/consumers.
 
 Conduits
 ===========================
