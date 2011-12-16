@@ -56,7 +56,7 @@ in order to fully leverage enumerators:
      `Enumerator` may throw an exception before sending an `EOF` to the `Iteratee`.
 
      __Requirement__: We need a solution which would allow code something like
-     that following to correctly open and close file handles, even in the presence
+     the following to correctly open and close file handles, even in the presence
      of exceptions.
 
          run $ enumFile "input.txt" $$ iterFile "output.txt"
