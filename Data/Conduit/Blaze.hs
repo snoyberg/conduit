@@ -34,6 +34,8 @@ module Data.Conduit.Blaze
     ) where
 
 import Data.Conduit
+import Control.Monad.Trans.Resource
+import Control.Monad.Trans.Class
 
 import qualified Data.ByteString                   as S
 import           Data.Monoid
@@ -70,7 +72,7 @@ import Blaze.ByteString.Builder.Internal.Buffer
 
 -- | Incrementally execute builders and pass on the filled chunks as
 -- bytestrings.
-builderToByteString :: Resource m => ConduitM Builder m S.ByteString
+builderToByteString :: ResourceUnsafeIO m => ConduitM Builder m S.ByteString
 builderToByteString = 
   builderToByteStringWith (allNewBuffersStrategy defaultBufferSize)
 
@@ -81,7 +83,7 @@ builderToByteString =
 -- WARNING: This enumeratee yields bytestrings that are NOT
 -- referentially transparent. Their content will be overwritten as soon
 -- as control is returned from the inner iteratee!
-unsafeBuilderToByteString :: (Resource m, Base m ~ IO)
+unsafeBuilderToByteString :: ResourceUnsafeIO m
                           => IO Buffer  -- action yielding the inital buffer.
                           -> ConduitM Builder m S.ByteString
 unsafeBuilderToByteString = builderToByteStringWith . reuseBufferStrategy
@@ -95,7 +97,7 @@ unsafeBuilderToByteString = builderToByteStringWith . reuseBufferStrategy
 --
 -- based on the enumeratee code by Michael Snoyman <michael@snoyman.com>
 --
-builderToByteStringWith :: Resource m
+builderToByteStringWith :: ResourceUnsafeIO m
                         => BufferAllocStrategy
                         -> ConduitM Builder m S.ByteString
 builderToByteStringWith (ioBuf0, nextBuf) = conduitMState
@@ -105,12 +107,12 @@ builderToByteStringWith (ioBuf0, nextBuf) = conduitMState
   where
     finalStep !(BufRange pf _) = return $ Done pf ()
 
-    close ioBuf xs = unsafeFromIO $ do
+    close ioBuf xs = lift $ unsafeFromIO $ do
         (ioBuf', front) <- go (unBuilder (mconcat xs) (buildStep finalStep)) ioBuf id
         buf <- ioBuf'
         return $ ConduitCloseResult [] $ front $ maybe [] return $ unsafeFreezeNonEmptyBuffer buf
 
-    push ioBuf xs = unsafeFromIO $ do
+    push ioBuf xs = lift $ unsafeFromIO $ do
         (ioBuf', front) <- go (unBuilder (mconcat xs) (buildStep finalStep)) ioBuf id
         return (ioBuf', ConduitResult StreamOpen [] $ front [])
 

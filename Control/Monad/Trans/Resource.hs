@@ -11,6 +11,8 @@ module Control.Monad.Trans.Resource
     , ReleaseKey
       -- * Type class/associated types
     , Resource (..)
+    , ResourceIO
+    , ResourceUnsafeIO (..)
     , Ref
       -- * Unwrap
     , runResourceT
@@ -54,7 +56,6 @@ class Monad m => HasRef m where
     finally' :: m a -> m b -> m a
     try :: m a -> m (Either SomeException a)
     throwBase :: E.Exception e => e -> m a
-    unsafeFromIO' :: IO a -> m a
 
 instance HasRef IO where
     type Ref' IO = I.IORef
@@ -67,7 +68,6 @@ instance HasRef IO where
     finally' = E.finally
     try = E.try
     throwBase = E.throwIO
-    unsafeFromIO' = id
 
 instance HasRef (ST s) where
     type Ref' (ST s) = S.STRef s
@@ -84,7 +84,6 @@ instance HasRef (ST s) where
     finally' ma mb = ma >>= \a -> mb >> return a
     try = fmap Right
     throwBase = return . E.throw
-    unsafeFromIO' = unsafeIOToST
 
 instance HasRef (Lazy.ST s) where
     type Ref' (Lazy.ST s) = SL.STRef s
@@ -101,7 +100,6 @@ instance HasRef (Lazy.ST s) where
     finally' ma mb = ma >>= \a -> mb >> return a
     try = fmap Right
     throwBase = return . E.throw
-    unsafeFromIO' = Lazy.unsafeIOToST
 
 type family Ref (m :: * -> *) :: * -> *
 type instance Ref m = Ref' (Base m)
@@ -116,7 +114,15 @@ class (Monad m, MonadBase (Base m) m, HasRef (Base m))
     modifyRef :: Ref m a -> (a -> (a, b)) -> ResourceT m b
     resourceThrow :: E.Exception e => e -> ResourceT m a
     resourceFinally :: m a -> Base m b -> m a
-    unsafeFromIO :: IO a -> ResourceT m a
+
+-- | A 'Resource' based on 'IO' itself. It is safe to run all 'IO' actions in this monad.
+class (MonadBase IO m, Resource m) => ResourceIO m
+instance (MonadBase IO m, Resource m) => ResourceIO m
+
+-- | A 'Resource' based on some monad which allows running of some 'IO'
+-- actions, via unsafe calls. This applies to 'IO' and 'ST', for instance.
+class Resource m => ResourceUnsafeIO m where
+    unsafeFromIO :: IO a -> m a
 
 instance Resource IO where
     type Base IO = IO
@@ -127,7 +133,9 @@ instance Resource IO where
     modifyRef r = lift . modifyRef' r
     resourceThrow = lift . throwBase
     resourceFinally = finally'
-    unsafeFromIO = lift
+
+instance ResourceUnsafeIO IO where
+    unsafeFromIO = id
 
 instance Resource (ST s) where
     type Base (ST s) = ST s
@@ -138,7 +146,9 @@ instance Resource (ST s) where
     modifyRef r = lift . modifyRef' r
     resourceThrow = lift . throwBase
     resourceFinally = finally'
-    unsafeFromIO = lift . unsafeFromIO'
+
+instance ResourceUnsafeIO (ST s) where
+    unsafeFromIO = unsafeIOToST
 
 instance Resource (Lazy.ST s) where
     type Base (Lazy.ST s) = Lazy.ST s
@@ -149,7 +159,9 @@ instance Resource (Lazy.ST s) where
     modifyRef r = lift . modifyRef' r
     resourceThrow = lift . throwBase
     resourceFinally = finally'
-    unsafeFromIO = lift . unsafeFromIO'
+
+instance ResourceUnsafeIO (Lazy.ST s) where
+    unsafeFromIO = Lazy.unsafeIOToST
 
 instance (MonadTransControl t, MonadBaseControl (Base m) (t m), Resource m) => Resource (t m) where
     type Base (t m) = Base m
@@ -160,7 +172,9 @@ instance (MonadTransControl t, MonadBaseControl (Base m) (t m), Resource m) => R
     modifyRef r = liftBase . modifyRef' r
     resourceThrow = liftBase . throwBase
     resourceFinally a b = control $ \run -> finally' (run a) (run $ liftBase b)
-    unsafeFromIO = liftBase . unsafeFromIO'
+
+instance (MonadTransControl t, MonadBaseControl (Base m) (t m), ResourceUnsafeIO m) => ResourceUnsafeIO (t m) where
+    unsafeFromIO = lift . unsafeFromIO
 
 data ReleaseMap base = ReleaseMap !Int !(IntMap (base ()))
 newtype ReleaseKey = ReleaseKey Int
