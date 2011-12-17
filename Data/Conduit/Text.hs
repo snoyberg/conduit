@@ -139,7 +139,7 @@ import           Data.Typeable (Typeable)
 
 import qualified Data.Conduit as C
 import qualified Data.Conduit.List as CL
-import Control.Monad.Trans.Resource (throwBase, resourceLiftBase)
+import Control.Monad.Trans.Resource (throwBase)
 
 {-
 -- | Consume the entire input stream with a strict left fold, one character
@@ -836,7 +836,7 @@ encode :: C.Resource m => Codec
        -> C.ConduitM T.Text m B.ByteString
 encode codec = CL.mapM $ \t -> do
     let (bs, mexc) = codecEncode codec t
-    maybe (return bs) (resourceLiftBase . throwBase . fst) mexc
+    maybe (return bs) (C.liftBase . throwBase . fst) mexc
 
 
 -- | Convert bytes into text, using the provided codec. If the codec is

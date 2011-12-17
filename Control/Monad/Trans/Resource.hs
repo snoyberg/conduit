@@ -106,7 +106,7 @@ instance HasRef (Lazy.ST s) where
 type family Ref (m :: * -> *) :: * -> *
 type instance Ref m = Ref' (Base m)
 
-class (Monad m, HasRef (Base m))
+class (Monad m, MonadBase (Base m) m, HasRef (Base m))
         => Resource m where
     type Base m :: * -> *
 
@@ -116,7 +116,6 @@ class (Monad m, HasRef (Base m))
     modifyRef :: Ref m a -> (a -> (a, b)) -> ResourceT m b
     resourceThrow :: E.Exception e => e -> ResourceT m a
     resourceFinally :: m a -> Base m b -> m a
-    resourceLiftBase :: Base m a -> m a
     unsafeFromIO :: IO a -> ResourceT m a
 
 instance Resource IO where
@@ -128,7 +127,6 @@ instance Resource IO where
     modifyRef r = lift . modifyRef' r
     resourceThrow = lift . throwBase
     resourceFinally = finally'
-    resourceLiftBase = id
     unsafeFromIO = lift
 
 instance Resource (ST s) where
@@ -140,7 +138,6 @@ instance Resource (ST s) where
     modifyRef r = lift . modifyRef' r
     resourceThrow = lift . throwBase
     resourceFinally = finally'
-    resourceLiftBase = id
     unsafeFromIO = lift . unsafeFromIO'
 
 instance Resource (Lazy.ST s) where
@@ -152,7 +149,6 @@ instance Resource (Lazy.ST s) where
     modifyRef r = lift . modifyRef' r
     resourceThrow = lift . throwBase
     resourceFinally = finally'
-    resourceLiftBase = id
     unsafeFromIO = lift . unsafeFromIO'
 
 instance (MonadTransControl t, MonadBaseControl (Base m) (t m), Resource m) => Resource (t m) where
@@ -164,7 +160,6 @@ instance (MonadTransControl t, MonadBaseControl (Base m) (t m), Resource m) => R
     modifyRef r = liftBase . modifyRef' r
     resourceThrow = liftBase . throwBase
     resourceFinally a b = control $ \run -> finally' (run a) (run $ liftBase b)
-    resourceLiftBase = liftBase
     unsafeFromIO = liftBase . unsafeFromIO'
 
 data ReleaseMap base = ReleaseMap !Int !(IntMap (base ()))
@@ -178,7 +173,7 @@ with :: Resource m
      => Base m a -- ^ allocate
      -> (a -> Base m ()) -- ^ free resource
      -> ResourceT m (ReleaseKey, a)
-with acquire rel = ResourceT $ \istate -> resourceLiftBase $ mask $ \restore -> do
+with acquire rel = ResourceT $ \istate -> liftBase $ mask $ \restore -> do
     a <- restore acquire
     key <- register' istate $ rel a
     return (key, a)
@@ -186,7 +181,7 @@ with acquire rel = ResourceT $ \istate -> resourceLiftBase $ mask $ \restore -> 
 register :: Resource m
          => Base m ()
          -> ResourceT m ReleaseKey
-register rel = ResourceT $ \istate -> resourceLiftBase $ register' istate rel
+register rel = ResourceT $ \istate -> liftBase $ register' istate rel
 
 register' :: HasRef base
           => Ref' base (ReleaseMap base)
@@ -200,7 +195,7 @@ register' istate rel = modifyRef' istate $ \(ReleaseMap key m) ->
 release :: Resource m
         => ReleaseKey
         -> ResourceT m ()
-release rk = ResourceT $ \istate -> resourceLiftBase $ release' istate rk
+release rk = ResourceT $ \istate -> liftBase $ release' istate rk
 
 release' :: HasRef base
          => Ref' base (ReleaseMap base)
@@ -220,7 +215,7 @@ release' istate (ReleaseKey key) = mask $ \restore -> do
 
 runResourceT :: Resource m => ResourceT m a -> m a
 runResourceT (ResourceT r) = do
-    istate <- resourceLiftBase $ newRef' $ ReleaseMap minBound IntMap.empty
+    istate <- liftBase $ newRef' $ ReleaseMap minBound IntMap.empty
     resourceFinally (r istate) (cleanup istate)
   where
     cleanup istate = mask_ $ do
