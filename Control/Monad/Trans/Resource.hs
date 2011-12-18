@@ -11,7 +11,6 @@ module Control.Monad.Trans.Resource
     , ReleaseKey
       -- * Type class/associated types
     , Resource (..)
-    , ResourceIO
     , ResourceUnsafeIO (..)
     , Ref
       -- * Unwrap
@@ -114,10 +113,6 @@ class (Monad m, MonadBase (Base m) m, HasRef (Base m))
     modifyRef :: Ref m a -> (a -> (a, b)) -> ResourceT m b
     resourceThrow :: E.Exception e => e -> ResourceT m a
     resourceFinally :: m a -> Base m b -> m a
-
--- | A 'Resource' based on 'IO' itself. It is safe to run all 'IO' actions in this monad.
-class (MonadBase IO m, Resource m) => ResourceIO m
-instance (MonadBase IO m, Resource m) => ResourceIO m
 
 -- | A 'Resource' based on some monad which allows running of some 'IO'
 -- actions, via unsafe calls. This applies to 'IO' and 'ST', for instance.
