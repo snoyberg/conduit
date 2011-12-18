@@ -25,6 +25,7 @@ import Control.Monad.Trans.Writer (Writer)
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Encoding as TLE
+import Control.Monad.Trans.Resource (runExceptionT_)
 
 main :: IO ()
 main = hspecX $ do
@@ -169,19 +170,19 @@ main = hspecX $ do
             return $ lbs == L.fromChunks outBss
     describe "text" $ do
         let go enc tenc cenc = do
-                prop (enc ++ " single chunk") $ \chars -> runST $ runResourceT $ do
+                prop (enc ++ " single chunk") $ \chars -> runST $ runExceptionT_ $ runResourceT $ do
                     let tl = TL.pack chars
                         lbs = tenc tl
                         src = CL.fromList $ L.toChunks lbs
                     ts <- src C.<$=> CT.decode cenc C.<$$> CL.consume
                     return $ TL.fromChunks ts == tl
-                prop (enc ++ " many chunks") $ \chars -> runST $ runResourceT $ do
+                prop (enc ++ " many chunks") $ \chars -> runST $ runExceptionT_ $ runResourceT $ do
                     let tl = TL.pack chars
                         lbs = tenc tl
                         src = mconcat $ map (CL.fromList . return . S.singleton) $ L.unpack lbs
                     ts <- src C.<$=> CT.decode cenc C.<$$> CL.consume
                     return $ TL.fromChunks ts == tl
-                prop (enc ++ " encoding") $ \chars -> runST $ runResourceT $ do
+                prop (enc ++ " encoding") $ \chars -> runST $ runExceptionT_ $ runResourceT $ do
                     let tss = map T.pack chars
                         lbs = tenc $ TL.fromChunks tss
                         src = mconcat $ map (CL.fromList . return) tss

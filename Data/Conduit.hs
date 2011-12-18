@@ -36,6 +36,7 @@ module Data.Conduit
     , MonadBase
     , MonadBaseControl
     , liftBase
+    , ResourceThrow (..)
     ) where
 
 import Prelude hiding (sequence)

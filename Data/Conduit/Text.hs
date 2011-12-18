@@ -139,7 +139,7 @@ import           Data.Typeable (Typeable)
 
 import qualified Data.Conduit as C
 import qualified Data.Conduit.List as CL
-import Control.Monad.Trans.Resource (throwBase)
+import Control.Monad.Trans.Resource (ResourceThrow (..))
 
 {-
 -- | Consume the entire input stream with a strict left fold, one character
@@ -816,11 +816,11 @@ data Codec = Codec
     { codecName :: T.Text
     , codecEncode
         :: T.Text
-        -> (B.ByteString, Maybe (Exc.SomeException, T.Text))
+        -> (B.ByteString, Maybe (TextException, T.Text))
     , codecDecode
         :: B.ByteString
         -> (T.Text, Either
-            (Exc.SomeException, B.ByteString)
+            (TextException, B.ByteString)
             B.ByteString)
     }
 
@@ -832,18 +832,18 @@ instance Show Codec where
 -- not capable of representing an input character, an error will be thrown.
 --
 -- Since: 0.2
-encode :: C.Resource m => Codec
+encode :: ResourceThrow TextException m => Codec
        -> C.ConduitM T.Text m B.ByteString
 encode codec = CL.mapM $ \t -> do
     let (bs, mexc) = codecEncode codec t
-    maybe (return bs) (C.liftBase . throwBase . fst) mexc
+    maybe (return bs) (resourceThrow . fst) mexc
 
 
 -- | Convert bytes into text, using the provided codec. If the codec is
 -- not capable of decoding an input byte sequence, an error will be thrown.
 --
 -- Since: 0.2
-decode :: C.Resource m => Codec
+decode :: ResourceThrow TextException m => Codec
        -> C.ConduitM B.ByteString m T.Text
 decode codec = C.conduitMState
     Nothing
@@ -857,11 +857,13 @@ decode codec = C.conduitMState
         (mb', ts) <- go' mb input
         case mb' of
             Nothing -> return $ C.ConduitCloseResult [] ts
-            Just _ -> C.resourceThrow $ DecodeException codec
+            Just b
+                | B.null b -> error "Data.Conduit.Text.decode: Received a null chunk"
+                | otherwise -> lift $ resourceThrow $ DecodeException codec (B.head b)
 
     go' mb input = do
         let bss = maybe id (:) mb input
-        either (C.resourceThrow) return $ go bss id
+        either (lift . resourceThrow) return $ go bss id
 
     go [] front = Right (Nothing, front [])
     go (x:xs) front
@@ -879,7 +881,8 @@ decode codec = C.conduitMState
         (text, extra) = codecDecode codec x
         front' = front . (text:)
 
-data TextException = DecodeException Codec
+data TextException = DecodeException Codec Word8
+                   | EncodeException Codec Char
     deriving (Show, Typeable)
 instance Exc.Exception TextException
 
@@ -892,7 +895,7 @@ byteSplits bytes = loop (B.length bytes) where
 splitSlowly :: (B.ByteString -> T.Text)
             -> B.ByteString
             -> (T.Text, Either
-                (Exc.SomeException, B.ByteString)
+                (TextException, B.ByteString)
                 B.ByteString)
 splitSlowly dec bytes = valid where
     valid = firstValid (Prelude.map decFirst splits)
@@ -1035,14 +1038,14 @@ ascii = Codec name enc dec where
         bytes = B8.pack (T.unpack safe)
         extra = if T.null unsafe
             then Nothing
-            else Just (illegalEnc name (T.head unsafe), unsafe)
+            else Just (EncodeException ascii (T.head unsafe), unsafe)
 
     dec bytes = (text, extra) where
         (safe, unsafe) = B.span (<= 0x7F) bytes
         text = T.pack (B8.unpack safe)
         extra = if B.null unsafe
             then Right B.empty
-            else Left (illegalDec name (B.head unsafe), unsafe)
+            else Left (DecodeException ascii (B.head unsafe), unsafe)
 
 iso8859_1 :: Codec
 iso8859_1 = Codec name enc dec where
@@ -1052,27 +1055,11 @@ iso8859_1 = Codec name enc dec where
         bytes = B8.pack (T.unpack safe)
         extra = if T.null unsafe
             then Nothing
-            else Just (illegalEnc name (T.head unsafe), unsafe)
+            else Just (EncodeException iso8859_1 (T.head unsafe), unsafe)
 
     dec bytes = (T.pack (B8.unpack bytes), Right B.empty)
 
-illegalEnc :: T.Text -> Char -> Exc.SomeException
-illegalEnc name c = Exc.toException . Exc.ErrorCall $
-    concat [ "Codec "
-           , show name
-           , " can't encode character "
-           , reprChar c
-           ]
-
-illegalDec :: T.Text -> Word8 -> Exc.SomeException
-illegalDec name w = Exc.toException . Exc.ErrorCall $
-    concat [ "Codec "
-           , show name
-           , " can't decode byte "
-           , reprWord w
-           ]
-
-tryEvaluate :: a -> Either Exc.SomeException a
+tryEvaluate :: a -> Either TextException a
 tryEvaluate = unsafePerformIO . Exc.try . Exc.evaluate
 
 maybeDecode:: (a, b) -> Maybe (a, b)

@@ -5,6 +5,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE OverlappingInstances #-}
 module Control.Monad.Trans.Resource
     ( -- * Data types
       ResourceT (..)
@@ -12,6 +13,7 @@ module Control.Monad.Trans.Resource
       -- * Type class/associated types
     , Resource (..)
     , ResourceUnsafeIO (..)
+    , ResourceThrow (..)
     , Ref
       -- * Unwrap
     , runResourceT
@@ -21,8 +23,9 @@ module Control.Monad.Trans.Resource
     , release
       -- * Monad transformation
     , transResourceT
-      -- * Other
-    , throwBase
+      -- * A specific Exception transformer
+    , ExceptionT (..)
+    , runExceptionT_
     ) where
 
 import Data.IntMap (IntMap)
@@ -31,6 +34,7 @@ import Control.Exception (SomeException)
 import Control.Monad.Trans.Control
     ( MonadTransControl (..), MonadBaseControl (..)
     , control
+    , ComposeSt, defaultLiftBaseWith, defaultRestoreM
     )
 import qualified Data.IORef as I
 import Control.Monad.Base (MonadBase, liftBase)
@@ -54,7 +58,6 @@ class Monad m => HasRef m where
     mask_ :: m a -> m a
     finally' :: m a -> m b -> m a
     try :: m a -> m (Either SomeException a)
-    throwBase :: E.Exception e => e -> m a
 
 instance HasRef IO where
     type Ref' IO = I.IORef
@@ -66,7 +69,6 @@ instance HasRef IO where
     mask_ = E.mask_
     finally' = E.finally
     try = E.try
-    throwBase = E.throwIO
 
 instance HasRef (ST s) where
     type Ref' (ST s) = S.STRef s
@@ -82,7 +84,6 @@ instance HasRef (ST s) where
     mask_ = id
     finally' ma mb = ma >>= \a -> mb >> return a
     try = fmap Right
-    throwBase = return . E.throw
 
 instance HasRef (Lazy.ST s) where
     type Ref' (Lazy.ST s) = SL.STRef s
@@ -98,7 +99,6 @@ instance HasRef (Lazy.ST s) where
     mask_ = id
     finally' ma mb = ma >>= \a -> mb >> return a
     try = fmap Right
-    throwBase = return . E.throw
 
 type family Ref (m :: * -> *) :: * -> *
 type instance Ref m = Ref' (Base m)
@@ -111,13 +111,16 @@ class (Monad m, MonadBase (Base m) m, HasRef (Base m))
     readRef :: Ref m a -> ResourceT m a
     writeRef :: Ref m a -> a -> ResourceT m ()
     modifyRef :: Ref m a -> (a -> (a, b)) -> ResourceT m b
-    resourceThrow :: E.Exception e => e -> ResourceT m a
     resourceFinally :: m a -> Base m b -> m a
 
 -- | A 'Resource' based on some monad which allows running of some 'IO'
 -- actions, via unsafe calls. This applies to 'IO' and 'ST', for instance.
 class Resource m => ResourceUnsafeIO m where
     unsafeFromIO :: IO a -> m a
+
+-- | A 'Resource' which can throw some types of exceptions.
+class Resource m => ResourceThrow e m where -- FIXME perhaps we want to remove the "e" here, and force all resourceThrow functions to accept any instance of Exception
+    resourceThrow :: E.Exception e => e -> m a
 
 instance Resource IO where
     type Base IO = IO
@@ -126,8 +129,10 @@ instance Resource IO where
     readRef = lift . readRef'
     writeRef r = lift . writeRef' r
     modifyRef r = lift . modifyRef' r
-    resourceThrow = lift . throwBase
     resourceFinally = finally'
+
+instance E.Exception e => ResourceThrow e IO where
+    resourceThrow = E.throwIO
 
 instance ResourceUnsafeIO IO where
     unsafeFromIO = id
@@ -139,7 +144,6 @@ instance Resource (ST s) where
     readRef = lift . readRef'
     writeRef r = lift . writeRef' r
     modifyRef r = lift . modifyRef' r
-    resourceThrow = lift . throwBase
     resourceFinally = finally'
 
 instance ResourceUnsafeIO (ST s) where
@@ -152,7 +156,6 @@ instance Resource (Lazy.ST s) where
     readRef = lift . readRef'
     writeRef r = lift . writeRef' r
     modifyRef r = lift . modifyRef' r
-    resourceThrow = lift . throwBase
     resourceFinally = finally'
 
 instance ResourceUnsafeIO (Lazy.ST s) where
@@ -165,11 +168,13 @@ instance (MonadTransControl t, MonadBaseControl (Base m) (t m), Resource m) => R
     readRef = liftBase . readRef'
     writeRef r = liftBase . writeRef' r
     modifyRef r = liftBase . modifyRef' r
-    resourceThrow = liftBase . throwBase
     resourceFinally a b = control $ \run -> finally' (run a) (run $ liftBase b)
 
 instance (MonadTransControl t, MonadBaseControl (Base m) (t m), ResourceUnsafeIO m) => ResourceUnsafeIO (t m) where
     unsafeFromIO = lift . unsafeFromIO
+
+instance (MonadTransControl t, MonadBaseControl (Base m) (t m), ResourceThrow e m) => ResourceThrow e (t m) where
+    resourceThrow = lift . resourceThrow
 
 data ReleaseMap base = ReleaseMap !Int !(IntMap (base ()))
 newtype ReleaseKey = ReleaseKey Int
@@ -281,3 +286,44 @@ instance MonadBaseControl b m => MonadBaseControl b (ResourceT m) where
      liftBaseWith = defaultLiftBaseWith StMT
      restoreM     = defaultRestoreM   unStMT
 -}
+
+newtype ExceptionT m a = ExceptionT { runExceptionT :: m (Either SomeException a) }
+
+runExceptionT_ :: Monad m => ExceptionT m a -> m a
+runExceptionT_ = liftM (either E.throw id) . runExceptionT
+
+instance Monad m => Functor (ExceptionT m) where
+    fmap f = ExceptionT . (liftM . fmap) f . runExceptionT
+instance Monad m => Applicative (ExceptionT m) where
+    pure = ExceptionT . return . Right
+    ExceptionT mf <*> ExceptionT ma = ExceptionT $ do
+        ef <- mf
+        case ef of
+            Left e -> return (Left e)
+            Right f -> do
+                ea <- ma
+                case ea of
+                    Left e -> return (Left e)
+                    Right x -> return (Right (f x))
+instance Monad m => Monad (ExceptionT m) where
+    return = pure
+    ExceptionT ma >>= f = ExceptionT $ do
+        ea <- ma
+        case ea of
+            Left e -> return (Left e)
+            Right a -> runExceptionT (f a)
+instance MonadBase b m => MonadBase b (ExceptionT m) where
+    liftBase = lift . liftBase
+instance MonadTrans ExceptionT where
+    lift = ExceptionT . liftM Right
+instance MonadTransControl ExceptionT where
+    newtype StT ExceptionT a = StExc { unStExc :: Either SomeException a }
+    liftWith f = ExceptionT $ liftM return $ f $ liftM StExc . runExceptionT
+    restoreT = ExceptionT . liftM unStExc
+instance MonadBaseControl b m => MonadBaseControl b (ExceptionT m) where
+    newtype StM (ExceptionT m) a = StE { unStE :: ComposeSt ExceptionT m a }
+    liftBaseWith = defaultLiftBaseWith StE
+    restoreM = defaultRestoreM unStE
+instance (Resource m, MonadBaseControl (Base m) m, E.Exception e)
+        => ResourceThrow e (ExceptionT m) where
+    resourceThrow = ExceptionT . return . Left . E.toException
