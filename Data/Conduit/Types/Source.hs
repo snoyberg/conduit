@@ -8,6 +8,7 @@ module Data.Conduit.Types.Source
     , SourceM (..)
     , BSource (..)
     , SourceInvariantException (..)
+    , BufferSource (..)
     ) where
 
 import Control.Monad.Trans.Resource (ResourceT, Resource (..))
@@ -137,3 +138,63 @@ data BSource m a = BSource
 data SourceInvariantException = PullAfterEOF String
     deriving (Show, Typeable)
 instance Exception SourceInvariantException
+
+-- | This typeclass allows us to unify operators on 'SourceM' and 'BSource'.
+class BufferSource s where
+    bufferSource :: Resource m => s m a -> ResourceT m (BSource m a)
+
+-- | Note that this instance hides the 'bsourceClose' record, so that a
+-- @BSource@ remains resumable.
+instance BufferSource BSource where
+    bufferSource bsrc = return bsrc
+        { bsourceClose = return ()
+        }
+
+-- | State of a 'BSource'
+data BState a = EmptyOpen -- ^ nothing in buffer, EOF not received yet
+              | EmptyClosed -- ^ nothing in buffer, EOF has been received
+              | Open [a] -- ^ something in buffer, EOF not received yet
+              | Closed [a] -- ^ something in buffer, EOF has been received
+    deriving Show
+
+instance BufferSource Source where
+    bufferSource src = do
+        istate <- newRef EmptyOpen
+        return BSource
+            { bsourcePull = do
+                mresult <- modifyRef istate $ \state ->
+                    case state of
+                        Open buffer -> (EmptyOpen, Just $ SourceResult StreamOpen buffer)
+                        Closed buffer -> (EmptyClosed, Just $ SourceResult StreamClosed buffer)
+                        EmptyOpen -> (EmptyOpen, Nothing)
+                        EmptyClosed -> (EmptyClosed, Just $ SourceResult StreamClosed [])
+                case mresult of
+                    Nothing -> do
+                        result@(SourceResult state _) <- sourcePull src
+                        case state of
+                            StreamClosed -> writeRef istate EmptyClosed
+                            StreamOpen -> return ()
+                        return result
+                    Just result -> return result
+            , bsourceUnpull =
+                \x ->
+                    if null x
+                        then return ()
+                        else modifyRef istate $ \state ->
+                            case state of
+                                Open buffer -> (Open (x ++ buffer), ())
+                                Closed buffer -> (Closed (x ++ buffer), ())
+                                EmptyOpen -> (Open x, ())
+                                EmptyClosed -> (Closed x, ())
+            , bsourceClose = do
+                action <- modifyRef istate $ \state ->
+                    case state of
+                        Open x -> (Closed x, sourceClose src)
+                        Closed _ -> (state, return ())
+                        EmptyOpen -> (EmptyClosed, sourceClose src)
+                        EmptyClosed -> (state, return ())
+                action
+            }
+
+instance BufferSource SourceM where
+    bufferSource (SourceM msrc) = msrc >>= bufferSource

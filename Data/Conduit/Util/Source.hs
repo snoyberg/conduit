@@ -6,8 +6,6 @@
 -- on the base types.
 module Data.Conduit.Util.Source
     ( sourceM
-    , bsource
-    , bsourceM
     , transSourceM
     , sourceMState
     ) where
@@ -44,61 +42,6 @@ sourceM alloc cleanup pull = SourceM $ do
         { sourcePull = pull state
         , sourceClose = cleanup state
         }
-
--- | State of a 'BSource'
-data BState a = EmptyOpen -- ^ nothing in buffer, EOF not received yet
-              | EmptyClosed -- ^ nothing in buffer, EOF has been received
-              | Open [a] -- ^ something in buffer, EOF not received yet
-              | Closed [a] -- ^ something in buffer, EOF has been received
-    deriving Show
-
--- | Convert a 'SourceM' into a 'BSource'.
-bsource :: Resource m
-        => Source m output
-        -> ResourceT m (BSource m output)
-bsource src = do
-    istate <- newRef EmptyOpen
-    return BSource
-        { bsourcePull = do
-            mresult <- modifyRef istate $ \state ->
-                case state of
-                    Open buffer -> (EmptyOpen, Just $ SourceResult StreamOpen buffer)
-                    Closed buffer -> (EmptyClosed, Just $ SourceResult StreamClosed buffer)
-                    EmptyOpen -> (EmptyOpen, Nothing)
-                    EmptyClosed -> (EmptyClosed, Just $ SourceResult StreamClosed [])
-            case mresult of
-                Nothing -> do
-                    result@(SourceResult state _) <- sourcePull src
-                    case state of
-                        StreamClosed -> writeRef istate EmptyClosed
-                        StreamOpen -> return ()
-                    return result
-                Just result -> return result
-        , bsourceUnpull =
-            \x ->
-                if null x
-                    then return ()
-                    else modifyRef istate $ \state ->
-                        case state of
-                            Open buffer -> (Open (x ++ buffer), ())
-                            Closed buffer -> (Closed (x ++ buffer), ())
-                            EmptyOpen -> (Open x, ())
-                            EmptyClosed -> (Closed x, ())
-        , bsourceClose = do
-            action <- modifyRef istate $ \state ->
-                case state of
-                    Open x -> (Closed x, sourceClose src)
-                    Closed _ -> (state, return ())
-                    EmptyOpen -> (EmptyClosed, sourceClose src)
-                    EmptyClosed -> (state, return ())
-            action
-        }
-
--- | Convert a 'SourceM' into a 'BSource'.
-bsourceM :: Resource m
-         => SourceM m output
-         -> ResourceT m (BSource m output)
-bsourceM (SourceM msrc) = msrc >>= bsource
 
 -- | Transform the monad a 'SourceM' lives in.
 transSourceM :: (Base m ~ Base n, Monad m)

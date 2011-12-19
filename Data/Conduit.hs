@@ -11,10 +11,9 @@
 module Data.Conduit
     ( -- * Connect pieces together
       ($$)
-    , (<$$>)
-    , (<$=>)
-    , (<=$>)
-    , (<=$=>)
+    , ($=)
+    , (=$)
+    , (=$=)
       -- * Conduit Types
       -- ** Source
     , module Data.Conduit.Types.Source
@@ -50,41 +49,41 @@ import Control.Monad.Base (MonadBase, liftBase)
 
 infixr 0 $$
 
-($$) :: Resource m => BSource m a -> SinkM a m b -> ResourceT m b
-bs $$ SinkM msink = do
+($$) :: (BufferSource bsrc, Resource m) => bsrc m a -> SinkM a m b -> ResourceT m b
+bs' $$ SinkM msink = do
     sinkI <- msink
     case sinkI of
         SinkNoData output -> return output
-        SinkData push close -> connect' push close
+        SinkData push close -> do
+            bs <- bufferSource bs'
+            connect' bs push close
   where
-    connect' push close = do
-        SourceResult state a <- bsourcePull bs
-        case state of
-            StreamClosed -> do
-                SinkResult leftover res <- close a
-                bsourceUnpull bs leftover
-                return res
-            StreamOpen -> do
-                SinkResult leftover mres <- push a
-                bsourceUnpull bs leftover
-                case mres of
-                    Just res -> return res
-                    Nothing -> connect' push close
+    connect' bs push close =
+        loop
+      where
+        loop = do
+            SourceResult state a <- bsourcePull bs
+            case state of
+                StreamClosed -> do
+                    SinkResult leftover res <- close a
+                    bsourceUnpull bs leftover
+                    return res
+                StreamOpen -> do
+                    SinkResult leftover mres <- push a
+                    bsourceUnpull bs leftover
+                    case mres of
+                        Just res -> return res
+                        Nothing -> loop
 
-infixr 0 <$$>
+infixl 1 $=
 
-(<$$>) :: Resource m => SourceM m a -> SinkM a m b -> ResourceT m b
-msrc <$$> sink = bsourceM msrc >>= ($$ sink)
-
-infixl 1 <$=>
-
-(<$=>) :: Resource m
-     => SourceM m a
+($=) :: (Resource m, BufferSource bsrc)
+     => bsrc m a
      -> ConduitM a m b
      -> SourceM m b
-srcm <$=> ConduitM mc = SourceM $ do
+bsrc' $= ConduitM mc = SourceM $ do
     istate <- newRef StreamOpen
-    bsrc <- bsourceM srcm
+    bsrc <- bufferSource bsrc'
     c <- mc
     return Source
         { sourcePull = do
@@ -117,10 +116,10 @@ srcm <$=> ConduitM mc = SourceM $ do
             bsourceClose bsrc
         }
 
-infixr 0 <=$>
+infixr 0 =$
 
-(<=$>) :: Resource m => ConduitM a m b -> SinkM b m c -> SinkM a m c
-ConduitM mc <=$> SinkM ms = SinkM $ do
+(=$) :: Resource m => ConduitM a m b -> SinkM b m c -> SinkM a m c
+ConduitM mc =$ SinkM ms = SinkM $ do
     s <- ms
     case s of
         SinkData pushI closeI -> mc >>= go pushI closeI
@@ -152,10 +151,10 @@ ConduitM mc <=$> SinkM ms = SinkM $ do
                 return $ SinkResult cleftover res
             }
 
-infixr 0 <=$=>
+infixr 0 =$=
 
-(<=$=>) :: Resource m => ConduitM a m b -> ConduitM b m c -> ConduitM a m c
-ConduitM outerM <=$=> ConduitM innerM = ConduitM $ do
+(=$=) :: Resource m => ConduitM a m b -> ConduitM b m c -> ConduitM a m c
+ConduitM outerM =$= ConduitM innerM = ConduitM $ do
     outer <- outerM
     inner <- innerM
     ibuffer <- newRef id
