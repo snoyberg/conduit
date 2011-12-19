@@ -11,7 +11,7 @@ module Data.Conduit.Types.Source
     , BufferSource (..)
     ) where
 
-import Control.Monad.Trans.Resource (ResourceT, Resource (..))
+import Control.Monad.Trans.Resource
 import Data.Monoid (Monoid (..))
 import Control.Monad (liftM)
 import Data.Typeable (Typeable)

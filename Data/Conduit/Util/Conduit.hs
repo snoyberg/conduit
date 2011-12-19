@@ -9,7 +9,7 @@ module Data.Conduit.Util.Conduit
     , transConduitM
     ) where
 
-import Control.Monad.Trans.Resource (ResourceT, transResourceT, Resource (..))
+import Control.Monad.Trans.Resource
 import Data.Conduit.Types.Conduit
 import Data.Conduit.Types.Source (StreamState (..))
 import Control.Monad (liftM)

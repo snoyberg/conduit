@@ -24,7 +24,7 @@ sourceFile fp = sourceM
     (with (openFile fp ReadMode) hClose)
     (\(key, _) -> release key)
     (\(_, handle) -> do
-        bs <- liftBase $ S.hGetSome handle 4096
+        bs <- lift $ resourceLiftBase $ S.hGetSome handle 4096
         if S.null bs
             then return $ SourceResult StreamClosed []
             else return $ SourceResult StreamOpen [bs])
@@ -35,9 +35,9 @@ sinkFile :: (Base m ~ IO, Resource m)
 sinkFile fp = sinkM
     (with (openFile fp WriteMode) hClose)
     (\(key, _) -> release key)
-    (\(_, handle) bss -> lift $ liftBase (L.hPut handle $ L.fromChunks bss) >> return (SinkResult [] Nothing))
+    (\(_, handle) bss -> lift $ resourceLiftBase (L.hPut handle $ L.fromChunks bss) >> return (SinkResult [] Nothing))
     (\(_, handle) bss -> do
-        liftBase $ L.hPut handle $ L.fromChunks bss
+        lift $ resourceLiftBase $ L.hPut handle $ L.fromChunks bss
         return $ SinkResult [] ())
 
 isolate :: Resource m

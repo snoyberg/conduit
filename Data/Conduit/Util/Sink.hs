@@ -9,7 +9,7 @@ module Data.Conduit.Util.Sink
     , transSinkM
     ) where
 
-import Control.Monad.Trans.Resource (ResourceT, transResourceT, Resource (..))
+import Control.Monad.Trans.Resource
 import Data.Conduit.Types.Sink
 import Control.Monad (liftM)
 

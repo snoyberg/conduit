@@ -10,7 +10,7 @@ module Data.Conduit.Types.Sink
     , SinkM (..)
     ) where
 
-import Control.Monad.Trans.Resource (ResourceT, Ref, Resource (..))
+import Control.Monad.Trans.Resource
 import Control.Monad.Trans.Class (MonadTrans (lift))
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad (liftM)
@@ -92,7 +92,7 @@ type SinkClose input m output = [input] -> ResourceT m (SinkResult input output)
 data SinkEither input m output
     = SinkPair (SinkPush input m output) (SinkClose input m output)
     | SinkOutput output
-type SinkState input m a b = Ref m (SinkEither input m (a -> b), SinkEither input m a)
+type SinkState input m a b = Ref (Base m) (SinkEither input m (a -> b), SinkEither input m a)
 
 appHelper :: Resource m => SinkState input m a b -> Sink input m b
 appHelper istate = SinkData (pushHelper istate) (closeHelper istate)
@@ -145,7 +145,7 @@ instance Resource m => Monad (SinkM input m) where
     x >>= f = sinkJoin (fmap f x)
 
 instance (Resource m, Base m ~ base, Applicative base) => MonadBase base (SinkM input m) where
-    liftBase = lift . liftBase
+    liftBase = lift . resourceLiftBase
 
 instance MonadTrans (SinkM input) where
     lift f = SinkM (lift (liftM SinkNoData f))

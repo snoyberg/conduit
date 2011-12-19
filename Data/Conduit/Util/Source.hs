@@ -10,7 +10,7 @@ module Data.Conduit.Util.Source
     , sourceMState
     ) where
 
-import Control.Monad.Trans.Resource (ResourceT, transResourceT, Resource (..))
+import Control.Monad.Trans.Resource
 import Data.Conduit.Types.Source
 import Control.Monad (liftM)
 
