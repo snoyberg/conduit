@@ -5,7 +5,6 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE CPP #-}
-{-# LANGUAGE OverlappingInstances #-}
 module Control.Monad.Trans.Resource
     ( -- * Data types
       ResourceT (..)
@@ -47,6 +46,20 @@ import Control.Monad.ST (ST, unsafeIOToST)
 import qualified Control.Monad.ST.Lazy as Lazy
 import qualified Data.STRef as S
 import qualified Data.STRef.Lazy as SL
+import Data.Monoid (Monoid)
+
+import Control.Monad.Trans.Identity ( IdentityT)
+import Control.Monad.Trans.List     ( ListT    )
+import Control.Monad.Trans.Maybe    ( MaybeT   )
+import Control.Monad.Trans.Error    ( ErrorT, Error)
+import Control.Monad.Trans.Reader   ( ReaderT  )
+import Control.Monad.Trans.State    ( StateT   )
+import Control.Monad.Trans.Writer   ( WriterT  )
+import Control.Monad.Trans.RWS      ( RWST     )
+
+import qualified Control.Monad.Trans.RWS.Strict    as Strict ( RWST   )
+import qualified Control.Monad.Trans.State.Strict  as Strict ( StateT )
+import qualified Control.Monad.Trans.Writer.Strict as Strict ( WriterT )
 
 class Monad m => HasRef m where
     type Ref' m :: * -> *
@@ -119,7 +132,7 @@ class Resource m => ResourceUnsafeIO m where
     unsafeFromIO :: IO a -> m a
 
 -- | A 'Resource' which can throw some types of exceptions.
-class Resource m => ResourceThrow e m where -- FIXME perhaps we want to remove the "e" here, and force all resourceThrow functions to accept any instance of Exception
+class Resource m => ResourceThrow m where
     resourceThrow :: E.Exception e => e -> m a
 
 instance Resource IO where
@@ -131,8 +144,24 @@ instance Resource IO where
     modifyRef r = lift . modifyRef' r
     resourceFinally = finally'
 
-instance E.Exception e => ResourceThrow e IO where
+instance ResourceThrow IO where
     resourceThrow = E.throwIO
+
+#define GO(T) instance (MonadBaseControl (Base m) m, ResourceThrow m) => ResourceThrow (T m) where resourceThrow = lift . resourceThrow
+#define GOX(X, T) instance (MonadBaseControl (Base m) m, X, ResourceThrow m) => ResourceThrow (T m) where resourceThrow = lift . resourceThrow
+GO(IdentityT)
+GO(ListT)
+GO(MaybeT)
+GOX(Error e, ErrorT e)
+GO(ReaderT r)
+GO(StateT s)
+GOX(Monoid w, WriterT w)
+GOX(Monoid w, RWST r w s)
+GOX(Monoid w, Strict.RWST r w s)
+GO(Strict.StateT s)
+GOX(Monoid w, Strict.WriterT w)
+#undef GO
+#undef GOX
 
 instance ResourceUnsafeIO IO where
     unsafeFromIO = id
@@ -172,9 +201,6 @@ instance (MonadTransControl t, MonadBaseControl (Base m) (t m), Resource m) => R
 
 instance (MonadTransControl t, MonadBaseControl (Base m) (t m), ResourceUnsafeIO m) => ResourceUnsafeIO (t m) where
     unsafeFromIO = lift . unsafeFromIO
-
-instance (MonadTransControl t, MonadBaseControl (Base m) (t m), ResourceThrow e m) => ResourceThrow e (t m) where
-    resourceThrow = lift . resourceThrow
 
 data ReleaseMap base = ReleaseMap !Int !(IntMap (base ()))
 newtype ReleaseKey = ReleaseKey Int
@@ -324,6 +350,6 @@ instance MonadBaseControl b m => MonadBaseControl b (ExceptionT m) where
     newtype StM (ExceptionT m) a = StE { unStE :: ComposeSt ExceptionT m a }
     liftBaseWith = defaultLiftBaseWith StE
     restoreM = defaultRestoreM unStE
-instance (Resource m, MonadBaseControl (Base m) m, E.Exception e)
-        => ResourceThrow e (ExceptionT m) where
+instance (Resource m, MonadBaseControl (Base m) m)
+        => ResourceThrow (ExceptionT m) where
     resourceThrow = ExceptionT . return . Left . E.toException

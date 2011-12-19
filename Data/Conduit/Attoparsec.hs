@@ -63,7 +63,7 @@ instance AttoparsecInput T.Text where
 --
 -- If parsing fails, a 'ParseError' will be thrown with 'E.throwError'. Use
 -- 'E.catchError' to catch it.
-sinkParser :: (AttoparsecInput a, C.ResourceThrow ParseError m) => A.Parser a b -> C.SinkM a m b
+sinkParser :: (AttoparsecInput a, C.ResourceThrow m) => A.Parser a b -> C.SinkM a m b
 sinkParser p0 = C.sinkMState
     (parseA p0)
     push

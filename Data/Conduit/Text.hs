@@ -832,8 +832,7 @@ instance Show Codec where
 -- not capable of representing an input character, an error will be thrown.
 --
 -- Since: 0.2
-encode :: ResourceThrow TextException m => Codec
-       -> C.ConduitM T.Text m B.ByteString
+encode :: ResourceThrow m => Codec -> C.ConduitM T.Text m B.ByteString
 encode codec = CL.mapM $ \t -> do
     let (bs, mexc) = codecEncode codec t
     maybe (return bs) (resourceThrow . fst) mexc
@@ -843,8 +842,7 @@ encode codec = CL.mapM $ \t -> do
 -- not capable of decoding an input byte sequence, an error will be thrown.
 --
 -- Since: 0.2
-decode :: ResourceThrow TextException m => Codec
-       -> C.ConduitM B.ByteString m T.Text
+decode :: ResourceThrow m => Codec -> C.ConduitM B.ByteString m T.Text
 decode codec = C.conduitMState
     Nothing
     push
