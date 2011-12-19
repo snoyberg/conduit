@@ -4,9 +4,7 @@
 -- | Utilities for constructing and covnerting conduits. Please see
 -- "Data.Conduit.Types.Conduit" for more information on the base types.
 module Data.Conduit.Util.Conduit
-    ( bconduitM
-    , bconduit
-    , conduitM
+    ( conduitM
     , conduitMState
     , transConduitM
     ) where
@@ -54,61 +52,6 @@ conduitM alloc cleanup push close = ConduitM $ do
             output <- close state input
             cleanup state
             return output
-        }
-
-bconduitM :: Resource m
-          => ConduitM input m output
-          -> ResourceT m (BConduit input m output)
-bconduitM (ConduitM mc) = mc >>= bconduit
-
--- | State of a 'BSource'
-data BState a = EmptyOpen -- ^ nothing in buffer, EOF not received yet
-              | EmptyClosed -- ^ nothing in buffer, EOF has been received
-              | Open [a] -- ^ something in buffer, EOF not received yet
-              | Closed [a] -- ^ something in buffer, EOF has been received
-    deriving Show
-
--- | Convert a 'SourceM' into a 'BSource'.
-bconduit :: Resource m
-         => Conduit input m output
-         -> ResourceT m (BConduit input m output)
-bconduit con = do
-    istate <- newRef EmptyOpen
-    return BConduit
-        { bconduitPull =
-            modifyRef istate $ \state ->
-                case state of
-                    Open buffer -> (EmptyOpen, buffer)
-                    Closed buffer -> (EmptyClosed, buffer)
-                    EmptyOpen -> (EmptyOpen, [])
-                    EmptyClosed -> (EmptyClosed, [])
-        , bconduitUnpull = \x ->
-            if null x
-                then return ()
-                else modifyRef istate $ \state ->
-                    case state of
-                        Open buffer -> (Open (x ++ buffer), ())
-                        Closed buffer -> (Closed (x ++ buffer), ())
-                        EmptyOpen -> (Open x, ())
-                        EmptyClosed -> (Closed x, ())
-        , bconduitClose = \input -> do
-            action <- modifyRef istate $ \state ->
-                case state of
-                    Open x -> (Closed x, conduitClose con input)
-                    Closed _ -> (state, return $ ConduitCloseResult input [])
-                    EmptyOpen -> (EmptyClosed, conduitClose con input)
-                    EmptyClosed -> (state, return $ ConduitCloseResult input [])
-            action
-        , bconduitPush = \x -> do
-            buffer <- modifyRef istate $ \state ->
-                case state of
-                    Open buffer -> (EmptyOpen, buffer)
-                    Closed buffer -> (EmptyClosed, buffer)
-                    EmptyOpen -> (EmptyOpen, [])
-                    EmptyClosed -> (EmptyClosed, [])
-            if null buffer
-                then conduitPush con x
-                else return $ ConduitResult StreamOpen x buffer
         }
 
 -- | Transform the monad a 'ConduitM' lives in.

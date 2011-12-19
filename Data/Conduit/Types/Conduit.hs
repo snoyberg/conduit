@@ -5,7 +5,6 @@ module Data.Conduit.Types.Conduit
     , ConduitCloseResult (..)
     , Conduit (..)
     , ConduitM (..)
-    , BConduit (..)
     ) where
 
 import Control.Monad.Trans.Resource (ResourceT)
@@ -54,18 +53,3 @@ newtype ConduitM input m output =
 
 instance Monad m => Functor (ConduitM input m) where
     fmap f (ConduitM mc) = ConduitM (liftM (fmap f) mc)
-
--- | A corrollary to @BSource@ for a conduit.
---
--- Note that if bconduitPush is called when there is buffered content, all
--- input will be returned as leftover. Therefore, bconduitPull should always be
--- called until it produces no more output.
---
--- Also, like @BSource@, it is the @BConduit@'s responsbility to check for null
--- input for 'bconduitUnpull'.
-data BConduit input m output = BConduit
-    { bconduitPush :: [input] -> ResourceT m (ConduitResult input output)
-    , bconduitUnpull :: [output] -> ResourceT m ()
-    , bconduitClose :: [input] -> ResourceT m (ConduitCloseResult input output)
-    , bconduitPull :: ResourceT m [output] -- ^ pull data from buffer, if available
-    }

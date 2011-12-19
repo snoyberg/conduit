@@ -99,15 +99,16 @@ main = hspecX $ do
             x @?= sum (map (* 2) $ map (+ 5) [1..10 :: Int])
 #if !FAST
     describe "isolate" $ do
-        it "bound to resumable source" $ do
+        it "bound to resumable source" $ (error "need to fix this test" :: IO ()) {-do
             (x, y) <- runResourceT $ do
                 bsrc <- C.bsourceM $ CL.fromList [1..10 :: Int]
-                bcon <- C.bconduitM $ CL.isolate 5
+                let bcon <- C.bconduitM $ CL.isolate 5
                 x <- bsrc C.$= bcon C.$$ CL.consume
                 y <- bsrc C.$$ CL.consume
                 return (x, y)
             x @?= [1..5]
             y @?= [6..10]
+            -}
         it "bound to sink, non-resumable" $ do
             (x, y) <- runResourceT $ do
                 CL.fromList [1..10 :: Int] C.<$$> do

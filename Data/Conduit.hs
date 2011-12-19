@@ -12,9 +12,7 @@ module Data.Conduit
     ( -- * Connect pieces together
       ($$)
     , (<$$>)
-    , ($=)
     , (<$=>)
-    , (=$)
     , (<=$>)
     , (<=$=>)
       -- * Conduit Types
@@ -119,94 +117,68 @@ srcm <$=> ConduitM mc = SourceM $ do
             bsourceClose bsrc
         }
 
-infixl 1 $=
-
-($=) :: Resource m
-     => BSource m a
-     -> BConduit a m b
-     -> BSource m b
-bsrc $= bcon = BSource
-    { bsourcePull = do
-        output <- bconduitPull bcon
-        if null output
-            then do
-                SourceResult state input <- bsourcePull bsrc
-                case state of
-                    StreamOpen -> do
-                        ConduitResult cstate leftover output' <- bconduitPush bcon input
-                        bsourceUnpull bsrc leftover
-                        return $ SourceResult cstate output'
-                    StreamClosed -> do
-                        ConduitCloseResult leftover s <- bconduitClose bcon input
-                        bsourceUnpull bsrc leftover
-                        return $ SourceResult StreamClosed s
-            else return $ SourceResult StreamOpen output
-    , bsourceUnpull = bconduitUnpull bcon
-    , bsourceClose = do
-        ConduitCloseResult leftover _ignored <- bconduitClose bcon []
-        bsourceUnpull bsrc leftover
-        bsourceClose bsrc
-    }
-
 infixr 0 <=$>
 
 (<=$>) :: Resource m => ConduitM a m b -> SinkM b m c -> SinkM a m c
-mc <=$> s = SinkM $ bconduitM mc >>= genSink . (=$ s) -- FIXME close the conduit
-
-infixr 0 =$
-
-(=$) :: Resource m => BConduit a m b -> SinkM b m c -> SinkM a m c
-c =$ (SinkM ms) = SinkM $ do
+ConduitM mc <=$> SinkM ms = SinkM $ do
     s <- ms
     case s of
-        SinkData pushI closeI -> return $ SinkData
-            { sinkPush = push pushI closeI
-            , sinkClose = close closeI
-            }
+        SinkData pushI closeI -> mc >>= go pushI closeI
         SinkNoData mres -> return $ SinkNoData mres
   where
-    push pushI closeI stream = do
-        -- FIXME bconduitPull
-        ConduitResult state leftover cs <- bconduitPush c stream
-        case state of
-            StreamOpen -> do
-                SinkResult leftover' mres <- pushI cs
-                bconduitUnpull c leftover'
-                return $ SinkResult leftover mres
-            StreamClosed -> do
-                SinkResult leftover' res <- closeI cs
-                bconduitUnpull c leftover'
-                return $ SinkResult leftover (Just res)
-    close closeI input = do
-        ConduitCloseResult leftover input' <- bconduitClose c input
-        SinkResult leftover' res <- closeI input'
-        bconduitUnpull c leftover'
-        return $ SinkResult leftover res
+    go pushI closeI c = do
+        ibuffer <- newRef id
+        return SinkData
+            { sinkPush = \cinput -> do
+                ConduitResult state cleftover sinput <- conduitPush c cinput
+                buffer <- readRef ibuffer
+                case state of
+                    StreamOpen -> do
+                        SinkResult sleftover mres <- pushI $ buffer sinput
+                        writeRef ibuffer (sleftover ++)
+                        case mres of
+                            Nothing -> return $ SinkResult cleftover mres
+                            Just _ -> do
+                                ConduitCloseResult cleftover' _ <-
+                                    conduitClose c cleftover
+                                return $ SinkResult cleftover' mres
+                    StreamClosed -> do
+                        SinkResult _ res <- closeI $ buffer sinput
+                        return $ SinkResult cleftover (Just res)
+            , sinkClose = \cinput -> do
+                ConduitCloseResult cleftover sinput <- conduitClose c cinput
+                buffer <- readRef ibuffer
+                SinkResult _ res <- closeI $ buffer sinput
+                return $ SinkResult cleftover res
+            }
 
 infixr 0 <=$=>
 
 (<=$=>) :: Resource m => ConduitM a m b -> ConduitM b m c -> ConduitM a m c
-outerM <=$=> ConduitM innerM = ConduitM $ do
-    outer <- bconduitM outerM
+ConduitM outerM <=$=> ConduitM innerM = ConduitM $ do
+    outer <- outerM
     inner <- innerM
+    ibuffer <- newRef id
     return Conduit
-        { conduitPush = \a -> do
-            ConduitResult ostate leftoverO b <- bconduitPush outer a
+        { conduitPush = \inputO -> do
+            ConduitResult ostate leftoverO inputI' <- conduitPush outer inputO
+            buffer <- readRef ibuffer
+            let inputI = buffer inputI'
             case ostate of
                 StreamClosed -> do
-                    ConduitCloseResult _leftoverI c <- conduitClose inner b
+                    ConduitCloseResult _leftoverI c <- conduitClose inner inputI
                     return $ ConduitResult StreamClosed leftoverO c
                 StreamOpen -> do
-                    ConduitResult istate leftoverI c <- conduitPush inner b
+                    ConduitResult istate leftoverI c <- conduitPush inner inputI
                     case istate of
                         StreamClosed -> do
-                            _ <- bconduitClose outer []
+                            _ <- conduitClose outer []
                             return $ ConduitResult StreamClosed leftoverO c
                         StreamOpen -> do
-                            bconduitUnpull outer leftoverI
+                            writeRef ibuffer (leftoverI ++)
                             return $ ConduitResult StreamOpen leftoverO c
         , conduitClose = \a -> do
-            ConduitCloseResult leftoverO b <- bconduitClose outer a
+            ConduitCloseResult leftoverO b <- conduitClose outer a
             ConduitCloseResult _leftoverI c <- conduitClose inner b
             return $ ConduitCloseResult leftoverO c
         }
