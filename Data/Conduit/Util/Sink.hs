@@ -7,6 +7,7 @@ module Data.Conduit.Util.Sink
     ( sinkMIO
     , sinkMState
     , transSinkM
+    , result
     ) where
 
 import Control.Monad.Trans.Resource
@@ -19,7 +20,7 @@ import Control.Monad (liftM)
 sinkMState
     :: Resource m
     => state -- ^ initial state
-    -> (state -> [input] -> ResourceT m (state, Maybe (SinkResult input output))) -- ^ push
+    -> (state -> [input] -> ResourceT m (state, Result (SinkResult input output))) -- ^ push
     -> (state -> [input] -> ResourceT m (SinkResult input output)) -- ^ Close. Note that the state is not returned, as it is not needed.
     -> SinkM input m output
 sinkMState state0 push close = SinkM $ do
@@ -38,7 +39,7 @@ sinkMState state0 push close = SinkM $ do
 sinkMIO :: ResourceIO m
         => IO state -- ^ resource and/or state allocation
         -> (state -> IO ()) -- ^ resource and/or state cleanup
-        -> (state -> [input] -> m (Maybe (SinkResult input output))) -- ^ push
+        -> (state -> [input] -> m (Result (SinkResult input output))) -- ^ push
         -> (state -> [input] -> m (SinkResult input output)) -- ^ close
         -> SinkM input m output
 sinkMIO alloc cleanup push close = SinkM $ do
@@ -46,7 +47,7 @@ sinkMIO alloc cleanup push close = SinkM $ do
     return SinkData
         { sinkPush = \input -> do
             res <- lift $ push state input
-            maybe (return ()) (const $ release key) res
+            result (return ()) (const $ release key) res
             return res
         , sinkClose = \input -> do
             res <- lift $ close state input
@@ -66,3 +67,7 @@ transSinkM f (SinkM mc) =
         { sinkPush = transResourceT f . sinkPush c
         , sinkClose = transResourceT f . (sinkClose c)
         }
+
+result :: b -> (a -> b) -> Result a -> b
+result b _ Processing = b
+result _ f (Done a) = f a

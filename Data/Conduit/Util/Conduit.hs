@@ -12,6 +12,7 @@ module Data.Conduit.Util.Conduit
 import Control.Monad.Trans.Resource
 import Control.Monad.Trans.Class
 import Data.Conduit.Types.Conduit
+import Data.Conduit.Types.Sink (Result (..))
 import Control.Monad (liftM)
 
 -- | Construct a 'ConduitM' with some stateful functions. This function address
@@ -19,7 +20,7 @@ import Control.Monad (liftM)
 conduitMState
     :: Resource m
     => state -- ^ initial state
-    -> (state -> [input] -> ResourceT m (state, ConduitResult (Maybe [input]) output)) -- ^ Push function.
+    -> (state -> [input] -> ResourceT m (state, ConduitResult (Result [input]) output)) -- ^ Push function.
     -> (state -> [input] -> ResourceT m (ConduitResult [input] output)) -- ^ Close function. The state need not be returned, since it will not be used again.
     -> ConduitM input m output
 conduitMState state0 push close = ConduitM $ do
@@ -37,7 +38,7 @@ conduitMState state0 push close = ConduitM $ do
 conduitMIO :: ResourceIO m
            => IO state -- ^ resource and/or state allocation
            -> (state -> IO ()) -- ^ resource and/or state cleanup
-           -> (state -> [input] -> m (ConduitResult (Maybe [input]) output)) -- ^ Push function. Note that this need not explicitly perform any cleanup.
+           -> (state -> [input] -> m (ConduitResult (Result [input]) output)) -- ^ Push function. Note that this need not explicitly perform any cleanup.
            -> (state -> [input] -> m (ConduitResult [input] output)) -- ^ Close function. Note that this need not explicitly perform any cleanup.
            -> ConduitM input m output
 conduitMIO alloc cleanup push close = ConduitM $ do
@@ -46,8 +47,8 @@ conduitMIO alloc cleanup push close = ConduitM $ do
         { conduitPush = \input -> do
             res@(ConduitResult mleft _) <- lift $ push state input
             case mleft of
-                Nothing -> return ()
-                Just _ -> release key
+                Processing -> return ()
+                Done _ -> release key
             return res
         , conduitClose = \input -> do
             output <- lift $ close state input

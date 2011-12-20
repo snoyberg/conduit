@@ -169,7 +169,7 @@ decode codec = C.conduitMState
   where
     push mb input = do
         (mb', ts) <- go' mb input
-        return $ (mb', C.ConduitResult Nothing ts)
+        return $ (mb', C.ConduitResult C.Processing ts)
     close mb input = do
         (mb', ts) <- go' mb input
         case mb' of

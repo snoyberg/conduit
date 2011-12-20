@@ -8,6 +8,7 @@ module Data.Conduit.Types.Sink
     ( SinkResult (..)
     , Sink (..)
     , SinkM (..)
+    , Result (..)
     ) where
 
 import Control.Monad.Trans.Resource
@@ -16,6 +17,11 @@ import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad (liftM)
 import Control.Applicative (Applicative (..))
 import Control.Monad.Base (MonadBase (liftBase))
+
+data Result a = Processing | Done a
+instance Functor Result where
+    fmap _ Processing = Processing
+    fmap f (Done a) = Done (f a)
 
 -- | At the end of running, a 'Sink' returns some leftover input and an output.
 data SinkResult input output = SinkResult [input] output
@@ -49,7 +55,7 @@ instance Functor (SinkResult input) where
 data Sink input m output =
     SinkNoData output
   | SinkData
-        { sinkPush :: [input] -> ResourceT m (Maybe (SinkResult input output))
+        { sinkPush :: [input] -> ResourceT m (Result (SinkResult input output))
         , sinkClose :: [input] -> ResourceT m (SinkResult input output)
         }
 
@@ -87,7 +93,7 @@ toEither :: Sink input m output -> SinkEither input m output
 toEither (SinkData x y) = SinkPair x y
 toEither (SinkNoData x) = SinkOutput x
 
-type SinkPush input m output = [input] -> ResourceT m (Maybe (SinkResult input output))
+type SinkPush input m output = [input] -> ResourceT m (Result (SinkResult input output))
 type SinkClose input m output = [input] -> ResourceT m (SinkResult input output)
 data SinkEither input m output
     = SinkPair (SinkPush input m output) (SinkClose input m output)
@@ -100,7 +106,7 @@ appHelper istate = SinkData (pushHelper istate) (closeHelper istate)
 pushHelper :: Resource m
            => SinkState input m a b
            -> [input]
-           -> ResourceT m (Maybe (SinkResult input b))
+           -> ResourceT m (Result (SinkResult input b))
 pushHelper istate stream0 = do
     state <- readRef istate
     go state stream0
@@ -108,20 +114,20 @@ pushHelper istate stream0 = do
     go (SinkPair f _, eb) stream = do
         mres <- f stream
         case mres of
-            Nothing -> return Nothing
-            Just (SinkResult leftover res) -> do
+            Processing -> return Processing
+            Done (SinkResult leftover res) -> do
                 let state' = (SinkOutput res, eb)
                 writeRef istate state'
                 go state' leftover
     go (f@SinkOutput{}, SinkPair b _) stream = do
         mres <- b stream
         case mres of
-            Nothing -> return Nothing
-            Just (SinkResult leftover res) -> do
+            Processing -> return Processing
+            Done (SinkResult leftover res) -> do
                 let state' = (f, SinkOutput res)
                 writeRef istate state'
                 go state' leftover
-    go (SinkOutput f, SinkOutput b) leftover = return $ Just $ SinkResult leftover $ f b
+    go (SinkOutput f, SinkOutput b) leftover = return $ Done $ SinkResult leftover $ f b
 
 closeHelper :: Resource m
             => SinkState input m a b
@@ -159,31 +165,31 @@ sinkJoin (SinkM msink) = SinkM $ do
     case sink of
         SinkNoData (SinkM inner) -> inner
         SinkData pushO closeO -> do
-            istate <- newRef Nothing
+            istate <- newRef Processing
             return $ SinkData (push istate pushO) (close istate closeO)
   where
     push istate pushO stream = do
         state <- readRef istate
         case state of
-            Just (pushI, _) -> pushI stream
-            Nothing -> do
+            Done (pushI, _) -> pushI stream
+            Processing -> do
                 minner' <- pushO stream
                 case minner' of
-                    Nothing -> return Nothing
-                    Just (SinkResult leftover (SinkM msink')) -> do
+                    Processing -> return Processing
+                    Done (SinkResult leftover (SinkM msink')) -> do
                         sink <- msink'
                         case sink of
                             SinkData pushI closeI -> do
-                                writeRef istate $ Just (pushI, closeI)
+                                writeRef istate $ Done (pushI, closeI)
                                 if null leftover
-                                    then return Nothing
+                                    then return Processing
                                     else push istate pushO leftover
-                            SinkNoData x -> return $ Just $ SinkResult leftover x
+                            SinkNoData x -> return $ Done $ SinkResult leftover x
     close istate closeO input = do
         state <- readRef istate
         case state of
-            Just (_, closeI) -> closeI input
-            Nothing -> do
+            Done (_, closeI) -> closeI input
+            Processing -> do
                 SinkResult leftover (SinkM minner) <- closeO input
                 inner <- minner
                 case inner of

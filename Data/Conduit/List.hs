@@ -34,7 +34,7 @@ fold :: Resource m
      -> SinkM a m b
 fold f accum0 = sinkMState
     accum0
-    (\accum input -> return (foldl' f accum input, Nothing))
+    (\accum input -> return (foldl' f accum input, Processing))
     (\accum input -> return $ SinkResult [] (foldl' f accum input))
 
 foldM :: Resource m
@@ -45,7 +45,7 @@ foldM f accum0 = sinkMState
     accum0
     (\accum input -> do
         accum' <- lift $ Monad.foldM f accum input
-        return (accum', Nothing))
+        return (accum', Processing))
     (\accum input -> do
         output <- lift $ Monad.foldM f accum input
         return $ SinkResult [] output)
@@ -57,7 +57,7 @@ mapM_ f = sinkMState
     ()
     (\() input -> do
         lift (Monad.mapM_ f input)
-        return ((), Nothing))
+        return ((), Processing))
     (\() input -> do
         lift (Monad.mapM_ f input)
         return (SinkResult [] ()))
@@ -80,7 +80,7 @@ drop count0 = sinkMState
     push count cs = do
         let (a, b) = splitAt count cs
             count' = count - length a
-            res = if count' == 0 then Just (SinkResult b ()) else assert (null b) Nothing
+            res = if count' == 0 then Done (SinkResult b ()) else assert (null b) Processing
         return (count', res)
     close count cs = do
         let (_, b) = splitAt count cs
@@ -98,7 +98,7 @@ take count0 = sinkMState
         let (a, b) = splitAt count cs
             count' = count - length a
             front' = front . (a ++)
-            res = if count' == 0 then Just (SinkResult b $ front' []) else assert (null b) Nothing
+            res = if count' == 0 then Done (SinkResult b $ front' []) else assert (null b) Processing
         return ((count', front'), res)
     close (count, front) cs = do
         let (a, b) = splitAt count cs
@@ -111,8 +111,8 @@ head = sinkMState
     close
   where
     push True _ = error "head: called after result given"
-    push False [] = return (False, Nothing)
-    push False (a:as) = return (True, Just $ SinkResult as (Just a))
+    push False [] = return (False, Processing)
+    push False (a:as) = return (True, Done $ SinkResult as (Just a))
     close True _ = error "head: called after result given"
     close False [] = return $ SinkResult [] Nothing
     close False (a:as) = return $ SinkResult as (Just a)
@@ -121,32 +121,32 @@ peek :: Resource m => SinkM a m (Maybe a)
 peek =
     SinkM $ return $ SinkData push close
   where
-    push [] = return Nothing
-    push l@(a:_) = return $ Just $ SinkResult l $ Just a
+    push [] = return Processing
+    push l@(a:_) = return $ Done $ SinkResult l $ Just a
     close [] = return $ SinkResult [] Nothing
     close l@(a:_) = return $ SinkResult l $ Just a
 
 map :: Monad m => (a -> b) -> ConduitM a m b
 map f = ConduitM $ return $ Conduit
-    { conduitPush = return . ConduitResult Nothing . fmap f
+    { conduitPush = return . ConduitResult Processing . fmap f
     , conduitClose = \x -> return $ ConduitResult [] $ fmap f x
     }
 
 mapM :: Monad m => (a -> m b) -> ConduitM a m b
 mapM f = ConduitM $ return $ Conduit
-    { conduitPush = fmap (ConduitResult Nothing) . lift . Prelude.mapM f
+    { conduitPush = fmap (ConduitResult Processing) . lift . Prelude.mapM f
     , conduitClose = fmap (ConduitResult []) . lift . Prelude.mapM f
     }
 
 concatMap :: Monad m => (a -> [b]) -> ConduitM a m b
 concatMap f = ConduitM $ return $ Conduit
-    { conduitPush = return . ConduitResult Nothing . (>>= f)
+    { conduitPush = return . ConduitResult Processing . (>>= f)
     , conduitClose = \input -> return $ ConduitResult [] (input >>= f)
     }
 
 concatMapM :: Monad m => (a -> m [b]) -> ConduitM a m b
 concatMapM f = ConduitM $ return $ Conduit
-    { conduitPush = fmap (ConduitResult Nothing . Prelude.concat) . lift . Monad.mapM f
+    { conduitPush = fmap (ConduitResult Processing . Prelude.concat) . lift . Monad.mapM f
     , conduitClose = \input -> do
         x <- lift $ Monad.mapM f input
         return $ ConduitResult [] $ Prelude.concat x
@@ -155,7 +155,7 @@ concatMapM f = ConduitM $ return $ Conduit
 consume :: Resource m => SinkM a m [a]
 consume = sinkMState
     id
-    (\front input -> return (front . (input ++), Nothing))
+    (\front input -> return (front . (input ++), Processing))
     (\front input -> return $ SinkResult [] $ front input)
 
 isolate :: Resource m => Int -> ConduitM a m a
@@ -169,11 +169,11 @@ isolate count0 = conduitMState
         return $ ConduitResult b a
     push count cs = do
         if count == 0
-            then return (count, ConduitResult (Just cs) [])
+            then return (count, ConduitResult (Done cs) [])
             else do
                 let (a, b) = splitAt count cs
                     count' = count - length a
                 return (count',
                     if count' == 0
-                        then ConduitResult (Just b) a
-                        else assert (null b) $ ConduitResult Nothing a)
+                        then ConduitResult (Done b) a
+                        else assert (null b) $ ConduitResult Processing a)

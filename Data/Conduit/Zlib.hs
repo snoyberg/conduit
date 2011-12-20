@@ -34,7 +34,7 @@ decompress config = ConduitM $ do
     inf <- lift $ unsafeFromIO $ initInflate config
     return $ Conduit (push id inf) (close id inf)
   where
-    push front _ [] = return $ ConduitResult Nothing $ front []
+    push front _ [] = return $ ConduitResult Processing $ front []
     push front inf (x:xs) = do
         chunks <- lift $ unsafeFromIO $ withInflateInput inf x callback
         push (front . (chunks ++)) inf xs
@@ -58,7 +58,7 @@ compress level config = ConduitM $ do
     def <- lift $ unsafeFromIO $ initDeflate level config
     return $ Conduit (push id def) (close id def)
   where
-    push front _ [] = return $ ConduitResult Nothing $ front []
+    push front _ [] = return $ ConduitResult Processing $ front []
     push front def (x:xs) = do
         chunks <- lift $ unsafeFromIO $ withDeflateInput def x callback
         push (front . (chunks ++)) def xs

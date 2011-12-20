@@ -32,7 +32,7 @@ module Data.Conduit.Blaze
 
     ) where
 
-import Data.Conduit
+import Data.Conduit hiding (Result (Done))
 import Control.Monad.Trans.Resource
 import Control.Monad.Trans.Class
 
@@ -113,7 +113,7 @@ builderToByteStringWith (ioBuf0, nextBuf) = conduitMState
 
     push ioBuf xs = lift $ unsafeFromIO $ do
         (ioBuf', front) <- go (unBuilder (mconcat xs) (buildStep finalStep)) ioBuf id
-        return (ioBuf', ConduitResult Nothing $ front [])
+        return (ioBuf', ConduitResult Processing $ front [])
 
     go bStep ioBuf front = do
         !buf   <- ioBuf

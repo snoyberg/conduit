@@ -31,13 +31,13 @@ conduits2 = C.runResourceT
     C.$$ CB.sinkFile "tmp"
 
 enumerator1 :: IO ()
-enumerator1 = SIO.withFile "tmp" SIO.WriteMode $ \h -> E.run_
+enumerator1 = SIO.withBinaryFile "tmp" SIO.WriteMode $ \h -> E.run_
     $ EB.enumFile filePath
     E.$$ EZ.ungzip
     E.=$ EB.iterHandle h
 
 enumerator2 :: IO ()
-enumerator2 = SIO.withFile "tmp" SIO.WriteMode $ \h -> E.run_
+enumerator2 = SIO.withBinaryFile "tmp" SIO.WriteMode $ \h -> E.run_
     $ EB.enumFile filePath
     E.$= EZ.ungzip
     E.$$ EB.iterHandle h

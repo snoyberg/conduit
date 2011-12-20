@@ -35,7 +35,7 @@ sinkFile :: ResourceIO m
 sinkFile fp = sinkMIO
     (openFile fp WriteMode)
     hClose
-    (\handle bss -> safeFromIO (L.hPut handle $ L.fromChunks bss) >> return Nothing)
+    (\handle bss -> safeFromIO (L.hPut handle $ L.fromChunks bss) >> return Processing)
     (\handle bss -> do
         safeFromIO $ L.hPut handle $ L.fromChunks bss
         return $ SinkResult [] ())
@@ -50,7 +50,7 @@ conduitFile fp = conduitMIO
     hClose
     (\handle bss -> do
         safeFromIO $ L.hPut handle $ L.fromChunks bss
-        return $ ConduitResult Nothing bss)
+        return $ ConduitResult Processing bss)
     (\handle bss -> do
         safeFromIO $ L.hPut handle $ L.fromChunks bss
         return $ ConduitResult [] bss)
@@ -63,14 +63,14 @@ isolate count0 = conduitMState
     push
     close
   where
-    push 0 bss = return (0, ConduitResult (Just bss) [])
+    push 0 bss = return (0, ConduitResult (Done bss) [])
     push count bss = do
         let (a, b) = L.splitAt count $ L.fromChunks bss
         let count' = count - L.length a
         return (count',
             if count' == 0
-                then ConduitResult (Just $ L.toChunks b) (L.toChunks a)
-                else assert (L.null b) $ ConduitResult Nothing (L.toChunks a))
+                then ConduitResult (Done $ L.toChunks b) (L.toChunks a)
+                else assert (L.null b) $ ConduitResult Processing (L.toChunks a))
     close count bss = do
         let (a, b) = L.splitAt count $ L.fromChunks bss
         return $ ConduitResult (L.toChunks b) (L.toChunks a)
