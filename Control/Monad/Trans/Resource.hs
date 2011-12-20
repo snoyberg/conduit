@@ -298,19 +298,21 @@ instance MonadIO m => MonadIO (ResourceT m) where
 instance MonadBase b m => MonadBase b (ResourceT m) where
     liftBase = lift . liftBase
 
-{- Maybe it's a good thing this can't be implemented...
+{-
 instance MonadTransControl ResourceT where
     newtype StT ResourceT a = StReader {unStReader :: a}
     liftWith f = ResourceT $ \r -> f $ \(ResourceT t) -> liftM StReader $ t r
     restoreT = ResourceT . const . liftM unStReader
     {-# INLINE liftWith #-}
     {-# INLINE restoreT #-}
+-}
 
 instance MonadBaseControl b m => MonadBaseControl b (ResourceT m) where
-     newtype StM (ResourceT m) a = StMT {unStMT :: ComposeSt ResourceT m a}
-     liftBaseWith = defaultLiftBaseWith StMT
-     restoreM     = defaultRestoreM   unStMT
--}
+     newtype StM (ResourceT m) a = StMT (StM m a)
+     liftBaseWith f = ResourceT $ \reader ->
+         liftBaseWith $ \runInBase ->
+             f $ liftM StMT . runInBase . (\(ResourceT r) -> r reader)
+     restoreM (StMT base) = ResourceT $ const $ restoreM base
 
 -- | The express purpose of this transformer is to allow the 'ST' monad to
 -- catch exceptions via the 'ResourceThrow' typeclass.
