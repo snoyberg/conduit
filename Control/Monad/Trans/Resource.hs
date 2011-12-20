@@ -37,7 +37,6 @@ import qualified Data.IntMap as IntMap
 import Control.Exception (SomeException)
 import Control.Monad.Trans.Control
     ( MonadTransControl (..), MonadBaseControl (..)
-    , control
     , ComposeSt, defaultLiftBaseWith, defaultRestoreM
     )
 import qualified Data.IORef as I
@@ -178,7 +177,7 @@ instance (MonadTransControl t, Resource m, Monad (t m)) => Resource (t m) where
     resourceFinally a b =
         control' $ \run -> resourceFinally (run a) b
       where
-        control' f = liftWith f >>= restoreT
+        control' f = liftWith f >>= restoreT . return
 
 instance (MonadTransControl t, ResourceUnsafeIO m, Monad (t m)) => ResourceUnsafeIO (t m) where
     unsafeFromIO = lift . unsafeFromIO
