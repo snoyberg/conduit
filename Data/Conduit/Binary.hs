@@ -13,9 +13,9 @@ import qualified Data.ByteString as S
 import qualified Data.ByteString.Lazy as L
 import Filesystem (openFile, IOMode (ReadMode, WriteMode))
 import Data.Conduit
-import Control.Monad.Trans.Resource
 import Data.Int (Int64)
 import Control.Exception (assert)
+import Control.Monad.IO.Class (liftIO)
 
 sourceFile :: ResourceIO m
            => FilePath
@@ -24,7 +24,7 @@ sourceFile fp = sourceMIO
     (openFile fp ReadMode)
     hClose
     (\handle -> do
-        bs <- safeFromIO $ S.hGetSome handle 4096
+        bs <- liftIO $ S.hGetSome handle 4096
         if S.null bs
             then return $ SourceResult StreamClosed []
             else return $ SourceResult StreamOpen [bs])
@@ -35,9 +35,9 @@ sinkFile :: ResourceIO m
 sinkFile fp = sinkMIO
     (openFile fp WriteMode)
     hClose
-    (\handle bss -> safeFromIO (L.hPut handle $ L.fromChunks bss) >> return Processing)
+    (\handle bss -> liftIO (L.hPut handle $ L.fromChunks bss) >> return Processing)
     (\handle bss -> do
-        safeFromIO $ L.hPut handle $ L.fromChunks bss
+        liftIO $ L.hPut handle $ L.fromChunks bss
         return $ SinkResult [] ())
 
 -- | Stream the contents of the input to a file, and also send it along the
@@ -49,10 +49,10 @@ conduitFile fp = conduitMIO
     (openFile fp WriteMode)
     hClose
     (\handle bss -> do
-        safeFromIO $ L.hPut handle $ L.fromChunks bss
+        liftIO $ L.hPut handle $ L.fromChunks bss
         return $ ConduitResult Processing bss)
     (\handle bss -> do
-        safeFromIO $ L.hPut handle $ L.fromChunks bss
+        liftIO $ L.hPut handle $ L.fromChunks bss
         return $ ConduitResult [] bss)
 
 isolate :: Resource m
