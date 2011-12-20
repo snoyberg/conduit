@@ -33,15 +33,16 @@ instance Functor SourceResult where
 -- resources should be automatically released anyway. Closing a 'Source' early
 -- is merely an optimization to free scarce resources as soon as possible.
 --
--- A 'Source' has two invariants:
+-- A 'Source' has three invariants:
 --
 -- * It is illegal to call 'sourcePull' after a previous call returns 'StreamClosed'.
 --
--- * It is legal to call 'sourceClose' multiple times.
+-- * It is illegal to call 'sourceClose' multiple times, or after a previous
+-- 'sourcePull' returns a 'StreamClosed'.
 --
--- 'Source's are not expected to call 'sourceClose' when they return an
--- 'SourceClosed' from 'sourcePull', though based on the second invariant, they
--- are free to do so.
+-- * A 'Source' is responsible to free any resources when either 'sourceClose'
+-- is called or a 'StreamClosed' is returned. However, based on the usage of
+-- 'ResourceT', this is simply an optimization.
 data Source m a = Source
     { sourcePull :: ResourceT m (SourceResult a)
     , sourceClose :: ResourceT m ()

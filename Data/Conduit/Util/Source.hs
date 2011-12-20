@@ -21,14 +21,16 @@ sourceMState
     => state -- ^ Initial state
     -> (state -> ResourceT m (state, SourceResult output)) -- ^ Pull function
     -> SourceM m output
-sourceMState state0 pull = sourceM
-    (newRef state0)
-    (const $ return ())
-    (\istate -> do
-        state <- readRef istate
-        (state', res) <- pull state
-        writeRef istate state'
-        return res)
+sourceMState state0 pull = SourceM $ do
+    istate <- newRef state0
+    return Source
+        { sourcePull = do
+            state <- readRef istate
+            (state', res) <- pull state
+            writeRef istate state'
+            return res
+        , sourceClose = return ()
+        }
 
 -- | Construct a 'SourceM'.
 sourceM :: Monad m
@@ -39,7 +41,12 @@ sourceM :: Monad m
 sourceM alloc cleanup pull = SourceM $ do
     state <- alloc
     return Source
-        { sourcePull = pull state
+        { sourcePull = do
+            res@(SourceResult s _) <- pull state
+            case s of
+                StreamClosed -> cleanup state
+                _ -> return ()
+            return res
         , sourceClose = cleanup state
         }
 

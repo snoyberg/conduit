@@ -72,7 +72,9 @@ bs' $$ SinkM msink = do
                     SinkResult leftover mres <- push a
                     bsourceUnpull bs leftover
                     case mres of
-                        Just res -> return res
+                        Just res -> do
+                            bsourceClose bs
+                            return res
                         Nothing -> loop
 
 infixl 1 $=
