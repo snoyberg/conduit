@@ -4,12 +4,13 @@
 -- | Utilities for constructing and covnerting conduits. Please see
 -- "Data.Conduit.Types.Conduit" for more information on the base types.
 module Data.Conduit.Util.Conduit
-    ( conduitM
+    ( conduitMIO
     , conduitMState
     , transConduitM
     ) where
 
 import Control.Monad.Trans.Resource
+import Control.Monad.Trans.Class
 import Data.Conduit.Types.Conduit
 import Control.Monad (liftM)
 
@@ -21,35 +22,36 @@ conduitMState
     -> (state -> [input] -> ResourceT m (state, ConduitResult (Maybe [input]) output)) -- ^ Push function.
     -> (state -> [input] -> ResourceT m (ConduitResult [input] output)) -- ^ Close function. The state need not be returned, since it will not be used again.
     -> ConduitM input m output
-conduitMState state0 push close = conduitM
-    (newRef state0)
-    (const $ return ())
-    (\istate input -> do
-        state <- readRef istate
-        (state', res) <- push state input
-        writeRef istate state'
-        return res)
-    (\istate input -> readRef istate >>= flip close input)
-
--- | Construct a 'ConduitM'.
-conduitM :: Monad m
-         => ResourceT m state -- ^ resource and/or state allocation
-         -> (state -> ResourceT m ()) -- ^ resource and/or state cleanup
-         -> (state -> [input] -> ResourceT m (ConduitResult (Maybe [input]) output)) -- ^ Push function. Note that this need not explicitly perform any cleanup.
-         -> (state -> [input] -> ResourceT m (ConduitResult [input] output)) -- ^ Close function. Note that this need not explicitly perform any cleanup.
-         -> ConduitM input m output
-conduitM alloc cleanup push close = ConduitM $ do
-    state <- alloc
+conduitMState state0 push close = ConduitM $ do
+    istate <- newRef state0
     return Conduit
         { conduitPush = \input -> do
-            res@(ConduitResult mleft _) <- push state input
+            state <- readRef istate
+            (state', res) <- push state input
+            writeRef istate state'
+            return res
+        , conduitClose = \input -> readRef istate >>= flip close input
+        }
+
+-- | Construct a 'ConduitM'.
+conduitMIO :: ResourceIO m
+           => IO state -- ^ resource and/or state allocation
+           -> (state -> IO ()) -- ^ resource and/or state cleanup
+           -> (state -> [input] -> m (ConduitResult (Maybe [input]) output)) -- ^ Push function. Note that this need not explicitly perform any cleanup.
+           -> (state -> [input] -> m (ConduitResult [input] output)) -- ^ Close function. Note that this need not explicitly perform any cleanup.
+           -> ConduitM input m output
+conduitMIO alloc cleanup push close = ConduitM $ do
+    (key, state) <- withIO alloc cleanup
+    return Conduit
+        { conduitPush = \input -> do
+            res@(ConduitResult mleft _) <- lift $ push state input
             case mleft of
                 Nothing -> return ()
-                Just _ -> cleanup state
+                Just _ -> release key
             return res
         , conduitClose = \input -> do
-            output <- close state input
-            cleanup state
+            output <- lift $ close state input
+            release key
             return output
         }
 

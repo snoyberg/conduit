@@ -4,12 +4,13 @@
 -- | Utilities for constructing 'SinkM's. Please see "Data.Conduit.Types.Sink"
 -- for more information on the base types.
 module Data.Conduit.Util.Sink
-    ( sinkM
+    ( sinkMIO
     , sinkMState
     , transSinkM
     ) where
 
 import Control.Monad.Trans.Resource
+import Control.Monad.Trans.Class (lift)
 import Data.Conduit.Types.Sink
 import Control.Monad (liftM)
 
@@ -21,34 +22,35 @@ sinkMState
     -> (state -> [input] -> ResourceT m (state, Maybe (SinkResult input output))) -- ^ push
     -> (state -> [input] -> ResourceT m (SinkResult input output)) -- ^ Close. Note that the state is not returned, as it is not needed.
     -> SinkM input m output
-sinkMState state0 push close = sinkM
-    (newRef state0)
-    (const $ return ())
-    (\istate input -> do
-        state <- readRef istate
-        (state', res) <- push state input
-        writeRef istate state'
-        return res)
-    (\istate input -> readRef istate >>= flip close input)
+sinkMState state0 push close = SinkM $ do
+    istate <- newRef state0
+    return SinkData
+        { sinkPush = \input -> do
+            state <- readRef istate
+            (state', res) <- push state input
+            writeRef istate state'
+            return res
+        , sinkClose = \input -> readRef istate >>= flip close input
+        }
 
 -- | Construct a 'SinkM'. Note that your push and close functions need not
 -- explicitly perform any cleanup.
-sinkM :: Monad m
-      => ResourceT m state -- ^ resource and/or state allocation
-      -> (state -> ResourceT m ()) -- ^ resource and/or state cleanup
-      -> (state -> [input] -> ResourceT m (Maybe (SinkResult input output))) -- ^ push
-      -> (state -> [input] -> ResourceT m (SinkResult input output)) -- ^ close
-      -> SinkM input m output
-sinkM alloc cleanup push close = SinkM $ do
-    state <- alloc
+sinkMIO :: ResourceIO m
+        => IO state -- ^ resource and/or state allocation
+        -> (state -> IO ()) -- ^ resource and/or state cleanup
+        -> (state -> [input] -> m (Maybe (SinkResult input output))) -- ^ push
+        -> (state -> [input] -> m (SinkResult input output)) -- ^ close
+        -> SinkM input m output
+sinkMIO alloc cleanup push close = SinkM $ do
+    (key, state) <- withIO alloc cleanup
     return SinkData
         { sinkPush = \input -> do
-            res <- push state input
-            maybe (return ()) (const $ cleanup state) res
+            res <- lift $ push state input
+            maybe (return ()) (const $ release key) res
             return res
         , sinkClose = \input -> do
-            res <- close state input
-            cleanup state
+            res <- lift $ close state input
+            release key
             return res
         }
 

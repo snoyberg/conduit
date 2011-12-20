@@ -2,6 +2,7 @@
 module Data.Conduit.Binary
     ( sourceFile
     , sinkFile
+    , conduitFile
     , isolate
     ) where
 
@@ -14,17 +15,16 @@ import Filesystem (openFile, IOMode (ReadMode, WriteMode))
 import Data.Conduit
 import Control.Monad.Trans.Resource
 import Data.Int (Int64)
-import Control.Monad.Trans.Class (lift)
 import Control.Exception (assert)
 
 sourceFile :: ResourceIO m
            => FilePath
            -> SourceM m S.ByteString
-sourceFile fp = sourceM
-    (with (safeFromIOBase $ openFile fp ReadMode) (safeFromIOBase . hClose))
-    (\(key, _) -> release key)
-    (\(_, handle) -> do
-        bs <- lift $ safeFromIO $ S.hGetSome handle 4096
+sourceFile fp = sourceMIO
+    (openFile fp ReadMode)
+    hClose
+    (\handle -> do
+        bs <- safeFromIO $ S.hGetSome handle 4096
         if S.null bs
             then return $ SourceResult StreamClosed []
             else return $ SourceResult StreamOpen [bs])
@@ -32,13 +32,28 @@ sourceFile fp = sourceM
 sinkFile :: ResourceIO m
          => FilePath
          -> SinkM S.ByteString m ()
-sinkFile fp = sinkM
-    (with (safeFromIOBase $ openFile fp WriteMode) (safeFromIOBase . hClose))
-    (\(key, _) -> release key)
-    (\(_, handle) bss -> lift $ safeFromIO (L.hPut handle $ L.fromChunks bss) >> return Nothing)
-    (\(_, handle) bss -> do
-        lift $ safeFromIO $ L.hPut handle $ L.fromChunks bss
+sinkFile fp = sinkMIO
+    (openFile fp WriteMode)
+    hClose
+    (\handle bss -> safeFromIO (L.hPut handle $ L.fromChunks bss) >> return Nothing)
+    (\handle bss -> do
+        safeFromIO $ L.hPut handle $ L.fromChunks bss
         return $ SinkResult [] ())
+
+-- | Stream the contents of the input to a file, and also send it along the
+-- pipeline. Similar in concept to the Unix command @tee@.
+conduitFile :: ResourceIO m
+            => FilePath
+            -> ConduitM S.ByteString m S.ByteString
+conduitFile fp = conduitMIO
+    (openFile fp WriteMode)
+    hClose
+    (\handle bss -> do
+        safeFromIO $ L.hPut handle $ L.fromChunks bss
+        return $ ConduitResult Nothing bss)
+    (\handle bss -> do
+        safeFromIO $ L.hPut handle $ L.fromChunks bss
+        return $ ConduitResult [] bss)
 
 isolate :: Resource m
         => Int64

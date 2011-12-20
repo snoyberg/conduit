@@ -57,6 +57,15 @@ main = hspecX $ do
             bs1 <- S.readFile "conduit.cabal"
             bs2 <- S.readFile "tmp"
             bs1 @=? bs2
+        it "conduit" $ do
+            runResourceT $ CB.sourceFile "conduit.cabal"
+                C.$= CB.conduitFile "tmp"
+                C.$$ CB.sinkFile "tmp2"
+            bs1 <- S.readFile "conduit.cabal"
+            bs2 <- S.readFile "tmp"
+            bs3 <- S.readFile "tmp2"
+            bs1 @=? bs2
+            bs1 @=? bs3
     describe "Monad instance for Sink" $ do
         it "binding" $ do
             x <- runResourceT $ CL.fromList [1..10] C.$$ do
@@ -126,7 +135,7 @@ main = hspecX $ do
     describe "lazy" $ do
         it' "works inside a ResourceT" $ runResourceT $ do
             counter <- C.liftBase $ I.newIORef 0
-            let incr i = C.sourceM
+            let incr i = C.sourceMIO
                     (C.liftBase $ I.newIORef $ C.SourceResult C.StreamOpen [i :: Int])
                     (const $ return ())
                     (\istate -> do

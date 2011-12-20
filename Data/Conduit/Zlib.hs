@@ -30,11 +30,9 @@ decompress
     :: ResourceUnsafeIO m
     => WindowBits -- ^ Zlib parameter (see the zlib-bindings package as well as the zlib C library)
     -> ConduitM ByteString m ByteString
-decompress config = conduitM
-    (lift $ unsafeFromIO $ initInflate config)
-    (const $ return ())
-    (push id)
-    (close id)
+decompress config = ConduitM $ do
+    inf <- lift $ unsafeFromIO $ initInflate config
+    return $ Conduit (push id inf) (close id inf)
   where
     push front _ [] = return $ ConduitResult Nothing $ front []
     push front inf (x:xs) = do
@@ -56,11 +54,9 @@ compress
     => Int         -- ^ Compression level
     -> WindowBits  -- ^ Zlib parameter (see the zlib-bindings package as well as the zlib C library)
     -> ConduitM ByteString m ByteString
-compress level config = conduitM
-    (lift $ unsafeFromIO $ initDeflate level config)
-    (const $ return ())
-    (push id)
-    (close id)
+compress level config = ConduitM $ do
+    def <- lift $ unsafeFromIO $ initDeflate level config
+    return $ Conduit (push id def) (close id def)
   where
     push front _ [] = return $ ConduitResult Nothing $ front []
     push front def (x:xs) = do

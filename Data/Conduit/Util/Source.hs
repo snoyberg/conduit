@@ -5,12 +5,13 @@
 -- 'BSource' types. Please see "Data.Conduit.Types.Source" for more information
 -- on the base types.
 module Data.Conduit.Util.Source
-    ( sourceM
+    ( sourceMIO
     , transSourceM
     , sourceMState
     ) where
 
 import Control.Monad.Trans.Resource
+import Control.Monad.Trans.Class (lift)
 import Data.Conduit.Types.Source
 import Control.Monad (liftM)
 
@@ -32,22 +33,22 @@ sourceMState state0 pull = SourceM $ do
         , sourceClose = return ()
         }
 
--- | Construct a 'SourceM'.
-sourceM :: Monad m
-        => ResourceT m state -- ^ resource and/or state allocation
-        -> (state -> ResourceT m ()) -- ^ resource and/or state cleanup
-        -> (state -> ResourceT m (SourceResult output)) -- ^ Pull function. Note that this need not explicitly perform any cleanup.
-        -> SourceM m output
-sourceM alloc cleanup pull = SourceM $ do
-    state <- alloc
+-- | Construct a 'SourceM' based on some IO actions for alloc/release.
+sourceMIO :: ResourceIO m
+          => IO state -- ^ resource and/or state allocation
+          -> (state -> IO ()) -- ^ resource and/or state cleanup
+          -> (state -> m (SourceResult output)) -- ^ Pull function. Note that this need not explicitly perform any cleanup.
+          -> SourceM m output
+sourceMIO alloc cleanup pull = SourceM $ do
+    (key, state) <- withIO alloc cleanup
     return Source
         { sourcePull = do
-            res@(SourceResult s _) <- pull state
+            res@(SourceResult s _) <- lift $ pull state
             case s of
-                StreamClosed -> cleanup state
+                StreamClosed -> release key
                 _ -> return ()
             return res
-        , sourceClose = cleanup state
+        , sourceClose = release key
         }
 
 -- | Transform the monad a 'SourceM' lives in.

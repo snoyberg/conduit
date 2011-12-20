@@ -25,6 +25,7 @@ module Control.Monad.Trans.Resource
     , runResourceT
       -- * Resource allocation
     , with
+    , withIO
     , register
     , release
       -- * Monad transformation
@@ -209,6 +210,15 @@ with :: Resource m
 with acquire rel = ResourceT $ \istate -> resourceLiftBase $ mask $ \restore -> do
     a <- restore acquire
     key <- register' istate $ rel a
+    return (key, a)
+
+withIO :: ResourceIO m
+       => IO a -- ^ allocate
+       -> (a -> IO ()) -- ^ free resource
+       -> ResourceT m (ReleaseKey, a)
+withIO acquire rel = ResourceT $ \istate -> resourceLiftBase $ mask $ \restore -> do
+    a <- restore $ safeFromIOBase acquire
+    key <- register' istate $ safeFromIOBase $ safeFromIOBase $ rel a
     return (key, a)
 
 register :: Resource m
