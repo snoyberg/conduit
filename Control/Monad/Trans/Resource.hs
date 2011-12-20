@@ -77,16 +77,36 @@ writeRef r = lift . resourceLiftBase . writeRef' r
 modifyRef :: Resource m => Ref (Base m) a -> (a -> (a, b)) -> ResourceT m b
 modifyRef r = lift . resourceLiftBase . modifyRef' r
 
+-- | A base monad which provides mutable references and some exception-safe way
+-- of interacting with them. For monads which cannot handle exceptions (e.g.,
+-- 'ST'), exceptions may be ignored. However, in such cases, scarce resources
+-- should /not/ be allocated in those monads, as exceptions may cause the
+-- cleanup functions to not run.
+--
+-- The instance for 'IO', however, is fully exception-safe.
+--
+-- Minimal complete definition: @Ref@, @newRef'@, @readRef'@ and @writeRef'@.
 class Monad m => HasRef m where
     type Ref m :: * -> *
     newRef' :: a -> m (Ref m a)
-    modifyRef' :: Ref m a -> (a -> (a, b)) -> m b
     readRef' :: Ref m a -> m a
     writeRef' :: Ref m a -> a -> m ()
+
+    modifyRef' :: Ref m a -> (a -> (a, b)) -> m b
+    modifyRef' sa f = do
+        a0 <- readRef' sa
+        let (a, b) = f a0
+        writeRef' sa a
+        return b
+
     mask :: ((forall a. m a -> m a) -> m b) -> m b
+    mask f = f id
+
     mask_ :: m a -> m a
-    finally' :: m a -> m b -> m a
+    mask_ = mask . const
+
     try :: m a -> m (Either SomeException a)
+    try = liftM Right
 
 instance HasRef IO where
     type Ref IO = I.IORef
@@ -96,79 +116,42 @@ instance HasRef IO where
     writeRef' = I.writeIORef
     mask = E.mask
     mask_ = E.mask_
-    finally' = E.finally
     try = E.try
 
 instance HasRef (ST s) where
     type Ref (ST s) = S.STRef s
     newRef' = S.newSTRef
-    modifyRef' sa f = do
-        a0 <- S.readSTRef sa
-        let (a, b) = f a0
-        S.writeSTRef sa a
-        return b
     readRef' = S.readSTRef
     writeRef' = S.writeSTRef
-    mask f = f id
-    mask_ = id
-    finally' ma mb = ma >>= \a -> mb >> return a
-    try = fmap Right
 
 instance HasRef (Lazy.ST s) where
     type Ref (Lazy.ST s) = SL.STRef s
     newRef' = SL.newSTRef
-    modifyRef' sa f = do
-        a0 <- SL.readSTRef sa
-        let (a, b) = f a0
-        SL.writeSTRef sa a
-        return b
     readRef' = SL.readSTRef
     writeRef' = SL.writeSTRef
-    mask f = f id
-    mask_ = id
-    finally' ma mb = ma >>= \a -> mb >> return a
-    try = fmap Right
 
+-- | A 'Monad' with a base that has mutable references, and allows some way to
+-- run base actions and clean up properly.
 class (HasRef (Base m), Monad m) => Resource m where
     type Base m :: * -> *
 
     resourceLiftBase :: Base m a -> m a
     resourceFinally :: m a -> Base m b -> m a
 
--- | A 'Resource' based on some monad which allows running of some 'IO'
--- actions, via unsafe calls. This applies to 'IO' and 'ST', for instance.
-class Resource m => ResourceUnsafeIO m where
-    unsafeFromIO :: IO a -> m a
-
--- | A 'Resource' which can throw some types of exceptions.
-class Resource m => ResourceThrow m where
-    resourceThrow :: E.Exception e => e -> m a
-
 instance Resource IO where
     type Base IO = IO
     resourceLiftBase = id
     resourceFinally = E.finally
 
-instance ResourceUnsafeIO IO where
-    unsafeFromIO = id
-
 instance Resource (ST s) where
     type Base (ST s) = ST s
-
     resourceLiftBase = id
-    resourceFinally = finally'
-
-instance ResourceUnsafeIO (ST s) where
-    unsafeFromIO = unsafeIOToST
+    resourceFinally ma mb = ma >>= \a -> mb >> return a
 
 instance Resource (Lazy.ST s) where
     type Base (Lazy.ST s) = Lazy.ST s
-
     resourceLiftBase = id
-    resourceFinally = finally'
-
-instance ResourceUnsafeIO (Lazy.ST s) where
-    unsafeFromIO = Lazy.unsafeIOToST
+    resourceFinally ma mb = ma >>= \a -> mb >> return a
 
 instance (MonadTransControl t, Resource m, Monad (t m)) => Resource (t m) where
     type Base (t m) = Base m
@@ -178,6 +161,20 @@ instance (MonadTransControl t, Resource m, Monad (t m)) => Resource (t m) where
         control' $ \run -> resourceFinally (run a) b
       where
         control' f = liftWith f >>= restoreT . return
+
+-- | A 'Resource' based on some monad which allows running of some 'IO'
+-- actions, via unsafe calls. This applies to 'IO' and 'ST', for instance.
+class Resource m => ResourceUnsafeIO m where
+    unsafeFromIO :: IO a -> m a
+
+instance ResourceUnsafeIO IO where
+    unsafeFromIO = id
+
+instance ResourceUnsafeIO (ST s) where
+    unsafeFromIO = unsafeIOToST
+
+instance ResourceUnsafeIO (Lazy.ST s) where
+    unsafeFromIO = Lazy.unsafeIOToST
 
 instance (MonadTransControl t, ResourceUnsafeIO m, Monad (t m)) => ResourceUnsafeIO (t m) where
     unsafeFromIO = lift . unsafeFromIO
@@ -287,6 +284,8 @@ instance MonadBaseControl b m => MonadBaseControl b (ResourceT m) where
      restoreM     = defaultRestoreM   unStMT
 -}
 
+-- | The express purpose of this transformer is to allow the 'ST' monad to
+-- catch exceptions via the 'ResourceThrow' typeclass.
 newtype ExceptionT m a = ExceptionT { runExceptionT :: m (Either SomeException a) }
 
 runExceptionT_ :: Monad m => ExceptionT m a -> m a
@@ -327,6 +326,10 @@ instance MonadBaseControl b m => MonadBaseControl b (ExceptionT m) where
 instance (Resource m, MonadBaseControl (Base m) m)
         => ResourceThrow (ExceptionT m) where
     resourceThrow = ExceptionT . return . Left . E.toException
+
+-- | A 'Resource' which can throw some types of exceptions.
+class Resource m => ResourceThrow m where
+    resourceThrow :: E.Exception e => e -> m a
 
 instance ResourceThrow IO where
     resourceThrow = E.throwIO
