@@ -362,8 +362,8 @@ class Resource m => ResourceThrow m where
 instance ResourceThrow IO where
     resourceThrow = E.throwIO
 
-#define GO(T) instance (MonadBaseControl (Base m) m, ResourceThrow m) => ResourceThrow (T m) where resourceThrow = lift . resourceThrow
-#define GOX(X, T) instance (MonadBaseControl (Base m) m, X, ResourceThrow m) => ResourceThrow (T m) where resourceThrow = lift . resourceThrow
+#define GO(T) instance (ResourceThrow m) => ResourceThrow (T m) where resourceThrow = lift . resourceThrow
+#define GOX(X, T) instance (X, ResourceThrow m) => ResourceThrow (T m) where resourceThrow = lift . resourceThrow
 GO(IdentityT)
 GO(ListT)
 GO(MaybeT)
