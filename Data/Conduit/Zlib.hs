@@ -36,7 +36,7 @@ decompress config = conduitM
     (push id)
     (close id)
   where
-    push front _ [] = return $ ConduitResult StreamOpen [] $ front []
+    push front _ [] = return $ ConduitResult Nothing $ front []
     push front inf (x:xs) = do
         chunks <- lift $ unsafeFromIO $ withInflateInput inf x callback
         push (front . (chunks ++)) inf xs
@@ -45,7 +45,7 @@ decompress config = conduitM
         close (front . (chunks ++)) inf xs
     close front inf [] = do
         chunk <- lift $ unsafeFromIO $ finishInflate inf
-        return $ ConduitCloseResult [] $ front $ if S.null chunk then [] else [chunk]
+        return $ ConduitResult [] $ front $ if S.null chunk then [] else [chunk]
 
 -- |
 -- Compress (deflate) a stream of 'ByteString's. The 'WindowBits' also control
@@ -62,7 +62,7 @@ compress level config = conduitM
     (push id)
     (close id)
   where
-    push front _ [] = return $ ConduitResult StreamOpen [] $ front []
+    push front _ [] = return $ ConduitResult Nothing $ front []
     push front def (x:xs) = do
         chunks <- lift $ unsafeFromIO $ withDeflateInput def x callback
         push (front . (chunks ++)) def xs
@@ -71,7 +71,7 @@ compress level config = conduitM
         close (front . (chunks ++)) def xs
     close front def [] = do
         chunks <- lift $ unsafeFromIO $ finishDeflate def callback
-        return $ ConduitCloseResult [] $ front chunks
+        return $ ConduitResult [] $ front chunks
 
 callback :: Monad m => m (Maybe a) -> m [a]
 callback pop = go id where

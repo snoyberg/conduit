@@ -18,7 +18,7 @@ import Control.Monad (liftM)
 sinkMState
     :: Resource m
     => state -- ^ initial state
-    -> (state -> [input] -> ResourceT m (state, SinkResult input (Maybe output))) -- ^ push
+    -> (state -> [input] -> ResourceT m (state, Maybe (SinkResult input output))) -- ^ push
     -> (state -> [input] -> ResourceT m (SinkResult input output)) -- ^ Close. Note that the state is not returned, as it is not needed.
     -> SinkM input m output
 sinkMState state0 push close = sinkM
@@ -36,15 +36,15 @@ sinkMState state0 push close = sinkM
 sinkM :: Monad m
       => ResourceT m state -- ^ resource and/or state allocation
       -> (state -> ResourceT m ()) -- ^ resource and/or state cleanup
-      -> (state -> [input] -> ResourceT m (SinkResult input (Maybe output))) -- ^ push
+      -> (state -> [input] -> ResourceT m (Maybe (SinkResult input output))) -- ^ push
       -> (state -> [input] -> ResourceT m (SinkResult input output)) -- ^ close
       -> SinkM input m output
 sinkM alloc cleanup push close = SinkM $ do
     state <- alloc
     return SinkData
         { sinkPush = \input -> do
-            res@(SinkResult _ mout) <- push state input
-            maybe (return ()) (const $ cleanup state) mout
+            res <- push state input
+            maybe (return ()) (const $ cleanup state) res
             return res
         , sinkClose = \input -> do
             res <- close state input

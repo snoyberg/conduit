@@ -17,7 +17,7 @@ import Control.Monad (liftM)
 import Control.Applicative (Applicative (..))
 import Control.Monad.Base (MonadBase (liftBase))
 
--- | When a sink is given data, it can return both leftover data and a result.
+-- | At the end of running, a 'Sink' returns some leftover input and an output.
 data SinkResult input output = SinkResult [input] output
 instance Functor (SinkResult input) where
     fmap f (SinkResult input output) = SinkResult input (f output)
@@ -49,7 +49,7 @@ instance Functor (SinkResult input) where
 data Sink input m output =
     SinkNoData output
   | SinkData
-        { sinkPush :: [input] -> ResourceT m (SinkResult input (Maybe output))
+        { sinkPush :: [input] -> ResourceT m (Maybe (SinkResult input output))
         , sinkClose :: [input] -> ResourceT m (SinkResult input output)
         }
 
@@ -87,7 +87,7 @@ toEither :: Sink input m output -> SinkEither input m output
 toEither (SinkData x y) = SinkPair x y
 toEither (SinkNoData x) = SinkOutput x
 
-type SinkPush input m output = [input] -> ResourceT m (SinkResult input (Maybe output))
+type SinkPush input m output = [input] -> ResourceT m (Maybe (SinkResult input output))
 type SinkClose input m output = [input] -> ResourceT m (SinkResult input output)
 data SinkEither input m output
     = SinkPair (SinkPush input m output) (SinkClose input m output)
@@ -100,28 +100,28 @@ appHelper istate = SinkData (pushHelper istate) (closeHelper istate)
 pushHelper :: Resource m
            => SinkState input m a b
            -> [input]
-           -> ResourceT m (SinkResult input (Maybe b))
+           -> ResourceT m (Maybe (SinkResult input b))
 pushHelper istate stream0 = do
     state <- readRef istate
     go state stream0
   where
     go (SinkPair f _, eb) stream = do
-        SinkResult leftover mres <- f stream
+        mres <- f stream
         case mres of
-            Nothing -> return $ SinkResult leftover Nothing
-            Just res -> do
+            Nothing -> return Nothing
+            Just (SinkResult leftover res) -> do
                 let state' = (SinkOutput res, eb)
                 writeRef istate state'
                 go state' leftover
     go (f@SinkOutput{}, SinkPair b _) stream = do
-        SinkResult leftover mres <- b stream
+        mres <- b stream
         case mres of
-            Nothing -> return $ SinkResult leftover Nothing
-            Just res -> do
+            Nothing -> return Nothing
+            Just (SinkResult leftover res) -> do
                 let state' = (f, SinkOutput res)
                 writeRef istate state'
                 go state' leftover
-    go (SinkOutput f, SinkOutput b) leftover = return $ SinkResult leftover (Just $ f b)
+    go (SinkOutput f, SinkOutput b) leftover = return $ Just $ SinkResult leftover $ f b
 
 closeHelper :: Resource m
             => SinkState input m a b
@@ -167,18 +167,18 @@ sinkJoin (SinkM msink) = SinkM $ do
         case state of
             Just (pushI, _) -> pushI stream
             Nothing -> do
-                SinkResult leftover minner' <- pushO stream
+                minner' <- pushO stream
                 case minner' of
-                    Nothing -> return $ SinkResult leftover Nothing
-                    Just (SinkM msink') -> do
+                    Nothing -> return Nothing
+                    Just (SinkResult leftover (SinkM msink')) -> do
                         sink <- msink'
                         case sink of
                             SinkData pushI closeI -> do
                                 writeRef istate $ Just (pushI, closeI)
                                 if null leftover
-                                    then return $ SinkResult [] Nothing
+                                    then return Nothing
                                     else push istate pushO leftover
-                            SinkNoData x -> return $ SinkResult leftover $ Just x
+                            SinkNoData x -> return $ Just $ SinkResult leftover x
     close istate closeO input = do
         state <- readRef istate
         case state of

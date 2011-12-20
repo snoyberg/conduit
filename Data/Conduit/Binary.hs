@@ -16,6 +16,7 @@ import Data.Conduit
 import Control.Monad.Trans.Resource (with, release)
 import Data.Int (Int64)
 import Control.Monad.Trans.Class (lift)
+import Control.Exception (assert)
 
 sourceFile :: (Base m ~ IO, Resource m)
            => FilePath
@@ -35,7 +36,7 @@ sinkFile :: (Base m ~ IO, Resource m)
 sinkFile fp = sinkM
     (with (openFile fp WriteMode) hClose)
     (\(key, _) -> release key)
-    (\(_, handle) bss -> lift $ resourceLiftBase (L.hPut handle $ L.fromChunks bss) >> return (SinkResult [] Nothing))
+    (\(_, handle) bss -> lift $ resourceLiftBase (L.hPut handle $ L.fromChunks bss) >> return Nothing)
     (\(_, handle) bss -> do
         lift $ resourceLiftBase $ L.hPut handle $ L.fromChunks bss
         return $ SinkResult [] ())
@@ -48,11 +49,14 @@ isolate count0 = conduitMState
     push
     close
   where
-    push 0 bss = return (0, ConduitResult StreamClosed bss [])
+    push 0 bss = return (0, ConduitResult (Just bss) [])
     push count bss = do
         let (a, b) = L.splitAt count $ L.fromChunks bss
         let count' = count - L.length a
-        return (count', ConduitResult StreamOpen (L.toChunks b) (L.toChunks a))
+        return (count',
+            if count' == 0
+                then ConduitResult (Just $ L.toChunks b) (L.toChunks a)
+                else assert (L.null b) $ ConduitResult Nothing (L.toChunks a))
     close count bss = do
         let (a, b) = L.splitAt count $ L.fromChunks bss
-        return $ ConduitCloseResult (L.toChunks b) (L.toChunks a)
+        return $ ConduitResult (L.toChunks b) (L.toChunks a)

@@ -69,10 +69,10 @@ bs' $$ SinkM msink = do
                     bsourceUnpull bs leftover
                     return res
                 StreamOpen -> do
-                    SinkResult leftover mres <- push a
-                    bsourceUnpull bs leftover
+                    mres <- push a
                     case mres of
-                        Just res -> do
+                        Just (SinkResult leftover res) -> do
+                            bsourceUnpull bs leftover
                             bsourceClose bs
                             return res
                         Nothing -> loop
@@ -97,19 +97,19 @@ bsrc' $= ConduitM mc = SourceM $ do
                     case state of
                         StreamClosed -> do
                             writeRef istate StreamClosed
-                            ConduitCloseResult leftover o <- conduitClose c input
+                            ConduitResult leftover o <- conduitClose c input
                             bsourceUnpull bsrc leftover
                             return $ SourceResult StreamClosed o
                         StreamOpen -> do
-                            ConduitResult cstate leftover output <-
-                                conduitPush c input
-                            bsourceUnpull bsrc leftover
-                            case cstate of
-                                StreamClosed -> do
+                            res <- conduitPush c input
+                            case res of
+                                ConduitResult Nothing output ->
+                                    return $ SourceResult StreamOpen output
+                                ConduitResult (Just leftover) output -> do
+                                    bsourceUnpull bsrc leftover
                                     bsourceClose bsrc
                                     writeRef istate StreamClosed
                                     return $ SourceResult StreamClosed output
-                                StreamOpen -> return $ SourceResult StreamOpen output
         , sourceClose = do
             -- Invariant: sourceClose cannot be called twice, so we will assume
             -- it is currently open. We could add a sanity check here.
@@ -128,28 +128,23 @@ ConduitM mc =$ SinkM ms = SinkM $ do
         SinkNoData mres -> return $ SinkNoData mres
   where
     go pushI closeI c = do
-        ibuffer <- newRef id
         return SinkData
             { sinkPush = \cinput -> do
-                ConduitResult state cleftover sinput <- conduitPush c cinput
-                buffer <- readRef ibuffer
-                case state of
-                    StreamOpen -> do
-                        SinkResult sleftover mres <- pushI $ buffer sinput
-                        writeRef ibuffer (sleftover ++)
+                res <- conduitPush c cinput
+                case res of
+                    ConduitResult Nothing sinput -> do
+                        mres <- pushI sinput
                         case mres of
-                            Nothing -> return $ SinkResult cleftover mres
-                            Just _ -> do
-                                ConduitCloseResult cleftover' _ <-
-                                    conduitClose c cleftover
-                                return $ SinkResult cleftover' mres
-                    StreamClosed -> do
-                        SinkResult _ res <- closeI $ buffer sinput
-                        return $ SinkResult cleftover (Just res)
+                            Nothing -> return Nothing
+                            Just (SinkResult _sleftover res') -> do
+                                ConduitResult cleftover _ <- conduitClose c []
+                                return $ Just $ SinkResult cleftover res'
+                    ConduitResult (Just cleftover) sinput -> do
+                        SinkResult _ res' <- closeI sinput
+                        return $ Just $ SinkResult cleftover res'
             , sinkClose = \cinput -> do
-                ConduitCloseResult cleftover sinput <- conduitClose c cinput
-                buffer <- readRef ibuffer
-                SinkResult _ res <- closeI $ buffer sinput
+                ConduitResult cleftover sinput <- conduitClose c cinput
+                SinkResult _ res <- closeI sinput
                 return $ SinkResult cleftover res
             }
 
@@ -159,29 +154,25 @@ infixr 0 =$=
 ConduitM outerM =$= ConduitM innerM = ConduitM $ do
     outer <- outerM
     inner <- innerM
-    ibuffer <- newRef id
     return Conduit
         { conduitPush = \inputO -> do
-            ConduitResult ostate leftoverO inputI' <- conduitPush outer inputO
-            buffer <- readRef ibuffer
-            let inputI = buffer inputI'
-            case ostate of
-                StreamClosed -> do
-                    ConduitCloseResult _leftoverI c <- conduitClose inner inputI
-                    return $ ConduitResult StreamClosed leftoverO c
-                StreamOpen -> do
-                    ConduitResult istate leftoverI c <- conduitPush inner inputI
-                    case istate of
-                        StreamClosed -> do
-                            _ <- conduitClose outer []
-                            return $ ConduitResult StreamClosed leftoverO c
-                        StreamOpen -> do
-                            writeRef ibuffer (leftoverI ++)
-                            return $ ConduitResult StreamOpen leftoverO c
+            res <- conduitPush outer inputO
+            case res of
+                ConduitResult Nothing inputI -> do
+                    resI <- conduitPush inner inputI
+                    case resI of
+                        ConduitResult Nothing c ->
+                            return $ ConduitResult Nothing c
+                        ConduitResult (Just _leftoverI) c -> do
+                            ConduitResult leftoverO _ <- conduitClose outer []
+                            return $ ConduitResult (Just leftoverO) c
+                ConduitResult (Just leftoverO) inputI -> do
+                    ConduitResult _leftoverI c <- conduitClose inner inputI
+                    return $ ConduitResult (Just leftoverO) c
         , conduitClose = \a -> do
-            ConduitCloseResult leftoverO b <- conduitClose outer a
-            ConduitCloseResult _leftoverI c <- conduitClose inner b
-            return $ ConduitCloseResult leftoverO c
+            ConduitResult leftoverO b <- conduitClose outer a
+            ConduitResult _leftoverI c <- conduitClose inner b
+            return $ ConduitResult leftoverO c
         }
 
 sequence :: Resource m
@@ -189,26 +180,26 @@ sequence :: Resource m
          -> ConduitM a m b
 sequence (SinkM sm) = ConduitM $ do
     sink <- sm
-    genConduit $ conduitMState sink push close
+    genConduit $ conduitMState (id, sink) push close
   where
     push sink input = push' sink input id
 
-    push' (SinkNoData output) input front = do
+    push' (frontI, SinkNoData output) input frontO = do
         sink <- sm
-        return (sink, ConduitResult StreamOpen input $ front [output])
-    push' sink@(SinkData p _) input front = do
-        SinkResult leftover mres <- p input
+        return ((frontI . (input++), sink), ConduitResult Nothing $ frontO [output])
+    push' (frontI, sink@(SinkData p _)) input frontO = do
+        mres <- p $ frontI input
         case mres of
-            Nothing -> return (sink, ConduitResult StreamOpen leftover $ front [])
-            Just res -> do
+            Nothing -> return ((id, sink), ConduitResult Nothing $ frontO [])
+            Just (SinkResult leftover res) -> do
                 sink' <- sm
-                push' sink' leftover $ front . (res:)
-    close (SinkNoData output) input = return $ ConduitCloseResult input [output]
-    close (SinkData _ c) input0 =
-        go input0 id
+                push' (id, sink') leftover $ frontO . (res:)
+    close (frontI, SinkNoData output) input = return $ ConduitResult (frontI input) [output]
+    close (frontI, SinkData _ c) input0 =
+        go (frontI input0) id
       where
         go input front = do
             SinkResult leftover res <- c input
             if null leftover
-                then return $ ConduitCloseResult leftover $ front [res]
+                then return $ ConduitResult leftover $ front [res]
                 else go leftover $ front . (res:)

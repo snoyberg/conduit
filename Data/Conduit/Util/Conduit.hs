@@ -19,8 +19,8 @@ import Control.Monad (liftM)
 conduitMState
     :: Resource m
     => state -- ^ initial state
-    -> (state -> [input] -> ResourceT m (state, ConduitResult input output)) -- ^ Push function.
-    -> (state -> [input] -> ResourceT m (ConduitCloseResult input output)) -- ^ Close function. The state need not be returned, since it will not be used again.
+    -> (state -> [input] -> ResourceT m (state, ConduitResult (Maybe [input]) output)) -- ^ Push function.
+    -> (state -> [input] -> ResourceT m (ConduitResult [input] output)) -- ^ Close function. The state need not be returned, since it will not be used again.
     -> ConduitM input m output
 conduitMState state0 push close = conduitM
     (newRef state0)
@@ -36,17 +36,17 @@ conduitMState state0 push close = conduitM
 conduitM :: Monad m
          => ResourceT m state -- ^ resource and/or state allocation
          -> (state -> ResourceT m ()) -- ^ resource and/or state cleanup
-         -> (state -> [input] -> ResourceT m (ConduitResult input output)) -- ^ Push function. Note that this need not explicitly perform any cleanup.
-         -> (state -> [input] -> ResourceT m (ConduitCloseResult input output)) -- ^ Close function. Note that this need not explicitly perform any cleanup.
+         -> (state -> [input] -> ResourceT m (ConduitResult (Maybe [input]) output)) -- ^ Push function. Note that this need not explicitly perform any cleanup.
+         -> (state -> [input] -> ResourceT m (ConduitResult [input] output)) -- ^ Close function. Note that this need not explicitly perform any cleanup.
          -> ConduitM input m output
 conduitM alloc cleanup push close = ConduitM $ do
     state <- alloc
     return Conduit
         { conduitPush = \input -> do
-            res@(ConduitResult sstate _ _) <- push state input
-            case sstate of
-                StreamClosed -> cleanup state
-                StreamOpen -> return ()
+            res@(ConduitResult mleft _) <- push state input
+            case mleft of
+                Nothing -> return ()
+                Just _ -> cleanup state
             return res
         , conduitClose = \input -> do
             output <- close state input
