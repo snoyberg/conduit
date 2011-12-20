@@ -11,7 +11,6 @@ module Data.Conduit.Util.Conduit
 
 import Control.Monad.Trans.Resource
 import Data.Conduit.Types.Conduit
-import Data.Conduit.Types.Source (StreamState (..))
 import Control.Monad (liftM)
 
 -- | Construct a 'ConduitM' with some stateful functions. This function address
