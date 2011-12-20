@@ -1,6 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE BangPatterns #-}
-{-# LANGUAGE TypeFamilies #-}
 module Data.Conduit.Blaze
     (
 

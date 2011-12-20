@@ -12,6 +12,8 @@ module Control.Monad.Trans.Resource
       -- * Type class/associated types
     , Resource (..)
     , ResourceUnsafeIO (..)
+    , ResourceIO (..)
+    , ResourceBaseIO (..)
     , ResourceThrow (..)
       -- * Use references
     , Ref
@@ -178,6 +180,22 @@ instance ResourceUnsafeIO (Lazy.ST s) where
 
 instance (MonadTransControl t, ResourceUnsafeIO m, Monad (t m)) => ResourceUnsafeIO (t m) where
     unsafeFromIO = lift . unsafeFromIO
+
+class ResourceBaseIO m where
+    safeFromIOBase :: IO a -> m a
+
+instance ResourceBaseIO IO where
+    safeFromIOBase = id
+
+-- | A 'Resource' which can safely run 'IO' calls.
+class (ResourceBaseIO (Base m), ResourceUnsafeIO m) => ResourceIO m where
+    safeFromIO :: IO a -> m a
+
+instance ResourceIO IO where
+    safeFromIO = id
+
+instance (MonadTransControl t, ResourceIO m, Monad (t m)) => ResourceIO (t m) where
+    safeFromIO = lift . safeFromIO
 
 data ReleaseMap base = ReleaseMap !Int !(IntMap (base ()))
 newtype ReleaseKey = ReleaseKey Int

@@ -1,5 +1,4 @@
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE TypeFamilies #-}
 module Data.Conduit.Binary
     ( sourceFile
     , sinkFile
@@ -13,32 +12,32 @@ import qualified Data.ByteString as S
 import qualified Data.ByteString.Lazy as L
 import Filesystem (openFile, IOMode (ReadMode, WriteMode))
 import Data.Conduit
-import Control.Monad.Trans.Resource (with, release)
+import Control.Monad.Trans.Resource
 import Data.Int (Int64)
 import Control.Monad.Trans.Class (lift)
 import Control.Exception (assert)
 
-sourceFile :: (Base m ~ IO, Resource m)
+sourceFile :: ResourceIO m
            => FilePath
            -> SourceM m S.ByteString
 sourceFile fp = sourceM
-    (with (openFile fp ReadMode) hClose)
+    (with (safeFromIOBase $ openFile fp ReadMode) (safeFromIOBase . hClose))
     (\(key, _) -> release key)
     (\(_, handle) -> do
-        bs <- lift $ resourceLiftBase $ S.hGetSome handle 4096
+        bs <- lift $ safeFromIO $ S.hGetSome handle 4096
         if S.null bs
             then return $ SourceResult StreamClosed []
             else return $ SourceResult StreamOpen [bs])
 
-sinkFile :: (Base m ~ IO, Resource m)
+sinkFile :: ResourceIO m
          => FilePath
          -> SinkM S.ByteString m ()
 sinkFile fp = sinkM
-    (with (openFile fp WriteMode) hClose)
+    (with (safeFromIOBase $ openFile fp WriteMode) (safeFromIOBase . hClose))
     (\(key, _) -> release key)
-    (\(_, handle) bss -> lift $ resourceLiftBase (L.hPut handle $ L.fromChunks bss) >> return Nothing)
+    (\(_, handle) bss -> lift $ safeFromIO (L.hPut handle $ L.fromChunks bss) >> return Nothing)
     (\(_, handle) bss -> do
-        lift $ resourceLiftBase $ L.hPut handle $ L.fromChunks bss
+        lift $ safeFromIO $ L.hPut handle $ L.fromChunks bss
         return $ SinkResult [] ())
 
 isolate :: Resource m
