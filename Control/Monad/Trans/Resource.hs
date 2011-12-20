@@ -189,13 +189,13 @@ instance ResourceBaseIO IO where
     safeFromIOBase = id
 
 -- | A 'Resource' which can safely run 'IO' calls.
-class (ResourceBaseIO (Base m), ResourceUnsafeIO m) => ResourceIO m where
+class (ResourceBaseIO (Base m), ResourceUnsafeIO m, ResourceThrow m) => ResourceIO m where
     safeFromIO :: IO a -> m a
 
 instance ResourceIO IO where
     safeFromIO = id
 
-instance (MonadTransControl t, ResourceIO m, Monad (t m)) => ResourceIO (t m) where
+instance (MonadTransControl t, ResourceIO m, Monad (t m), ResourceThrow (t m)) => ResourceIO (t m) where
     safeFromIO = lift . safeFromIO
 
 data ReleaseMap base = ReleaseMap !Int !(IntMap (base ()))

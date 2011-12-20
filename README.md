@@ -80,6 +80,10 @@ in order to fully leverage enumerators:
      (like http-enumerator and warp), it is not possible to create a proper
      streaming HTTP proxy.
 
+     __Note__: This might actually be possible using the "nested iteratee"
+     technique. I would still posit that this is far too complicated a
+     solution to the problem.
+
      __Requirement__: It should be possible to pass around some type of producer
      which will be called piecemeal. For example, the request body in Warp should be
      expressible as:
