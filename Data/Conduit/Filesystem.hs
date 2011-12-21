@@ -24,6 +24,7 @@ import           Filesystem.Path.CurrentOS (FilePath)
 #ifdef CABAL_OS_WINDOWS
 #else
 import qualified System.Posix as Posix
+import           Filesystem.Path.CurrentOS (encodeString)
 #endif
 
 -- | Starting at some root directory, traverse the filesystem and enumerate
