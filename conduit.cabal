@@ -19,6 +19,7 @@ Library
                        Data.Conduit.List
                        Data.Conduit.Lazy
                        Data.Conduit.Blaze
+                       Data.Conduit.Filesystem
                        Control.Monad.Trans.Resource
                        Data.Conduit.Attoparsec
                        Data.Conduit.Zlib
@@ -42,6 +43,12 @@ Library
                      , blaze-builder            >= 0.2.1.4      && < 0.4
                      , zlib-bindings            >= 0.0.1        && < 0.1
   ghc-options:     -Wall
+
+  if os(windows)
+    cpp-options: -DCABAL_OS_WINDOWS
+    build-depends: Win32
+  else
+    build-depends: unix
 
 test-suite test
     hs-source-dirs: test
