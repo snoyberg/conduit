@@ -405,6 +405,9 @@ GOX(Monoid w, Strict.WriterT w)
 #undef GO
 #undef GOX
 
+-- | Introduce a reference-counting scheme to allow a resource context to be
+-- shared by multiple threads. Once the last thread exits, all remaining
+-- resources will be released.
 resourceForkIO :: ResourceIO m => ResourceT m () -> ResourceT m ThreadId
 resourceForkIO (ResourceT f) = ResourceT $ \r ->
     liftBaseDiscard forkIO $ runResourceTState r f
