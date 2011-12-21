@@ -28,6 +28,8 @@ module Control.Monad.Trans.Resource
     , withIO
     , register
     , release
+      -- * Special actions
+    , resourceForkIO
       -- * Monad transformation
     , transResourceT
       -- * A specific Exception transformer
@@ -41,6 +43,7 @@ import Control.Exception (SomeException)
 import Control.Monad.Trans.Control
     ( MonadTransControl (..), MonadBaseControl (..)
     , ComposeSt, defaultLiftBaseWith, defaultRestoreM
+    , liftBaseDiscard
     )
 import qualified Data.IORef as I
 import Control.Monad.Base (MonadBase, liftBase)
@@ -67,6 +70,7 @@ import Control.Monad.Trans.RWS      ( RWST     )
 import qualified Control.Monad.Trans.RWS.Strict    as Strict ( RWST   )
 import qualified Control.Monad.Trans.State.Strict  as Strict ( StateT )
 import qualified Control.Monad.Trans.Writer.Strict as Strict ( WriterT )
+import Control.Concurrent (ThreadId, forkIO)
 
 newRef :: Resource m => a -> ResourceT m (Ref (Base m) a)
 newRef = lift . resourceLiftBase . newRef'
@@ -139,29 +143,37 @@ class (HasRef (Base m), Monad m) => Resource m where
     type Base m :: * -> *
 
     resourceLiftBase :: Base m a -> m a
-    resourceFinally :: m a -> Base m b -> m a
+    resourceBracket_ :: Base m a -> Base m b -> m c -> m c
 
 instance Resource IO where
     type Base IO = IO
     resourceLiftBase = id
-    resourceFinally = E.finally
+    resourceBracket_ = E.bracket_
 
 instance Resource (ST s) where
     type Base (ST s) = ST s
     resourceLiftBase = id
-    resourceFinally ma mb = ma >>= \a -> mb >> return a
+    resourceBracket_ ma mb mc = do
+        ma
+        c <- mc
+        mb
+        return c
 
 instance Resource (Lazy.ST s) where
     type Base (Lazy.ST s) = Lazy.ST s
     resourceLiftBase = id
-    resourceFinally ma mb = ma >>= \a -> mb >> return a
+    resourceBracket_ ma mb mc = do
+        ma
+        c <- mc
+        mb
+        return c
 
 instance (MonadTransControl t, Resource m, Monad (t m)) => Resource (t m) where
     type Base (t m) = Base m
 
     resourceLiftBase = lift . resourceLiftBase
-    resourceFinally a b =
-        control' $ \run -> resourceFinally (run a) b
+    resourceBracket_ a b c =
+        control' $ \run -> resourceBracket_ a b (run c)
       where
         control' f = liftWith f >>= restoreT . return
 
@@ -199,7 +211,10 @@ instance (MonadTransControl t, ResourceIO m, Monad (t m), ResourceThrow (t m),
           MonadBaseControl IO (t m), MonadIO (t m))
         => ResourceIO (t m)
 
-data ReleaseMap base = ReleaseMap !Int !(IntMap (base ()))
+type RefCount = Int
+type NextKey = Int
+
+data ReleaseMap base = ReleaseMap !NextKey !RefCount !(IntMap (base ()))
 newtype ReleaseKey = ReleaseKey Int
 
 newtype ResourceT m a = ResourceT (Ref (Base m) (ReleaseMap (Base m)) -> m a)
@@ -231,8 +246,8 @@ register' :: HasRef base
           => Ref base (ReleaseMap base)
           -> base ()
           -> base ReleaseKey
-register' istate rel = modifyRef' istate $ \(ReleaseMap key m) ->
-    ( ReleaseMap (key + 1) (IntMap.insert key rel m)
+register' istate rel = modifyRef' istate $ \(ReleaseMap key rf m) ->
+    ( ReleaseMap (key + 1) rf (IntMap.insert key rel m)
     , ReleaseKey key
     )
 
@@ -249,22 +264,31 @@ release' istate (ReleaseKey key) = mask $ \restore -> do
     maction <- modifyRef' istate lookupAction
     maybe (return ()) restore maction
   where
-    lookupAction rm@(ReleaseMap next m) =
+    lookupAction rm@(ReleaseMap next rf m) =
         case IntMap.lookup key m of
             Nothing -> (rm, Nothing)
             Just action ->
-                ( ReleaseMap next $ IntMap.delete key m
+                ( ReleaseMap next rf $ IntMap.delete key m
                 , Just action
                 )
 
+runResourceTState istate r = resourceBracket_
+    (modifyRef' istate $ \(ReleaseMap nk rf m) -> (ReleaseMap nk (rf + 1) m, ()))
+    cleanup
+    (r istate)
+  where
+    cleanup = mask_ $ do
+        (rf, m) <- modifyRef' istate $ \(ReleaseMap nk rf m) ->
+            (ReleaseMap nk (rf - 1) m, (rf - 1, m))
+        if rf == minBound
+            then mapM_ (\x -> try x >> return ()) $ IntMap.elems m
+            else return ()
+
 runResourceT :: Resource m => ResourceT m a -> m a
 runResourceT (ResourceT r) = do
-    istate <- resourceLiftBase $ newRef' $ ReleaseMap minBound IntMap.empty
-    resourceFinally (r istate) (cleanup istate)
-  where
-    cleanup istate = mask_ $ do
-        ReleaseMap _ m <- readRef' istate
-        mapM_ (\x -> try x >> return ()) $ IntMap.elems m
+    istate <- resourceLiftBase $ newRef'
+        $ ReleaseMap minBound minBound IntMap.empty
+    runResourceTState istate r
 
 transResourceT :: (Base m ~ Base n)
                => (m a -> n a)
@@ -380,3 +404,7 @@ GO(Strict.StateT s)
 GOX(Monoid w, Strict.WriterT w)
 #undef GO
 #undef GOX
+
+resourceForkIO :: ResourceIO m => ResourceT m () -> ResourceT m ThreadId
+resourceForkIO (ResourceT f) = ResourceT $ \r ->
+    liftBaseDiscard forkIO $ runResourceTState r f

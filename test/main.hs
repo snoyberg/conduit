@@ -25,7 +25,8 @@ import Control.Monad.Trans.Writer (Writer)
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Encoding as TLE
-import Control.Monad.Trans.Resource (runExceptionT_)
+import Control.Monad.Trans.Resource (runExceptionT_, withIO, resourceForkIO)
+import System.IO
 
 main :: IO ()
 main = hspecX $ do
@@ -33,6 +34,19 @@ main = hspecX $ do
         it "even" $ do
             x <- runResourceT $ CL.fromList [1..10] C.$$ CL.filter even C.=$ CL.consume
             x @?= filter even [1..10 :: Int]
+    describe "ResourceT" $ do
+        it "resourceForkIO" $ do
+            counter <- I.newIORef 0
+            let w = withIO
+                        (I.atomicModifyIORef counter $ \i -> (i + 1, ()))
+                        (const $ do
+                            hPutStrLn stderr "cleanup called"
+                            I.atomicModifyIORef counter $ \i -> (i - 1, ()))
+            runResourceT $ do
+                _ <- w
+                resourceForkIO $ return ()
+            res <- I.readIORef counter
+            res @?= 0
     describe "sum" $ do
         it "works for 1..10" $ do
             x <- runResourceT $ CL.fromList [1..10] C.$$ CL.fold (+) (0 :: Int)
