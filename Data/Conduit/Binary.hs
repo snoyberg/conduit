@@ -1,6 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 module Data.Conduit.Binary
     ( sourceFile
+    , sourceFileRange
     , sinkFile
     , conduitFile
     , isolate
@@ -16,6 +17,8 @@ import Data.Conduit
 import Data.Int (Int64)
 import Control.Exception (assert)
 import Control.Monad.IO.Class (liftIO)
+import qualified System.IO as IO
+import Control.Monad.Trans.Resource (withIO, release, newRef, readRef, writeRef)
 
 sourceFile :: ResourceIO m
            => FilePath
@@ -28,6 +31,48 @@ sourceFile fp = sourceMIO
         if S.null bs
             then return $ SourceResult StreamClosed []
             else return $ SourceResult StreamOpen [bs])
+
+sourceFileRange :: ResourceIO m
+                => FilePath
+                -> Maybe Integer -- ^ Offset
+                -> Maybe Integer -- ^ Maximum count
+                -> SourceM m S.ByteString
+sourceFileRange fp offset count = SourceM $ do
+    (key, handle) <- withIO (openFile fp ReadMode) hClose
+    case offset of
+        Nothing -> return ()
+        Just off -> liftIO $ IO.hSeek handle IO.AbsoluteSeek off
+    pull <-
+        case count of
+            Nothing -> return $ pullUnlimited handle key
+            Just c -> do
+                ic <- newRef c
+                return $ pullLimited ic handle key
+    return Source
+        { sourcePull = pull
+        , sourceClose = release key
+        }
+  where
+    pullUnlimited handle key = do
+        bs <- liftIO $ S.hGetSome handle 4096
+        if S.null bs
+            then do
+                release key
+                return $ SourceResult StreamClosed []
+            else return $ SourceResult StreamOpen [bs]
+    pullLimited ic handle key = do
+        c <- fmap fromInteger $ readRef ic
+        bs <- liftIO $ S.hGetSome handle (min c 4096)
+        let c' = c - S.length bs
+        assert (c' >= 0) $
+            if S.null bs || c' == 0
+                then do
+                    release key
+                    return $ SourceResult StreamClosed
+                        (if S.null bs then [] else [bs])
+                else do
+                    writeRef ic $ toInteger c'
+                    return $ SourceResult StreamOpen [bs]
 
 sinkFile :: ResourceIO m
          => FilePath

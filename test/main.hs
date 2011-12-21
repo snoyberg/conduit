@@ -70,6 +70,10 @@ main = hspecX $ do
             bs <- S.readFile "conduit.cabal"
             bss <- runResourceT $ CB.sourceFile "conduit.cabal" C.$$ CL.consume
             bs @=? S.concat bss
+        it "read range" $ do
+            S.writeFile "tmp" "0123456789"
+            bss <- runResourceT $ CB.sourceFileRange "tmp" (Just 2) (Just 3) C.$$ CL.consume
+            S.concat bss @?= "234"
         it "write" $ do
             runResourceT $ CB.sourceFile "conduit.cabal" C.$$ CB.sinkFile "tmp"
             bs1 <- S.readFile "conduit.cabal"
