@@ -29,6 +29,10 @@ import Control.Monad.Trans.Resource (runExceptionT_)
 
 main :: IO ()
 main = hspecX $ do
+    describe "filter" $ do
+        it "even" $ do
+            x <- runResourceT $ CL.fromList [1..10] C.$$ CL.filter even C.=$ CL.consume
+            x @?= filter even [1..10 :: Int]
     describe "sum" $ do
         it "works for 1..10" $ do
             x <- runResourceT $ CL.fromList [1..10] C.$$ CL.fold (+) (0 :: Int)

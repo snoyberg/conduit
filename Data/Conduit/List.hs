@@ -14,6 +14,7 @@ module Data.Conduit.List
     , peek
     , consume
     , isolate
+    , filter
     ) where
 
 import Prelude
@@ -177,3 +178,9 @@ isolate count0 = conduitMState
                     if count' == 0
                         then ConduitResult (Done b) a
                         else assert (null b) $ ConduitResult Processing a)
+
+filter :: Resource m => (a -> Bool) -> ConduitM a m a
+filter f = ConduitM $ return $ Conduit
+    { conduitPush = return . ConduitResult Processing . Prelude.filter f
+    , conduitClose = return . ConduitResult [] . Prelude.filter f
+    }
