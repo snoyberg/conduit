@@ -6,7 +6,7 @@
 -- | Defines the types for a sink, which is a consumer of data.
 module Data.Conduit.Types.Sink
     ( SinkResult (..)
-    , PureSink (..)
+    , PreparedSink (..)
     , Sink (..)
     , Result (..)
     ) where
@@ -52,14 +52,14 @@ instance Functor (SinkResult input) where
 -- * If a @Sink@ needs to clean up any resources (e.g., close a file handle),
 -- it must do so whenever it returns a result, either via @sinkPush@ or
 -- @sinkClose@.
-data PureSink input m output =
+data PreparedSink input m output =
     SinkNoData output
   | SinkData
         { sinkPush :: [input] -> ResourceT m (Result (SinkResult input output))
         , sinkClose :: [input] -> ResourceT m (SinkResult input output)
         }
 
-instance Monad m => Functor (PureSink input m) where
+instance Monad m => Functor (PreparedSink input m) where
     fmap f (SinkNoData x) = SinkNoData (f x)
     fmap f (SinkData p c) = SinkData
         { sinkPush = liftM (fmap (fmap f)) . p
@@ -73,7 +73,7 @@ instance Monad m => Functor (PureSink input m) where
 --
 -- Note that this type provides a 'Monad' instance, allowing you to easily
 -- compose @Sink@s together.
-newtype Sink input m output = Sink { genSink :: ResourceT m (PureSink input m output) }
+newtype Sink input m output = Sink { prepareSink :: ResourceT m (PreparedSink input m output) }
 
 instance Monad m => Functor (Sink input m) where
     fmap f (Sink msink) = Sink (liftM (fmap f) msink)
@@ -89,7 +89,7 @@ instance Resource m => Applicative (Sink input m) where
                 istate <- newRef (toEither f, toEither a)
                 return $ appHelper istate
 
-toEither :: PureSink input m output -> SinkEither input m output
+toEither :: PreparedSink input m output -> SinkEither input m output
 toEither (SinkData x y) = SinkPair x y
 toEither (SinkNoData x) = SinkOutput x
 
@@ -100,7 +100,7 @@ data SinkEither input m output
     | SinkOutput output
 type SinkState input m a b = Ref (Base m) (SinkEither input m (a -> b), SinkEither input m a)
 
-appHelper :: Resource m => SinkState input m a b -> PureSink input m b
+appHelper :: Resource m => SinkState input m a b -> PreparedSink input m b
 appHelper istate = SinkData (pushHelper istate) (closeHelper istate)
 
 pushHelper :: Resource m

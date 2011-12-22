@@ -128,25 +128,25 @@ peek =
     close l@(a:_) = return $ SinkResult l $ Just a
 
 map :: Monad m => (a -> b) -> Conduit a m b
-map f = Conduit $ return $ PureConduit
+map f = Conduit $ return $ PreparedConduit
     { conduitPush = return . ConduitResult Processing . fmap f
     , conduitClose = \x -> return $ ConduitResult [] $ fmap f x
     }
 
 mapM :: Monad m => (a -> m b) -> Conduit a m b
-mapM f = Conduit $ return $ PureConduit
+mapM f = Conduit $ return $ PreparedConduit
     { conduitPush = fmap (ConduitResult Processing) . lift . Prelude.mapM f
     , conduitClose = fmap (ConduitResult []) . lift . Prelude.mapM f
     }
 
 concatMap :: Monad m => (a -> [b]) -> Conduit a m b
-concatMap f = Conduit $ return $ PureConduit
+concatMap f = Conduit $ return $ PreparedConduit
     { conduitPush = return . ConduitResult Processing . (>>= f)
     , conduitClose = \input -> return $ ConduitResult [] (input >>= f)
     }
 
 concatMapM :: Monad m => (a -> m [b]) -> Conduit a m b
-concatMapM f = Conduit $ return $ PureConduit
+concatMapM f = Conduit $ return $ PreparedConduit
     { conduitPush = fmap (ConduitResult Processing . Prelude.concat) . lift . Monad.mapM f
     , conduitClose = \input -> do
         x <- lift $ Monad.mapM f input
@@ -180,7 +180,7 @@ isolate count0 = conduitState
                         else assert (null b) $ ConduitResult Processing a)
 
 filter :: Resource m => (a -> Bool) -> Conduit a m a
-filter f = Conduit $ return $ PureConduit
+filter f = Conduit $ return $ PreparedConduit
     { conduitPush = return . ConduitResult Processing . Prelude.filter f
     , conduitClose = return . ConduitResult [] . Prelude.filter f
     }

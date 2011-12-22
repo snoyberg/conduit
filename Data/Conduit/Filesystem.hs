@@ -39,7 +39,7 @@ traverse :: C.ResourceIO m
          -> C.Source m FilePath
 traverse followSymlinks root = C.Source $ do
     seq0 <- liftIO $ listDirectory root
-    C.genSource $ C.sourceState seq0 pull
+    C.prepareSource $ C.sourceState seq0 pull
   where
     pull [] = return ([], C.SourceResult C.StreamClosed [])
     pull (p:ps) = do

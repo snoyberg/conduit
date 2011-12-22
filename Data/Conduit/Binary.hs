@@ -48,7 +48,7 @@ sourceFileRange fp offset count = Source $ do
             Just c -> do
                 ic <- newRef c
                 return $ pullLimited ic handle key
-    return PureSource
+    return PreparedSource
         { sourcePull = pull
         , sourceClose = release key
         }

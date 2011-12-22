@@ -24,7 +24,7 @@ sourceState
     -> Source m output
 sourceState state0 pull = Source $ do
     istate <- newRef state0
-    return PureSource
+    return PreparedSource
         { sourcePull = do
             state <- readRef istate
             (state', res) <- pull state
@@ -41,7 +41,7 @@ sourceIO :: ResourceIO m
           -> Source m output
 sourceIO alloc cleanup pull = Source $ do
     (key, state) <- withIO alloc cleanup
-    return PureSource
+    return PreparedSource
         { sourcePull = do
             res@(SourceResult s _) <- lift $ pull state
             case s of

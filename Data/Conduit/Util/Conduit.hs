@@ -25,7 +25,7 @@ conduitState
     -> Conduit input m output
 conduitState state0 push close = Conduit $ do
     istate <- newRef state0
-    return PureConduit
+    return PreparedConduit
         { conduitPush = \input -> do
             state <- readRef istate
             (state', res) <- push state input
@@ -43,7 +43,7 @@ conduitIO :: ResourceIO m
            -> Conduit input m output
 conduitIO alloc cleanup push close = Conduit $ do
     (key, state) <- withIO alloc cleanup
-    return PureConduit
+    return PreparedConduit
         { conduitPush = \input -> do
             res@(ConduitResult mleft _) <- lift $ push state input
             case mleft of

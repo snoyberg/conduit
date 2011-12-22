@@ -4,7 +4,7 @@
 module Data.Conduit.Types.Source
     ( StreamState (..)
     , SourceResult (..)
-    , PureSource (..)
+    , PreparedSource (..)
     , Source (..)
     , BufferedSource (..)
     , SourceInvariantException (..)
@@ -43,12 +43,12 @@ instance Functor SourceResult where
 -- * A 'Source' is responsible to free any resources when either 'sourceClose'
 -- is called or a 'StreamClosed' is returned. However, based on the usage of
 -- 'ResourceT', this is simply an optimization.
-data PureSource m a = PureSource
+data PreparedSource m a = PreparedSource
     { sourcePull :: ResourceT m (SourceResult a)
     , sourceClose :: ResourceT m ()
     }
 
-instance Monad m => Functor (PureSource m) where
+instance Monad m => Functor (PreparedSource m) where
     fmap f src = src
         { sourcePull = liftM (fmap f) (sourcePull src)
         }
@@ -67,13 +67,13 @@ instance Monad m => Functor (PureSource m) where
 -- Note that each time you \"call\" a @Source@, it is started from scratch. If
 -- you want a resumable source (e.g., one which can be passed to multiple
 -- @Sink@s), you likely want to use a 'BufferedSource'.
-newtype Source m a = Source { genSource :: ResourceT m (PureSource m a) }
+newtype Source m a = Source { prepareSource :: ResourceT m (PreparedSource m a) }
 
 instance Monad m => Functor (Source m) where
     fmap f (Source msrc) = Source (liftM (fmap f) msrc)
 
 instance Resource m => Monoid (Source m a) where
-    mempty = Source (return PureSource
+    mempty = Source (return PreparedSource
         { sourcePull = return $ SourceResult StreamClosed []
         , sourceClose = return ()
         })
@@ -85,7 +85,7 @@ instance Resource m => Monoid (Source m a) where
         -- and place it in a mutable reference along with all of the upcoming
         -- Sources
         istate <- newRef (next0, rest0)
-        return PureSource
+        return PreparedSource
             { sourcePull = pull istate
             , sourceClose = close istate
             }
@@ -158,7 +158,7 @@ data BState a = EmptyOpen -- ^ nothing in buffer, EOF not received yet
               | Closed [a] -- ^ something in buffer, EOF has been received
     deriving Show
 
-instance BufferSource PureSource where
+instance BufferSource PreparedSource where
     bufferSource src = do
         istate <- newRef EmptyOpen
         return BufferedSource

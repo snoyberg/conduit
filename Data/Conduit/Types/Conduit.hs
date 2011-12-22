@@ -2,7 +2,7 @@
 -- is almost always connected either left (to a source) or right (to a sink).
 module Data.Conduit.Types.Conduit
     ( ConduitResult (..)
-    , PureConduit (..)
+    , PreparedConduit (..)
     , Conduit (..)
     ) where
 
@@ -23,12 +23,12 @@ instance Functor (ConduitResult leftover) where
 --
 -- * Neither a push nor close may be performed after a conduit returns a
 -- 'ConduitCloseResult' from a push, or after a close is performed.
-data PureConduit input m output = PureConduit
+data PreparedConduit input m output = PreparedConduit
     { conduitPush :: [input] -> ResourceT m (ConduitResult (Result [input]) output)
     , conduitClose :: [input] -> ResourceT m (ConduitResult [input] output)
     }
 
-instance Monad m => Functor (PureConduit input m) where
+instance Monad m => Functor (PreparedConduit input m) where
     fmap f c = c
         { conduitPush = liftM (fmap f) . conduitPush c
         , conduitClose = liftM (fmap f) . conduitClose c
@@ -37,7 +37,7 @@ instance Monad m => Functor (PureConduit input m) where
 -- | A monadic action generating a 'Conduit'. See @SourceM@ and @SinkM@ for
 -- more motivation.
 newtype Conduit input m output =
-    Conduit { genConduit :: ResourceT m (PureConduit input m output) }
+    Conduit { prepareConduit :: ResourceT m (PreparedConduit input m output) }
 
 instance Monad m => Functor (Conduit input m) where
     fmap f (Conduit mc) = Conduit (liftM (fmap f) mc)

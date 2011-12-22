@@ -32,7 +32,7 @@ decompress
     -> Conduit ByteString m ByteString
 decompress config = Conduit $ do
     inf <- lift $ unsafeFromIO $ initInflate config
-    return $ PureConduit (push id inf) (close id inf)
+    return $ PreparedConduit (push id inf) (close id inf)
   where
     push front _ [] = return $ ConduitResult Processing $ front []
     push front inf (x:xs) = do
@@ -56,7 +56,7 @@ compress
     -> Conduit ByteString m ByteString
 compress level config = Conduit $ do
     def <- lift $ unsafeFromIO $ initDeflate level config
-    return $ PureConduit (push id def) (close id def)
+    return $ PreparedConduit (push id def) (close id def)
   where
     push front _ [] = return $ ConduitResult Processing $ front []
     push front def (x:xs) = do

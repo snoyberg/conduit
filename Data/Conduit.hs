@@ -88,7 +88,7 @@ bsrc' $= Conduit mc = Source $ do
     istate <- newRef StreamOpen
     bsrc <- bufferSource bsrc'
     c <- mc
-    return PureSource
+    return PreparedSource
         { sourcePull = do
             state' <- readRef istate
             case state' of
@@ -155,7 +155,7 @@ infixr 0 =$=
 Conduit outerM =$= Conduit innerM = Conduit $ do
     outer <- outerM
     inner <- innerM
-    return PureConduit
+    return PreparedConduit
         { conduitPush = \inputO -> do
             res <- conduitPush outer inputO
             case res of
@@ -181,7 +181,7 @@ sequence :: Resource m
          -> Conduit a m b
 sequence (Sink sm) = Conduit $ do
     sink <- sm
-    genConduit $ conduitState (id, sink) push close
+    prepareConduit $ conduitState (id, sink) push close
   where
     push sink input = push' sink input id
 
