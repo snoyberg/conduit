@@ -294,10 +294,10 @@ stateCleanup istate = mask_ $ do
     if rf == minBound
         then do
             mapM_ (\x -> try x >> return ()) $ IntMap.elems m
-            -- To make sure we have no race conditions, let's put an
-            -- undefined value in the state. If somehow another thread is
-            -- still able to access it, at least we get clearer error
-            -- messages.
+            -- Trigger an exception consistently for one race condition:
+            -- let's put an undefined value in the state. If somehow
+            -- another thread is still able to access it, at least we get
+            -- clearer error messages.
             writeRef' istate $ error "Control.Monad.Trans.Resource.stateCleanup: There is a bug in the implementation. The mutable state is being accessed after cleanup. Please contact the maintainers."
         else return ()
 
