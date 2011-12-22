@@ -29,8 +29,8 @@ sourceFile fp = sourceIO
     (\handle -> do
         bs <- liftIO $ S.hGetSome handle 4096
         if S.null bs
-            then return $ SourceResult StreamClosed []
-            else return $ SourceResult StreamOpen [bs])
+            then return $ SourceResult Closed []
+            else return $ SourceResult Open [bs])
 
 sourceFileRange :: ResourceIO m
                 => FilePath
@@ -58,8 +58,8 @@ sourceFileRange fp offset count = Source $ do
         if S.null bs
             then do
                 release key
-                return $ SourceResult StreamClosed []
-            else return $ SourceResult StreamOpen [bs]
+                return $ SourceResult Closed []
+            else return $ SourceResult Open [bs]
     pullLimited ic handle key = do
         c <- fmap fromInteger $ readRef ic
         bs <- liftIO $ S.hGetSome handle (min c 4096)
@@ -68,11 +68,11 @@ sourceFileRange fp offset count = Source $ do
             if S.null bs || c' == 0
                 then do
                     release key
-                    return $ SourceResult StreamClosed
+                    return $ SourceResult Closed
                         (if S.null bs then [] else [bs])
                 else do
                     writeRef ic $ toInteger c'
-                    return $ SourceResult StreamOpen [bs]
+                    return $ SourceResult Open [bs]
 
 sinkFile :: ResourceIO m
          => FilePath

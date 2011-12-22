@@ -67,8 +67,8 @@ sourceList :: Resource m => [a] -> Source m a
 sourceList l0 = sourceState
     l0
     (\l -> return $ if null l
-            then ([], SourceResult StreamClosed [])
-            else ([], SourceResult StreamOpen l))
+            then ([], SourceResult Closed [])
+            else ([], SourceResult Open l))
 
 drop :: Resource m
      => Int

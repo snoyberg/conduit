@@ -2,7 +2,7 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 -- | Defines the types for a source, which is a producer of data.
 module Data.Conduit.Types.Source
-    ( StreamState (..)
+    ( SourceState (..)
     , SourceResult (..)
     , PreparedSource (..)
     , Source (..)
@@ -17,13 +17,15 @@ import Control.Monad (liftM)
 import Data.Typeable (Typeable)
 import Control.Exception (Exception, throw)
 
--- | A stream can be in one of two states: open or closed.
-data StreamState = StreamOpen | StreamClosed
+-- | A source can be in one of two states: open or closed.
+data SourceState = Open | Closed
+    deriving (Show, Eq, Ord, Enum, Bounded)
 
 -- | When pulling data from a source, it returns back a list of values pulled
 -- from the stream. It also indicates whether or not the stream has been
 -- closed.
-data SourceResult a = SourceResult StreamState [a]
+data SourceResult a = SourceResult SourceState [a]
+    deriving (Show, Eq, Ord)
 
 instance Functor SourceResult where
     fmap f (SourceResult x a) = SourceResult x (map f a)
@@ -35,13 +37,13 @@ instance Functor SourceResult where
 --
 -- A 'Source' has three invariants:
 --
--- * It is illegal to call 'sourcePull' after a previous call returns 'StreamClosed', or after a call to 'sourceClose'.
+-- * It is illegal to call 'sourcePull' after a previous call returns 'Closed', or after a call to 'sourceClose'.
 --
 -- * It is illegal to call 'sourceClose' multiple times, or after a previous
--- 'sourcePull' returns a 'StreamClosed'.
+-- 'sourcePull' returns a 'Closed'.
 --
 -- * A 'Source' is responsible to free any resources when either 'sourceClose'
--- is called or a 'StreamClosed' is returned. However, based on the usage of
+-- is called or a 'Closed' is returned. However, based on the usage of
 -- 'ResourceT', this is simply an optimization.
 data PreparedSource m a = PreparedSource
     { sourcePull :: ResourceT m (SourceResult a)
@@ -74,7 +76,7 @@ instance Monad m => Functor (Source m) where
 
 instance Resource m => Monoid (Source m a) where
     mempty = Source (return PreparedSource
-        { sourcePull = return $ SourceResult StreamClosed []
+        { sourcePull = return $ SourceResult Closed []
         , sourceClose = return ()
         })
     mappend a b = mconcat [a, b]
@@ -97,7 +99,7 @@ instance Resource m => Monoid (Source m a) where
                 stream@(SourceResult state _) <- sourcePull current
                 case state of
                     -- end of the current Source
-                    StreamClosed -> do
+                    Closed -> do
                         -- close the current Source
                         sourceClose current
                         case rest of
@@ -114,7 +116,7 @@ instance Resource m => Monoid (Source m a) where
                                 writeRef istate $
                                     throw $ PullAfterEOF "Source:mconcat"
                                 return stream
-                    StreamOpen -> return stream
+                    Open -> return stream
         close istate = do
             -- we only need to close the current Source, since they are opened
             -- one at a time
@@ -154,8 +156,8 @@ instance BufferSource BufferedSource where
 -- | State of a 'BufferedSource'
 data BState a = EmptyOpen -- ^ nothing in buffer, EOF not received yet
               | EmptyClosed -- ^ nothing in buffer, EOF has been received
-              | Open [a] -- ^ something in buffer, EOF not received yet
-              | Closed [a] -- ^ something in buffer, EOF has been received
+              | BOpen [a] -- ^ something in buffer, EOF not received yet
+              | BClosed [a] -- ^ something in buffer, EOF has been received
     deriving Show
 
 instance BufferSource PreparedSource where
@@ -165,16 +167,16 @@ instance BufferSource PreparedSource where
             { bsourcePull = do
                 mresult <- modifyRef istate $ \state ->
                     case state of
-                        Open buffer -> (EmptyOpen, Just $ SourceResult StreamOpen buffer)
-                        Closed buffer -> (EmptyClosed, Just $ SourceResult StreamClosed buffer)
+                        BOpen buffer -> (EmptyOpen, Just $ SourceResult Open buffer)
+                        BClosed buffer -> (EmptyClosed, Just $ SourceResult Closed buffer)
                         EmptyOpen -> (EmptyOpen, Nothing)
-                        EmptyClosed -> (EmptyClosed, Just $ SourceResult StreamClosed [])
+                        EmptyClosed -> (EmptyClosed, Just $ SourceResult Closed [])
                 case mresult of
                     Nothing -> do
                         result@(SourceResult state _) <- sourcePull src
                         case state of
-                            StreamClosed -> writeRef istate EmptyClosed
-                            StreamOpen -> return ()
+                            Closed -> writeRef istate EmptyClosed
+                            Open -> return ()
                         return result
                     Just result -> return result
             , bsourceUnpull =
@@ -183,15 +185,15 @@ instance BufferSource PreparedSource where
                         then return ()
                         else modifyRef istate $ \state ->
                             case state of
-                                Open buffer -> (Open (x ++ buffer), ())
-                                Closed buffer -> (Closed (x ++ buffer), ())
-                                EmptyOpen -> (Open x, ())
-                                EmptyClosed -> (Closed x, ())
+                                BOpen buffer -> (BOpen (x ++ buffer), ())
+                                BClosed buffer -> (BClosed (x ++ buffer), ())
+                                EmptyOpen -> (BOpen x, ())
+                                EmptyClosed -> (BClosed x, ())
             , bsourceClose = do
                 action <- modifyRef istate $ \state ->
                     case state of
-                        Open x -> (Closed x, sourceClose src)
-                        Closed _ -> (state, return ())
+                        BOpen x -> (BClosed x, sourceClose src)
+                        BClosed _ -> (state, return ())
                         EmptyOpen -> (EmptyClosed, sourceClose src)
                         EmptyClosed -> (state, return ())
                 action

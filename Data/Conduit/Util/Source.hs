@@ -45,7 +45,7 @@ sourceIO alloc cleanup pull = Source $ do
         { sourcePull = do
             res@(SourceResult s _) <- lift $ pull state
             case s of
-                StreamClosed -> release key
+                Closed -> release key
                 _ -> return ()
             return res
         , sourceClose = release key

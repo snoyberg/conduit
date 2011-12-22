@@ -65,11 +65,11 @@ bs' $$ Sink msink = do
         loop = do
             SourceResult state a <- bsourcePull bs
             case state of
-                StreamClosed -> do
+                Closed -> do
                     SinkResult leftover res <- close a
                     bsourceUnpull bs leftover
                     return res
-                StreamOpen -> do
+                Open -> do
                     mres <- push a
                     case mres of
                         Done (SinkResult leftover res) -> do
@@ -85,36 +85,36 @@ infixl 1 $=
      -> Conduit a m b
      -> Source m b
 bsrc' $= Conduit mc = Source $ do
-    istate <- newRef StreamOpen
+    istate <- newRef Open
     bsrc <- bufferSource bsrc'
     c <- mc
     return PreparedSource
         { sourcePull = do
             state' <- readRef istate
             case state' of
-                StreamClosed -> return $ SourceResult StreamClosed []
-                StreamOpen -> do
+                Closed -> return $ SourceResult Closed []
+                Open -> do
                     SourceResult state input <- bsourcePull bsrc
                     case state of
-                        StreamClosed -> do
-                            writeRef istate StreamClosed
+                        Closed -> do
+                            writeRef istate Closed
                             ConduitResult leftover o <- conduitClose c input
                             bsourceUnpull bsrc leftover
-                            return $ SourceResult StreamClosed o
-                        StreamOpen -> do
+                            return $ SourceResult Closed o
+                        Open -> do
                             res <- conduitPush c input
                             case res of
                                 ConduitResult Processing output ->
-                                    return $ SourceResult StreamOpen output
+                                    return $ SourceResult Open output
                                 ConduitResult (Done leftover) output -> do
                                     bsourceUnpull bsrc leftover
                                     bsourceClose bsrc
-                                    writeRef istate StreamClosed
-                                    return $ SourceResult StreamClosed output
+                                    writeRef istate Closed
+                                    return $ SourceResult Closed output
         , sourceClose = do
             -- Invariant: sourceClose cannot be called twice, so we will assume
             -- it is currently open. We could add a sanity check here.
-            writeRef istate StreamClosed
+            writeRef istate Closed
             _ignored <- conduitClose c []
             bsourceClose bsrc
         }
