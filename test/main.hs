@@ -42,11 +42,11 @@ main = hspecX $ do
                         (const $ do
                             hPutStrLn stderr "cleanup called"
                             I.atomicModifyIORef counter $ \i -> (i - 1, ()))
-            runResourceT $ do
+            _ <- runResourceT $ do
                 _ <- w
                 resourceForkIO $ return ()
             res <- I.readIORef counter
-            res @?= 0
+            res @?= (0 :: Int)
     describe "sum" $ do
         it "works for 1..10" $ do
             x <- runResourceT $ CL.sourceList [1..10] C.$$ CL.fold (+) (0 :: Int)

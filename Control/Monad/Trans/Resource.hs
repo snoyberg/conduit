@@ -143,7 +143,10 @@ class (HasRef (Base m), Monad m) => Resource m where
     type Base m :: * -> *
 
     resourceLiftBase :: Base m a -> m a
-    resourceBracket_ :: Base m a -> Base m b -> m c -> m c
+    resourceBracket_ :: Base m () -- ^ init
+                     -> Base m () -- ^ cleanup
+                     -> m c       -- ^ body
+                     -> m c
 
 instance Resource IO where
     type Base IO = IO
@@ -276,6 +279,10 @@ release' istate (ReleaseKey key) = mask $ \restore -> do
                 , Just action
                 )
 
+runResourceTState :: Resource m
+                  => Ref (Base m) (ReleaseMap (Base m))
+                  -> (Ref (Base m) (ReleaseMap (Base m)) -> m c)
+                  -> m c
 runResourceTState istate r = resourceBracket_
     (modifyRef' istate $ \(ReleaseMap nk rf m) -> (ReleaseMap nk (rf + 1) m, ()))
     cleanup
