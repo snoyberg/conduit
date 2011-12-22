@@ -6,7 +6,7 @@ module Data.Conduit.Types.Source
     , SourceResult (..)
     , PureSource (..)
     , Source (..)
-    , BSource (..)
+    , BufferedSource (..)
     , SourceInvariantException (..)
     , BufferSource (..)
     ) where
@@ -66,7 +66,7 @@ instance Monad m => Functor (PureSource m) where
 --
 -- Note that each time you \"call\" a @Source@, it is started from scratch. If
 -- you want a resumable source (e.g., one which can be passed to multiple
--- @Sink@s), you likely want to use a 'BSource'.
+-- @Sink@s), you likely want to use a 'BufferedSource'.
 newtype Source m a = Source { genSource :: ResourceT m (PureSource m a) }
 
 instance Monad m => Functor (Source m) where
@@ -123,16 +123,16 @@ instance Resource m => Monoid (Source m a) where
 
 -- | When actually interacting with 'Source's, we usually want to be able to
 -- buffer the output, in case any intermediate steps return leftover data. A
--- 'BSource' allows for such buffering, via the 'bsourceUnpull' function.
+-- 'BufferedSource' allows for such buffering, via the 'bsourceUnpull' function.
 --
--- A 'BSource', unlike a 'Source', is resumable, meaning it can be passed to
+-- A 'BufferedSource', unlike a 'Source', is resumable, meaning it can be passed to
 -- multiple 'Sink's without restarting.
 --
--- Finally, a 'BSource' relaxes one of the invariants of a 'Source': calling
+-- Finally, a 'BufferedSource' relaxes one of the invariants of a 'Source': calling
 -- 'bsourcePull' after an 'EOF' will simply return another 'EOF'.
-data BSource m a = BSource
+data BufferedSource m a = BufferedSource
     { bsourcePull :: ResourceT m (SourceResult a)
-    , bsourceUnpull :: [a] -> ResourceT m () -- ^ It is the responsibility of the 'BSource' to check if the argument is null.
+    , bsourceUnpull :: [a] -> ResourceT m () -- ^ It is the responsibility of the 'BufferedSource' to check if the argument is null.
     , bsourceClose :: ResourceT m ()
     }
 
@@ -140,18 +140,18 @@ data SourceInvariantException = PullAfterEOF String
     deriving (Show, Typeable)
 instance Exception SourceInvariantException
 
--- | This typeclass allows us to unify operators on 'Source' and 'BSource'.
+-- | This typeclass allows us to unify operators on 'Source' and 'BufferedSource'.
 class BufferSource s where
-    bufferSource :: Resource m => s m a -> ResourceT m (BSource m a)
+    bufferSource :: Resource m => s m a -> ResourceT m (BufferedSource m a)
 
 -- | Note that this instance hides the 'bsourceClose' record, so that a
--- @BSource@ remains resumable.
-instance BufferSource BSource where
+-- @BufferedSource@ remains resumable.
+instance BufferSource BufferedSource where
     bufferSource bsrc = return bsrc
         { bsourceClose = return ()
         }
 
--- | State of a 'BSource'
+-- | State of a 'BufferedSource'
 data BState a = EmptyOpen -- ^ nothing in buffer, EOF not received yet
               | EmptyClosed -- ^ nothing in buffer, EOF has been received
               | Open [a] -- ^ something in buffer, EOF not received yet
@@ -161,7 +161,7 @@ data BState a = EmptyOpen -- ^ nothing in buffer, EOF not received yet
 instance BufferSource PureSource where
     bufferSource src = do
         istate <- newRef EmptyOpen
-        return BSource
+        return BufferedSource
             { bsourcePull = do
                 mresult <- modifyRef istate $ \state ->
                     case state of
