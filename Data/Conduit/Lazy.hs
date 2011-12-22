@@ -10,8 +10,8 @@ import System.IO.Unsafe (unsafeInterleaveIO)
 import Control.Monad.Trans.Control
 import Control.Monad.Trans.Resource
 
-lazyConsume :: MonadBaseControl IO m => SourceM m a -> ResourceT m [a]
-lazyConsume (SourceM (ResourceT msrc)) =
+lazyConsume :: MonadBaseControl IO m => Source m a -> ResourceT m [a]
+lazyConsume (Source (ResourceT msrc)) =
     ResourceT $ \r -> msrc r >>= go r
   where
 

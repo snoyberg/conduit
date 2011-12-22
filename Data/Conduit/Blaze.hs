@@ -71,7 +71,7 @@ import Blaze.ByteString.Builder.Internal.Buffer
 
 -- | Incrementally execute builders and pass on the filled chunks as
 -- bytestrings.
-builderToByteString :: ResourceUnsafeIO m => ConduitM Builder m S.ByteString
+builderToByteString :: ResourceUnsafeIO m => Conduit Builder m S.ByteString
 builderToByteString = 
   builderToByteStringWith (allNewBuffersStrategy defaultBufferSize)
 
@@ -84,7 +84,7 @@ builderToByteString =
 -- as control is returned from the inner iteratee!
 unsafeBuilderToByteString :: ResourceUnsafeIO m
                           => IO Buffer  -- action yielding the inital buffer.
-                          -> ConduitM Builder m S.ByteString
+                          -> Conduit Builder m S.ByteString
 unsafeBuilderToByteString = builderToByteStringWith . reuseBufferStrategy
 
 
@@ -98,8 +98,8 @@ unsafeBuilderToByteString = builderToByteStringWith . reuseBufferStrategy
 --
 builderToByteStringWith :: ResourceUnsafeIO m
                         => BufferAllocStrategy
-                        -> ConduitM Builder m S.ByteString
-builderToByteStringWith (ioBuf0, nextBuf) = conduitMState
+                        -> Conduit Builder m S.ByteString
+builderToByteStringWith (ioBuf0, nextBuf) = conduitState
     ioBuf0
     push
     close

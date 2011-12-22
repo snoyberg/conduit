@@ -250,3 +250,7 @@ This is just a collection of my personal notes, completely unorganized.
     system-filepath package. I've used it for a lot of internal code at work,
     and it performs wonderfully. If anyone is concerned about this approach,
     let me know.
+
+*   Should we rename ConduitM to Conduit (et al), and then give Conduit a name
+    like ConduitRaw? After all, users interact with the current "M" versions
+    more often than anything else.

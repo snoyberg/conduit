@@ -50,8 +50,8 @@ import Control.Monad.Base (MonadBase, liftBase)
 
 infixr 0 $$
 
-($$) :: (BufferSource bsrc, Resource m) => bsrc m a -> SinkM a m b -> ResourceT m b
-bs' $$ SinkM msink = do
+($$) :: (BufferSource bsrc, Resource m) => bsrc m a -> Sink a m b -> ResourceT m b
+bs' $$ Sink msink = do
     sinkI <- msink
     case sinkI of
         SinkNoData output -> return output
@@ -82,13 +82,13 @@ infixl 1 $=
 
 ($=) :: (Resource m, BufferSource bsrc)
      => bsrc m a
-     -> ConduitM a m b
-     -> SourceM m b
-bsrc' $= ConduitM mc = SourceM $ do
+     -> Conduit a m b
+     -> Source m b
+bsrc' $= Conduit mc = Source $ do
     istate <- newRef StreamOpen
     bsrc <- bufferSource bsrc'
     c <- mc
-    return Source
+    return PureSource
         { sourcePull = do
             state' <- readRef istate
             case state' of
@@ -121,8 +121,8 @@ bsrc' $= ConduitM mc = SourceM $ do
 
 infixr 0 =$
 
-(=$) :: Resource m => ConduitM a m b -> SinkM b m c -> SinkM a m c
-ConduitM mc =$ SinkM ms = SinkM $ do
+(=$) :: Resource m => Conduit a m b -> Sink b m c -> Sink a m c
+Conduit mc =$ Sink ms = Sink $ do
     s <- ms
     case s of
         SinkData pushI closeI -> mc >>= go pushI closeI
@@ -151,11 +151,11 @@ ConduitM mc =$ SinkM ms = SinkM $ do
 
 infixr 0 =$=
 
-(=$=) :: Resource m => ConduitM a m b -> ConduitM b m c -> ConduitM a m c
-ConduitM outerM =$= ConduitM innerM = ConduitM $ do
+(=$=) :: Resource m => Conduit a m b -> Conduit b m c -> Conduit a m c
+Conduit outerM =$= Conduit innerM = Conduit $ do
     outer <- outerM
     inner <- innerM
-    return Conduit
+    return PureConduit
         { conduitPush = \inputO -> do
             res <- conduitPush outer inputO
             case res of
@@ -177,11 +177,11 @@ ConduitM outerM =$= ConduitM innerM = ConduitM $ do
         }
 
 sequence :: Resource m
-         => SinkM a m b
-         -> ConduitM a m b
-sequence (SinkM sm) = ConduitM $ do
+         => Sink a m b
+         -> Conduit a m b
+sequence (Sink sm) = Conduit $ do
     sink <- sm
-    genConduit $ conduitMState (id, sink) push close
+    genConduit $ conduitState (id, sink) push close
   where
     push sink input = push' sink input id
 

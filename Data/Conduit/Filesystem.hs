@@ -36,10 +36,10 @@ import           Filesystem.Path.CurrentOS (encodeString)
 traverse :: C.ResourceIO m
          => Bool -- ^ Follow directory symlinks (only used on POSIX platforms)
          -> FilePath -- ^ Root directory
-         -> C.SourceM m FilePath
-traverse followSymlinks root = C.SourceM $ do
+         -> C.Source m FilePath
+traverse followSymlinks root = C.Source $ do
     seq0 <- liftIO $ listDirectory root
-    C.genSource $ C.sourceMState seq0 pull
+    C.genSource $ C.sourceState seq0 pull
   where
     pull [] = return ([], C.SourceResult C.StreamClosed [])
     pull (p:ps) = do

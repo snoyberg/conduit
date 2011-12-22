@@ -22,8 +22,8 @@ import Control.Monad.Trans.Resource (withIO, release, newRef, readRef, writeRef)
 
 sourceFile :: ResourceIO m
            => FilePath
-           -> SourceM m S.ByteString
-sourceFile fp = sourceMIO
+           -> Source m S.ByteString
+sourceFile fp = sourceIO
     (openFile fp ReadMode)
     hClose
     (\handle -> do
@@ -36,8 +36,8 @@ sourceFileRange :: ResourceIO m
                 => FilePath
                 -> Maybe Integer -- ^ Offset
                 -> Maybe Integer -- ^ Maximum count
-                -> SourceM m S.ByteString
-sourceFileRange fp offset count = SourceM $ do
+                -> Source m S.ByteString
+sourceFileRange fp offset count = Source $ do
     (key, handle) <- withIO (openFile fp ReadMode) hClose
     case offset of
         Nothing -> return ()
@@ -48,7 +48,7 @@ sourceFileRange fp offset count = SourceM $ do
             Just c -> do
                 ic <- newRef c
                 return $ pullLimited ic handle key
-    return Source
+    return PureSource
         { sourcePull = pull
         , sourceClose = release key
         }
@@ -76,8 +76,8 @@ sourceFileRange fp offset count = SourceM $ do
 
 sinkFile :: ResourceIO m
          => FilePath
-         -> SinkM S.ByteString m ()
-sinkFile fp = sinkMIO
+         -> Sink S.ByteString m ()
+sinkFile fp = sinkIO
     (openFile fp WriteMode)
     hClose
     (\handle bss -> liftIO (L.hPut handle $ L.fromChunks bss) >> return Processing)
@@ -89,8 +89,8 @@ sinkFile fp = sinkMIO
 -- pipeline. Similar in concept to the Unix command @tee@.
 conduitFile :: ResourceIO m
             => FilePath
-            -> ConduitM S.ByteString m S.ByteString
-conduitFile fp = conduitMIO
+            -> Conduit S.ByteString m S.ByteString
+conduitFile fp = conduitIO
     (openFile fp WriteMode)
     hClose
     (\handle bss -> do
@@ -102,8 +102,8 @@ conduitFile fp = conduitMIO
 
 isolate :: Resource m
         => Int64
-        -> ConduitM S.ByteString m S.ByteString
-isolate count0 = conduitMState
+        -> Conduit S.ByteString m S.ByteString
+isolate count0 = conduitState
     count0
     push
     close

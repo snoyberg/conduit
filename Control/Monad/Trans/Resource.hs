@@ -168,7 +168,8 @@ instance Resource (Lazy.ST s) where
         mb
         return c
 
-instance (MonadTransControl t, Resource m, Monad (t m)) => Resource (t m) where
+instance (MonadTransControl t, Resource m, Monad (t m))
+        => Resource (t m) where
     type Base (t m) = Base m
 
     resourceLiftBase = lift . resourceLiftBase
@@ -211,13 +212,16 @@ instance (MonadTransControl t, ResourceIO m, Monad (t m), ResourceThrow (t m),
           MonadBaseControl IO (t m), MonadIO (t m))
         => ResourceIO (t m)
 
+newtype ReleaseKey = ReleaseKey Int
+
 type RefCount = Int
 type NextKey = Int
 
-data ReleaseMap base = ReleaseMap !NextKey !RefCount !(IntMap (base ()))
-newtype ReleaseKey = ReleaseKey Int
+data ReleaseMap base =
+    ReleaseMap !NextKey !RefCount !(IntMap (base ()))
 
-newtype ResourceT m a = ResourceT (Ref (Base m) (ReleaseMap (Base m)) -> m a)
+newtype ResourceT m a =
+    ResourceT (Ref (Base m) (ReleaseMap (Base m)) -> m a)
 
 with :: Resource m
      => Base m a -- ^ allocate

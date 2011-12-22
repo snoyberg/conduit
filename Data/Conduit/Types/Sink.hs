@@ -6,8 +6,8 @@
 -- | Defines the types for a sink, which is a consumer of data.
 module Data.Conduit.Types.Sink
     ( SinkResult (..)
+    , PureSink (..)
     , Sink (..)
-    , SinkM (..)
     , Result (..)
     ) where
 
@@ -52,14 +52,14 @@ instance Functor (SinkResult input) where
 -- * If a @Sink@ needs to clean up any resources (e.g., close a file handle),
 -- it must do so whenever it returns a result, either via @sinkPush@ or
 -- @sinkClose@.
-data Sink input m output =
+data PureSink input m output =
     SinkNoData output
   | SinkData
         { sinkPush :: [input] -> ResourceT m (Result (SinkResult input output))
         , sinkClose :: [input] -> ResourceT m (SinkResult input output)
         }
 
-instance Monad m => Functor (Sink input m) where
+instance Monad m => Functor (PureSink input m) where
     fmap f (SinkNoData x) = SinkNoData (f x)
     fmap f (SinkData p c) = SinkData
         { sinkPush = liftM (fmap (fmap f)) . p
@@ -67,20 +67,20 @@ instance Monad m => Functor (Sink input m) where
         }
 
 -- | Most 'Sink's require some type of state, similar to 'Source's. Like a
--- @SourceM@ for a @Source@, a @SinkM@ is a simple monadic wrapper around a
+-- @SourceM@ for a @Source@, a @Sink@ is a simple monadic wrapper around a
 -- @Sink@ which allows initialization of such state. See @SourceM@ for further
 -- caveats.
 --
 -- Note that this type provides a 'Monad' instance, allowing you to easily
--- compose @SinkM@s together.
-newtype SinkM input m output = SinkM { genSink :: ResourceT m (Sink input m output) }
+-- compose @Sink@s together.
+newtype Sink input m output = Sink { genSink :: ResourceT m (PureSink input m output) }
 
-instance Monad m => Functor (SinkM input m) where
-    fmap f (SinkM msink) = SinkM (liftM (fmap f) msink)
+instance Monad m => Functor (Sink input m) where
+    fmap f (Sink msink) = Sink (liftM (fmap f) msink)
 
-instance Resource m => Applicative (SinkM input m) where
-    pure x = SinkM (return (SinkNoData x))
-    SinkM mf <*> SinkM ma = SinkM $ do
+instance Resource m => Applicative (Sink input m) where
+    pure x = Sink (return (SinkNoData x))
+    Sink mf <*> Sink ma = Sink $ do
         f <- mf
         a <- ma
         case (f, a) of
@@ -89,7 +89,7 @@ instance Resource m => Applicative (SinkM input m) where
                 istate <- newRef (toEither f, toEither a)
                 return $ appHelper istate
 
-toEither :: Sink input m output -> SinkEither input m output
+toEither :: PureSink input m output -> SinkEither input m output
 toEither (SinkData x y) = SinkPair x y
 toEither (SinkNoData x) = SinkOutput x
 
@@ -100,7 +100,7 @@ data SinkEither input m output
     | SinkOutput output
 type SinkState input m a b = Ref (Base m) (SinkEither input m (a -> b), SinkEither input m a)
 
-appHelper :: Resource m => SinkState input m a b -> Sink input m b
+appHelper :: Resource m => SinkState input m a b -> PureSink input m b
 appHelper istate = SinkData (pushHelper istate) (closeHelper istate)
 
 pushHelper :: Resource m
@@ -146,24 +146,24 @@ closeHelper istate input0 = do
         return $ SinkResult leftover (f a)
     go' f (SinkOutput a) input = return $ SinkResult input (f a)
 
-instance Resource m => Monad (SinkM input m) where
+instance Resource m => Monad (Sink input m) where
     return = pure
     x >>= f = sinkJoin (fmap f x)
 
-instance (Resource m, Base m ~ base, Applicative base) => MonadBase base (SinkM input m) where
+instance (Resource m, Base m ~ base, Applicative base) => MonadBase base (Sink input m) where
     liftBase = lift . resourceLiftBase
 
-instance MonadTrans (SinkM input) where
-    lift f = SinkM (lift (liftM SinkNoData f))
+instance MonadTrans (Sink input) where
+    lift f = Sink (lift (liftM SinkNoData f))
 
-instance (Resource m, MonadIO m) => MonadIO (SinkM input m) where
+instance (Resource m, MonadIO m) => MonadIO (Sink input m) where
     liftIO = lift . liftIO
 
-sinkJoin :: Resource m => SinkM a m (SinkM a m b) -> SinkM a m b
-sinkJoin (SinkM msink) = SinkM $ do
+sinkJoin :: Resource m => Sink a m (Sink a m b) -> Sink a m b
+sinkJoin (Sink msink) = Sink $ do
     sink <- msink
     case sink of
-        SinkNoData (SinkM inner) -> inner
+        SinkNoData (Sink inner) -> inner
         SinkData pushO closeO -> do
             istate <- newRef Processing
             return $ SinkData (push istate pushO) (close istate closeO)
@@ -176,7 +176,7 @@ sinkJoin (SinkM msink) = SinkM $ do
                 minner' <- pushO stream
                 case minner' of
                     Processing -> return Processing
-                    Done (SinkResult leftover (SinkM msink')) -> do
+                    Done (SinkResult leftover (Sink msink')) -> do
                         sink <- msink'
                         case sink of
                             SinkData pushI closeI -> do
@@ -190,7 +190,7 @@ sinkJoin (SinkM msink) = SinkM $ do
         case state of
             Done (_, closeI) -> closeI input
             Processing -> do
-                SinkResult leftover (SinkM minner) <- closeO input
+                SinkResult leftover (Sink minner) <- closeO input
                 inner <- minner
                 case inner of
                     SinkData _ closeI -> closeI leftover

@@ -14,11 +14,11 @@ import Control.Monad.Trans.Resource
 import Control.Monad.Trans.Class
 
 -- | Gzip compression with default parameters.
-gzip :: ResourceUnsafeIO m => ConduitM ByteString m ByteString
+gzip :: ResourceUnsafeIO m => Conduit ByteString m ByteString
 gzip = compress 1 (WindowBits 31)
 
 -- | Gzip decompression with default parameters.
-ungzip :: ResourceUnsafeIO m => ConduitM ByteString m ByteString
+ungzip :: ResourceUnsafeIO m => Conduit ByteString m ByteString
 ungzip = decompress (WindowBits 31)
 
 -- |
@@ -29,10 +29,10 @@ ungzip = decompress (WindowBits 31)
 decompress
     :: ResourceUnsafeIO m
     => WindowBits -- ^ Zlib parameter (see the zlib-bindings package as well as the zlib C library)
-    -> ConduitM ByteString m ByteString
-decompress config = ConduitM $ do
+    -> Conduit ByteString m ByteString
+decompress config = Conduit $ do
     inf <- lift $ unsafeFromIO $ initInflate config
-    return $ Conduit (push id inf) (close id inf)
+    return $ PureConduit (push id inf) (close id inf)
   where
     push front _ [] = return $ ConduitResult Processing $ front []
     push front inf (x:xs) = do
@@ -53,10 +53,10 @@ compress
     :: ResourceUnsafeIO m
     => Int         -- ^ Compression level
     -> WindowBits  -- ^ Zlib parameter (see the zlib-bindings package as well as the zlib C library)
-    -> ConduitM ByteString m ByteString
-compress level config = ConduitM $ do
+    -> Conduit ByteString m ByteString
+compress level config = Conduit $ do
     def <- lift $ unsafeFromIO $ initDeflate level config
-    return $ Conduit (push id def) (close id def)
+    return $ PureConduit (push id def) (close id def)
   where
     push front _ [] = return $ ConduitResult Processing $ front []
     push front def (x:xs) = do

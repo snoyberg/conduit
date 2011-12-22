@@ -3,7 +3,7 @@ module Data.Conduit.List
     ( fold
     , foldM
     , mapM_
-    , fromList
+    , sourceList
     , take
     , drop
     , map
@@ -32,8 +32,8 @@ import Control.Exception (assert)
 fold :: Resource m
      => (b -> a -> b)
      -> b
-     -> SinkM a m b
-fold f accum0 = sinkMState
+     -> Sink a m b
+fold f accum0 = sinkState
     accum0
     (\accum input -> return (foldl' f accum input, Processing))
     (\accum input -> return $ SinkResult [] (foldl' f accum input))
@@ -41,8 +41,8 @@ fold f accum0 = sinkMState
 foldM :: Resource m
       => (b -> a -> m b)
       -> b
-      -> SinkM a m b
-foldM f accum0 = sinkMState
+      -> Sink a m b
+foldM f accum0 = sinkState
     accum0
     (\accum input -> do
         accum' <- lift $ Monad.foldM f accum input
@@ -53,8 +53,8 @@ foldM f accum0 = sinkMState
 
 mapM_ :: Resource m
       => (a -> m ())
-      -> SinkM a m ()
-mapM_ f = sinkMState
+      -> Sink a m ()
+mapM_ f = sinkState
     ()
     (\() input -> do
         lift (Monad.mapM_ f input)
@@ -63,8 +63,8 @@ mapM_ f = sinkMState
         lift (Monad.mapM_ f input)
         return (SinkResult [] ()))
 
-fromList :: Resource m => [a] -> SourceM m a
-fromList l0 = sourceMState
+sourceList :: Resource m => [a] -> Source m a
+sourceList l0 = sourceState
     l0
     (\l -> return $ if null l
             then ([], SourceResult StreamClosed [])
@@ -72,8 +72,8 @@ fromList l0 = sourceMState
 
 drop :: Resource m
      => Int
-     -> SinkM a m ()
-drop count0 = sinkMState
+     -> Sink a m ()
+drop count0 = sinkState
     count0
     push
     close
@@ -89,8 +89,8 @@ drop count0 = sinkMState
 
 take :: Resource m
      => Int
-     -> SinkM a m [a]
-take count0 = sinkMState
+     -> Sink a m [a]
+take count0 = sinkState
     (count0, id)
     push
     close
@@ -105,8 +105,8 @@ take count0 = sinkMState
         let (a, b) = splitAt count cs
         return $ SinkResult b $ front a
 
-head :: Resource m => SinkM a m (Maybe a)
-head = sinkMState
+head :: Resource m => Sink a m (Maybe a)
+head = sinkState
     False
     push
     close
@@ -118,49 +118,49 @@ head = sinkMState
     close False [] = return $ SinkResult [] Nothing
     close False (a:as) = return $ SinkResult as (Just a)
 
-peek :: Resource m => SinkM a m (Maybe a)
+peek :: Resource m => Sink a m (Maybe a)
 peek =
-    SinkM $ return $ SinkData push close
+    Sink $ return $ SinkData push close
   where
     push [] = return Processing
     push l@(a:_) = return $ Done $ SinkResult l $ Just a
     close [] = return $ SinkResult [] Nothing
     close l@(a:_) = return $ SinkResult l $ Just a
 
-map :: Monad m => (a -> b) -> ConduitM a m b
-map f = ConduitM $ return $ Conduit
+map :: Monad m => (a -> b) -> Conduit a m b
+map f = Conduit $ return $ PureConduit
     { conduitPush = return . ConduitResult Processing . fmap f
     , conduitClose = \x -> return $ ConduitResult [] $ fmap f x
     }
 
-mapM :: Monad m => (a -> m b) -> ConduitM a m b
-mapM f = ConduitM $ return $ Conduit
+mapM :: Monad m => (a -> m b) -> Conduit a m b
+mapM f = Conduit $ return $ PureConduit
     { conduitPush = fmap (ConduitResult Processing) . lift . Prelude.mapM f
     , conduitClose = fmap (ConduitResult []) . lift . Prelude.mapM f
     }
 
-concatMap :: Monad m => (a -> [b]) -> ConduitM a m b
-concatMap f = ConduitM $ return $ Conduit
+concatMap :: Monad m => (a -> [b]) -> Conduit a m b
+concatMap f = Conduit $ return $ PureConduit
     { conduitPush = return . ConduitResult Processing . (>>= f)
     , conduitClose = \input -> return $ ConduitResult [] (input >>= f)
     }
 
-concatMapM :: Monad m => (a -> m [b]) -> ConduitM a m b
-concatMapM f = ConduitM $ return $ Conduit
+concatMapM :: Monad m => (a -> m [b]) -> Conduit a m b
+concatMapM f = Conduit $ return $ PureConduit
     { conduitPush = fmap (ConduitResult Processing . Prelude.concat) . lift . Monad.mapM f
     , conduitClose = \input -> do
         x <- lift $ Monad.mapM f input
         return $ ConduitResult [] $ Prelude.concat x
     }
 
-consume :: Resource m => SinkM a m [a]
-consume = sinkMState
+consume :: Resource m => Sink a m [a]
+consume = sinkState
     id
     (\front input -> return (front . (input ++), Processing))
     (\front input -> return $ SinkResult [] $ front input)
 
-isolate :: Resource m => Int -> ConduitM a m a
-isolate count0 = conduitMState
+isolate :: Resource m => Int -> Conduit a m a
+isolate count0 = conduitState
     count0
     push
     close
@@ -179,8 +179,8 @@ isolate count0 = conduitMState
                         then ConduitResult (Done b) a
                         else assert (null b) $ ConduitResult Processing a)
 
-filter :: Resource m => (a -> Bool) -> ConduitM a m a
-filter f = ConduitM $ return $ Conduit
+filter :: Resource m => (a -> Bool) -> Conduit a m a
+filter f = Conduit $ return $ PureConduit
     { conduitPush = return . ConduitResult Processing . Prelude.filter f
     , conduitClose = return . ConduitResult [] . Prelude.filter f
     }
