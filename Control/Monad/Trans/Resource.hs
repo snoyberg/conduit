@@ -67,6 +67,8 @@ import Control.Monad.Trans.State    ( StateT   )
 import Control.Monad.Trans.Writer   ( WriterT  )
 import Control.Monad.Trans.RWS      ( RWST     )
 
+import Data.Word (Word)
+
 import qualified Control.Monad.Trans.RWS.Strict    as Strict ( RWST   )
 import qualified Control.Monad.Trans.State.Strict  as Strict ( StateT )
 import qualified Control.Monad.Trans.Writer.Strict as Strict ( WriterT )
@@ -217,7 +219,7 @@ instance (MonadTransControl t, ResourceIO m, Monad (t m), ResourceThrow (t m),
 
 newtype ReleaseKey = ReleaseKey Int
 
-type RefCount = Int
+type RefCount = Word
 type NextKey = Int
 
 data ReleaseMap base =
@@ -279,27 +281,33 @@ release' istate (ReleaseKey key) = mask $ \restore -> do
                 , Just action
                 )
 
-runResourceTState :: Resource m
-                  => Ref (Base m) (ReleaseMap (Base m))
-                  -> (Ref (Base m) (ReleaseMap (Base m)) -> m c)
-                  -> m c
-runResourceTState istate r = resourceBracket_
-    (modifyRef' istate $ \(ReleaseMap nk rf m) -> (ReleaseMap nk (rf + 1) m, ()))
-    cleanup
-    (r istate)
-  where
-    cleanup = mask_ $ do
-        (rf, m) <- modifyRef' istate $ \(ReleaseMap nk rf m) ->
-            (ReleaseMap nk (rf - 1) m, (rf - 1, m))
-        if rf == minBound
-            then mapM_ (\x -> try x >> return ()) $ IntMap.elems m
-            else return ()
+stateAlloc :: HasRef m => Ref m (ReleaseMap m) -> m ()
+stateAlloc istate = do
+    modifyRef' istate $ \(ReleaseMap nk rf m) ->
+        (ReleaseMap nk (rf + 1) m, ())
+
+stateCleanup :: HasRef m => Ref m (ReleaseMap m) -> m ()
+stateCleanup istate = mask_ $ do
+    (rf, m) <- modifyRef' istate $ \(ReleaseMap nk rf m) ->
+        (ReleaseMap nk (rf - 1) m, (rf - 1, m))
+    if rf == minBound
+        then do
+            mapM_ (\x -> try x >> return ()) $ IntMap.elems m
+            -- To make sure we have no race conditions, let's put an
+            -- undefined value in the state. If somehow another thread is
+            -- still able to access it, at least we get clearer error
+            -- messages.
+            writeRef' istate $ error "Control.Monad.Trans.Resource.stateCleanup: There is a bug in the implementation. The mutable state is being accessed after cleanup. Please contact the maintainers."
+        else return ()
 
 runResourceT :: Resource m => ResourceT m a -> m a
 runResourceT (ResourceT r) = do
     istate <- resourceLiftBase $ newRef'
         $ ReleaseMap minBound minBound IntMap.empty
-    runResourceTState istate r
+    resourceBracket_
+        (stateAlloc istate)
+        (stateCleanup istate)
+        (r istate)
 
 transResourceT :: (Base m ~ Base n)
                => (m a -> n a)
@@ -420,5 +428,14 @@ GOX(Monoid w, Strict.WriterT w)
 -- shared by multiple threads. Once the last thread exits, all remaining
 -- resources will be released.
 resourceForkIO :: ResourceIO m => ResourceT m () -> ResourceT m ThreadId
-resourceForkIO (ResourceT f) = ResourceT $ \r ->
-    liftBaseDiscard forkIO $ runResourceTState r f
+resourceForkIO (ResourceT f) = ResourceT $ \r -> resourceBracket_
+    -- We need to make sure the counter is incremented before this call
+    -- returns. Otherwise, the parent thread may call runResourceT before
+    -- the child thread increments, and all resources will be freed
+    -- before the child gets called.
+    (stateAlloc r)
+    (return ())
+    (liftBaseDiscard forkIO $ resourceBracket_
+        (return ())
+        (stateCleanup r)
+        (f r))

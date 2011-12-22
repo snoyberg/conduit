@@ -26,7 +26,7 @@ import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Encoding as TLE
 import Control.Monad.Trans.Resource (runExceptionT_, withIO, resourceForkIO)
-import System.IO
+import Control.Concurrent (threadDelay)
 
 main :: IO ()
 main = hspecX $ do
@@ -38,13 +38,20 @@ main = hspecX $ do
         it "resourceForkIO" $ do
             counter <- I.newIORef 0
             let w = withIO
-                        (I.atomicModifyIORef counter $ \i -> (i + 1, ()))
-                        (const $ do
-                            hPutStrLn stderr "cleanup called"
-                            I.atomicModifyIORef counter $ \i -> (i - 1, ()))
-            _ <- runResourceT $ do
+                        (I.atomicModifyIORef counter $ \i ->
+                            (i + 1, ()))
+                        (const $ I.atomicModifyIORef counter $ \i ->
+                            (i - 1, ()))
+            runResourceT $ do
                 _ <- w
-                resourceForkIO $ return ()
+                _ <- resourceForkIO $ return ()
+                _ <- resourceForkIO $ return ()
+                _ <- resourceForkIO $ return ()
+                _ <- resourceForkIO $ return ()
+                return ()
+
+            -- give enough of a chance to the cleanup code to finish
+            threadDelay 1000
             res <- I.readIORef counter
             res @?= (0 :: Int)
     describe "sum" $ do
