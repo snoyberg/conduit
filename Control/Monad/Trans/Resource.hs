@@ -57,6 +57,7 @@ import qualified Control.Monad.ST.Lazy as Lazy
 import qualified Data.STRef as S
 import qualified Data.STRef.Lazy as SL
 import Data.Monoid (Monoid)
+import qualified Control.Exception.Lifted as L
 
 import Control.Monad.Trans.Identity ( IdentityT)
 import Control.Monad.Trans.List     ( ListT    )
@@ -428,14 +429,15 @@ GOX(Monoid w, Strict.WriterT w)
 -- shared by multiple threads. Once the last thread exits, all remaining
 -- resources will be released.
 resourceForkIO :: ResourceIO m => ResourceT m () -> ResourceT m ThreadId
-resourceForkIO (ResourceT f) = ResourceT $ \r -> resourceBracket_
+resourceForkIO (ResourceT f) = ResourceT $ \r -> L.mask $ \restore ->
     -- We need to make sure the counter is incremented before this call
     -- returns. Otherwise, the parent thread may call runResourceT before
     -- the child thread increments, and all resources will be freed
     -- before the child gets called.
-    (stateAlloc r)
-    (return ())
-    (liftBaseDiscard forkIO $ resourceBracket_
+    resourceBracket_
+        (stateAlloc r)
         (return ())
-        (stateCleanup r)
-        (f r))
+        (liftBaseDiscard forkIO $ resourceBracket_
+            (return ())
+            (stateCleanup r)
+            (restore $ f r))

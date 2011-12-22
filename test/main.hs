@@ -26,7 +26,8 @@ import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Encoding as TLE
 import Control.Monad.Trans.Resource (runExceptionT_, withIO, resourceForkIO)
-import Control.Concurrent (threadDelay)
+import Control.Concurrent (threadDelay, killThread)
+import Control.Monad.IO.Class (liftIO)
 
 main :: IO ()
 main = hspecX $ do
@@ -46,6 +47,9 @@ main = hspecX $ do
                 _ <- w
                 _ <- resourceForkIO $ return ()
                 _ <- resourceForkIO $ return ()
+                sequence_ $ replicate 1000 $ do
+                    tid <- resourceForkIO $ return ()
+                    liftIO $ killThread tid
                 _ <- resourceForkIO $ return ()
                 _ <- resourceForkIO $ return ()
                 return ()
