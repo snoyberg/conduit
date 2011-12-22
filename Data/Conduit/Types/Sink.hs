@@ -148,7 +148,41 @@ closeHelper istate input0 = do
 
 instance Resource m => Monad (Sink input m) where
     return = pure
-    x >>= f = sinkJoin (fmap f x)
+    mx >>= f = Sink $ do
+        x <- prepareSink mx
+        case x of
+            SinkNoData x' -> prepareSink $ f x'
+            SinkData push' close' -> do
+                istate <- newRef $ Left (push', close')
+                return $ SinkData (push istate) (close istate)
+      where
+        push istate input = do
+            state <- readRef istate
+            case state of
+                Left (push', _) -> do
+                    res <- push' input
+                    case res of
+                        Done (SinkResult leftover output) -> do
+                            f' <- prepareSink $ f output
+                            case f' of
+                                SinkNoData y ->
+                                    return $ Done $ SinkResult leftover y
+                                SinkData pushF closeF -> do
+                                    writeRef istate $ Right (pushF, closeF)
+                                    push istate leftover
+                        Processing -> return Processing
+                Right (push', _) -> push' input
+        close istate input = do
+            state <- readRef istate
+            case state of
+                Left (_, close') -> do
+                    SinkResult leftover output <- close' input
+                    f' <- prepareSink $ f output
+                    case f' of
+                        SinkNoData y ->
+                            return $ SinkResult leftover y
+                        SinkData _ closeF -> closeF leftover
+                Right (_, close') -> close' input
 
 instance (Resource m, Base m ~ base, Applicative base) => MonadBase base (Sink input m) where
     liftBase = lift . resourceLiftBase
@@ -158,40 +192,3 @@ instance MonadTrans (Sink input) where
 
 instance (Resource m, MonadIO m) => MonadIO (Sink input m) where
     liftIO = lift . liftIO
-
-sinkJoin :: Resource m => Sink a m (Sink a m b) -> Sink a m b
-sinkJoin (Sink msink) = Sink $ do
-    sink <- msink
-    case sink of
-        SinkNoData (Sink inner) -> inner
-        SinkData pushO closeO -> do
-            istate <- newRef Processing
-            return $ SinkData (push istate pushO) (close istate closeO)
-  where
-    push istate pushO stream = do
-        state <- readRef istate
-        case state of
-            Done (pushI, _) -> pushI stream
-            Processing -> do
-                minner' <- pushO stream
-                case minner' of
-                    Processing -> return Processing
-                    Done (SinkResult leftover (Sink msink')) -> do
-                        sink <- msink'
-                        case sink of
-                            SinkData pushI closeI -> do
-                                writeRef istate $ Done (pushI, closeI)
-                                if null leftover
-                                    then return Processing
-                                    else push istate pushO leftover
-                            SinkNoData x -> return $ Done $ SinkResult leftover x
-    close istate closeO input = do
-        state <- readRef istate
-        case state of
-            Done (_, closeI) -> closeI input
-            Processing -> do
-                SinkResult leftover (Sink minner) <- closeO input
-                inner <- minner
-                case inner of
-                    SinkData _ closeI -> closeI leftover
-                    SinkNoData x -> return $ SinkResult leftover x
