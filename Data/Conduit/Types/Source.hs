@@ -96,8 +96,6 @@ instance Resource m => Monoid (Source m a) where
                 case res of
                     -- end of the current Source
                     Closed -> do
-                        -- close the current Source
-                        sourceClose current
                         case rest of
                             -- ... and open the next one
                             Source ma:as -> do
