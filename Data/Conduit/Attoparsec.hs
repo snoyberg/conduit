@@ -79,7 +79,7 @@ sinkParser p0 = C.sinkState
             A.Partial p -> push p cs
     close parser = do
         case feedA (parser empty) empty of
-            A.Done leftover y -> return $ C.SinkResult (toList leftover) y
+            A.Done leftover y -> return y
             A.Fail _ contexts msg -> lift $ C.resourceThrow $ ParseError contexts msg
             A.Partial _ -> lift $ C.resourceThrow DivergentParser
     toList x

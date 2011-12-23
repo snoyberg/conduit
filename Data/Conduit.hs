@@ -66,8 +66,7 @@ bs' $$ Sink msink = do
             res <- bsourcePull bs
             case res of
                 Closed -> do
-                    SinkResult leftover res' <- close
-                    bsourceUnpull bs leftover
+                    res' <- close
                     return res'
                 Open a -> do
                     mres <- push a
@@ -142,19 +141,19 @@ Conduit mc =$ Sink ms = Sink $ do
                                 return $ Done $ SinkResult cleftover res'
                     ConduitResult (Done cleftover) sinput -> do
                         mres <- pushI sinput
-                        SinkResult _ res' <-
+                        res' <-
                             case mres of
-                                Done x -> return x
+                                Done (SinkResult _ x) -> return x
                                 Processing -> closeI
                         return $ Done $ SinkResult cleftover res'
             , sinkClose = do
                 ConduitResult cleftover sinput <- conduitClose c
                 mres <- pushI sinput
-                SinkResult _ res <-
+                res <-
                     case mres of
-                        Done x -> return x
+                        Done (SinkResult _ x) -> return x
                         Processing -> closeI
-                return $ SinkResult cleftover res
+                return res
             }
 
 infixr 0 =$=
@@ -216,5 +215,5 @@ sequence (Sink sm) = Conduit $ do
                 push' sink' leftover $ frontO . (res:)
     close (SinkNoData output) = return $ ConduitResult [] [output]
     close (SinkData _ c) = do
-        SinkResult leftover res <- c
-        return $ ConduitResult leftover [res]
+        res <- c
+        return $ ConduitResult [] [res]

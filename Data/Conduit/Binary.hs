@@ -80,7 +80,7 @@ sinkFile fp = sinkIO
     (openFile fp WriteMode)
     hClose
     (\handle bss -> liftIO (L.hPut handle $ L.fromChunks bss) >> return Processing)
-    (const $ return $ SinkResult [] ())
+    (const $ return ())
 
 -- | Stream the contents of the input to a file, and also send it along the
 -- pipeline. Similar in concept to the Unix command @tee@.

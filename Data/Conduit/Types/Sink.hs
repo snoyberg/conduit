@@ -24,7 +24,7 @@ instance Functor Result where
     fmap f (Done a) = Done (f a)
 
 -- | At the end of running, a 'Sink' returns some leftover input and an output.
-data SinkResult input output = SinkResult [input] output
+data SinkResult input output = SinkResult [input] output -- FIXME get rid of Result type, as it's an inefficient extra indirection
 instance Functor (SinkResult input) where
     fmap f (SinkResult input output) = SinkResult input (f output)
 
@@ -56,14 +56,14 @@ data PreparedSink input m output =
     SinkNoData output
   | SinkData
         { sinkPush :: [input] -> ResourceT m (Result (SinkResult input output))
-        , sinkClose :: ResourceT m (SinkResult input output)
+        , sinkClose :: ResourceT m output
         }
 
 instance Monad m => Functor (PreparedSink input m) where
     fmap f (SinkNoData x) = SinkNoData (f x)
     fmap f (SinkData p c) = SinkData
         { sinkPush = liftM (fmap (fmap f)) . p
-        , sinkClose = liftM (fmap f) c
+        , sinkClose = liftM f c
         }
 
 -- | Most 'Sink's require some type of state, similar to 'Source's. Like a
@@ -94,7 +94,7 @@ toEither (SinkData x y) = SinkPair x y
 toEither (SinkNoData x) = SinkOutput x
 
 type SinkPush input m output = [input] -> ResourceT m (Result (SinkResult input output))
-type SinkClose input m output = ResourceT m (SinkResult input output)
+type SinkClose input m output = ResourceT m output
 data SinkEither input m output
     = SinkPair (SinkPush input m output) (SinkClose input m output)
     | SinkOutput output
@@ -131,19 +131,19 @@ pushHelper istate stream0 = do
 
 closeHelper :: Resource m
             => SinkState input m a b
-            -> ResourceT m (SinkResult input b)
+            -> ResourceT m b
 closeHelper istate = do
     (sf, sa) <- readRef istate
     case sf of
-        SinkOutput f -> go' f sa []
+        SinkOutput f -> go' f sa
         SinkPair _ close -> do
-            SinkResult leftover f <- close
-            go' f sa leftover
+            f <- close
+            go' f sa
   where
-    go' f (SinkPair _ close) leftover = do
-        SinkResult _leftover a <- close
-        return $ SinkResult leftover (f a)
-    go' f (SinkOutput a) leftover = return $ SinkResult leftover (f a)
+    go' f (SinkPair _ close) = do
+        a <- close
+        return (f a)
+    go' f (SinkOutput a) = return (f a)
 
 instance Resource m => Monad (Sink input m) where
     return = pure
@@ -175,16 +175,11 @@ instance Resource m => Monad (Sink input m) where
             state <- readRef istate
             case state of
                 Left (_, close') -> do
-                    SinkResult leftover output <- close'
+                    output <- close'
                     f' <- prepareSink $ f output
                     case f' of
-                        SinkNoData y ->
-                            return $ SinkResult leftover y
-                        SinkData _ closeF -> do
-                            -- We've never piped any data to closeF, so its
-                            -- leftover should be null.
-                            SinkResult _ outputF <- closeF
-                            return $ SinkResult leftover outputF
+                        SinkNoData y -> return y
+                        SinkData _ closeF -> closeF
                 Right (_, close') -> close'
 
 instance (Resource m, Base m ~ base, Applicative base) => MonadBase base (Sink input m) where

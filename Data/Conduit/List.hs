@@ -37,7 +37,7 @@ fold :: Resource m
 fold f accum0 = sinkState
     accum0
     (\accum input -> return (foldl' f accum input, Processing))
-    (return . SinkResult [])
+    return
 
 foldM :: Resource m
       => (b -> a -> m b)
@@ -48,14 +48,14 @@ foldM f accum0 = sinkState
     (\accum input -> do
         accum' <- lift $ Monad.foldM f accum input
         return (accum', Processing))
-    (return . SinkResult [])
+    return
 
 mapM_ :: Resource m
       => (a -> m ())
       -> Sink a m ()
 mapM_ f = Sink $ return $ SinkData
     (\input -> lift (Monad.mapM_ f input) >> return Processing)
-    (return (SinkResult [] ()))
+    (return ())
 
 sourceList :: Resource m => [a] -> Source m a
 sourceList l0 = sourceState
@@ -77,7 +77,7 @@ drop count0 = sinkState
             count' = count - length a
             res = if count' == 0 then Done (SinkResult b ()) else assert (null b) Processing
         return (count', res)
-    close _ = return $ SinkResult [] ()
+    close _ = return ()
 
 take :: Resource m
      => Int
@@ -93,7 +93,7 @@ take count0 = sinkState
             front' = front . (a ++)
             res = if count' == 0 then Done (SinkResult b $ front' []) else assert (null b) Processing
         return ((count', front'), res)
-    close (_, front) = return $ SinkResult [] $ front []
+    close (_, front) = return $ front []
 
 head :: Resource m => Sink a m (Maybe a)
 head = sinkState
@@ -105,7 +105,7 @@ head = sinkState
     push False [] = return (False, Processing)
     push False (a:as) = return (True, Done $ SinkResult as (Just a))
     close True = error "head: called after result given"
-    close False = return $ SinkResult [] Nothing
+    close False = return Nothing
 
 peek :: Resource m => Sink a m (Maybe a)
 peek =
@@ -113,7 +113,7 @@ peek =
   where
     push [] = return Processing
     push l@(a:_) = return $ Done $ SinkResult l $ Just a
-    close = return $ SinkResult [] Nothing
+    close = return Nothing
 
 map :: Monad m => (a -> b) -> Conduit a m b
 map f = Conduit $ return $ PreparedConduit
@@ -143,7 +143,7 @@ consume :: Resource m => Sink a m [a]
 consume = sinkState
     id
     (\front input -> return (front . (input ++), Processing))
-    (\front -> return $ SinkResult [] $ front [])
+    (\front -> return $ front [])
 
 isolate :: Resource m => Int -> Conduit a m a
 isolate count0 = conduitState

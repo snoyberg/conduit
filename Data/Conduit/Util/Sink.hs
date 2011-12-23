@@ -23,7 +23,7 @@ sinkState
     :: Resource m
     => state -- ^ initial state
     -> (state -> [input] -> ResourceT m (state, Result (SinkResult input output))) -- ^ push
-    -> (state -> ResourceT m (SinkResult input output)) -- ^ Close. Note that the state is not returned, as it is not needed.
+    -> (state -> ResourceT m output) -- ^ Close. Note that the state is not returned, as it is not needed.
     -> Sink input m output
 sinkState state0 push close = Sink $ do
     istate <- newRef state0
@@ -58,7 +58,7 @@ sinkIO :: ResourceIO m
         => IO state -- ^ resource and/or state allocation
         -> (state -> IO ()) -- ^ resource and/or state cleanup
         -> (state -> [input] -> m (Result (SinkResult input output))) -- ^ push
-        -> (state -> m (SinkResult input output)) -- ^ close
+        -> (state -> m output) -- ^ close
         -> Sink input m output
 sinkIO alloc cleanup push close = Sink $ do
     (key, state) <- withIO alloc cleanup
@@ -108,4 +108,4 @@ result _ f (Done a) = f a
 yield :: Monad m => [a] -> b -> Sink a m b
 yield leftover res = Sink $ return $ SinkData
     (\xs -> return $ Done $ SinkResult (leftover ++ xs) res)
-    (return $ SinkResult leftover res)
+    (return res)
