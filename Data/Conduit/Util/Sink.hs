@@ -9,6 +9,7 @@ module Data.Conduit.Util.Sink
     , sinkState
     , transSink
     , result
+    , yield
     ) where
 
 import Control.Monad.Trans.Resource
@@ -103,3 +104,8 @@ transSink f (Sink mc) =
 result :: b -> (a -> b) -> Result a -> b
 result b _ Processing = b
 result _ f (Done a) = f a
+
+yield :: Monad m => [a] -> b -> Sink a m b
+yield leftover res = Sink $ return $ SinkData
+    (\xs -> return $ Done $ SinkResult (leftover ++ xs) res)
+    (return $ SinkResult leftover res)

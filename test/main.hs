@@ -32,6 +32,14 @@ import Control.Applicative (pure, (<$>), (<*>))
 
 main :: IO ()
 main = hspecX $ do
+    describe "data loss rules" $ do
+        it "sink yield" $ do
+            x <- runResourceT $ CL.sourceList [1..10 :: Int] C.$$ do
+                CL.drop 5
+                C.yield [11..15] ()
+                return ()
+                CL.consume
+            x @?= [11..15] ++ [6..10]
     describe "filter" $ do
         it "even" $ do
             x <- runResourceT $ CL.sourceList [1..10] C.$$ CL.filter even C.=$ CL.consume
