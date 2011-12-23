@@ -156,7 +156,7 @@ available for a later call.
 Sink
 ---------------------------
 
-A `Sink` is the corrollary to an `Iteratee`. It takes a stream of data, and can
+A `Sink` is the corollary to an `Iteratee`. It takes a stream of data, and can
 return a result, consisting of leftover input and an output. Like an
 `Iteratee`, a `Sink` provides a `Monad` instance, which allows easy chaining
 together of `Sink`s.
@@ -171,9 +171,9 @@ ByteString`.
 Conduit
 ---------------------------
 
-Conduits are simply functions that that a stream of input data and return
+Conduits are simply functions that take a stream of input data and return
 leftover input as well as a stream of output data. Conduits are far simpler to
-implement than their corrollary, `Enumeratee`s.
+implement than their corollary, `Enumeratee`s.
 
 Connecting
 ---------------------------
