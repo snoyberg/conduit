@@ -179,6 +179,11 @@ main = hspecX $ do
                 return (x, y)
             x @?= [1..5]
             y @?= [6..10]
+        it "consumes all data regardless of sink" $ do
+            x <- runResourceT $ CL.sourceList [1..10 :: Int] C.$$ do
+                CL.isolate 5 C.=$ return ()
+                CL.consume
+            x @?= [6..10]
     describe "lazy" $ do
         it' "works inside a ResourceT" $ runResourceT $ do
             counter <- C.liftBase $ I.newIORef 0
