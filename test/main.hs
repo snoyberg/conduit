@@ -169,18 +169,18 @@ main = hspecX $ do
         it' "works inside a ResourceT" $ runResourceT $ do
             counter <- C.liftBase $ I.newIORef 0
             let incr i = C.sourceIO
-                    (C.liftBase $ I.newIORef $ C.SourceResult C.Open [i :: Int])
+                    (C.liftBase $ I.newIORef $ C.Open [i :: Int])
                     (const $ return ())
                     (\istate -> do
-                        state@(C.SourceResult sstate _) <- C.liftBase $ I.atomicModifyIORef istate
-                            (\state -> (C.SourceResult C.Closed [], state))
-                        case sstate of
+                        res <- C.liftBase $ I.atomicModifyIORef istate
+                            (\state -> (C.Closed, state))
+                        case res of
                             C.Closed -> return ()
                             _ -> do
                                 count <- C.liftBase $ I.atomicModifyIORef counter
                                     (\j -> (j + 1, j + 1))
                                 C.liftBase $ count @?= i
-                        return state
+                        return res
                             )
             nums <- CLazy.lazyConsume $ mconcat $ map incr [1..10]
             C.liftBase $ nums @?= [1..10]

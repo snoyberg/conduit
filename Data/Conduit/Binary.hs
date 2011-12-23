@@ -29,8 +29,8 @@ sourceFile fp = sourceIO
     (\handle -> do
         bs <- liftIO $ S.hGetSome handle 4096
         if S.null bs
-            then return $ SourceResult Closed []
-            else return $ SourceResult Open [bs])
+            then return Closed
+            else return $ Open [bs])
 
 sourceFileRange :: ResourceIO m
                 => FilePath
@@ -58,21 +58,20 @@ sourceFileRange fp offset count = Source $ do
         if S.null bs
             then do
                 release key
-                return $ SourceResult Closed []
-            else return $ SourceResult Open [bs]
+                return Closed
+            else return $ Open [bs]
     pullLimited ic handle key = do
         c <- fmap fromInteger $ readRef ic
         bs <- liftIO $ S.hGetSome handle (min c 4096)
         let c' = c - S.length bs
         assert (c' >= 0) $
-            if S.null bs || c' == 0
+            if S.null bs
                 then do
                     release key
-                    return $ SourceResult Closed
-                        (if S.null bs then [] else [bs])
+                    return Closed
                 else do
                     writeRef ic $ toInteger c'
-                    return $ SourceResult Open [bs]
+                    return $ Open [bs]
 
 sinkFile :: ResourceIO m
          => FilePath
@@ -81,9 +80,7 @@ sinkFile fp = sinkIO
     (openFile fp WriteMode)
     hClose
     (\handle bss -> liftIO (L.hPut handle $ L.fromChunks bss) >> return Processing)
-    (\handle bss -> do
-        liftIO $ L.hPut handle $ L.fromChunks bss
-        return $ SinkResult [] ())
+    (const $ return $ SinkResult [] ())
 
 -- | Stream the contents of the input to a file, and also send it along the
 -- pipeline. Similar in concept to the Unix command @tee@.
@@ -96,9 +93,7 @@ conduitFile fp = conduitIO
     (\handle bss -> do
         liftIO $ L.hPut handle $ L.fromChunks bss
         return $ ConduitResult Processing bss)
-    (\handle bss -> do
-        liftIO $ L.hPut handle $ L.fromChunks bss
-        return $ ConduitResult [] bss)
+    (const $ return $ ConduitResult [] [])
 
 isolate :: Resource m
         => Int64
@@ -116,6 +111,4 @@ isolate count0 = conduitState
             if count' == 0
                 then ConduitResult (Done $ L.toChunks b) (L.toChunks a)
                 else assert (L.null b) $ ConduitResult Processing (L.toChunks a))
-    close count bss = do
-        let (a, b) = L.splitAt count $ L.fromChunks bss
-        return $ ConduitResult (L.toChunks b) (L.toChunks a)
+    close _ = return $ ConduitResult [] []

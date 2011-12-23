@@ -2,8 +2,7 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 -- | Defines the types for a source, which is a producer of data.
 module Data.Conduit.Types.Source
-    ( SourceState (..)
-    , SourceResult (..)
+    ( SourceResult (..)
     , PreparedSource (..)
     , Source (..)
     , BufferedSource (..)
@@ -17,18 +16,15 @@ import Control.Monad (liftM)
 import Data.Typeable (Typeable)
 import Control.Exception (Exception, throw)
 
--- | A source can be in one of two states: open or closed.
-data SourceState = Open | Closed
-    deriving (Show, Eq, Ord, Enum, Bounded)
-
 -- | When pulling data from a source, it returns back a list of values pulled
 -- from the stream. It also indicates whether or not the stream has been
 -- closed.
-data SourceResult a = SourceResult SourceState [a]
+data SourceResult a = Open [a] | Closed
     deriving (Show, Eq, Ord)
 
 instance Functor SourceResult where
-    fmap f (SourceResult x a) = SourceResult x (map f a)
+    fmap f (Open a) = Open (fmap f a)
+    fmap f Closed = Closed
 
 -- | A 'Source' has two operations on it: pull some data, and close the
 -- 'Source'. Since 'Source' is built on top of 'ResourceT', all acquired
@@ -76,7 +72,7 @@ instance Monad m => Functor (Source m) where
 
 instance Resource m => Monoid (Source m a) where
     mempty = Source (return PreparedSource
-        { sourcePull = return $ SourceResult Closed []
+        { sourcePull = return Closed
         , sourceClose = return ()
         })
     mappend a b = mconcat [a, b]
@@ -96,8 +92,8 @@ instance Resource m => Monoid (Source m a) where
             readRef istate >>= pull'
           where
             pull' (current, rest) = do
-                stream@(SourceResult state _) <- sourcePull current
-                case state of
+                res <- sourcePull current
+                case res of
                     -- end of the current Source
                     Closed -> do
                         -- close the current Source
@@ -115,8 +111,8 @@ instance Resource m => Monoid (Source m a) where
                                 -- invariant is violated (read data after EOF)
                                 writeRef istate $
                                     throw $ PullAfterEOF "Source:mconcat"
-                                return stream
-                    Open -> return stream
+                                return Closed
+                    Open _ -> return res
         close istate = do
             -- we only need to close the current Source, since they are opened
             -- one at a time
@@ -167,16 +163,16 @@ instance BufferSource PreparedSource where
             { bsourcePull = do
                 mresult <- modifyRef istate $ \state ->
                     case state of
-                        BOpen buffer -> (EmptyOpen, Just $ SourceResult Open buffer)
-                        BClosed buffer -> (EmptyClosed, Just $ SourceResult Closed buffer)
+                        BOpen buffer -> (EmptyOpen, Just $ Open buffer)
+                        BClosed buffer -> (EmptyClosed, Just $ Open buffer)
                         EmptyOpen -> (EmptyOpen, Nothing)
-                        EmptyClosed -> (EmptyClosed, Just $ SourceResult Closed [])
+                        EmptyClosed -> (EmptyClosed, Just Closed)
                 case mresult of
                     Nothing -> do
-                        result@(SourceResult state _) <- sourcePull src
-                        case state of
+                        result <- sourcePull src
+                        case result of
                             Closed -> writeRef istate EmptyClosed
-                            Open -> return ()
+                            Open _ -> return ()
                         return result
                     Just result -> return result
             , bsourceUnpull =

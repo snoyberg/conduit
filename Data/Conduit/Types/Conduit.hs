@@ -25,13 +25,13 @@ instance Functor (ConduitResult leftover) where
 -- 'ConduitCloseResult' from a push, or after a close is performed.
 data PreparedConduit input m output = PreparedConduit
     { conduitPush :: [input] -> ResourceT m (ConduitResult (Result [input]) output)
-    , conduitClose :: [input] -> ResourceT m (ConduitResult [input] output)
+    , conduitClose :: ResourceT m (ConduitResult [input] output)
     }
 
 instance Monad m => Functor (PreparedConduit input m) where
     fmap f c = c
         { conduitPush = liftM (fmap f) . conduitPush c
-        , conduitClose = liftM (fmap f) . conduitClose c
+        , conduitClose = liftM (fmap f) (conduitClose c)
         }
 
 -- | A monadic action generating a 'Conduit'. See @SourceM@ and @SinkM@ for

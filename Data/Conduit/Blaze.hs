@@ -106,10 +106,9 @@ builderToByteStringWith (ioBuf0, nextBuf) = conduitState
   where
     finalStep !(BufRange pf _) = return $ Done pf ()
 
-    close ioBuf xs = lift $ unsafeFromIO $ do
-        (ioBuf', front) <- go (unBuilder (mconcat xs) (buildStep finalStep)) ioBuf id
-        buf <- ioBuf'
-        return $ ConduitResult [] $ front $ maybe [] return $ unsafeFreezeNonEmptyBuffer buf
+    close ioBuf = lift $ unsafeFromIO $ do
+        buf <- ioBuf
+        return $ ConduitResult [] $ maybe [] return $ unsafeFreezeNonEmptyBuffer buf
 
     push ioBuf xs = lift $ unsafeFromIO $ do
         (ioBuf', front) <- go (unBuilder (mconcat xs) (buildStep finalStep)) ioBuf id

@@ -21,6 +21,7 @@ import Prelude
     ( ($), return, length, splitAt, (==), (-), Int
     , (.), id, Maybe (..), (>>=), fmap, (++), Monad
     , null, Bool (..), error
+    , const, (>>)
     )
 import qualified Prelude
 import qualified Control.Monad as Monad
@@ -36,7 +37,7 @@ fold :: Resource m
 fold f accum0 = sinkState
     accum0
     (\accum input -> return (foldl' f accum input, Processing))
-    (\accum input -> return $ SinkResult [] (foldl' f accum input))
+    (return . SinkResult [])
 
 foldM :: Resource m
       => (b -> a -> m b)
@@ -47,28 +48,21 @@ foldM f accum0 = sinkState
     (\accum input -> do
         accum' <- lift $ Monad.foldM f accum input
         return (accum', Processing))
-    (\accum input -> do
-        output <- lift $ Monad.foldM f accum input
-        return $ SinkResult [] output)
+    (return . SinkResult [])
 
 mapM_ :: Resource m
       => (a -> m ())
       -> Sink a m ()
-mapM_ f = sinkState
-    ()
-    (\() input -> do
-        lift (Monad.mapM_ f input)
-        return ((), Processing))
-    (\() input -> do
-        lift (Monad.mapM_ f input)
-        return (SinkResult [] ()))
+mapM_ f = Sink $ return $ SinkData
+    (\input -> lift (Monad.mapM_ f input) >> return Processing)
+    (return (SinkResult [] ()))
 
 sourceList :: Resource m => [a] -> Source m a
 sourceList l0 = sourceState
     l0
     (\l -> return $ if null l
-            then ([], SourceResult Closed [])
-            else ([], SourceResult Open l))
+            then ([], Closed)
+            else ([], Open l))
 
 drop :: Resource m
      => Int
@@ -83,9 +77,7 @@ drop count0 = sinkState
             count' = count - length a
             res = if count' == 0 then Done (SinkResult b ()) else assert (null b) Processing
         return (count', res)
-    close count cs = do
-        let (_, b) = splitAt count cs
-        return $ SinkResult b ()
+    close count = return $ SinkResult [] ()
 
 take :: Resource m
      => Int
@@ -101,9 +93,7 @@ take count0 = sinkState
             front' = front . (a ++)
             res = if count' == 0 then Done (SinkResult b $ front' []) else assert (null b) Processing
         return ((count', front'), res)
-    close (count, front) cs = do
-        let (a, b) = splitAt count cs
-        return $ SinkResult b $ front a
+    close (_, front) = return $ SinkResult [] $ front []
 
 head :: Resource m => Sink a m (Maybe a)
 head = sinkState
@@ -114,9 +104,8 @@ head = sinkState
     push True _ = error "head: called after result given"
     push False [] = return (False, Processing)
     push False (a:as) = return (True, Done $ SinkResult as (Just a))
-    close True _ = error "head: called after result given"
-    close False [] = return $ SinkResult [] Nothing
-    close False (a:as) = return $ SinkResult as (Just a)
+    close True = error "head: called after result given"
+    close False = return $ SinkResult [] Nothing
 
 peek :: Resource m => Sink a m (Maybe a)
 peek =
@@ -124,40 +113,37 @@ peek =
   where
     push [] = return Processing
     push l@(a:_) = return $ Done $ SinkResult l $ Just a
-    close [] = return $ SinkResult [] Nothing
-    close l@(a:_) = return $ SinkResult l $ Just a
+    close = return $ SinkResult [] Nothing
 
 map :: Monad m => (a -> b) -> Conduit a m b
 map f = Conduit $ return $ PreparedConduit
     { conduitPush = return . ConduitResult Processing . fmap f
-    , conduitClose = \x -> return $ ConduitResult [] $ fmap f x
+    , conduitClose = return $ ConduitResult [] []
     }
 
 mapM :: Monad m => (a -> m b) -> Conduit a m b
 mapM f = Conduit $ return $ PreparedConduit
     { conduitPush = fmap (ConduitResult Processing) . lift . Prelude.mapM f
-    , conduitClose = fmap (ConduitResult []) . lift . Prelude.mapM f
+    , conduitClose = return $ ConduitResult [] []
     }
 
 concatMap :: Monad m => (a -> [b]) -> Conduit a m b
 concatMap f = Conduit $ return $ PreparedConduit
     { conduitPush = return . ConduitResult Processing . (>>= f)
-    , conduitClose = \input -> return $ ConduitResult [] (input >>= f)
+    , conduitClose = return $ ConduitResult [] []
     }
 
 concatMapM :: Monad m => (a -> m [b]) -> Conduit a m b
 concatMapM f = Conduit $ return $ PreparedConduit
     { conduitPush = fmap (ConduitResult Processing . Prelude.concat) . lift . Monad.mapM f
-    , conduitClose = \input -> do
-        x <- lift $ Monad.mapM f input
-        return $ ConduitResult [] $ Prelude.concat x
+    , conduitClose = return $ ConduitResult [] []
     }
 
 consume :: Resource m => Sink a m [a]
 consume = sinkState
     id
     (\front input -> return (front . (input ++), Processing))
-    (\front input -> return $ SinkResult [] $ front input)
+    (\front -> return $ SinkResult [] $ front [])
 
 isolate :: Resource m => Int -> Conduit a m a
 isolate count0 = conduitState
@@ -165,9 +151,7 @@ isolate count0 = conduitState
     push
     close
   where
-    close count cs = do
-        let (a, b) = splitAt count cs
-        return $ ConduitResult b a
+    close _ = return $ ConduitResult [] []
     push count cs = do
         if count == 0
             then return (count, ConduitResult (Done cs) [])
@@ -182,5 +166,5 @@ isolate count0 = conduitState
 filter :: Resource m => (a -> Bool) -> Conduit a m a
 filter f = Conduit $ return $ PreparedConduit
     { conduitPush = return . ConduitResult Processing . Prelude.filter f
-    , conduitClose = return . ConduitResult [] . Prelude.filter f
+    , conduitClose = return $ ConduitResult [] []
     }

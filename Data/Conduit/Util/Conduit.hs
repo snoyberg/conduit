@@ -21,7 +21,7 @@ conduitState
     :: Resource m
     => state -- ^ initial state
     -> (state -> [input] -> ResourceT m (state, ConduitResult (Result [input]) output)) -- ^ Push function.
-    -> (state -> [input] -> ResourceT m (ConduitResult [input] output)) -- ^ Close function. The state need not be returned, since it will not be used again.
+    -> (state -> ResourceT m (ConduitResult [input] output)) -- ^ Close function. The state need not be returned, since it will not be used again.
     -> Conduit input m output
 conduitState state0 push close = Conduit $ do
     istate <- newRef state0
@@ -31,7 +31,7 @@ conduitState state0 push close = Conduit $ do
             (state', res) <- push state input
             writeRef istate state'
             return res
-        , conduitClose = \input -> readRef istate >>= flip close input
+        , conduitClose = readRef istate >>= close
         }
 
 -- | Construct a 'Conduit'.
@@ -39,7 +39,7 @@ conduitIO :: ResourceIO m
            => IO state -- ^ resource and/or state allocation
            -> (state -> IO ()) -- ^ resource and/or state cleanup
            -> (state -> [input] -> m (ConduitResult (Result [input]) output)) -- ^ Push function. Note that this need not explicitly perform any cleanup.
-           -> (state -> [input] -> m (ConduitResult [input] output)) -- ^ Close function. Note that this need not explicitly perform any cleanup.
+           -> (state -> m (ConduitResult [input] output)) -- ^ Close function. Note that this need not explicitly perform any cleanup.
            -> Conduit input m output
 conduitIO alloc cleanup push close = Conduit $ do
     (key, state) <- withIO alloc cleanup
@@ -50,8 +50,8 @@ conduitIO alloc cleanup push close = Conduit $ do
                 Processing -> return ()
                 Done _ -> release key
             return res
-        , conduitClose = \input -> do
-            output <- lift $ close state input
+        , conduitClose = do
+            output <- lift $ close state
             release key
             return output
         }
@@ -66,5 +66,5 @@ transConduit f (Conduit mc) =
   where
     go c = c
         { conduitPush = transResourceT f . conduitPush c
-        , conduitClose = transResourceT f . conduitClose c
+        , conduitClose = transResourceT f (conduitClose c)
         }

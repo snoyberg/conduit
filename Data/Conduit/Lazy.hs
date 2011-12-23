@@ -18,9 +18,9 @@ lazyConsume (Source (ResourceT msrc)) =
     run r (ResourceT f) = f r
 
     go r src = liftBaseOp_ unsafeInterleaveIO $ do
-        SourceResult state x <- run r $ sourcePull src
-        case state of
-            Closed -> return x
-            Open -> do
+        res <- run r $ sourcePull src
+        case res of
+            Closed -> return []
+            Open x -> do
                 y <- go r src
                 return $ x ++ y

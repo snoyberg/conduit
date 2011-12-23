@@ -43,8 +43,8 @@ sourceIO alloc cleanup pull = Source $ do
     (key, state) <- withIO alloc cleanup
     return PreparedSource
         { sourcePull = do
-            res@(SourceResult s _) <- lift $ pull state
-            case s of
+            res <- lift $ pull state
+            case res of
                 Closed -> release key
                 _ -> return ()
             return res

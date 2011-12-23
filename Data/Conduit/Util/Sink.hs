@@ -21,7 +21,7 @@ sinkState
     :: Resource m
     => state -- ^ initial state
     -> (state -> [input] -> ResourceT m (state, Result (SinkResult input output))) -- ^ push
-    -> (state -> [input] -> ResourceT m (SinkResult input output)) -- ^ Close. Note that the state is not returned, as it is not needed.
+    -> (state -> ResourceT m (SinkResult input output)) -- ^ Close. Note that the state is not returned, as it is not needed.
     -> Sink input m output
 sinkState state0 push close = Sink $ do
     istate <- newRef state0
@@ -31,7 +31,7 @@ sinkState state0 push close = Sink $ do
             (state', res) <- push state input
             writeRef istate state'
             return res
-        , sinkClose = \input -> readRef istate >>= flip close input
+        , sinkClose = readRef istate >>= close
         }
 
 -- | Construct a 'Sink'. Note that your push and close functions need not
@@ -40,7 +40,7 @@ sinkIO :: ResourceIO m
         => IO state -- ^ resource and/or state allocation
         -> (state -> IO ()) -- ^ resource and/or state cleanup
         -> (state -> [input] -> m (Result (SinkResult input output))) -- ^ push
-        -> (state -> [input] -> m (SinkResult input output)) -- ^ close
+        -> (state -> m (SinkResult input output)) -- ^ close
         -> Sink input m output
 sinkIO alloc cleanup push close = Sink $ do
     (key, state) <- withIO alloc cleanup
@@ -49,8 +49,8 @@ sinkIO alloc cleanup push close = Sink $ do
             res <- lift $ push state input
             result (return ()) (const $ release key) res
             return res
-        , sinkClose = \input -> do
-            res <- lift $ close state input
+        , sinkClose = do
+            res <- lift $ close state
             release key
             return res
         }
@@ -65,7 +65,7 @@ transSink f (Sink mc) =
   where
     go c = c
         { sinkPush = transResourceT f . sinkPush c
-        , sinkClose = transResourceT f . (sinkClose c)
+        , sinkClose = transResourceT f (sinkClose c)
         }
 
 result :: b -> (a -> b) -> Result a -> b
