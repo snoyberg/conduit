@@ -28,6 +28,7 @@ import qualified Data.Text.Lazy.Encoding as TLE
 import Control.Monad.Trans.Resource (runExceptionT_, withIO, resourceForkIO)
 import Control.Concurrent (threadDelay, killThread)
 import Control.Monad.IO.Class (liftIO)
+import Control.Applicative (pure, (<$>), (<*>))
 
 main :: IO ()
 main = hspecX $ do
@@ -105,6 +106,11 @@ main = hspecX $ do
                 _ <- CL.take 5
                 CL.fold (+) (0 :: Int)
             x @?= sum [6..10]
+    describe "Applicative instance for Sink" $ do
+        it "<$> and <*>" $ do
+            x <- runResourceT $ CL.sourceList [1..10] C.$$
+                (+) <$> pure 5 <*> CL.fold (+) (0 :: Int)
+            x @?= sum [1..10] + 5
     describe "resumable sources" $ do
         it "simple" $ do
             (x, y, z) <- runResourceT $ do

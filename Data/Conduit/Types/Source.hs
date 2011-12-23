@@ -24,7 +24,7 @@ data SourceResult a = Open [a] | Closed
 
 instance Functor SourceResult where
     fmap f (Open a) = Open (fmap f a)
-    fmap f Closed = Closed
+    fmap _ Closed = Closed
 
 -- | A 'Source' has two operations on it: pull some data, and close the
 -- 'Source'. Since 'Source' is built on top of 'ResourceT', all acquired

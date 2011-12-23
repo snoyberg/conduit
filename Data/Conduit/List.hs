@@ -21,7 +21,7 @@ import Prelude
     ( ($), return, length, splitAt, (==), (-), Int
     , (.), id, Maybe (..), (>>=), fmap, (++), Monad
     , null, Bool (..), error
-    , const, (>>)
+    , (>>)
     )
 import qualified Prelude
 import qualified Control.Monad as Monad
@@ -77,7 +77,7 @@ drop count0 = sinkState
             count' = count - length a
             res = if count' == 0 then Done (SinkResult b ()) else assert (null b) Processing
         return (count', res)
-    close count = return $ SinkResult [] ()
+    close _ = return $ SinkResult [] ()
 
 take :: Resource m
      => Int

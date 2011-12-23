@@ -66,16 +66,16 @@ bs' $$ Sink msink = do
             res <- bsourcePull bs
             case res of
                 Closed -> do
-                    SinkResult leftover res <- close
+                    SinkResult leftover res' <- close
                     bsourceUnpull bs leftover
-                    return res
+                    return res'
                 Open a -> do
                     mres <- push a
                     case mres of
-                        Done (SinkResult leftover res) -> do
+                        Done (SinkResult leftover res') -> do
                             bsourceUnpull bs leftover
                             bsourceClose bs
-                            return res
+                            return res'
                         Processing -> loop
 
 infixl 1 $=
@@ -102,8 +102,8 @@ bsrc' $= Conduit mc = Source $ do
                             bsourceUnpull bsrc leftover
                             return $ Open o
                         Open input -> do
-                            res <- conduitPush c input
-                            case res of
+                            res' <- conduitPush c input
+                            case res' of
                                 ConduitResult Processing output ->
                                     return $ Open output
                                 ConduitResult (Done leftover) output -> do

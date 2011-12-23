@@ -132,19 +132,18 @@ pushHelper istate stream0 = do
 closeHelper :: Resource m
             => SinkState input m a b
             -> ResourceT m (SinkResult input b)
-closeHelper istate = error "FIXME closeHelper" {- do
+closeHelper istate = do
     (sf, sa) <- readRef istate
     case sf of
-        SinkOutput f -> go' f sa
+        SinkOutput f -> go' f sa []
         SinkPair _ close -> do
             SinkResult leftover f <- close
             go' f sa leftover
   where
-    go' f (SinkPair _ close) = do
-        SinkResult leftover a <- close
+    go' f (SinkPair _ close) leftover = do
+        SinkResult _leftover a <- close
         return $ SinkResult leftover (f a)
-    go' f (SinkOutput a) = return $ SinkResult [] (f a)
-    -}
+    go' f (SinkOutput a) leftover = return $ SinkResult leftover (f a)
 
 instance Resource m => Monad (Sink input m) where
     return = pure
