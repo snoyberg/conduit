@@ -12,6 +12,8 @@ Cabal-version:       >=1.8
 Homepage:            http://github.com/yesodweb/wai
 extra-source-files:  test/main.hs
 
+flag debug
+
 Library
   Exposed-modules:     Data.Conduit
                        Data.Conduit.Binary
@@ -43,6 +45,8 @@ Library
                      , blaze-builder            >= 0.2.1.4      && < 0.4
                      , zlib-bindings            >= 0.0.1        && < 0.1
   ghc-options:     -Wall
+  if flag(debug)
+    cpp-options: -DDEBUG
 
   if os(windows)
     cpp-options: -DCABAL_OS_WINDOWS

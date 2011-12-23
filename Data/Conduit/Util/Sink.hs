@@ -1,6 +1,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE CPP #-}
 -- | Utilities for constructing 'Sink's. Please see "Data.Conduit.Types.Sink"
 -- for more information on the base types.
 module Data.Conduit.Util.Sink
@@ -25,13 +26,29 @@ sinkState
     -> Sink input m output
 sinkState state0 push close = Sink $ do
     istate <- newRef state0
+#if DEBUG
+    iclosed <- newRef False
+#endif
     return SinkData
         { sinkPush = \input -> do
+#if DEBUG
+            False <- readRef iclosed
+#endif
             state <- readRef istate
             (state', res) <- push state input
             writeRef istate state'
+#if DEBUG
+            case res of
+                Done _ -> writeRef iclosed True
+                _ -> return ()
+#endif
             return res
-        , sinkClose = readRef istate >>= close
+        , sinkClose = do
+#if DEBUG
+            False <- readRef iclosed
+            writeRef iclosed True
+#endif
+            readRef istate >>= close
         }
 
 -- | Construct a 'Sink'. Note that your push and close functions need not
@@ -44,12 +61,27 @@ sinkIO :: ResourceIO m
         -> Sink input m output
 sinkIO alloc cleanup push close = Sink $ do
     (key, state) <- withIO alloc cleanup
+#if DEBUG
+    iclosed <- newRef False
+#endif
     return SinkData
         { sinkPush = \input -> do
+#if DEBUG
+            False <- readRef iclosed
+#endif
             res <- lift $ push state input
             result (return ()) (const $ release key) res
+#if DEBUG
+            case res of
+                Done _ -> writeRef iclosed True
+                _ -> return ()
+#endif
             return res
         , sinkClose = do
+#if DEBUG
+            False <- readRef iclosed
+            writeRef iclosed True
+#endif
             res <- lift $ close state
             release key
             return res

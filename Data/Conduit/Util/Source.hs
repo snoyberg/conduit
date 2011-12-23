@@ -1,6 +1,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE CPP #-}
 -- | Utilities for constructing and converting 'Source', 'Source' and
 -- 'BSource' types. Please see "Data.Conduit.Types.Source" for more information
 -- on the base types.
@@ -24,13 +25,32 @@ sourceState
     -> Source m output
 sourceState state0 pull = Source $ do
     istate <- newRef state0
+#if DEBUG
+    iclosed <- newRef False
+#endif
     return PreparedSource
         { sourcePull = do
+#if DEBUG
+            False <- readRef iclosed
+#endif
             state <- readRef istate
             (state', res) <- pull state
+#if DEBUG
+            let isClosed =
+                    case res of
+                        Closed -> True
+                        Open _ -> False
+            writeRef iclosed isClosed
+#endif
             writeRef istate state'
             return res
-        , sourceClose = return ()
+        , sourceClose = do
+#if DEBUG
+            False <- readRef iclosed
+            writeRef iclosed True
+#else
+            return ()
+#endif
         }
 
 -- | Construct a 'Source' based on some IO actions for alloc/release.
@@ -41,14 +61,29 @@ sourceIO :: ResourceIO m
           -> Source m output
 sourceIO alloc cleanup pull = Source $ do
     (key, state) <- withIO alloc cleanup
+#if DEBUG
+    iclosed <- newRef False
+#endif
     return PreparedSource
         { sourcePull = do
+#if DEBUG
+            False <- readRef iclosed
+#endif
             res <- lift $ pull state
             case res of
-                Closed -> release key
+                Closed -> do
+#if DEBUG
+                    writeRef iclosed True
+#endif
+                    release key
                 _ -> return ()
             return res
-        , sourceClose = release key
+        , sourceClose = do
+#if DEBUG
+            False <- readRef iclosed
+            writeRef iclosed True
+#endif
+            release key
         }
 
 -- | Transform the monad a 'Source' lives in.
