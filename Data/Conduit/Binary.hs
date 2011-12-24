@@ -92,8 +92,8 @@ conduitFile fp = conduitIO
     hClose
     (\handle bss -> do
         liftIO $ L.hPut handle $ L.fromChunks bss
-        return $ ConduitResult Processing bss)
-    (const $ return $ ConduitResult [] [])
+        return $ Producing bss)
+    (const $ return [])
 
 isolate :: Resource m
         => Int64
@@ -103,12 +103,12 @@ isolate count0 = conduitState
     push
     close
   where
-    push 0 bss = return (0, ConduitResult (Done bss) [])
+    push 0 bss = return (0, Finished bss [])
     push count bss = do
         let (a, b) = L.splitAt count $ L.fromChunks bss
         let count' = count - L.length a
         return (count',
             if count' == 0
-                then ConduitResult (Done $ L.toChunks b) (L.toChunks a)
-                else assert (L.null b) $ ConduitResult Processing (L.toChunks a))
-    close _ = return $ ConduitResult [] []
+                then Finished (L.toChunks b) (L.toChunks a)
+                else assert (L.null b) $ Producing (L.toChunks a))
+    close _ = return []

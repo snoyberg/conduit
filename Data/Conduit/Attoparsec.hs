@@ -74,7 +74,7 @@ sinkParser p0 = C.sinkState
         case parser c of
             A.Done leftover x ->
                 let lo = if null cs && isNull leftover then [] else leftover:cs
-                 in return (parser, C.Done $ C.SinkResult lo x)
+                 in return (parser, C.Done lo x)
             A.Fail _ contexts msg -> lift $ C.resourceThrow $ ParseError contexts msg
             A.Partial p -> push p cs
     close parser = do

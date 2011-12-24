@@ -8,7 +8,6 @@ module Data.Conduit.Util.Sink
     ( sinkIO
     , sinkState
     , transSink
-    , result
     , yield
     ) where
 
@@ -22,7 +21,7 @@ import Control.Monad (liftM)
 sinkState
     :: Resource m
     => state -- ^ initial state
-    -> (state -> [input] -> ResourceT m (state, Result (SinkResult input output))) -- ^ push
+    -> (state -> [input] -> ResourceT m (state, SinkResult input output)) -- ^ push
     -> (state -> ResourceT m output) -- ^ Close. Note that the state is not returned, as it is not needed.
     -> Sink input m output
 sinkState state0 push close = Sink $ do
@@ -40,8 +39,8 @@ sinkState state0 push close = Sink $ do
             writeRef istate state'
 #if DEBUG
             case res of
-                Done _ -> writeRef iclosed True
-                _ -> return ()
+                Done{} -> writeRef iclosed True
+                Processing -> return ()
 #endif
             return res
         , sinkClose = do
@@ -57,7 +56,7 @@ sinkState state0 push close = Sink $ do
 sinkIO :: ResourceIO m
         => IO state -- ^ resource and/or state allocation
         -> (state -> IO ()) -- ^ resource and/or state cleanup
-        -> (state -> [input] -> m (Result (SinkResult input output))) -- ^ push
+        -> (state -> [input] -> m (SinkResult input output)) -- ^ push
         -> (state -> m output) -- ^ close
         -> Sink input m output
 sinkIO alloc cleanup push close = Sink $ do
@@ -71,12 +70,13 @@ sinkIO alloc cleanup push close = Sink $ do
             False <- readRef iclosed
 #endif
             res <- lift $ push state input
-            result (return ()) (const $ release key) res
-#if DEBUG
             case res of
-                Done _ -> writeRef iclosed True
-                _ -> return ()
+                Done{} -> do
+                    release key
+#if DEBUG
+                    writeRef iclosed True
 #endif
+                Processing -> return ()
             return res
         , sinkClose = do
 #if DEBUG
@@ -101,11 +101,7 @@ transSink f (Sink mc) =
         , sinkClose = transResourceT f (sinkClose c)
         }
 
-result :: b -> (a -> b) -> Result a -> b
-result b _ Processing = b
-result _ f (Done a) = f a
-
 yield :: Monad m => [a] -> b -> Sink a m b
 yield leftover res = Sink $ return $ SinkData
-    (\xs -> return $ Done $ SinkResult (leftover ++ xs) res)
+    (\xs -> return $ Done (leftover ++ xs) res)
     (return res)

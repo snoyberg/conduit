@@ -13,7 +13,6 @@ module Data.Conduit.Util.Conduit
 import Control.Monad.Trans.Resource
 import Control.Monad.Trans.Class
 import Data.Conduit.Types.Conduit
-import Data.Conduit.Types.Sink (Result (..))
 import Control.Monad (liftM)
 
 -- | Construct a 'Conduit' with some stateful functions. This function address
@@ -21,8 +20,8 @@ import Control.Monad (liftM)
 conduitState
     :: Resource m
     => state -- ^ initial state
-    -> (state -> [input] -> ResourceT m (state, ConduitResult (Result [input]) output)) -- ^ Push function.
-    -> (state -> ResourceT m (ConduitResult [input] output)) -- ^ Close function. The state need not be returned, since it will not be used again.
+    -> (state -> [input] -> ResourceT m (state, ConduitResult input output)) -- ^ Push function.
+    -> (state -> ResourceT m [output]) -- ^ Close function. The state need not be returned, since it will not be used again.
     -> Conduit input m output
 conduitState state0 push close = Conduit $ do
 #if DEBUG
@@ -39,8 +38,8 @@ conduitState state0 push close = Conduit $ do
             writeRef istate state'
 #if DEBUG
             case res of
-                ConduitResult (Done _) _ -> writeRef iclosed True
-                _ -> return ()
+                Finished _ _ -> writeRef iclosed True
+                Producing _ -> return ()
 #endif
             return res
         , conduitClose = do
@@ -55,8 +54,8 @@ conduitState state0 push close = Conduit $ do
 conduitIO :: ResourceIO m
            => IO state -- ^ resource and/or state allocation
            -> (state -> IO ()) -- ^ resource and/or state cleanup
-           -> (state -> [input] -> m (ConduitResult (Result [input]) output)) -- ^ Push function. Note that this need not explicitly perform any cleanup.
-           -> (state -> m (ConduitResult [input] output)) -- ^ Close function. Note that this need not explicitly perform any cleanup.
+           -> (state -> [input] -> m (ConduitResult input output)) -- ^ Push function. Note that this need not explicitly perform any cleanup.
+           -> (state -> m [output]) -- ^ Close function. Note that this need not explicitly perform any cleanup.
            -> Conduit input m output
 conduitIO alloc cleanup push close = Conduit $ do
 #if DEBUG
@@ -68,10 +67,10 @@ conduitIO alloc cleanup push close = Conduit $ do
 #if DEBUG
             False <- readRef iclosed
 #endif
-            res@(ConduitResult mleft _) <- lift $ push state input
-            case mleft of
-                Processing -> return ()
-                Done _ -> do
+            res <- lift $ push state input
+            case res of
+                Producing{} -> return ()
+                Finished{} -> do
 #if DEBUG
                     writeRef iclosed True
 #endif

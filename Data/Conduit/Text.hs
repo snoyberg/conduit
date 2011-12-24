@@ -169,10 +169,10 @@ decode codec = C.conduitState
   where
     push mb input = do
         (mb', ts) <- go' mb input
-        return $ (mb', C.ConduitResult C.Processing ts)
+        return $ (mb', C.Producing ts)
     close mb =
         case mb of
-            Nothing -> return $ C.ConduitResult [] []
+            Nothing -> return []
             Just b
                 | B.null b -> error "Data.Conduit.Text.decode: Received a null chunk"
                 | otherwise -> lift $ resourceThrow $ DecodeException codec (B.head b)

@@ -71,7 +71,7 @@ bs' $$ Sink msink = do
                 Open a -> do
                     mres <- push a
                     case mres of
-                        Done (SinkResult leftover res') -> do
+                        Done leftover res' -> do
                             bsourceUnpull bs leftover
                             bsourceClose bs
                             return res'
@@ -97,15 +97,14 @@ bsrc' $= Conduit mc = Source $ do
                     case res of
                         Closed -> do
                             writeRef istate False
-                            ConduitResult leftover o <- conduitClose c
-                            bsourceUnpull bsrc leftover
-                            return $ Open o
+                            res <- conduitClose c
+                            return $ Open res
                         Open input -> do
                             res' <- conduitPush c input
                             case res' of
-                                ConduitResult Processing output ->
+                                Producing output ->
                                     return $ Open output
-                                ConduitResult (Done leftover) output -> do
+                                Finished leftover output -> do
                                     bsourceUnpull bsrc leftover
                                     bsourceClose bsrc
                                     writeRef istate False
@@ -132,26 +131,26 @@ Conduit mc =$ Sink ms = Sink $ do
             { sinkPush = \cinput -> do
                 res <- conduitPush c cinput
                 case res of
-                    ConduitResult Processing sinput -> do
+                    Producing sinput -> do
                         mres <- pushI sinput
                         case mres of
                             Processing -> return Processing
-                            Done (SinkResult _sleftover res') -> do
-                                ConduitResult cleftover _ <- conduitClose c
-                                return $ Done $ SinkResult cleftover res'
-                    ConduitResult (Done cleftover) sinput -> do
+                            Done _sleftover res' -> do
+                                conduitClose c
+                                return $ Done [] res'
+                    Finished cleftover sinput -> do
                         mres <- pushI sinput
                         res' <-
                             case mres of
-                                Done (SinkResult _ x) -> return x
+                                Done _ x -> return x
                                 Processing -> closeI
-                        return $ Done $ SinkResult cleftover res'
+                        return $ Done cleftover res'
             , sinkClose = do
-                ConduitResult cleftover sinput <- conduitClose c
+                sinput <- conduitClose c
                 mres <- pushI sinput
                 res <-
                     case mres of
-                        Done (SinkResult _ x) -> return x
+                        Done _ x -> return x
                         Processing -> closeI
                 return res
             }
@@ -166,33 +165,33 @@ Conduit outerM =$= Conduit innerM = Conduit $ do
         { conduitPush = \inputO -> do
             res <- conduitPush outer inputO
             case res of
-                ConduitResult Processing inputI -> do
+                Producing inputI -> do
                     resI <- conduitPush inner inputI
                     case resI of
-                        ConduitResult Processing c ->
-                            return $ ConduitResult Processing c
-                        ConduitResult (Done _leftoverI) c -> do
-                            ConduitResult leftoverO _ <- conduitClose outer
-                            return $ ConduitResult (Done leftoverO) c
-                ConduitResult (Done leftoverO) inputI -> do
-                    ConduitResult _leftoverI c <- conduitPushClose inner inputI
-                    return $ ConduitResult (Done leftoverO) c
+                        Producing c ->
+                            return $ Producing c
+                        Finished _leftoverI c -> do
+                            conduitClose outer
+                            return $ Finished [] c
+                Finished leftoverO inputI -> do
+                    c <- conduitPushClose inner inputI
+                    return $ Finished leftoverO c
         , conduitClose = do
-            ConduitResult leftoverO b <- conduitClose outer
-            ConduitResult _leftoverI c <- conduitPushClose inner b
-            return $ ConduitResult leftoverO c
+            b <- conduitClose outer
+            c <- conduitPushClose inner b
+            return c
         }
 
 -- | Push some data to a conduit, then close it if necessary.
-conduitPushClose :: Monad m => PreparedConduit a m b -> [a] -> ResourceT m (ConduitResult [a] b)
+conduitPushClose :: Monad m => PreparedConduit a m b -> [a] -> ResourceT m [b]
 conduitPushClose c [] = conduitClose c
 conduitPushClose c input = do
     res <- conduitPush c input
     case res of
-        ConduitResult (Done a) b -> return $ ConduitResult a b
-        ConduitResult Processing b -> do
-            ConduitResult a b' <- conduitClose c
-            return $ ConduitResult a $ b ++ b'
+        Finished a b -> return b
+        Producing b -> do
+            b' <- conduitClose c
+            return $ b ++ b'
 
 sequence :: Resource m
          => Sink a m b
@@ -209,11 +208,11 @@ sequence (Sink sm) = Conduit $ do
     push' sink@(SinkData p _) input frontO = do
         mres <- p input
         case mres of
-            Processing -> return (sink, ConduitResult Processing $ frontO [])
-            Done (SinkResult leftover res) -> do
+            Processing -> return (sink, Producing $ frontO [])
+            Done leftover res -> do
                 sink' <- sm
                 push' sink' leftover $ frontO . (res:)
-    close (SinkNoData output) = return $ ConduitResult [] [output]
+    close (SinkNoData output) = return [output]
     close (SinkData _ c) = do
         res <- c
-        return $ ConduitResult [] [res]
+        return [res]

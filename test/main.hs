@@ -42,14 +42,14 @@ main = hspecX $ do
             x @?= [11..15] ++ [6..10]
 
         it "consumes the source to quickly" $ do
-            x <- runResourceT $ CL.sourceList [1..10] C.$$ do
+            x <- runResourceT $ CL.sourceList [1..10 :: Int] C.$$ do
                   strings <- CL.map show C.=$ CL.take 5
                   liftIO $ putStr $ unlines strings
                   CL.fold (+) 0
             40 @?= x
 
         it "correctly consumes a chunked resource" $ do
-            x <- runResourceT $ (CL.sourceList [1..5] `mappend` CL.sourceList [6..10]) C.$$ do
+            x <- runResourceT $ (CL.sourceList [1..5 :: Int] `mappend` CL.sourceList [6..10]) C.$$ do
                 strings <- CL.map show C.=$ CL.take 5
                 liftIO $ putStr $ unlines strings
                 CL.fold (+) 0
