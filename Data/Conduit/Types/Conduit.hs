@@ -9,7 +9,7 @@ module Data.Conduit.Types.Conduit
 import Control.Monad.Trans.Resource (ResourceT)
 import Control.Monad (liftM)
 
-data ConduitResult input output = Producing [output] | Finished [input] [output]
+data ConduitResult input output = Producing [output] | Finished (Maybe input) [output]
 
 instance Functor (ConduitResult input) where
     fmap f (Producing o) = Producing (fmap f o)
@@ -24,7 +24,7 @@ instance Functor (ConduitResult input) where
 -- * Neither a push nor close may be performed after a conduit returns a
 -- 'ConduitCloseResult' from a push, or after a close is performed.
 data PreparedConduit input m output = PreparedConduit
-    { conduitPush :: [input] -> ResourceT m (ConduitResult input output)
+    { conduitPush :: input -> ResourceT m (ConduitResult input output)
     , conduitClose :: ResourceT m [output]
     }
 

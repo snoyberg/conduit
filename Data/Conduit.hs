@@ -72,10 +72,12 @@ bs' $$ Sink msink = do
                     mres <- push a
                     case mres of
                         Done leftover res' -> do
-                            bsourceUnpull bs leftover
+                            maybe (return ()) (bsourceUnpull bs) leftover
                             bsourceClose bs
                             return res'
                         Processing -> loop
+
+data FuseLeftState a = FLClosed [a] | FLOpen [a]
 
 infixl 1 $=
 
@@ -84,38 +86,58 @@ infixl 1 $=
      -> Conduit a m b
      -> Source m b
 bsrc' $= Conduit mc = Source $ do
-    istate <- newRef True
+    istate <- newRef $ FLOpen [] -- still open, no buffer
     bsrc <- bufferSource bsrc'
     c <- mc
-    return PreparedSource
-        { sourcePull = do
-            state' <- readRef istate
-            case state' of
-                False -> return Closed
-                True -> do
-                    res <- bsourcePull bsrc
-                    case res of
-                        Closed -> do
-                            writeRef istate False
-                            res <- conduitClose c
-                            return $ Open res
-                        Open input -> do
-                            res' <- conduitPush c input
-                            case res' of
-                                Producing output ->
-                                    return $ Open output
-                                Finished leftover output -> do
-                                    bsourceUnpull bsrc leftover
-                                    bsourceClose bsrc
-                                    writeRef istate False
-                                    return $ Open output
-        , sourceClose = do
-            -- Invariant: sourceClose cannot be called twice, so we will assume
-            -- it is currently open. We could add a sanity check here.
-            writeRef istate False
-            _ignored <- conduitClose c
-            bsourceClose bsrc
-        }
+    return $ PreparedSource
+        (pull istate bsrc c)
+        (close istate bsrc c)
+  where
+    pull istate bsrc c = do
+        state' <- readRef istate
+        case state' of
+            FLClosed [] -> return Closed
+            FLClosed (x:xs) -> do
+                writeRef istate $ FLClosed xs
+                return $ Open x
+            FLOpen (x:xs) -> do
+                writeRef istate $ FLOpen xs
+                return $ Open x
+            FLOpen [] -> do
+                res <- bsourcePull bsrc
+                case res of
+                    Closed -> do
+                        res <- conduitClose c
+                        case res of
+                            [] -> do
+                                writeRef istate $ FLClosed []
+                                return Closed
+                            x:xs -> do
+                                writeRef istate $ FLClosed xs
+                                return $ Open x
+                    Open input -> do
+                        res' <- conduitPush c input
+                        case res' of
+                            Producing [] -> pull istate bsrc c
+                            Producing (x:xs) -> do
+                                writeRef istate $ FLOpen xs
+                                return $ Open x
+                            Finished leftover output -> do
+                                maybe (return ()) (bsourceUnpull bsrc) leftover
+                                bsourceClose bsrc
+                                case output of
+                                    [] -> do
+                                        writeRef istate $ FLClosed []
+                                        return Closed
+                                    x:xs -> do
+                                        writeRef istate $ FLClosed xs
+                                        return $ Open x
+    close istate bsrc c = do
+        -- Invariant: sourceClose cannot be called twice, so we will assume
+        -- it is currently open. We could add a sanity check here.
+        writeRef istate $ FLClosed []
+        _ignored <- conduitClose c
+        bsourceClose bsrc
 
 infixr 0 =$
 
@@ -132,27 +154,33 @@ Conduit mc =$ Sink ms = Sink $ do
                 res <- conduitPush c cinput
                 case res of
                     Producing sinput -> do
-                        mres <- pushI sinput
-                        case mres of
-                            Processing -> return Processing
-                            Done _sleftover res' -> do
-                                conduitClose c
-                                return $ Done [] res'
+                        let push [] = return Processing
+                            push (i:is) = do
+                                mres <- pushI i
+                                case mres of
+                                    Processing -> push is
+                                    Done _sleftover res' -> do
+                                        conduitClose c
+                                        return $ Done Nothing res'
+                        push sinput
                     Finished cleftover sinput -> do
-                        mres <- pushI sinput
-                        res' <-
-                            case mres of
-                                Done _ x -> return x
-                                Processing -> closeI
+                        let push [] = closeI
+                            push (i:is) = do
+                                mres <- pushI i
+                                case mres of
+                                    Processing -> push is
+                                    Done _sleftover res' -> return res'
+                        res' <- push sinput
                         return $ Done cleftover res'
             , sinkClose = do
                 sinput <- conduitClose c
-                mres <- pushI sinput
-                res <-
-                    case mres of
-                        Done _ x -> return x
-                        Processing -> closeI
-                return res
+                let push [] = closeI
+                    push (i:is) = do
+                        mres <- pushI i
+                        case mres of
+                            Processing -> push is
+                            Done _sleftover res' -> return res'
+                push sinput
             }
 
 infixr 0 =$=
@@ -166,13 +194,15 @@ Conduit outerM =$= Conduit innerM = Conduit $ do
             res <- conduitPush outer inputO
             case res of
                 Producing inputI -> do
-                    resI <- conduitPush inner inputI
-                    case resI of
-                        Producing c ->
-                            return $ Producing c
-                        Finished _leftoverI c -> do
-                            conduitClose outer
-                            return $ Finished [] c
+                    let push [] front = return $ Producing $ front []
+                        push (i:is) front = do
+                            resI <- conduitPush inner i
+                            case resI of
+                                Producing c -> push is (front . (c ++))
+                                Finished leftover c -> do
+                                    conduitClose outer
+                                    return $ Finished Nothing $ front c
+                    push inputI id
                 Finished leftoverO inputI -> do
                     c <- conduitPushClose inner inputI
                     return $ Finished leftoverO c
@@ -185,12 +215,12 @@ Conduit outerM =$= Conduit innerM = Conduit $ do
 -- | Push some data to a conduit, then close it if necessary.
 conduitPushClose :: Monad m => PreparedConduit a m b -> [a] -> ResourceT m [b]
 conduitPushClose c [] = conduitClose c
-conduitPushClose c input = do
+conduitPushClose c (input:rest) = do
     res <- conduitPush c input
     case res of
         Finished a b -> return b
         Producing b -> do
-            b' <- conduitClose c
+            b' <- conduitPushClose c rest
             return $ b ++ b'
 
 sequence :: Resource m
@@ -211,7 +241,9 @@ sequence (Sink sm) = Conduit $ do
             Processing -> return (sink, Producing $ frontO [])
             Done leftover res -> do
                 sink' <- sm
-                push' sink' leftover $ frontO . (res:)
+                case leftover of
+                    Nothing -> return (sink', Producing $ frontO [res])
+                    Just x -> push' sink' x $ frontO . (res:)
     close (SinkNoData output) = return [output]
     close (SinkData _ c) = do
         res <- c

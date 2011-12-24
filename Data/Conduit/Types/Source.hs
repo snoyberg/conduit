@@ -19,11 +19,11 @@ import Control.Exception (Exception, throw)
 -- | When pulling data from a source, it returns back a list of values pulled
 -- from the stream. It also indicates whether or not the stream has been
 -- closed.
-data SourceResult a = Open [a] | Closed
+data SourceResult a = Open a | Closed
     deriving (Show, Eq, Ord)
 
 instance Functor SourceResult where
-    fmap f (Open a) = Open (fmap f a)
+    fmap f (Open a) = Open (f a)
     fmap _ Closed = Closed
 
 -- | A 'Source' has two operations on it: pull some data, and close the
@@ -128,7 +128,7 @@ instance Resource m => Monoid (Source m a) where
 -- 'bsourcePull' after an 'EOF' will simply return another 'EOF'.
 data BufferedSource m a = BufferedSource
     { bsourcePull :: ResourceT m (SourceResult a)
-    , bsourceUnpull :: [a] -> ResourceT m () -- ^ It is the responsibility of the 'BufferedSource' to check if the argument is null.
+    , bsourceUnpull :: a -> ResourceT m ()
     , bsourceClose :: ResourceT m ()
     }
 
@@ -148,48 +148,39 @@ instance BufferSource BufferedSource where
         }
 
 -- | State of a 'BufferedSource'
-data BState a = EmptyOpen -- ^ nothing in buffer, EOF not received yet
-              | EmptyClosed -- ^ nothing in buffer, EOF has been received
-              | BOpen [a] -- ^ something in buffer, EOF not received yet
-              | BClosed [a] -- ^ something in buffer, EOF has been received
+data BState a = BOpen [a]
+              | BClosed [a]
     deriving Show
 
 instance BufferSource PreparedSource where
     bufferSource src = do
-        istate <- newRef EmptyOpen
+        istate <- newRef $ BOpen []
         return BufferedSource
             { bsourcePull = do
                 mresult <- modifyRef istate $ \state ->
                     case state of
-                        BOpen buffer -> (EmptyOpen, Just $ Open buffer)
-                        BClosed buffer -> (EmptyClosed, Just $ Open buffer)
-                        EmptyOpen -> (EmptyOpen, Nothing)
-                        EmptyClosed -> (EmptyClosed, Just Closed)
+                        BOpen [] -> (state, Nothing)
+                        BClosed [] -> (state, Just Closed)
+                        BOpen (x:xs) -> (BOpen xs, Just $ Open x)
+                        BClosed (x:xs) -> (BClosed xs, Just $ Open x)
                 case mresult of
                     Nothing -> do
                         result <- sourcePull src
                         case result of
-                            Closed -> writeRef istate EmptyClosed
+                            Closed -> writeRef istate $ BClosed []
                             Open _ -> return ()
                         return result
                     Just result -> return result
-            , bsourceUnpull =
-                \x ->
-                    if null x
-                        then return ()
-                        else modifyRef istate $ \state ->
-                            case state of
-                                BOpen buffer -> (BOpen (x ++ buffer), ())
-                                BClosed buffer -> (BClosed (x ++ buffer), ())
-                                EmptyOpen -> (BOpen x, ())
-                                EmptyClosed -> (BClosed x, ())
+            , bsourceUnpull = \x ->
+                modifyRef istate $ \state ->
+                    case state of
+                        BOpen buffer -> (BOpen (x : buffer), ())
+                        BClosed buffer -> (BClosed (x : buffer), ())
             , bsourceClose = do
                 action <- modifyRef istate $ \state ->
                     case state of
                         BOpen x -> (BClosed x, sourceClose src)
                         BClosed _ -> (state, return ())
-                        EmptyOpen -> (EmptyClosed, sourceClose src)
-                        EmptyClosed -> (state, return ())
                 action
             }
 

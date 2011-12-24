@@ -20,7 +20,7 @@ import Control.Monad (liftM)
 conduitState
     :: Resource m
     => state -- ^ initial state
-    -> (state -> [input] -> ResourceT m (state, ConduitResult input output)) -- ^ Push function.
+    -> (state -> input -> ResourceT m (state, ConduitResult input output)) -- ^ Push function.
     -> (state -> ResourceT m [output]) -- ^ Close function. The state need not be returned, since it will not be used again.
     -> Conduit input m output
 conduitState state0 push close = Conduit $ do
@@ -54,7 +54,7 @@ conduitState state0 push close = Conduit $ do
 conduitIO :: ResourceIO m
            => IO state -- ^ resource and/or state allocation
            -> (state -> IO ()) -- ^ resource and/or state cleanup
-           -> (state -> [input] -> m (ConduitResult input output)) -- ^ Push function. Note that this need not explicitly perform any cleanup.
+           -> (state -> input -> m (ConduitResult input output)) -- ^ Push function. Note that this need not explicitly perform any cleanup.
            -> (state -> m [output]) -- ^ Close function. Note that this need not explicitly perform any cleanup.
            -> Conduit input m output
 conduitIO alloc cleanup push close = Conduit $ do

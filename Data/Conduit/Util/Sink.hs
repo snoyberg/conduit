@@ -15,13 +15,14 @@ import Control.Monad.Trans.Resource
 import Control.Monad.Trans.Class (lift)
 import Data.Conduit.Types.Sink
 import Control.Monad (liftM)
+import Data.Monoid (Monoid, mappend)
 
 -- | Construct a 'Sink' with some stateful functions. This function address
 -- all mutable state for you.
 sinkState
     :: Resource m
     => state -- ^ initial state
-    -> (state -> [input] -> ResourceT m (state, SinkResult input output)) -- ^ push
+    -> (state -> input -> ResourceT m (state, SinkResult input output)) -- ^ push
     -> (state -> ResourceT m output) -- ^ Close. Note that the state is not returned, as it is not needed.
     -> Sink input m output
 sinkState state0 push close = Sink $ do
@@ -56,7 +57,7 @@ sinkState state0 push close = Sink $ do
 sinkIO :: ResourceIO m
         => IO state -- ^ resource and/or state allocation
         -> (state -> IO ()) -- ^ resource and/or state cleanup
-        -> (state -> [input] -> m (SinkResult input output)) -- ^ push
+        -> (state -> input -> m (SinkResult input output)) -- ^ push
         -> (state -> m output) -- ^ close
         -> Sink input m output
 sinkIO alloc cleanup push close = Sink $ do
@@ -101,7 +102,7 @@ transSink f (Sink mc) =
         , sinkClose = transResourceT f (sinkClose c)
         }
 
-yield :: Monad m => [a] -> b -> Sink a m b
+yield :: (Monoid a, Monad m) => a -> b -> Sink a m b
 yield leftover res = Sink $ return $ SinkData
-    (\xs -> return $ Done (leftover ++ xs) res)
+    (\xs -> return $ Done (Just $ leftover `mappend` xs) res)
     (return res)

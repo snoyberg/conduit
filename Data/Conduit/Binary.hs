@@ -30,7 +30,7 @@ sourceFile fp = sourceIO
         bs <- liftIO $ S.hGetSome handle 4096
         if S.null bs
             then return Closed
-            else return $ Open [bs])
+            else return $ Open bs)
 
 sourceFileRange :: ResourceIO m
                 => FilePath
@@ -59,7 +59,7 @@ sourceFileRange fp offset count = Source $ do
             then do
                 release key
                 return Closed
-            else return $ Open [bs]
+            else return $ Open bs
     pullLimited ic handle key = do
         c <- fmap fromInteger $ readRef ic
         bs <- liftIO $ S.hGetSome handle (min c 4096)
@@ -71,7 +71,7 @@ sourceFileRange fp offset count = Source $ do
                     return Closed
                 else do
                     writeRef ic $ toInteger c'
-                    return $ Open [bs]
+                    return $ Open bs
 
 sinkFile :: ResourceIO m
          => FilePath
@@ -79,7 +79,7 @@ sinkFile :: ResourceIO m
 sinkFile fp = sinkIO
     (openFile fp WriteMode)
     hClose
-    (\handle bss -> liftIO (L.hPut handle $ L.fromChunks bss) >> return Processing)
+    (\handle bs -> liftIO (S.hPut handle bs) >> return Processing)
     (const $ return ())
 
 -- | Stream the contents of the input to a file, and also send it along the
@@ -90,25 +90,25 @@ conduitFile :: ResourceIO m
 conduitFile fp = conduitIO
     (openFile fp WriteMode)
     hClose
-    (\handle bss -> do
-        liftIO $ L.hPut handle $ L.fromChunks bss
-        return $ Producing bss)
+    (\handle bs -> do
+        liftIO $ S.hPut handle bs
+        return $ Producing [bs])
     (const $ return [])
 
 isolate :: Resource m
-        => Int64
+        => Int
         -> Conduit S.ByteString m S.ByteString
 isolate count0 = conduitState
     count0
     push
     close
   where
-    push 0 bss = return (0, Finished bss [])
-    push count bss = do
-        let (a, b) = L.splitAt count $ L.fromChunks bss
-        let count' = count - L.length a
+    push 0 bs = return (0, Finished (Just bs) [])
+    push count bs = do
+        let (a, b) = S.splitAt count bs
+        let count' = count - S.length a
         return (count',
             if count' == 0
-                then Finished (L.toChunks b) (L.toChunks a)
-                else assert (L.null b) $ Producing (L.toChunks a))
+                then Finished (if S.null b then Nothing else Just b) (if S.null a then [] else [a])
+                else assert (S.null b) $ Producing [a])
     close _ = return []

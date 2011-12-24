@@ -18,9 +18,9 @@ import Control.Applicative (Applicative (..))
 import Control.Monad.Base (MonadBase (liftBase))
 
 -- | At the end of running, a 'Sink' returns some leftover input and an output.
-data SinkResult input output = Processing | Done [input] output
+data SinkResult input output = Processing | Done (Maybe input) output
 instance Functor (SinkResult input) where
-    fmap f Processing = Processing
+    fmap _ Processing = Processing
     fmap f (Done input output) = Done input (f output)
 
 -- | In general, a sink will consume data and eventually produce an output when
@@ -50,7 +50,7 @@ instance Functor (SinkResult input) where
 data PreparedSink input m output =
     SinkNoData output
   | SinkData
-        { sinkPush :: [input] -> ResourceT m (SinkResult input output)
+        { sinkPush :: input -> ResourceT m (SinkResult input output)
         , sinkClose :: ResourceT m output
         }
 
@@ -88,7 +88,7 @@ toEither :: PreparedSink input m output -> SinkEither input m output
 toEither (SinkData x y) = SinkPair x y
 toEither (SinkNoData x) = SinkOutput x
 
-type SinkPush input m output = [input] -> ResourceT m (SinkResult input output)
+type SinkPush input m output = input -> ResourceT m (SinkResult input output)
 type SinkClose input m output = ResourceT m output
 data SinkEither input m output
     = SinkPair (SinkPush input m output) (SinkClose input m output)
@@ -100,7 +100,7 @@ appHelper istate = SinkData (pushHelper istate) (closeHelper istate)
 
 pushHelper :: Resource m
            => SinkState input m a b
-           -> [input]
+           -> input
            -> ResourceT m (SinkResult input b)
 pushHelper istate stream0 = do
     state <- readRef istate
@@ -113,7 +113,7 @@ pushHelper istate stream0 = do
             Done leftover res -> do
                 let state' = (SinkOutput res, eb)
                 writeRef istate state'
-                go state' leftover
+                maybe (return Processing) (go state') leftover
     go (f@SinkOutput{}, SinkPair b _) stream = do
         mres <- b stream
         case mres of
@@ -121,8 +121,8 @@ pushHelper istate stream0 = do
             Done leftover res -> do
                 let state' = (f, SinkOutput res)
                 writeRef istate state'
-                go state' leftover
-    go (SinkOutput f, SinkOutput b) leftover = return $ Done leftover $ f b
+                maybe (return Processing) (go state') leftover
+    go (SinkOutput f, SinkOutput b) leftover = return $ Done (Just leftover) $ f b
 
 closeHelper :: Resource m
             => SinkState input m a b
@@ -163,7 +163,7 @@ instance Resource m => Monad (Sink input m) where
                                     return $ Done leftover y
                                 SinkData pushF closeF -> do
                                     writeRef istate $ Right (pushF, closeF)
-                                    push istate leftover
+                                    maybe (return Processing) (push istate) leftover
                         Processing -> return Processing
                 Right (push', _) -> push' input
         close istate = do

@@ -45,7 +45,7 @@ traverse followSymlinks root = C.Source $ do
     pull (p:ps) = do
         isFile' <- liftIO $ isFile p
         if isFile'
-            then return (ps, C.Open [p])
+            then return (ps, C.Open p)
             else do
                 follow' <- liftIO $ follow p
                 if follow'

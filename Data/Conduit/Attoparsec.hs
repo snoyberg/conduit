@@ -69,14 +69,13 @@ sinkParser p0 = C.sinkState
     push
     close
   where
-    push parser [] = return (parser, C.Processing)
-    push parser (c:cs) =
+    push parser c =
         case parser c of
             A.Done leftover x ->
-                let lo = if null cs && isNull leftover then [] else leftover:cs
+                let lo = if isNull leftover then Nothing else Just leftover
                  in return (parser, C.Done lo x)
             A.Fail _ contexts msg -> lift $ C.resourceThrow $ ParseError contexts msg
-            A.Partial p -> push p cs
+            A.Partial p -> return (p, C.Processing)
     close parser = do
         case feedA (parser empty) empty of
             A.Done leftover y -> return y

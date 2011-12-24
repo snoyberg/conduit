@@ -23,4 +23,4 @@ lazyConsume (Source (ResourceT msrc)) =
             Closed -> return []
             Open x -> do
                 y <- go r src
-                return $ x ++ y
+                return $ x : y
