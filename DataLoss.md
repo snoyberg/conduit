@@ -61,6 +61,10 @@ main = C.runResourceT $ CL.sourceList [1..15] C.$$ do
 Instead, however, the second isolate call consumes no data, and the result is
 the numbers 6 to 15.
 
+__Update__: I've decided that the issue of isolate not consuming all data is
+not a real issue. Instead, I'm adding sinkNull to help out with forcing
+consumption.
+
 Possible solutions
 ---------------------------
 

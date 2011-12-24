@@ -214,9 +214,9 @@ main = hspecX $ do
             x @?= [1..5]
             y @?= [6..10]
 
-        it "consumes all data regardless of sink" $ do
+        it "consumes all data" $ do
             x <- runResourceT $ CL.sourceList [1..10 :: Int] C.$$ do
-                CL.isolate 5 C.=$ return ()
+                CL.isolate 5 C.=$ CL.sinkNull
                 CL.consume
             x @?= [6..10]
 

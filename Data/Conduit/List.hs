@@ -15,6 +15,7 @@ module Data.Conduit.List
     , consume
     , isolate
     , filter
+    , sinkNull
     ) where
 
 import Prelude
@@ -164,3 +165,8 @@ filter f = Conduit $ return $ PreparedConduit
     { conduitPush = return . Producing . Prelude.filter f . return
     , conduitClose = return []
     }
+
+sinkNull :: Resource m => Sink a m ()
+sinkNull = Sink $ return $ SinkData
+    (\_ -> return Processing)
+    (return ())
