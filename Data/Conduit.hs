@@ -24,8 +24,6 @@ module Data.Conduit
       -- ** Conduit
     , module Data.Conduit.Types.Conduit
     , module Data.Conduit.Util.Conduit
-      -- * Other utils
-    , sequence
       -- * Convenience re-exports
     , ResourceT
     , Resource (..)
@@ -37,7 +35,6 @@ module Data.Conduit
     , ResourceThrow (..)
     ) where
 
-import Prelude hiding (sequence)
 import Control.Monad.Trans.Resource
 import Control.Monad.Trans.Control (MonadBaseControl)
 import Data.Conduit.Types.Source
@@ -222,29 +219,3 @@ conduitPushClose c (input:rest) = do
         Producing b -> do
             b' <- conduitPushClose c rest
             return $ b ++ b'
-
-sequence :: Resource m
-         => Sink a m b
-         -> Conduit a m b
-sequence (Sink sm) = Conduit $ do
-    sink <- sm
-    prepareConduit $ conduitState sink push close
-  where
-    push sink input = push' sink input id
-
-    push' (SinkNoData output) input frontO = do
-        sink <- sm
-        push' sink input (frontO . (output:))
-    push' sink@(SinkData p _) input frontO = do
-        mres <- p input
-        case mres of
-            Processing -> return (sink, Producing $ frontO [])
-            Done leftover res -> do
-                sink' <- sm
-                case leftover of
-                    Nothing -> return (sink', Producing $ frontO [res])
-                    Just x -> push' sink' x $ frontO . (res:)
-    close (SinkNoData output) = return [output]
-    close (SinkData _ c) = do
-        res <- c
-        return [res]

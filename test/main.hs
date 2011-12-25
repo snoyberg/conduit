@@ -240,16 +240,34 @@ main = hspecX $ do
             nums <- CLazy.lazyConsume $ mconcat $ map incr [1..10]
             C.liftBase $ nums @?= [1..10]
 
-    describe "sequence" $ do
-        it "works" $ do
-            let sink = do
+    describe "sinkConduit" $ do
+        it "simple sink" $ do
+            let sink () = do
                     _ <- CL.drop 2
-                    CL.head
-            let conduit = C.sequence sink
+                    x <- CL.head
+                    return $ C.Emit () $ maybe [] return x
+            let conduit = C.sinkConduit () sink
             res <- runResourceT $ CL.sourceList [1..10 :: Int]
                            C.$= conduit
                            C.$$ CL.consume
-            catMaybes res @?= [3, 6, 9]
+            res @?= [3, 6, 9]
+        it "finishes on new state" $ do
+            let sink () = do
+                x <- CL.head
+                return $ C.Emit () $ maybe [] return x
+            let conduit = C.sinkConduit () sink
+            res <- runResourceT $ CL.sourceList [1..10 :: Int]
+                        C.$= conduit C.$$ CL.consume
+            res @?= [1..10]
+        it "switch to a conduit" $ do
+            let sink () = do
+                _ <- CL.drop 4
+                return $ C.StartConduit $ CL.filter even
+            let conduit = C.sinkConduit () sink
+            res <- runResourceT $ CL.sourceList [1..10 :: Int]
+                            C.$= conduit
+                            C.$$ CL.consume
+            res @?= [6, 8, 10]
 #endif
 
     describe "peek" $ do
