@@ -12,19 +12,22 @@
 -- Enumerator-based API for manipulating the filesystem.
 module Data.Conduit.Filesystem
     ( traverse
+    , sourceFile
+    , sinkFile
     ) where
 
 import           Prelude hiding (FilePath)
 
 import           Control.Monad.IO.Class (MonadIO, liftIO)
 import qualified Data.Conduit as C
+import qualified Data.Conduit.Binary as CB
 import           Filesystem
-import           Filesystem.Path.CurrentOS (FilePath)
+import           Filesystem.Path.CurrentOS (FilePath, encodeString)
+import qualified Data.ByteString as S
 
 #ifdef CABAL_OS_WINDOWS
 #else
 import qualified System.Posix as Posix
-import           Filesystem.Path.CurrentOS (encodeString)
 #endif
 
 -- | Starting at some root directory, traverse the filesystem and enumerate
@@ -65,3 +68,13 @@ traverse followSymlinks root = C.Source $ do
             else Posix.getSymbolicLinkStatus path
         return (Posix.isDirectory stat)
 #endif
+
+sourceFile :: C.ResourceIO m
+           => FilePath
+           -> C.Source m S.ByteString
+sourceFile = CB.sourceFile . encodeString
+
+sinkFile :: C.ResourceIO m
+         => FilePath
+         -> C.Sink S.ByteString m ()
+sinkFile = CB.sinkFile . encodeString

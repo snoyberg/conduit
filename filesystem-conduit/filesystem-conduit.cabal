@@ -1,0 +1,51 @@
+Name:                filesystem-conduit
+Version:             0.0.0
+Synopsis:            Use system-filepath data types with conduits.
+Description:         Provides ability to traverse a folder structure efficiently, as well as convenience wrappers for reading from and writing to files.
+License:             BSD3
+License-file:        LICENSE
+Author:              Michael Snoyman
+Maintainer:          michael@snoyman.com
+Category:            Data
+Build-type:          Simple
+Cabal-version:       >=1.8
+Homepage:            http://github.com/snoyberg/conduit
+extra-source-files:  test/main.hs
+
+Library
+  Exposed-modules:     Data.Conduit.Filesystem
+  Build-depends:       base                     >= 4            && < 5
+                     , containers
+                     , transformers             >= 0.2.2        && < 0.3
+                     , system-fileio            >= 0.3.3        && < 0.4
+                     , system-filepath          >= 0.4.3        && < 0.5
+                     , bytestring               >= 0.9
+                     , text                     >= 0.11
+                     , conduit                  >= 0.0          && < 0.1
+  ghc-options:     -Wall
+
+  if os(windows)
+    cpp-options: -DCABAL_OS_WINDOWS
+    build-depends: Win32
+  else
+    build-depends: unix
+
+test-suite test
+    hs-source-dirs: test
+    main-is: main.hs
+    type: exitcode-stdio-1.0
+    cpp-options:   -DTEST
+    build-depends:   conduit
+                   , base
+                   , hspec
+                   , HUnit
+                   , QuickCheck
+                   , bytestring
+                   , blaze-builder
+                   , transformers
+                   , text
+    ghc-options:     -Wall
+
+source-repository head
+  type:     git
+  location: git://github.com/snoyberg/conduit.git

@@ -1,0 +1,43 @@
+Name:                attoparsec-conduit
+Version:             0.0.0
+Synopsis:            Turn attoparsec parsers into sinks.
+Description:         Turn attoparsec parsers into sinks.
+License:             BSD3
+License-file:        LICENSE
+Author:              Michael Snoyman
+Maintainer:          michael@snoyman.com
+Category:            Data
+Build-type:          Simple
+Cabal-version:       >=1.8
+Homepage:            http://github.com/snoyberg/conduit
+extra-source-files:  test/main.hs
+
+Library
+  Exposed-modules:     Data.Conduit.Attoparsec
+  Build-depends:       base                     >= 4            && < 5
+                     , transformers             >= 0.2.2        && < 0.3
+                     , bytestring               >= 0.9
+                     , attoparsec               >= 0.10
+                     , text                     >= 0.11
+                     , conduit                  >= 0.0          && < 0.1
+  ghc-options:     -Wall
+
+test-suite test
+    hs-source-dirs: test
+    main-is: main.hs
+    type: exitcode-stdio-1.0
+    cpp-options:   -DTEST
+    build-depends:   conduit
+                   , base
+                   , hspec
+                   , HUnit
+                   , QuickCheck
+                   , bytestring
+                   , blaze-builder
+                   , transformers
+                   , text
+    ghc-options:     -Wall
+
+source-repository head
+  type:     git
+  location: git://github.com/snoyberg/conduit.git

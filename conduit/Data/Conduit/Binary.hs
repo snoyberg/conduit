@@ -7,14 +7,8 @@ module Data.Conduit.Binary
     , isolate
     ) where
 
-import Prelude hiding (FilePath)
-import System.IO (hClose)
-import Filesystem.Path.CurrentOS (FilePath)
 import qualified Data.ByteString as S
-import qualified Data.ByteString.Lazy as L
-import Filesystem (openFile, IOMode (ReadMode, WriteMode))
 import Data.Conduit
-import Data.Int (Int64)
 import Control.Exception (assert)
 import Control.Monad.IO.Class (liftIO)
 import qualified System.IO as IO
@@ -24,8 +18,8 @@ sourceFile :: ResourceIO m
            => FilePath
            -> Source m S.ByteString
 sourceFile fp = sourceIO
-    (openFile fp ReadMode)
-    hClose
+    (IO.openFile fp IO.ReadMode)
+    IO.hClose
     (\handle -> do
         bs <- liftIO $ S.hGetSome handle 4096
         if S.null bs
@@ -38,7 +32,7 @@ sourceFileRange :: ResourceIO m
                 -> Maybe Integer -- ^ Maximum count
                 -> Source m S.ByteString
 sourceFileRange fp offset count = Source $ do
-    (key, handle) <- withIO (openFile fp ReadMode) hClose
+    (key, handle) <- withIO (IO.openFile fp IO.ReadMode) IO.hClose
     case offset of
         Nothing -> return ()
         Just off -> liftIO $ IO.hSeek handle IO.AbsoluteSeek off
@@ -77,8 +71,8 @@ sinkFile :: ResourceIO m
          => FilePath
          -> Sink S.ByteString m ()
 sinkFile fp = sinkIO
-    (openFile fp WriteMode)
-    hClose
+    (IO.openFile fp IO.WriteMode)
+    IO.hClose
     (\handle bs -> liftIO (S.hPut handle bs) >> return Processing)
     (const $ return ())
 
@@ -88,8 +82,8 @@ conduitFile :: ResourceIO m
             => FilePath
             -> Conduit S.ByteString m S.ByteString
 conduitFile fp = conduitIO
-    (openFile fp WriteMode)
-    hClose
+    (IO.openFile fp IO.WriteMode)
+    IO.hClose
     (\handle bs -> do
         liftIO $ S.hPut handle bs
         return $ Producing [bs])

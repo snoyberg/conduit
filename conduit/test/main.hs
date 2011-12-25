@@ -10,17 +10,13 @@ import qualified Data.Conduit.List as CL
 import qualified Data.Conduit.Lazy as CLazy
 import qualified Data.Conduit.Binary as CB
 import qualified Data.Conduit.Text as CT
-import qualified Data.Conduit.Zlib as CZ
-import Data.Conduit.Blaze (builderToByteString)
 import Data.Conduit (runResourceT)
 import Control.Monad.ST (runST)
 import Data.Monoid
 import qualified Data.ByteString as S
 import qualified Data.IORef as I
-import Blaze.ByteString.Builder (fromByteString, toLazyByteString, insertLazyByteString)
 import qualified Data.ByteString.Lazy as L
 import Data.ByteString.Lazy.Char8 ()
-import Data.Maybe (catMaybes)
 import Control.Monad.Trans.Writer (Writer)
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
@@ -278,14 +274,6 @@ main = hspecX $ do
                 return (a, b)
             (a, b) @?= (Just 1, [1..10])
 
-    describe "zlib" $ do
-        prop "idempotent" $ \bss' -> runST $ runResourceT $ do
-            let bss = map S.pack bss'
-                lbs = L.fromChunks bss
-                src = mconcat $ map (CL.sourceList . return) bss
-            outBss <- src C.$= CZ.gzip C.$= CZ.ungzip C.$$ CL.consume
-            return $ lbs == L.fromChunks outBss
-
     describe "text" $ do
         let go enc tenc cenc = do
                 prop (enc ++ " single chunk") $ \chars -> runST $ runExceptionT_ $ runResourceT $ do
@@ -318,31 +306,6 @@ main = hspecX $ do
                            C.$= CB.isolate 6
                            C.$$ CL.consume
             S.concat bss @?= "XXXXXX"
-
-#if !FAST
-    describe "blaze" $ do
-        prop "idempotent to toLazyByteString" $ \bss' -> runST $ runResourceT $ do
-            let bss = map S.pack bss'
-            let builders = map fromByteString bss
-            let lbs = toLazyByteString $ mconcat builders
-            let src = mconcat $ map (CL.sourceList . return) builders
-            outBss <- src C.$= builderToByteString C.$$ CL.consume
-            return $ lbs == L.fromChunks outBss
-
-        it "works for large input" $ runResourceT $ do
-            let builders = replicate 10000 (fromByteString "hello world!")
-            let lbs = toLazyByteString $ mconcat builders
-            let src = mconcat $ map (CL.sourceList . return) builders
-            outBss <- src C.$= builderToByteString C.$$ CL.consume :: C.ResourceT IO [S.ByteString]
-            C.liftBase $ lbs @=? L.fromChunks outBss
-
-        it "works for lazy bytestring insertion" $ runResourceT $ do
-            let builders = replicate 10000 (insertLazyByteString "hello world!")
-            let lbs = toLazyByteString $ mconcat builders
-            let src = mconcat $ map (CL.sourceList . return) builders
-            outBss <- src C.$= builderToByteString C.$$ CL.consume :: C.ResourceT IO [S.ByteString]
-            C.liftBase $ lbs @=? L.fromChunks outBss
-#endif
 
 it' :: String -> IO () -> Writer [Spec] ()
 it' = it
