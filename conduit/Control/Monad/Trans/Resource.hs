@@ -5,6 +5,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE DeriveDataTypeable #-}
 module Control.Monad.Trans.Resource
     ( -- * Data types
       ResourceT (..)
@@ -37,6 +38,7 @@ module Control.Monad.Trans.Resource
     , runExceptionT_
     ) where
 
+import Data.Typeable
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
 import Control.Exception (SomeException)
@@ -219,6 +221,7 @@ instance (MonadTransControl t, ResourceIO m, Monad (t m), ResourceThrow (t m),
         => ResourceIO (t m)
 
 newtype ReleaseKey = ReleaseKey Int
+    deriving Typeable
 
 type RefCount = Word
 type NextKey = Int
@@ -228,6 +231,16 @@ data ReleaseMap base =
 
 newtype ResourceT m a =
     ResourceT (Ref (Base m) (ReleaseMap (Base m)) -> m a)
+
+instance Typeable1 m => Typeable1 (ResourceT m) where
+    typeOf1 = goType undefined
+      where
+        goType :: Typeable1 m => m a -> ResourceT m a -> TypeRep
+        goType m _ =
+            mkTyConApp
+                (mkTyCon "Control.Monad.Trans.Resource.ResourceT")
+                [ typeOf1 m
+                ]
 
 with :: Resource m
      => Base m a -- ^ allocate
