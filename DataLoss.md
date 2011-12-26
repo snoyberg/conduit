@@ -1,3 +1,8 @@
+Note: This issue has been resolved:
+
+* No more chunking.
+* isolate cannot force consumption.
+
 Thinking out loud: my current problem with the Conduit type
 ===========================
 
