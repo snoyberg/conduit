@@ -101,8 +101,8 @@ bsrc' $= Conduit mc = Source $ do
                 writeRef istate $ FLOpen xs
                 return $ Open x
             FLOpen [] -> do
-                res <- bsourcePull bsrc
-                case res of
+                mres <- bsourcePull bsrc
+                case mres of
                     Closed -> do
                         res <- conduitClose c
                         case res of
@@ -157,7 +157,7 @@ Conduit mc =$ Sink ms = Sink $ do
                                 case mres of
                                     Processing -> push is
                                     Done _sleftover res' -> do
-                                        conduitClose c
+                                        _ <- conduitClose c
                                         return $ Done Nothing res'
                         push sinput
                     Finished cleftover sinput -> do
@@ -196,8 +196,8 @@ Conduit outerM =$= Conduit innerM = Conduit $ do
                             resI <- conduitPush inner i
                             case resI of
                                 Producing c -> push is (front . (c ++))
-                                Finished leftover c -> do
-                                    conduitClose outer
+                                Finished _leftover c -> do
+                                    _ <- conduitClose outer
                                     return $ Finished Nothing $ front c
                     push inputI id
                 Finished leftoverO inputI -> do
@@ -215,7 +215,7 @@ conduitPushClose c [] = conduitClose c
 conduitPushClose c (input:rest) = do
     res <- conduitPush c input
     case res of
-        Finished a b -> return b
+        Finished _ b -> return b
         Producing b -> do
             b' <- conduitPushClose c rest
             return $ b ++ b'

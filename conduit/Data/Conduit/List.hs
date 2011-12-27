@@ -19,17 +19,14 @@ module Data.Conduit.List
     ) where
 
 import Prelude
-    ( ($), return, length, splitAt, (==), (-), Int
-    , (.), id, Maybe (..), (>>=), fmap, (++), Monad
-    , null, Bool (..), error
+    ( ($), return, (==), (-), Int
+    , (.), id, Maybe (..), fmap, Monad
+    , Bool (..)
     , (>>)
     )
 import qualified Prelude
-import qualified Control.Monad as Monad
 import Data.Conduit
-import Data.List (foldl')
 import Control.Monad.Trans.Class (lift)
-import Control.Exception (assert)
 
 fold :: Resource m
      => (b -> a -> b)
@@ -74,7 +71,7 @@ drop count0 = sinkState
     close
   where
     push 0 x = return (0, Done (Just x) ())
-    push count x = do
+    push count _ = do
         let count' = count - 1
         return (count', if count' == 0
                             then Done Nothing ()

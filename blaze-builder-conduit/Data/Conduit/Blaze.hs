@@ -37,7 +37,6 @@ import Control.Monad.Trans.Resource
 import Control.Monad.Trans.Class
 
 import qualified Data.ByteString                   as S
-import           Data.Monoid
 
 import Blaze.ByteString.Builder.Internal
 import Blaze.ByteString.Builder.Internal.Types
