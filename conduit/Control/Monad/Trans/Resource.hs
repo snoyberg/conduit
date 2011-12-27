@@ -6,22 +6,17 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveDataTypeable #-}
+-- | Allocate resources which are guaranteed to be released.
+--
+-- For more information, see <http://www.yesodweb.com/blog/2011/12/resourcet>.
+--
+-- One point to note: all register cleanup actions live in the base monad, not
+-- the main monad. This allows both more efficient code, and for monads to be
+-- transformed.
 module Control.Monad.Trans.Resource
     ( -- * Data types
-      ResourceT (..)
+      ResourceT
     , ReleaseKey
-      -- * Type class/associated types
-    , Resource (..)
-    , ResourceUnsafeIO (..)
-    , ResourceIO
-    , ResourceBaseIO (..)
-    , ResourceThrow (..)
-      -- * Use references
-    , Ref
-    , modifyRef
-    , readRef
-    , writeRef
-    , newRef
       -- * Unwrap
     , runResourceT
       -- * Resource allocation
@@ -29,6 +24,11 @@ module Control.Monad.Trans.Resource
     , withIO
     , register
     , release
+      -- * Use references
+    , modifyRef
+    , readRef
+    , writeRef
+    , newRef
       -- * Special actions
     , resourceForkIO
       -- * Monad transformation
@@ -36,6 +36,14 @@ module Control.Monad.Trans.Resource
       -- * A specific Exception transformer
     , ExceptionT (..)
     , runExceptionT_
+      -- * Type class/associated types
+    , Resource (..)
+    , ResourceUnsafeIO (..)
+    , ResourceIO
+    , ResourceBaseIO (..)
+    , ResourceThrow (..)
+      -- ** Low-level
+    , HasRef (..)
     ) where
 
 import Data.Typeable
@@ -77,15 +85,20 @@ import qualified Control.Monad.Trans.State.Strict  as Strict ( StateT )
 import qualified Control.Monad.Trans.Writer.Strict as Strict ( WriterT )
 import Control.Concurrent (ThreadId, forkIO)
 
+-- | Create a new reference.
 newRef :: Resource m => a -> ResourceT m (Ref (Base m) a)
 newRef = lift . resourceLiftBase . newRef'
 
+-- | Read a value from a reference.
 readRef :: Resource m => Ref (Base m) a -> ResourceT m a
 readRef = lift . resourceLiftBase . readRef'
 
+-- | Write a value to a reference.
 writeRef :: Resource m => Ref (Base m) a -> a -> ResourceT m ()
 writeRef r = lift . resourceLiftBase . writeRef' r
 
+-- | Modify a value in a reference. Note that, in the case of @IO@ stacks, this
+-- is an atomic action.
 modifyRef :: Resource m => Ref (Base m) a -> (a -> (a, b)) -> ResourceT m b
 modifyRef r = lift . resourceLiftBase . modifyRef' r
 
@@ -145,9 +158,18 @@ instance HasRef (Lazy.ST s) where
 -- | A 'Monad' with a base that has mutable references, and allows some way to
 -- run base actions and clean up properly.
 class (HasRef (Base m), Monad m) => Resource m where
+    -- | The base monad for the current monad stack. This will usually be @IO@
+    -- or @ST@.
     type Base m :: * -> *
 
+    -- | Run some action in the @Base@ monad. This function corresponds to
+    -- 'liftBase', but due to various type issues, we need to have our own
+    -- version here.
     resourceLiftBase :: Base m a -> m a
+
+    -- | Guarantee that some initialization and cleanup code is called before
+    -- and after some action. Note that the initialization and cleanup lives in
+    -- the base monad, while the body is in the top monad.
     resourceBracket_ :: Base m () -- ^ init
                      -> Base m () -- ^ cleanup
                      -> m c       -- ^ body
@@ -203,6 +225,8 @@ instance ResourceUnsafeIO (Lazy.ST s) where
 instance (MonadTransControl t, ResourceUnsafeIO m, Monad (t m)) => ResourceUnsafeIO (t m) where
     unsafeFromIO = lift . unsafeFromIO
 
+-- | A helper class for 'ResourceIO', stating that the base monad provides @IO@
+-- actions.
 class ResourceBaseIO m where
     safeFromIOBase :: IO a -> m a
 
@@ -220,6 +244,8 @@ instance (MonadTransControl t, ResourceIO m, Monad (t m), ResourceThrow (t m),
           MonadBaseControl IO (t m), MonadIO (t m))
         => ResourceIO (t m)
 
+-- | A lookup key for a specific release action. This value is returned by
+-- 'register', 'with' and 'withIO', and is passed to 'release'.
 newtype ReleaseKey = ReleaseKey Int
     deriving Typeable
 
@@ -229,6 +255,15 @@ type NextKey = Int
 data ReleaseMap base =
     ReleaseMap !NextKey !RefCount !(IntMap (base ()))
 
+-- | The Resource transformer. This transformer keeps track of all registered
+-- actions, and calls them upon exit (via 'runResourceT'). Actions may be
+-- registered via 'register', or resources may be allocated atomically via
+-- 'with' or 'withIO'. The with functions correspond closely to @bracket@.
+--
+-- Releasing may be performed before exit via the 'release' function. This is a
+-- highly recommended optimization, as it will ensure that scarce resources are
+-- freed early. Note that calling @release@ will deregister the action, so that
+-- a release action will only ever be called once.
 newtype ResourceT m a =
     ResourceT (Ref (Base m) (ReleaseMap (Base m)) -> m a)
 
@@ -242,6 +277,10 @@ instance Typeable1 m => Typeable1 (ResourceT m) where
                 [ typeOf1 m
                 ]
 
+-- | Perform some allocation, and automatically register a cleanup action.
+--
+-- If you are performing an @IO@ action, it will likely be easier to use the
+-- 'withIO' function, which handles types more cleanly.
 with :: Resource m
      => Base m a -- ^ allocate
      -> (a -> Base m ()) -- ^ free resource
@@ -251,6 +290,7 @@ with acquire rel = ResourceT $ \istate -> resourceLiftBase $ mask $ \restore -> 
     key <- register' istate $ rel a
     return (key, a)
 
+-- | Same as 'with', but explicitly uses @IO@ as a base.
 withIO :: ResourceIO m
        => IO a -- ^ allocate
        -> (a -> IO ()) -- ^ free resource
@@ -260,6 +300,8 @@ withIO acquire rel = ResourceT $ \istate -> resourceLiftBase $ mask $ \restore -
     key <- register' istate $ safeFromIOBase $ safeFromIOBase $ rel a
     return (key, a)
 
+-- | Register some action that will be called precisely once, either when
+-- 'runResourceT' is called, or when the 'ReleaseKey' is passed to 'release'.
 register :: Resource m
          => Base m ()
          -> ResourceT m ReleaseKey
@@ -274,6 +316,8 @@ register' istate rel = modifyRef' istate $ \(ReleaseMap key rf m) ->
     , ReleaseKey key
     )
 
+-- | Call a release action early, and deregister it from the list of cleanup
+-- actions to be performed.
 release :: Resource m
         => ReleaseKey
         -> ResourceT m ()
@@ -314,6 +358,11 @@ stateCleanup istate = mask_ $ do
             writeRef' istate $ error "Control.Monad.Trans.Resource.stateCleanup: There is a bug in the implementation. The mutable state is being accessed after cleanup. Please contact the maintainers."
         else return ()
 
+-- | Unwrap a 'ResourceT' transformer, and call all registered release actions.
+--
+-- Note that there is some reference counting involved due to 'resourceForkIO'.
+-- If multiple threads are sharing the same collection of resources, only the
+-- last call to @runResourceT@ will deallocate the resources.
 runResourceT :: Resource m => ResourceT m a -> m a
 runResourceT (ResourceT r) = do
     istate <- resourceLiftBase $ newRef'
@@ -323,6 +372,9 @@ runResourceT (ResourceT r) = do
         (stateCleanup istate)
         (r istate)
 
+-- | Transform the monad a @ResourceT@ lives in. This is most often used to
+-- strip or add new transformers to a stack, e.g. to run a @ReaderT@. Note that
+-- the original and new monad must both have the same 'Base' monad.
 transResourceT :: (Base m ~ Base n)
                => (m a -> n a)
                -> ResourceT m a
@@ -376,6 +428,7 @@ instance MonadBaseControl b m => MonadBaseControl b (ResourceT m) where
 -- catch exceptions via the 'ResourceThrow' typeclass.
 newtype ExceptionT m a = ExceptionT { runExceptionT :: m (Either SomeException a) }
 
+-- | Same as 'runExceptionT', but immediately 'E.throw' any exception returned.
 runExceptionT_ :: Monad m => ExceptionT m a -> m a
 runExceptionT_ = liftM (either E.throw id) . runExceptionT
 
@@ -415,7 +468,9 @@ instance (Resource m, MonadBaseControl (Base m) m)
         => ResourceThrow (ExceptionT m) where
     resourceThrow = ExceptionT . return . Left . E.toException
 
--- | A 'Resource' which can throw some types of exceptions.
+-- | A 'Resource' which can throw exceptions. Note that this does not work in a
+-- vanilla @ST@ monad. Instead, you should use the 'ExceptionT' transformer on
+-- top of @ST@.
 class Resource m => ResourceThrow m where
     resourceThrow :: E.Exception e => e -> m a
 
@@ -441,6 +496,14 @@ GOX(Monoid w, Strict.WriterT w)
 -- | Introduce a reference-counting scheme to allow a resource context to be
 -- shared by multiple threads. Once the last thread exits, all remaining
 -- resources will be released.
+--
+-- Note that abuse of this function will greatly delay the deallocation of
+-- registered resources. This function should be used with care. A general
+-- guideline:
+--
+-- If you are allocating a resource that should be shared by multiple threads,
+-- and will be held for a long time, you should allocate it at the beginning of
+-- a new @ResourceT@ block and then call @resourceForkIO@ from there.
 resourceForkIO :: ResourceIO m => ResourceT m () -> ResourceT m ThreadId
 resourceForkIO (ResourceT f) = ResourceT $ \r -> L.mask $ \restore ->
     -- We need to make sure the counter is incremented before this call

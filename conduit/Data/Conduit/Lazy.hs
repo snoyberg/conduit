@@ -8,19 +8,17 @@ module Data.Conduit.Lazy
 import Data.Conduit
 import System.IO.Unsafe (unsafeInterleaveIO)
 import Control.Monad.Trans.Control
-import Control.Monad.Trans.Resource
 
 lazyConsume :: MonadBaseControl IO m => Source m a -> ResourceT m [a]
-lazyConsume (Source (ResourceT msrc)) =
-    ResourceT $ \r -> msrc r >>= go r
+lazyConsume (Source msrc) = do
+    src <- msrc
+    go src
   where
 
-    run r (ResourceT f) = f r
-
-    go r src = liftBaseOp_ unsafeInterleaveIO $ do
-        res <- run r $ sourcePull src
+    go src = liftBaseOp_ unsafeInterleaveIO $ do
+        res <- sourcePull src
         case res of
             Closed -> return []
             Open x -> do
-                y <- go r src
+                y <- go src
                 return $ x : y

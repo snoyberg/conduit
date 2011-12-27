@@ -5,10 +5,9 @@
 -- | Utilities for constructing 'Sink's. Please see "Data.Conduit.Types.Sink"
 -- for more information on the base types.
 module Data.Conduit.Util.Sink
-    ( sinkIO
-    , sinkState
+    ( sinkState
+    , sinkIO
     , transSink
-    , yield
     ) where
 
 import Control.Monad.Trans.Resource
@@ -101,8 +100,3 @@ transSink f (Sink mc) =
         { sinkPush = transResourceT f . sinkPush c
         , sinkClose = transResourceT f (sinkClose c)
         }
-
-yield :: (Monoid a, Monad m) => a -> b -> Sink a m b
-yield leftover res = Sink $ return $ SinkData
-    (\xs -> return $ Done (Just $ leftover `mappend` xs) res)
-    (return res)

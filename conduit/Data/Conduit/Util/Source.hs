@@ -6,9 +6,9 @@
 -- 'BSource' types. Please see "Data.Conduit.Types.Source" for more information
 -- on the base types.
 module Data.Conduit.Util.Source
-    ( sourceIO
+    ( sourceState
+    , sourceIO
     , transSource
-    , sourceState
     ) where
 
 import Control.Monad.Trans.Resource

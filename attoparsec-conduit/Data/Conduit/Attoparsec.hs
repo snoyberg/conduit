@@ -1,13 +1,13 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleContexts #-}
 
--- |
--- Module: Data.Attoparsec.Enumerator
+-- | Turn an Attoparsec parser into a 'C.Sink'.
+--
+-- This code was taken from attoparsec-enumerator and adapted for conduits.
+--
+-- Copyright: 2011 Michael Snoyman
 -- Copyright: 2010 John Millikin
 -- License: MIT
---
--- Maintainer: jmillikin@gmail.com
--- Portability: portable
 module Data.Conduit.Attoparsec
     ( ParseError (..)
     , AttoparsecInput
@@ -35,8 +35,6 @@ data ParseError = ParseError
 instance Exception ParseError
 
 -- | A class of types which may be consumed by an Attoparsec parser.
---
--- Since: 0.3
 class AttoparsecInput a where
     parseA :: A.Parser a b -> a -> A.IResult a b
     feedA :: A.IResult a b -> a -> A.IResult a b
@@ -58,11 +56,10 @@ instance AttoparsecInput T.Text where
     isNull = T.null
     notEmpty = filter (not . T.null)
 
--- | Convert an Attoparsec 'A.Parser' into an 'E.Iteratee'. The parser will
+-- | Convert an Attoparsec 'A.Parser' into a 'C.Sink'. The parser will
 -- be streamed bytes until it returns 'A.Done' or 'A.Fail'.
 --
--- If parsing fails, a 'ParseError' will be thrown with 'E.throwError'. Use
--- 'E.catchError' to catch it.
+-- If parsing fails, a 'ParseError' will be thrown with 'C.resourceThrow'.
 sinkParser :: (AttoparsecInput a, C.ResourceThrow m) => A.Parser a b -> C.Sink a m b
 sinkParser p0 = C.sinkState
     (parseA p0)

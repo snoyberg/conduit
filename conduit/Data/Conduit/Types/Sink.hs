@@ -17,7 +17,10 @@ import Control.Monad (liftM)
 import Control.Applicative (Applicative (..))
 import Control.Monad.Base (MonadBase (liftBase))
 
--- | At the end of running, a 'Sink' returns some leftover input and an output.
+-- | A @Sink@ ultimately returns a single output value. Each time data is
+-- pushed to it, a @Sink@ may indicate that it is still processing data, or
+-- that it is done, in which case it returns some optional leftover input and
+-- an output value.
 data SinkResult input output = Processing | Done (Maybe input) output
 instance Functor (SinkResult input) where
     fmap _ Processing = Processing
@@ -41,12 +44,14 @@ instance Functor (SinkResult input) where
 --
 -- Invariants:
 --
--- * After a 'Sink' produces a result (either via 'sinkPush' or 'sinkClose'),
--- neither of those two functions may be called on the @Sink@ again.
+-- * After a 'PreparedSink' produces a result (either via 'sinkPush' or
+-- 'sinkClose'), neither of those two functions may be called on the @Sink@
+-- again.
 --
 -- * If a @Sink@ needs to clean up any resources (e.g., close a file handle),
 -- it must do so whenever it returns a result, either via @sinkPush@ or
--- @sinkClose@.
+-- @sinkClose@. Note that, due to usage of @ResourceT@, this is merely an
+-- optimization.
 data PreparedSink input m output =
     SinkNoData output
   | SinkData
@@ -61,10 +66,10 @@ instance Monad m => Functor (PreparedSink input m) where
         , sinkClose = liftM f c
         }
 
--- | Most 'Sink's require some type of state, similar to 'Source's. Like a
--- @SourceM@ for a @Source@, a @Sink@ is a simple monadic wrapper around a
--- @Sink@ which allows initialization of such state. See @SourceM@ for further
--- caveats.
+-- | Most 'PreparedSink's require some type of state, similar to
+-- 'PreparedSource's. Like a @Source@ for a @PreparedSource@, a @Sink@ is a
+-- simple monadic wrapper around a @PreparedSink@ which allows initialization
+-- of such state. See @Source@ for further caveats.
 --
 -- Note that this type provides a 'Monad' instance, allowing you to easily
 -- compose @Sink@s together.

@@ -16,9 +16,8 @@ import Control.Monad (liftM)
 import Data.Typeable (Typeable)
 import Control.Exception (Exception, throw)
 
--- | When pulling data from a source, it returns back a list of values pulled
--- from the stream. It also indicates whether or not the stream has been
--- closed.
+-- | Result of pulling from a source. Either a new piece of data (@Open@), or
+-- indicates that the source is now @Closed@.
 data SourceResult a = Open a | Closed
     deriving (Show, Eq, Ord)
 
@@ -26,19 +25,20 @@ instance Functor SourceResult where
     fmap f (Open a) = Open (f a)
     fmap _ Closed = Closed
 
--- | A 'Source' has two operations on it: pull some data, and close the
--- 'Source'. Since 'Source' is built on top of 'ResourceT', all acquired
--- resources should be automatically released anyway. Closing a 'Source' early
+-- | A 'PreparedSource' has two operations on it: pull some data, and close the
+-- 'PreparedSource'. Since 'PreparedSource' is built on top of 'ResourceT', all
+-- acquired resources should be automatically released anyway. Closing a
+-- 'PreparedSource' early
 -- is merely an optimization to free scarce resources as soon as possible.
 --
--- A 'Source' has three invariants:
+-- A 'PreparedSource' has three invariants:
 --
 -- * It is illegal to call 'sourcePull' after a previous call returns 'Closed', or after a call to 'sourceClose'.
 --
 -- * It is illegal to call 'sourceClose' multiple times, or after a previous
 -- 'sourcePull' returns a 'Closed'.
 --
--- * A 'Source' is responsible to free any resources when either 'sourceClose'
+-- * A 'PreparedSource' is responsible to free any resources when either 'sourceClose'
 -- is called or a 'Closed' is returned. However, based on the usage of
 -- 'ResourceT', this is simply an optimization.
 data PreparedSource m a = PreparedSource
@@ -51,16 +51,16 @@ instance Monad m => Functor (PreparedSource m) where
         { sourcePull = liftM (fmap f) (sourcePull src)
         }
 
--- | All but the simplest of 'Source's (e.g., @repeat@ and @cycle@) require
--- some type of state to track their current status. This may be in the form of
--- a mutable variable (e.g., @IORef@), or via opening a resource like a
--- @Handle@. While a 'Source' is given no opportunity to acquire such
--- resources, this type is.
+-- | All but the simplest of 'PreparedSource's (e.g., @repeat@) require some
+-- type of state to track their current status. This may be in the form of a
+-- mutable variable (e.g., @IORef@), or via opening a resource like a @Handle@.
+-- While a 'PreparedSource' is given no opportunity to acquire such resources,
+-- this type is.
 --
--- A 'Source' is simply a monadic action that returns a 'Source'. One nice
--- consequence of this is the possibility of creating an efficient 'Monoid'
--- instance, which will only acquire one resource at a time, instead of bulk
--- acquiring all resources at the beginning of running the 'Source'.
+-- A 'Source' is simply a monadic action that returns a 'PreparedSource'. One
+-- nice consequence of this is the possibility of creating an efficient
+-- 'Monoid' instance, which will only acquire one resource at a time, instead
+-- of bulk acquiring all resources at the beginning of running the 'Source'.
 --
 -- Note that each time you \"call\" a @Source@, it is started from scratch. If
 -- you want a resumable source (e.g., one which can be passed to multiple
@@ -126,6 +126,12 @@ instance Resource m => Monoid (Source m a) where
 --
 -- Finally, a 'BufferedSource' relaxes one of the invariants of a 'Source': calling
 -- 'bsourcePull' after an 'EOF' will simply return another 'EOF'.
+--
+-- A @BufferedSource@ is also known as a /resumable source/, in that it can be
+-- called multiple times, and each time will provide new data. One caveat:
+-- while the types will allow you to use the buffered source in multiple
+-- threads, there is no guarantee that all @BufferedSource@s will handle this
+-- correctly.
 data BufferedSource m a = BufferedSource
     { bsourcePull :: ResourceT m (SourceResult a)
     , bsourceUnpull :: a -> ResourceT m ()
@@ -141,7 +147,20 @@ class BufferSource s where
     bufferSource :: Resource m => s m a -> ResourceT m (BufferedSource m a)
 
 -- | Note that this instance hides the 'bsourceClose' record, so that a
--- @BufferedSource@ remains resumable.
+-- @BufferedSource@ remains resumable. The correct way to handle closing of a
+-- resumable source would be to call @bsourceClose@ on the originally
+-- @BufferedSource@, e.g.:
+--
+-- > bsrc <- bufferSource $ sourceFile "myfile.txt"
+-- > bsrc $$ drop 5
+-- > rest <- bsrc $$ consume
+-- > bsourceClose bsrc
+--
+-- Note that the call to the @$$@ operator allocates a /new/ 'BufferedSource'
+-- internally, so that when @$$@ calls @bsourceClose@ the first time, it does
+-- not close the actual file, thereby allowing us to pass the same @bsrc@ to
+-- the @consume@ function. Afterwards, we should call @bsourceClose@ manually
+-- (though @runResourceT@ will handle it for us eventually).
 instance BufferSource BufferedSource where
     bufferSource bsrc = return bsrc
         { bsourceClose = return ()

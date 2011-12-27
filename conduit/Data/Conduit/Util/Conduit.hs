@@ -5,11 +5,12 @@
 -- | Utilities for constructing and covnerting conduits. Please see
 -- "Data.Conduit.Types.Conduit" for more information on the base types.
 module Data.Conduit.Util.Conduit
-    ( conduitIO
-    , conduitState
+    ( conduitState
+    , conduitIO
     , transConduit
+      -- *** Sequencing
     , SequencedSink
-    , sequenceConduit
+    , sequenceSink
     , SequencedSinkResponse (..)
     ) where
 
@@ -103,11 +104,15 @@ transConduit f (Conduit mc) =
         , conduitClose = transResourceT f (conduitClose c)
         }
 
+-- | Return value from a 'SequencedSink'.
 data SequencedSinkResponse state input m output =
-    Emit state [output]
-  | Stop
-  | StartConduit (Conduit input m output)
+    Emit state [output] -- ^ Set a new state, and emit some new output.
+  | Stop -- ^ End the conduit.
+  | StartConduit (Conduit input m output) -- ^ Pass control to a new conduit.
 
+-- | Helper type for constructing a @Conduit@ based on @Sink@s. This allows you
+-- to write higher-level code that takes advantage of existing conduits and
+-- sinks, and leverages a sink's monadic interface.
 type SequencedSink state input m output =
     state -> Sink input m (SequencedSinkResponse state input m output)
 
@@ -117,12 +122,13 @@ data SCState state input m output =
   | SCSink (input -> ResourceT m (SinkResult input (SequencedSinkResponse state input m output)))
            (ResourceT m (SequencedSinkResponse state input m output))
 
-sequenceConduit
+-- | Convert a 'SequencedSink' into a 'Conduit'.
+sequenceSink
     :: Resource m
-    => state
+    => state -- ^ initial state
     -> SequencedSink state input m output
     -> Conduit input m output
-sequenceConduit state0 fsink = conduitState
+sequenceSink state0 fsink = conduitState
     (SCNewState state0)
     (scPush id fsink)
     scClose
@@ -138,7 +144,7 @@ goRes (Emit state output) (Just input) front fsink =
 goRes (Emit state output) Nothing front _ =
     return (SCNewState state, Producing $ front output)
 goRes Stop minput front _ =
-    return (error "sequenceConduit", Finished minput $ front [])
+    return (error "sequenceSink", Finished minput $ front [])
 goRes (StartConduit c) Nothing front _ = do
     pc <- prepareConduit c
     return (SCConduit pc, Producing $ front [])
