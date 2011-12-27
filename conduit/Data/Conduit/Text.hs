@@ -1,100 +1,14 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleContexts #-}
 -- |
--- Module: Data.Enumerator.Text
--- Copyright: 2010-2011 John Millikin
+-- Copyright: 2011 Michael Snoyman, 2010-2011 John Millikin
 -- License: MIT
 --
--- Maintainer: jmillikin@gmail.com
--- Portability: portable
+-- Handle streams of text.
 --
--- Character-oriented alternatives to "Data.Enumerator.List". Note that the
--- enumeratees in this module must unpack their inputs to work properly. If
--- you do not need to handle leftover input on a char-by-char basis, the
--- chunk-oriented versions will be much faster.
---
--- This module is intended to be imported qualified:
---
--- @
--- import qualified Data.Enumerator.Text as ET
--- @
---
--- Since: 0.2
+-- Parts of this code were taken from enumerator and adapted for conduits.
 module Data.Conduit.Text
     (
-
-{-
-    -- * IO
-      sourceHandle
-    , enumFile
-    , iterHandle
-
-    -- * List analogues
-
-    -- ** Folds
-    , fold
-    , foldM
-
-    -- ** Maps
-    , Data.Enumerator.Text.map
-    , Data.Enumerator.Text.mapM
-    , Data.Enumerator.Text.mapM_
-    , Data.Enumerator.Text.concatMap
-    , concatMapM
-
-    -- ** Accumulating maps
-    , mapAccum
-    , mapAccumM
-    , concatMapAccum
-    , concatMapAccumM
-
-    -- ** Infinite streams
-    , Data.Enumerator.Text.iterate
-    , iterateM
-    , Data.Enumerator.Text.repeat
-    , repeatM
-
-    -- ** Bounded streams
-    , Data.Enumerator.Text.replicate
-    , replicateM
-    , generateM
-    , unfold
-    , unfoldM
-
-    -- ** Dropping input
-    , Data.Enumerator.Text.drop
-    , Data.Enumerator.Text.dropWhile
-    , Data.Enumerator.Text.filter
-    , filterM
-
-    -- ** Consumers
-    , Data.Enumerator.Text.head
-    , head_
-    , Data.Enumerator.Text.take
-    , takeWhile
-    , consume
-
-    -- ** Zipping
-    , zip
-    , zip3
-    , zip4
-    , zip5
-    , zip6
-    , zip7
-    , zipWith
-    , zipWith3
-    , zipWith4
-    , zipWith5
-    , zipWith6
-    , zipWith7
-
-    -- ** Unsorted
-    , require
-    , isolate
-    , isolateWhile
-    , splitWhen
-    , lines
--}
 
     -- * Text codecs
       Codec
@@ -131,6 +45,7 @@ import qualified Data.Conduit as C
 import qualified Data.Conduit.List as CL
 import Control.Monad.Trans.Resource (ResourceThrow (..))
 
+-- | A specific character encoding.
 data Codec = Codec
     { codecName :: T.Text
     , codecEncode
@@ -148,9 +63,7 @@ instance Show Codec where
         showString "Codec " . shows (codecName c)
 
 -- | Convert text into bytes, using the provided codec. If the codec is
--- not capable of representing an input character, an error will be thrown.
---
--- Since: 0.2
+-- not capable of representing an input character, an exception will be thrown.
 encode :: ResourceThrow m => Codec -> C.Conduit T.Text m B.ByteString
 encode codec = CL.mapM $ \t -> do
     let (bs, mexc) = codecEncode codec t
@@ -158,9 +71,7 @@ encode codec = CL.mapM $ \t -> do
 
 
 -- | Convert bytes into text, using the provided codec. If the codec is
--- not capable of decoding an input byte sequence, an error will be thrown.
---
--- Since: 0.2
+-- not capable of decoding an input byte sequence, an exception will be thrown.
 decode :: ResourceThrow m => Codec -> C.Conduit B.ByteString m T.Text
 decode codec = C.conduitState
     Nothing

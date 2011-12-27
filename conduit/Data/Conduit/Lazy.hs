@@ -1,6 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
--- | Use lazy I/O. Warning: All normal warnings of lazy I/O apply. However, if
--- you consume the content within the ResourceT, you should be safe.
+-- | Use lazy I\/O for consuming the contents of a source. Warning: All normal
+-- warnings of lazy I\/O apply. However, if you consume the content within the
+-- ResourceT, you should be safe.
 module Data.Conduit.Lazy
     ( lazyConsume
     ) where

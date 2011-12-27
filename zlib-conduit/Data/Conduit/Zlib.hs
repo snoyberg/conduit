@@ -1,4 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
+-- | Streaming compression and decompression using conduits.
+--
+-- Parts of this code were taken from zlib-enum and adapted for conduits.
 module Data.Conduit.Zlib (
     -- * Conduits
     compress, decompress, gzip, ungzip,
@@ -24,7 +27,7 @@ ungzip = decompress (WindowBits 31)
 -- |
 -- Decompress (inflate) a stream of 'ByteString's. For example:
 --
--- >    run $ enumFile "test.z" $$ decompress defaultWindowBits $$ printChunks True
+-- >    sourceFile "test.z" $= decompress defaultWindowBits $$ sinkFile "test"
 
 decompress
     :: ResourceUnsafeIO m

@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
+-- | Functions for interacting with bytes.
 module Data.Conduit.Binary
     ( sourceFile
     , sourceFileRange
@@ -14,6 +15,7 @@ import Control.Monad.IO.Class (liftIO)
 import qualified System.IO as IO
 import Control.Monad.Trans.Resource (withIO, release, newRef, readRef, writeRef)
 
+-- | Stream the contents of a file as binary data.
 sourceFile :: ResourceIO m
            => FilePath
            -> Source m S.ByteString
@@ -26,6 +28,8 @@ sourceFile fp = sourceIO
             then return Closed
             else return $ Open bs)
 
+-- | Stream the contents of a file as binary data, starting from a certain
+-- offset and only consuming up to a certain number of bytes.
 sourceFileRange :: ResourceIO m
                 => FilePath
                 -> Maybe Integer -- ^ Offset
@@ -67,6 +71,7 @@ sourceFileRange fp offset count = Source $ do
                     writeRef ic $ toInteger c'
                     return $ Open bs
 
+-- | Stream all incoming data to the given file.
 sinkFile :: ResourceIO m
          => FilePath
          -> Sink S.ByteString m ()
@@ -89,6 +94,9 @@ conduitFile fp = conduitIO
         return $ Producing [bs])
     (const $ return [])
 
+-- | Ensure that only up to the given number of bytes are consume by the inner
+-- sink. Note that this does /not/ ensure that all of those bytes are in fact
+-- consumed.
 isolate :: Resource m
         => Int
         -> Conduit S.ByteString m S.ByteString

@@ -1,13 +1,13 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleContexts #-}
 
--- | Turn an Attoparsec parser into a 'C.Sink'.
+-- |
+-- Copyright: 2011 Michael Snoyman, 2010 John Millikin
+-- License: MIT
+--
+-- Turn an Attoparsec parser into a 'C.Sink'.
 --
 -- This code was taken from attoparsec-enumerator and adapted for conduits.
---
--- Copyright: 2011 Michael Snoyman
--- Copyright: 2010 John Millikin
--- License: MIT
 module Data.Conduit.Attoparsec
     ( ParseError (..)
     , AttoparsecInput

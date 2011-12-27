@@ -1,15 +1,17 @@
 {-# LANGUAGE CPP #-}
 
 -- |
--- Module: Filesystem.Enumerator
 -- Copyright: 2011 John Millikin
 --            2011 Michael Snoyman
 -- License: MIT
 --
--- Maintainer: jmillikin@gmail.com
+-- Maintainer: michael@snoyman.com
 -- Portability: portable
 --
--- Enumerator-based API for manipulating the filesystem.
+-- Conduit-based API for manipulating the filesystem.
+--
+-- Parts of this code were taken from filesystem-enumerator and adapted for
+-- conduits.
 module Data.Conduit.Filesystem
     ( traverse
     , sourceFile
@@ -69,11 +71,13 @@ traverse followSymlinks root = C.Source $ do
         return (Posix.isDirectory stat)
 #endif
 
+-- | Same as 'CB.sourceFile', but uses system-filepath\'s @FilePath@ type.
 sourceFile :: C.ResourceIO m
            => FilePath
            -> C.Source m S.ByteString
 sourceFile = CB.sourceFile . encodeString
 
+-- | Same as 'CB.sinkFile', but uses system-filepath\'s @FilePath@ type.
 sinkFile :: C.ResourceIO m
          => FilePath
          -> C.Sink S.ByteString m ()
