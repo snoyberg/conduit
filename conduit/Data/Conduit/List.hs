@@ -16,8 +16,6 @@ module Data.Conduit.List
     , fold
     , take
     , drop
-    , map
-    , concatMap
     , head
     , peek
     , consume
@@ -25,13 +23,15 @@ module Data.Conduit.List
       -- ** Monadic
     , foldM
     , mapM_
-    , concatMapM
       -- Conduits
       -- ** Pure
+    , map
+    , concatMap
     , isolate
     , filter
       -- ** Monadic
     , mapM
+    , concatMapM
     ) where
 
 import Prelude

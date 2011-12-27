@@ -1,5 +1,5 @@
 Name:                conduit
-Version:             0.0.0
+Version:             0.0.0.1
 Synopsis:            A pull-based approach to streaming data.
 Description:         Conduits are an approach to the streaming data problem. It is meant as an alternative to enumerators\/iterators, hoping to address the same issues with different trade-offs based on real-world experience with enumerators. For more information, see <http://www.yesodweb.com/blog/2011/12/conduits>.
 License:             BSD3
@@ -9,7 +9,7 @@ Maintainer:          michael@snoyman.com
 Category:            Data, Conduit
 Build-type:          Simple
 Cabal-version:       >=1.8
-Homepage:            http://github.com/yesodweb/conduit
+Homepage:            http://github.com/snoyberg/conduit
 extra-source-files:  test/main.hs
 
 flag debug
