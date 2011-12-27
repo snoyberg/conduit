@@ -36,6 +36,7 @@ test-suite test
                    , bytestring
                    , blaze-builder
                    , blaze-builder-conduit
+                   , transformers
     ghc-options:     -Wall
 
 source-repository head

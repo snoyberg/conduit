@@ -16,6 +16,7 @@ import qualified Data.ByteString as S
 import Blaze.ByteString.Builder (fromByteString, toLazyByteString, insertLazyByteString)
 import qualified Data.ByteString.Lazy as L
 import Data.ByteString.Lazy.Char8 ()
+import Control.Monad.IO.Class (liftIO)
 
 main :: IO ()
 main = hspecX $ do
@@ -33,11 +34,11 @@ main = hspecX $ do
             let lbs = toLazyByteString $ mconcat builders
             let src = mconcat $ map (CL.sourceList . return) builders
             outBss <- src C.$= builderToByteString C.$$ CL.consume :: C.ResourceT IO [S.ByteString]
-            C.liftBase $ lbs @=? L.fromChunks outBss
+            liftIO $ lbs @=? L.fromChunks outBss
 
         it "works for lazy bytestring insertion" $ runResourceT $ do
             let builders = replicate 10000 (insertLazyByteString "hello world!")
             let lbs = toLazyByteString $ mconcat builders
             let src = mconcat $ map (CL.sourceList . return) builders
             outBss <- src C.$= builderToByteString C.$$ CL.consume :: C.ResourceT IO [S.ByteString]
-            C.liftBase $ lbs @=? L.fromChunks outBss
+            liftIO $ lbs @=? L.fromChunks outBss

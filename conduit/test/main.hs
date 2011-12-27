@@ -218,31 +218,31 @@ main = hspecX $ do
 
     describe "lazy" $ do
         it' "works inside a ResourceT" $ runResourceT $ do
-            counter <- C.liftBase $ I.newIORef 0
+            counter <- liftIO $ I.newIORef 0
             let incr i = C.sourceIO
-                    (C.liftBase $ I.newIORef $ C.Open (i :: Int))
+                    (liftIO $ I.newIORef $ C.Open (i :: Int))
                     (const $ return ())
                     (\istate -> do
-                        res <- C.liftBase $ I.atomicModifyIORef istate
+                        res <- liftIO $ I.atomicModifyIORef istate
                             (\state -> (C.Closed, state))
                         case res of
                             C.Closed -> return ()
                             _ -> do
-                                count <- C.liftBase $ I.atomicModifyIORef counter
+                                count <- liftIO $ I.atomicModifyIORef counter
                                     (\j -> (j + 1, j + 1))
-                                C.liftBase $ count @?= i
+                                liftIO $ count @?= i
                         return res
                             )
             nums <- CLazy.lazyConsume $ mconcat $ map incr [1..10]
-            C.liftBase $ nums @?= [1..10]
+            liftIO $ nums @?= [1..10]
 
-    describe "sequenceConduit" $ do
+    describe "sequenceSink" $ do
         it "simple sink" $ do
             let sink () = do
                     _ <- CL.drop 2
                     x <- CL.head
                     return $ C.Emit () $ maybe [] return x
-            let conduit = C.sequenceConduit () sink
+            let conduit = C.sequenceSink () sink
             res <- runResourceT $ CL.sourceList [1..10 :: Int]
                            C.$= conduit
                            C.$$ CL.consume
@@ -251,7 +251,7 @@ main = hspecX $ do
             let sink () = do
                 x <- CL.head
                 return $ C.Emit () $ maybe [] return x
-            let conduit = C.sequenceConduit () sink
+            let conduit = C.sequenceSink () sink
             res <- runResourceT $ CL.sourceList [1..10 :: Int]
                         C.$= conduit C.$$ CL.consume
             res @?= [1..10]
@@ -259,7 +259,7 @@ main = hspecX $ do
             let sink () = do
                 _ <- CL.drop 4
                 return $ C.StartConduit $ CL.filter even
-            let conduit = C.sequenceConduit () sink
+            let conduit = C.sequenceSink () sink
             res <- runResourceT $ CL.sourceList [1..10 :: Int]
                             C.$= conduit
                             C.$$ CL.consume

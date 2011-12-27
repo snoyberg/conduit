@@ -35,14 +35,12 @@ module Data.Conduit
     ) where
 
 import Control.Monad.Trans.Resource
-import Control.Monad.Trans.Control (MonadBaseControl)
 import Data.Conduit.Types.Source
 import Data.Conduit.Util.Source
 import Data.Conduit.Types.Sink
 import Data.Conduit.Util.Sink
 import Data.Conduit.Types.Conduit
 import Data.Conduit.Util.Conduit
-import Control.Monad.Base (MonadBase, liftBase)
 
 infixr 0 $$
 

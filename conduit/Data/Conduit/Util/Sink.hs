@@ -14,7 +14,6 @@ import Control.Monad.Trans.Resource
 import Control.Monad.Trans.Class (lift)
 import Data.Conduit.Types.Sink
 import Control.Monad (liftM)
-import Data.Monoid (Monoid, mappend)
 
 -- | Construct a 'Sink' with some stateful functions. This function address
 -- all mutable state for you.
