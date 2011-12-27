@@ -236,13 +236,13 @@ main = hspecX $ do
             nums <- CLazy.lazyConsume $ mconcat $ map incr [1..10]
             C.liftBase $ nums @?= [1..10]
 
-    describe "sinkConduit" $ do
+    describe "sequenceConduit" $ do
         it "simple sink" $ do
             let sink () = do
                     _ <- CL.drop 2
                     x <- CL.head
                     return $ C.Emit () $ maybe [] return x
-            let conduit = C.sinkConduit () sink
+            let conduit = C.sequenceConduit () sink
             res <- runResourceT $ CL.sourceList [1..10 :: Int]
                            C.$= conduit
                            C.$$ CL.consume
@@ -251,7 +251,7 @@ main = hspecX $ do
             let sink () = do
                 x <- CL.head
                 return $ C.Emit () $ maybe [] return x
-            let conduit = C.sinkConduit () sink
+            let conduit = C.sequenceConduit () sink
             res <- runResourceT $ CL.sourceList [1..10 :: Int]
                         C.$= conduit C.$$ CL.consume
             res @?= [1..10]
@@ -259,7 +259,7 @@ main = hspecX $ do
             let sink () = do
                 _ <- CL.drop 4
                 return $ C.StartConduit $ CL.filter even
-            let conduit = C.sinkConduit () sink
+            let conduit = C.sequenceConduit () sink
             res <- runResourceT $ CL.sourceList [1..10 :: Int]
                             C.$= conduit
                             C.$$ CL.consume
