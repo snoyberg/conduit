@@ -9,7 +9,7 @@ Maintainer:          michael@snoyman.com
 Category:            Data, Conduit
 Build-type:          Simple
 Cabal-version:       >=1.8
-Homepage:            http://github.com/yesodweb/conduit
+Homepage:            http://github.com/snoyberg/conduit
 extra-source-files:  test/main.hs
 
 flag debug
