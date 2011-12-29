@@ -36,7 +36,7 @@ module Data.Conduit.List
 
 import Prelude
     ( ($), return, (==), (-), Int
-    , (.), id, seq, Maybe (..), fmap, Monad
+    , (.), id, Maybe (..), fmap, Monad
     , Bool (..)
     , (>>)
     )
@@ -51,10 +51,7 @@ fold :: Resource m
      -> Sink a m b
 fold f accum0 = sinkState
     accum0
-    (\accum input ->
-         let accum' = f accum input
-         in return $ accum' `seq` (accum', Processing)
-    )
+    (\accum input -> return (f accum input, Processing))
     return
 
 -- | A monadic strict left fold.
@@ -66,7 +63,7 @@ foldM f accum0 = sinkState
     accum0
     (\accum input -> do
         accum' <- lift $ f accum input
-        return $ accum' `seq` (accum', Processing)
+        return (accum', Processing)
     )
     return
 
