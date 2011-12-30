@@ -34,7 +34,7 @@ sinkState state0 push close = Sink $ do
             False <- readRef iclosed
 #endif
             state <- readRef istate
-            (state', res) <- push state input
+            (state', res) <- state `seq` push state input
             writeRef istate state'
 #if DEBUG
             case res of
