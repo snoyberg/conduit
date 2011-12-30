@@ -88,19 +88,23 @@ import Control.Concurrent (ThreadId, forkIO)
 -- | Create a new reference.
 newRef :: Resource m => a -> ResourceT m (Ref (Base m) a)
 newRef = lift . resourceLiftBase . newRef'
+{-# INLINE newRef #-}
 
 -- | Read a value from a reference.
 readRef :: Resource m => Ref (Base m) a -> ResourceT m a
 readRef = lift . resourceLiftBase . readRef'
+{-# INLINE readRef #-}
 
 -- | Write a value to a reference.
 writeRef :: Resource m => Ref (Base m) a -> a -> ResourceT m ()
 writeRef r = lift . resourceLiftBase . writeRef' r
+{-# INLINE writeRef #-}
 
 -- | Modify a value in a reference. Note that, in the case of @IO@ stacks, this
 -- is an atomic action.
 modifyRef :: Resource m => Ref (Base m) a -> (a -> (a, b)) -> ResourceT m b
 modifyRef r = lift . resourceLiftBase . modifyRef' r
+{-# INLINE modifyRef #-}
 
 -- | A base monad which provides mutable references and some exception-safe way
 -- of interacting with them. For monads which cannot handle exceptions (e.g.,
@@ -136,12 +140,19 @@ class Monad m => HasRef m where
 instance HasRef IO where
     type Ref IO = I.IORef
     newRef' = I.newIORef
+    {-# INLINE newRef' #-}
     modifyRef' = I.atomicModifyIORef
+    {-# INLINE modifyRef' #-}
     readRef' = I.readIORef
+    {-# INLINE readRef' #-}
     writeRef' = I.writeIORef
+    {-# INLINE writeRef' #-}
     mask = E.mask
+    {-# INLINE mask #-}
     mask_ = E.mask_
+    {-# INLINE mask_ #-}
     try = E.try
+    {-# INLINE try #-}
 
 instance HasRef (ST s) where
     type Ref (ST s) = S.STRef s
