@@ -1,6 +1,6 @@
 {-# LANGUAGE ForeignFunctionInterface #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-module System.Win32FileRead
+module System.Win32File
     ( openRead
     , read
     , close
