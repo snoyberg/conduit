@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE CPP #-}
 -- | Functions for interacting with bytes.
 module Data.Conduit.Binary
     ( sourceFile
@@ -14,12 +15,22 @@ import Control.Exception (assert)
 import Control.Monad.IO.Class (liftIO)
 import qualified System.IO as IO
 import Control.Monad.Trans.Resource (withIO, release, newRef, readRef, writeRef)
+#if CABAL_OS_WINDOWS
+import qualified System.Win32File as F
+#elif NO_HANDLES
+import qualified System.PosixFile as F
+#endif
 
 -- | Stream the contents of a file as binary data.
 sourceFile :: ResourceIO m
            => FilePath
            -> Source m S.ByteString
 sourceFile fp = sourceIO
+#if CABAL_OS_WINDOWS || NO_HANDLES
+    (F.openRead fp)
+    F.close
+    (liftIO . F.read)
+#else
     (IO.openFile fp IO.ReadMode)
     IO.hClose
     (\handle -> do
@@ -27,6 +38,7 @@ sourceFile fp = sourceIO
         if S.null bs
             then return Closed
             else return $ Open bs)
+#endif
 
 -- | Stream the contents of a file as binary data, starting from a certain
 -- offset and only consuming up to a certain number of bytes.

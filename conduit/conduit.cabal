@@ -14,7 +14,16 @@ extra-source-files:  test/main.hs
 
 flag debug
 
+flag nohandles
+
 Library
+  if os(windows)
+      cpp-options: -DCABAL_OS_WINDOWS
+      other-modules: System.Win32File
+  else
+      other-modules: System.PosixFile
+  if flag(nohandles)
+      cpp-options: -DNO_HANDLES
   Exposed-modules:     Data.Conduit
                        Data.Conduit.Binary
                        Data.Conduit.Text
