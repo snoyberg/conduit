@@ -8,6 +8,7 @@ module Data.Conduit.Types.Source
     , BufferedSource (..)
     , SourceInvariantException (..)
     , BufferSource (..)
+    , unbufferSource
     ) where
 
 import Control.Monad.Trans.Resource
@@ -205,3 +206,13 @@ instance BufferSource PreparedSource where
 
 instance BufferSource Source where
     bufferSource (Source msrc) = msrc >>= bufferSource
+
+-- | Turn a 'BufferedSource' into a 'Source'. Note that in general this will
+-- mean your original 'BufferedSource' will be closed. Additionally, all
+-- leftover data from usage of the returned @Source@ will be discarded. In
+-- other words: this is a no-going-back move.
+unbufferSource :: Monad m
+               => BufferedSource m a
+               -> Source m a
+unbufferSource (BufferedSource pull _unpull close) =
+    Source $ return $ PreparedSource pull close

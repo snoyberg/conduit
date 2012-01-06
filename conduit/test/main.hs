@@ -29,16 +29,6 @@ import Control.Applicative (pure, (<$>), (<*>))
 main :: IO ()
 main = hspecX $ do
     describe "data loss rules" $ do
-        {- FIXME
-        it "sink yield" $ do
-            x <- runResourceT $ CL.sourceList (map return [1..10 :: Int]) C.$$ do
-                CL.drop 5
-                C.yield [11..15] ()
-                return ()
-                CL.consume
-            x @?= [11..15] ++ [6..10]
-        -}
-
         it "consumes the source to quickly" $ do
             x <- runResourceT $ CL.sourceList [1..10 :: Int] C.$$ do
                   strings <- CL.map show C.=$ CL.take 5
@@ -306,6 +296,14 @@ main = hspecX $ do
                            C.$= CB.isolate 6
                            C.$$ CL.consume
             S.concat bss @?= "XXXXXX"
+    describe "unbuffering" $ do
+        it "works" $ do
+            x <- runResourceT $ do
+                bsrc <- C.bufferSource $ CL.sourceList [1..10 :: Int]
+                bsrc C.$$ CL.drop 5
+                let src = C.unbufferSource bsrc
+                src C.$$ CL.fold (+) 0
+            x @?= sum [6..10]
 
 it' :: String -> IO () -> Writer [Spec] ()
 it' = it
