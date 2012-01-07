@@ -211,6 +211,8 @@ instance BufferSource Source where
 -- mean your original 'BufferedSource' will be closed. Additionally, all
 -- leftover data from usage of the returned @Source@ will be discarded. In
 -- other words: this is a no-going-back move.
+--
+-- Note: @bufferSource@ . @unbufferSource@ is /not/ the identity function.
 unbufferSource :: Monad m
                => BufferedSource m a
                -> Source m a
