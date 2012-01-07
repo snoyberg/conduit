@@ -1,5 +1,5 @@
 Name:                conduit
-Version:             0.0.1
+Version:             0.0.1.1
 Synopsis:            A pull-based approach to streaming data.
 Description:         Conduits are an approach to the streaming data problem. It is meant as an alternative to enumerators\/iterators, hoping to address the same issues with different trade-offs based on real-world experience with enumerators. For more information, see <http://www.yesodweb.com/blog/2011/12/conduits>.
 License:             BSD3
