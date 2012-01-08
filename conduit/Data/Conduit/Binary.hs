@@ -30,6 +30,10 @@ import qualified System.PosixFile as F
 -- | Open a file 'IO.Handle' safely by automatically registering a release
 -- action.
 --
+-- Note: you should /never/ call @hClose@ on the return @Handle@, since a
+-- release call has already been registered. Instead, if you would like to
+-- release this @Handle@ early, do so by calling @release@ on the @ReleaseKey@.
+--
 -- Since 0.0.2
 openFile :: ResourceIO m
          => FilePath
