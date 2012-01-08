@@ -19,7 +19,6 @@ import Control.Monad.IO.Class (liftIO)
 import qualified System.IO as IO
 import Control.Monad.Trans.Resource
     ( withIO, release, newRef, readRef, writeRef
-    , ReleaseKey
     )
 #if CABAL_OS_WINDOWS
 import qualified System.Win32File as F
@@ -30,16 +29,15 @@ import qualified System.PosixFile as F
 -- | Open a file 'IO.Handle' safely by automatically registering a release
 -- action.
 --
--- Note: you should /never/ call @hClose@ on the return @Handle@, since a
--- release call has already been registered. Instead, if you would like to
--- release this @Handle@ early, do so by calling @release@ on the @ReleaseKey@.
+-- While you are not required to call @hClose@ on the resulting handle, you
+-- should do so as early as possible to free scarce resources.
 --
 -- Since 0.0.2
 openFile :: ResourceIO m
          => FilePath
          -> IO.IOMode
-         -> ResourceT m (ReleaseKey, IO.Handle)
-openFile fp mode = withIO (IO.openFile fp mode) IO.hClose
+         -> ResourceT m IO.Handle
+openFile fp mode = fmap snd $ withIO (IO.openFile fp mode) IO.hClose
 
 -- | Stream the contents of a file as binary data.
 --
