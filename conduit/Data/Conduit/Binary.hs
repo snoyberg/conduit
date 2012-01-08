@@ -3,8 +3,10 @@
 -- | Functions for interacting with bytes.
 module Data.Conduit.Binary
     ( sourceFile
+    , sourceHandle
     , sourceFileRange
     , sinkFile
+    , sinkHandle
     , conduitFile
     , isolate
     ) where
@@ -22,6 +24,8 @@ import qualified System.PosixFile as F
 #endif
 
 -- | Stream the contents of a file as binary data.
+--
+-- Since 0.0.0
 sourceFile :: ResourceIO m
            => FilePath
            -> Source m S.ByteString
@@ -40,8 +44,39 @@ sourceFile fp = sourceIO
             else return $ Open bs)
 #endif
 
+-- | Stream the contents of a 'IO.Handle' as binary data. Note that this
+-- function will /not/ automatically close the @Handle@ when processing
+-- completes, since it did not acquire the @Handle@ in the first place.
+--
+-- Since 0.0.2.
+sourceHandle :: ResourceIO m
+             => IO.Handle
+             -> Source m S.ByteString
+sourceHandle h = Source $ return $ PreparedSource
+    { sourcePull = do
+        bs <- liftIO (S.hGetSome h 4096)
+        if S.null bs
+            then return Closed
+            else return (Open bs)
+    , sourceClose = return ()
+    }
+
+-- | Stream all incoming data to the given 'IO.Handle'. Note that this function
+-- will /not/ automatically close the @Handle@ when processing completes.
+--
+-- Since 0.0.2.
+sinkHandle :: ResourceIO m
+           => IO.Handle
+           -> Sink S.ByteString m ()
+sinkHandle h = Sink $ return $ SinkData
+    { sinkPush = \input -> liftIO (S.hPut h input) >> return Processing
+    , sinkClose = return ()
+    }
+
 -- | Stream the contents of a file as binary data, starting from a certain
 -- offset and only consuming up to a certain number of bytes.
+--
+-- Since 0.0.0
 sourceFileRange :: ResourceIO m
                 => FilePath
                 -> Maybe Integer -- ^ Offset
@@ -84,6 +119,8 @@ sourceFileRange fp offset count = Source $ do
                     return $ Open bs
 
 -- | Stream all incoming data to the given file.
+--
+-- Since 0.0.0
 sinkFile :: ResourceIO m
          => FilePath
          -> Sink S.ByteString m ()
@@ -95,6 +132,8 @@ sinkFile fp = sinkIO
 
 -- | Stream the contents of the input to a file, and also send it along the
 -- pipeline. Similar in concept to the Unix command @tee@.
+--
+-- Since 0.0.0
 conduitFile :: ResourceIO m
             => FilePath
             -> Conduit S.ByteString m S.ByteString
@@ -109,6 +148,8 @@ conduitFile fp = conduitIO
 -- | Ensure that only up to the given number of bytes are consume by the inner
 -- sink. Note that this does /not/ ensure that all of those bytes are in fact
 -- consumed.
+--
+-- Since 0.0.0
 isolate :: Resource m
         => Int
         -> Conduit S.ByteString m S.ByteString
