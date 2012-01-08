@@ -11,6 +11,7 @@ import qualified Data.Conduit.Lazy as CLazy
 import qualified Data.Conduit.Binary as CB
 import qualified Data.Conduit.Text as CT
 import Data.Conduit (runResourceT)
+import qualified Data.List as DL
 import Control.Monad.ST (runST)
 import Data.Monoid
 import qualified Data.ByteString as S
@@ -158,6 +159,20 @@ main = hspecX $ do
                     C.$$ CL.map (* 2)
                     C.=$ CL.fold (+) 0
             x @?= 2 * sum [1..10 :: Int]
+
+        it "groupBy" $ do
+            let input = [1::Int, 1, 2, 3, 3, 3, 4, 5, 5]
+            x <- runResourceT $ CL.sourceList input
+                    C.$$ CL.groupBy (==)
+                    C.=$ CL.consume
+            x @?= DL.groupBy (==) input
+
+        it "groupBy (nondup begin/end)" $ do
+            let input = [1::Int, 2, 3, 3, 3, 4, 5]
+            x <- runResourceT $ CL.sourceList input
+                    C.$$ CL.groupBy (==)
+                    C.=$ CL.consume
+            x @?= DL.groupBy (==) input
 
         it "concatMap" $ do
             let input = [1, 11, 21]
