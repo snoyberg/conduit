@@ -13,6 +13,8 @@ import Control.Monad (liftM)
 -- still producing output and provide some, or indicate that it is finished
 -- producing output, in which case it returns optional leftover input and some
 -- final output.
+--
+-- Since 0.0.0
 data ConduitResult input output = Producing [output] | Finished (Maybe input) [output]
 
 instance Functor (ConduitResult input) where
@@ -26,6 +28,8 @@ instance Functor (ConduitResult input) where
 --
 -- * Neither a push nor close may be performed after a conduit returns a
 -- 'Finished' from a push, or after a close is performed.
+--
+-- Since 0.0.0
 data PreparedConduit input m output = PreparedConduit
     { conduitPush :: input -> ResourceT m (ConduitResult input output)
     , conduitClose :: ResourceT m [output]
@@ -39,6 +43,8 @@ instance Monad m => Functor (PreparedConduit input m) where
 
 -- | A monadic action generating a 'PreparedConduit'. See @Source@ and @Sink@
 -- for more motivation.
+--
+-- Since 0.0.0
 newtype Conduit input m output =
     Conduit { prepareConduit :: ResourceT m (PreparedConduit input m output) }
 

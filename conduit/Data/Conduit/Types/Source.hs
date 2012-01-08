@@ -19,6 +19,8 @@ import Control.Exception (Exception, throw)
 
 -- | Result of pulling from a source. Either a new piece of data (@Open@), or
 -- indicates that the source is now @Closed@.
+--
+-- Since 0.0.0
 data SourceResult a = Open a | Closed
     deriving (Show, Eq, Ord)
 
@@ -42,6 +44,8 @@ instance Functor SourceResult where
 -- * A 'PreparedSource' is responsible to free any resources when either 'sourceClose'
 -- is called or a 'Closed' is returned. However, based on the usage of
 -- 'ResourceT', this is simply an optimization.
+--
+-- Since 0.0.0
 data PreparedSource m a = PreparedSource
     { sourcePull :: ResourceT m (SourceResult a)
     , sourceClose :: ResourceT m ()
@@ -66,6 +70,8 @@ instance Monad m => Functor (PreparedSource m) where
 -- Note that each time you \"call\" a @Source@, it is started from scratch. If
 -- you want a resumable source (e.g., one which can be passed to multiple
 -- @Sink@s), you likely want to use a 'BufferedSource'.
+--
+-- Since 0.0.0
 newtype Source m a = Source { prepareSource :: ResourceT m (PreparedSource m a) }
 
 instance Monad m => Functor (Source m) where
@@ -133,17 +139,23 @@ instance Resource m => Monoid (Source m a) where
 -- while the types will allow you to use the buffered source in multiple
 -- threads, there is no guarantee that all @BufferedSource@s will handle this
 -- correctly.
+--
+-- Since 0.0.0
 data BufferedSource m a = BufferedSource
     { bsourcePull :: ResourceT m (SourceResult a)
     , bsourceUnpull :: a -> ResourceT m ()
     , bsourceClose :: ResourceT m ()
     }
 
+-- |
+-- Since 0.0.0
 data SourceInvariantException = PullAfterEOF String
     deriving (Show, Typeable)
 instance Exception SourceInvariantException
 
 -- | This typeclass allows us to unify operators on 'Source' and 'BufferedSource'.
+--
+-- Since 0.0.0
 class BufferSource s where
     bufferSource :: Resource m => s m a -> ResourceT m (BufferedSource m a)
 
@@ -213,6 +225,8 @@ instance BufferSource Source where
 -- other words: this is a no-going-back move.
 --
 -- Note: @bufferSource@ . @unbufferSource@ is /not/ the identity function.
+--
+-- Since 0.0.1
 unbufferSource :: Monad m
                => BufferedSource m a
                -> Source m a

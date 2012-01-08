@@ -22,6 +22,8 @@ import Control.Monad (liftM)
 
 -- | Construct a 'Conduit' with some stateful functions. This function address
 -- all mutable state for you.
+--
+-- Since 0.0.0
 conduitState
     :: Resource m
     => state -- ^ initial state
@@ -56,6 +58,8 @@ conduitState state0 push close = Conduit $ do
         }
 
 -- | Construct a 'Conduit'.
+--
+-- Since 0.0.0
 conduitIO :: ResourceIO m
            => IO state -- ^ resource and/or state allocation
            -> (state -> IO ()) -- ^ resource and/or state cleanup
@@ -92,6 +96,8 @@ conduitIO alloc cleanup push close = Conduit $ do
         }
 
 -- | Transform the monad a 'Conduit' lives in.
+--
+-- Since 0.0.0
 transConduit :: (Monad m, Base m ~ Base n)
               => (forall a. m a -> n a)
               -> Conduit input m output
@@ -105,6 +111,8 @@ transConduit f (Conduit mc) =
         }
 
 -- | Return value from a 'SequencedSink'.
+--
+-- Since 0.0.0
 data SequencedSinkResponse state input m output =
     Emit state [output] -- ^ Set a new state, and emit some new output.
   | Stop -- ^ End the conduit.
@@ -113,6 +121,8 @@ data SequencedSinkResponse state input m output =
 -- | Helper type for constructing a @Conduit@ based on @Sink@s. This allows you
 -- to write higher-level code that takes advantage of existing conduits and
 -- sinks, and leverages a sink's monadic interface.
+--
+-- Since 0.0.0
 type SequencedSink state input m output =
     state -> Sink input m (SequencedSinkResponse state input m output)
 
@@ -123,6 +133,8 @@ data SCState state input m output =
            (ResourceT m (SequencedSinkResponse state input m output))
 
 -- | Convert a 'SequencedSink' into a 'Conduit'.
+--
+-- Since 0.0.0
 sequenceSink
     :: Resource m
     => state -- ^ initial state

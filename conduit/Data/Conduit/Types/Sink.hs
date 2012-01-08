@@ -21,6 +21,8 @@ import Control.Monad.Base (MonadBase (liftBase))
 -- pushed to it, a @Sink@ may indicate that it is still processing data, or
 -- that it is done, in which case it returns some optional leftover input and
 -- an output value.
+--
+-- Since 0.0.0
 data SinkResult input output = Processing | Done (Maybe input) output
 instance Functor (SinkResult input) where
     fmap _ Processing = Processing
@@ -52,6 +54,8 @@ instance Functor (SinkResult input) where
 -- it must do so whenever it returns a result, either via @sinkPush@ or
 -- @sinkClose@. Note that, due to usage of @ResourceT@, this is merely an
 -- optimization.
+--
+-- Since 0.0.0
 data PreparedSink input m output =
     SinkNoData output
   | SinkData
@@ -73,6 +77,8 @@ instance Monad m => Functor (PreparedSink input m) where
 --
 -- Note that this type provides a 'Monad' instance, allowing you to easily
 -- compose @Sink@s together.
+--
+-- Since 0.0.0
 newtype Sink input m output = Sink { prepareSink :: ResourceT m (PreparedSink input m output) }
 
 instance Monad m => Functor (Sink input m) where

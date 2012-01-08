@@ -46,6 +46,8 @@ import Data.Conduit
 import Control.Monad.Trans.Class (lift)
 
 -- | A strict left fold.
+--
+-- Since 0.0.0
 fold :: Resource m
      => (b -> a -> b)
      -> b
@@ -56,6 +58,8 @@ fold f accum0 = sinkState
     return
 
 -- | A monadic strict left fold.
+--
+-- Since 0.0.0
 foldM :: Resource m
       => (b -> a -> m b)
       -> b
@@ -69,6 +73,8 @@ foldM f accum0 = sinkState
     return
 
 -- | Apply the action to all values in the stream.
+--
+-- Since 0.0.0
 mapM_ :: Resource m
       => (a -> m ())
       -> Sink a m ()
@@ -77,6 +83,8 @@ mapM_ f = Sink $ return $ SinkData
     (return ())
 
 -- | Convert a list into a source.
+--
+-- Since 0.0.0
 sourceList :: Resource m => [a] -> Source m a
 sourceList l0 =
     sourceState l0 go
@@ -91,6 +99,8 @@ sourceList l0 =
 --
 -- However, @drop@ is more efficient as it does not need to hold values in
 -- memory.
+--
+-- Since 0.0.0
 drop :: Resource m
      => Int
      -> Sink a m ()
@@ -112,6 +122,8 @@ drop count0 = sinkState
 -- This function is semantically equivalent to:
 --
 -- > take i = isolate i =$ consume
+--
+-- Since 0.0.0
 take :: Resource m
      => Int
      -> Sink a m [a]
@@ -131,6 +143,8 @@ take count0 = sinkState
     close (_, front) = return $ front []
 
 -- | Take a single value from the stream, if available.
+--
+-- Since 0.0.0
 head :: Resource m => Sink a m (Maybe a)
 head =
     Sink $ return $ SinkData push close
@@ -140,6 +154,8 @@ head =
 
 -- | Look at the next value in the stream, if available. This function will not
 -- change the state of the stream.
+--
+-- Since 0.0.0
 peek :: Resource m => Sink a m (Maybe a)
 peek =
     Sink $ return $ SinkData push close
@@ -148,6 +164,8 @@ peek =
     close = return Nothing
 
 -- | Apply a transformation to all values in a stream.
+--
+-- Since 0.0.0
 map :: Monad m => (a -> b) -> Conduit a m b
 map f = Conduit $ return $ PreparedConduit
     { conduitPush = return . Producing . return . f
@@ -158,6 +176,8 @@ map f = Conduit $ return $ PreparedConduit
 --
 -- If you do not need the transformed values, and instead just want the monadic
 -- side-effects of running the action, see 'mapM_'.
+--
+-- Since 0.0.0
 mapM :: Monad m => (a -> m b) -> Conduit a m b
 mapM f = Conduit $ return $ PreparedConduit
     { conduitPush = fmap (Producing . return) . lift . f
@@ -166,6 +186,8 @@ mapM f = Conduit $ return $ PreparedConduit
 
 -- | Apply a transformation to all values in a stream, concatenating the output
 -- values.
+--
+-- Since 0.0.0
 concatMap :: Monad m => (a -> [b]) -> Conduit a m b
 concatMap f = Conduit $ return $ PreparedConduit
     { conduitPush = return . Producing . f
@@ -174,6 +196,8 @@ concatMap f = Conduit $ return $ PreparedConduit
 
 -- | Apply a monadic transformation to all values in a stream, concatenating
 -- the output values.
+--
+-- Since 0.0.0
 concatMapM :: Monad m => (a -> m [b]) -> Conduit a m b
 concatMapM f = Conduit $ return $ PreparedConduit
     { conduitPush = fmap Producing . lift . f
@@ -183,6 +207,8 @@ concatMapM f = Conduit $ return $ PreparedConduit
 -- | Consume all values from the stream and return as a list. Note that this
 -- will pull all values into memory. For a lazy variant, see
 -- "Data.Conduit.Lazy".
+--
+-- Since 0.0.0
 consume :: Resource m => Sink a m [a]
 consume = sinkState
     id
@@ -190,6 +216,8 @@ consume = sinkState
     (\front -> return $ front [])
 
 -- | Grouping input according to an equality function.
+--
+-- Since 0.0.2
 groupBy :: Resource m => (a -> a -> Bool) -> Conduit a m [a]
 groupBy f = conduitState
     []
@@ -215,6 +243,8 @@ groupBy f = conduitState
 -- >         return x
 -- >     someOtherSink
 -- >     ...
+--
+-- Since 0.0.0
 isolate :: Resource m => Int -> Conduit a m a
 isolate count0 = conduitState
     count0
@@ -233,6 +263,8 @@ isolate count0 = conduitState
                         else Producing [x])
 
 -- | Keep only values in the stream passing a given predicate.
+--
+-- Since 0.0.0
 filter :: Resource m => (a -> Bool) -> Conduit a m a
 filter f = Conduit $ return $ PreparedConduit
     { conduitPush = return . Producing . Prelude.filter f . return
@@ -241,6 +273,8 @@ filter f = Conduit $ return $ PreparedConduit
 
 -- | Ignore the remainder of values in the source. Particularly useful when
 -- combined with 'isolate'.
+--
+-- Since 0.0.0
 sinkNull :: Resource m => Sink a m ()
 sinkNull = Sink $ return $ SinkData
     (\_ -> return Processing)

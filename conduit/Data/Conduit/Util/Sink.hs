@@ -17,6 +17,8 @@ import Control.Monad (liftM)
 
 -- | Construct a 'Sink' with some stateful functions. This function address
 -- all mutable state for you.
+--
+-- Since 0.0.0
 sinkState
     :: Resource m
     => state -- ^ initial state
@@ -52,6 +54,8 @@ sinkState state0 push close = Sink $ do
 
 -- | Construct a 'Sink'. Note that your push and close functions need not
 -- explicitly perform any cleanup.
+--
+-- Since 0.0.0
 sinkIO :: ResourceIO m
         => IO state -- ^ resource and/or state allocation
         -> (state -> IO ()) -- ^ resource and/or state cleanup
@@ -88,6 +92,8 @@ sinkIO alloc cleanup push close = Sink $ do
         }
 
 -- | Transform the monad a 'Sink' lives in.
+--
+-- Since 0.0.0
 transSink :: (Base m ~ Base n, Monad m)
            => (forall a. m a -> n a)
            -> Sink input m output

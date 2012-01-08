@@ -18,6 +18,8 @@ import Control.Monad (liftM)
 
 -- | Construct a 'Source' with some stateful functions. This function address
 -- all mutable state for you.
+--
+-- Since 0.0.0
 sourceState
     :: Resource m
     => state -- ^ Initial state
@@ -54,6 +56,8 @@ sourceState state0 pull = Source $ do
         }
 
 -- | Construct a 'Source' based on some IO actions for alloc/release.
+--
+-- Since 0.0.0
 sourceIO :: ResourceIO m
           => IO state -- ^ resource and/or state allocation
           -> (state -> IO ()) -- ^ resource and/or state cleanup
@@ -87,6 +91,8 @@ sourceIO alloc cleanup pull = Source $ do
         }
 
 -- | Transform the monad a 'Source' lives in.
+--
+-- Since 0.0.0
 transSource :: (Base m ~ Base n, Monad m)
              => (forall a. m a -> n a)
              -> Source m output

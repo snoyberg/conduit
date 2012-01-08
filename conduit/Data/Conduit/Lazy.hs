@@ -10,6 +10,9 @@ import Data.Conduit
 import System.IO.Unsafe (unsafeInterleaveIO)
 import Control.Monad.Trans.Control
 
+-- | Use lazy I\/O to consume all elements from a @Source@.
+--
+-- Since 0.0.0
 lazyConsume :: MonadBaseControl IO m => Source m a -> ResourceT m [a]
 lazyConsume (Source msrc) = do
     src <- msrc
