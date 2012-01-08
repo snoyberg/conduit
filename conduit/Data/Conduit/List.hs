@@ -27,6 +27,7 @@ module Data.Conduit.List
       -- ** Pure
     , map
     , concatMap
+    , groupBy
     , isolate
     , filter
       -- ** Monadic
@@ -187,6 +188,21 @@ consume = sinkState
     id
     (\front input -> return (front . (input :), Processing))
     (\front -> return $ front [])
+
+-- | Grouping input according to an equality function.
+groupBy :: Resource m => (a -> a -> Bool) -> Conduit a m [a]
+groupBy f = conduitState
+    []
+    push
+    close
+  where
+    push []      v = return ([v], Producing [])
+    push s@(x:_) v =
+      if f x v then
+        return (v:s, Producing [])
+      else
+        return ([v], Producing [s])
+    close s = return [s]
 
 -- | Ensure that the inner sink consumes no more than the given number of
 -- values. Note this this does /not/ ensure that the sink consumes all of those
