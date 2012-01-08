@@ -37,7 +37,7 @@ openFile :: ResourceIO m
          => FilePath
          -> IO.IOMode
          -> ResourceT m IO.Handle
-openFile fp mode = fmap snd $ withIO (IO.openFile fp mode) IO.hClose
+openFile fp mode = fmap snd $ withIO (IO.openBinaryFile fp mode) IO.hClose
 
 -- | Stream the contents of a file as binary data.
 --
@@ -51,7 +51,7 @@ sourceFile fp = sourceIO
     F.close
     (liftIO . F.read)
 #else
-    (IO.openFile fp IO.ReadMode)
+    (IO.openBinaryFile fp IO.ReadMode)
     IO.hClose
     (\handle -> do
         bs <- liftIO $ S.hGetSome handle 4096
@@ -99,7 +99,7 @@ sourceFileRange :: ResourceIO m
                 -> Maybe Integer -- ^ Maximum count
                 -> Source m S.ByteString
 sourceFileRange fp offset count = Source $ do
-    (key, handle) <- withIO (IO.openFile fp IO.ReadMode) IO.hClose
+    (key, handle) <- withIO (IO.openBinaryFile fp IO.ReadMode) IO.hClose
     case offset of
         Nothing -> return ()
         Just off -> liftIO $ IO.hSeek handle IO.AbsoluteSeek off
@@ -141,7 +141,7 @@ sinkFile :: ResourceIO m
          => FilePath
          -> Sink S.ByteString m ()
 sinkFile fp = sinkIO
-    (IO.openFile fp IO.WriteMode)
+    (IO.openBinaryFile fp IO.WriteMode)
     IO.hClose
     (\handle bs -> liftIO (S.hPut handle bs) >> return Processing)
     (const $ return ())
@@ -154,7 +154,7 @@ conduitFile :: ResourceIO m
             => FilePath
             -> Conduit S.ByteString m S.ByteString
 conduitFile fp = conduitIO
-    (IO.openFile fp IO.WriteMode)
+    (IO.openBinaryFile fp IO.WriteMode)
     IO.hClose
     (\handle bs -> do
         liftIO $ S.hPut handle bs
