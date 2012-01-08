@@ -9,6 +9,7 @@ module Data.Conduit.Binary
     , sinkHandle
     , conduitFile
     , isolate
+    , openFile
     ) where
 
 import qualified Data.ByteString as S
@@ -16,12 +17,25 @@ import Data.Conduit
 import Control.Exception (assert)
 import Control.Monad.IO.Class (liftIO)
 import qualified System.IO as IO
-import Control.Monad.Trans.Resource (withIO, release, newRef, readRef, writeRef)
+import Control.Monad.Trans.Resource
+    ( withIO, release, newRef, readRef, writeRef
+    , ReleaseKey
+    )
 #if CABAL_OS_WINDOWS
 import qualified System.Win32File as F
 #elif NO_HANDLES
 import qualified System.PosixFile as F
 #endif
+
+-- | Open a file 'IO.Handle' safely by automatically registering a release
+-- action.
+--
+-- Since 0.0.2
+openFile :: ResourceIO m
+         => FilePath
+         -> IO.IOMode
+         -> ResourceT m (ReleaseKey, IO.Handle)
+openFile fp mode = withIO (IO.openFile fp mode) IO.hClose
 
 -- | Stream the contents of a file as binary data.
 --
