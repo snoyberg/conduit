@@ -320,5 +320,11 @@ main = hspecX $ do
                 src C.$$ CL.fold (+) 0
             x @?= sum [6..10]
 
+    describe "properly using binary file reading" $ do
+        it "sourceFile" $ do
+            x <- runResourceT $ CB.sourceFile "test/random" C.$$ CL.consume
+            lbs <- L.readFile "test/random"
+            L.fromChunks x @?= lbs
+
 it' :: String -> IO () -> Writer [Spec] ()
 it' = it
