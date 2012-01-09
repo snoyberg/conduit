@@ -11,6 +11,7 @@ pkgs=( conduit
        blaze-builder-conduit
        filesystem-conduit
        zlib-conduit
+       network-conduit
      )
 
 # install each sub-respository
