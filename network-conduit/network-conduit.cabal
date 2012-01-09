@@ -12,6 +12,7 @@ Cabal-version:       >=1.8
 Homepage:            http://github.com/snoyberg/conduit
 
 flag network-bytestring
+    default: False
 
 Library
   Exposed-modules:     Data.Conduit.Network
