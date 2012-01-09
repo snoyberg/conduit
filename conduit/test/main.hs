@@ -326,5 +326,19 @@ main = hspecX $ do
             lbs <- L.readFile "test/random"
             L.fromChunks x @?= lbs
 
+    describe "binary head" $ do
+        let go lbs = do
+                x <- CB.head
+                case (x, L.uncons lbs) of
+                    (Nothing, Nothing) -> return True
+                    (Just y, Just (z, lbs'))
+                        | y == z -> go lbs'
+                    _ -> return False
+
+        prop "words" $ \bss' ->
+            let bss = map S.pack bss'
+             in runST $ runResourceT $
+                CL.sourceList bss C.$$ go (L.fromChunks bss)
+
 it' :: String -> IO () -> Writer [Spec] ()
 it' = it

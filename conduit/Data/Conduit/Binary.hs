@@ -10,8 +10,10 @@ module Data.Conduit.Binary
     , conduitFile
     , isolate
     , openFile
+    , head
     ) where
 
+import Prelude hiding (head)
 import qualified Data.ByteString as S
 import Data.Conduit
 import Control.Exception (assert)
@@ -20,6 +22,7 @@ import qualified System.IO as IO
 import Control.Monad.Trans.Resource
     ( withIO, release, newRef, readRef, writeRef
     )
+import Data.Word (Word8)
 #if CABAL_OS_WINDOWS
 import qualified System.Win32File as F
 #elif NO_HANDLES
@@ -183,3 +186,17 @@ isolate count0 = conduitState
                 then Finished (if S.null b then Nothing else Just b) (if S.null a then [] else [a])
                 else assert (S.null b) $ Producing [a])
     close _ = return []
+
+-- | Return the next byte from the stream, if available.
+--
+-- Since 0.0.2
+head :: Resource m => Sink S.ByteString m (Maybe Word8)
+head = Sink $ return $ SinkData
+    { sinkPush = \bs ->
+        case S.uncons bs of
+            Nothing -> return Processing
+            Just (w, bs') -> do
+                let lo = if S.null bs' then Nothing else Just bs'
+                return $ Done lo (Just w)
+    , sinkClose = return Nothing
+    }
