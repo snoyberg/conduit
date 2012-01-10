@@ -17,7 +17,9 @@ module Data.Conduit.Binary
 import Prelude hiding (head, take)
 import qualified Data.ByteString as S
 import Data.Conduit
+import qualified Data.Conduit.List as CL
 import Control.Exception (assert)
+import Control.Monad (liftM)
 import Control.Monad.IO.Class (liftIO)
 import qualified System.IO as IO
 import Control.Monad.Trans.Resource
@@ -202,23 +204,6 @@ head = Sink $ return $ SinkData
     , sinkClose = return Nothing
     }
 
--- | Take the given number of bytes from the stream, if available.
 take :: Resource m => Int -> Sink S.ByteString m S.ByteString
-take n =
-  sinkState
-    (n, S.empty)
-    push
-    close
-  where
-    push (count, acc) v
-      | count > bsLen  =
-        return ((count - bsLen, S.append acc v), Processing)
-      | count == bsLen =
-        return ((0, S.empty), Done Nothing (S.append acc v))
-      | otherwise      =
-        let (xs, rest) = S.splitAt count v in
-          return ((0, S.empty), Done (Just rest) (S.append acc xs))
-      where
-        bsLen  = S.length v
-    close (_, acc) = return acc
+take n = S.concat `liftM` (isolate n =$ CL.consume)
 
