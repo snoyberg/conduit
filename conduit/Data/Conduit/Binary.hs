@@ -11,9 +11,11 @@ module Data.Conduit.Binary
     , isolate
     , openFile
     , head
+    , takeWhile
+    , dropWhile
     ) where
 
-import Prelude hiding (head)
+import Prelude hiding (head, takeWhile, dropWhile)
 import qualified Data.ByteString as S
 import Data.Conduit
 import Control.Exception (assert)
@@ -199,4 +201,32 @@ head = Sink $ return $ SinkData
                 let lo = if S.null bs' then Nothing else Just bs'
                 return $ Done lo (Just w)
     , sinkClose = return Nothing
+    }
+
+-- | Return all bytes while the predicate returns @True@.
+--
+-- Since 0.0.2
+takeWhile :: Resource m => (Word8 -> Bool) -> Conduit S.ByteString m S.ByteString
+takeWhile p = Conduit $ return $ PreparedConduit
+    { conduitPush = \bs -> do
+        let (x, y) = S.span p bs
+        return $
+            if S.null y
+                then Producing [x]
+                else Finished (Just y) (if S.null x then [] else [x])
+    , conduitClose = return []
+    }
+
+-- | Ignore all bytes while the predicate returns @True@.
+--
+-- Since 0.0.2
+dropWhile :: Resource m => (Word8 -> Bool) -> Sink S.ByteString m ()
+dropWhile p = Sink $ return $ SinkData
+    { sinkPush = \bs -> do
+        let bs' = S.dropWhile p bs
+        return $
+            if S.null bs'
+                then Processing
+                else Done (Just bs') ()
+    , sinkClose = return ()
     }

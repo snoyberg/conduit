@@ -335,10 +335,25 @@ main = hspecX $ do
                         | y == z -> go lbs'
                     _ -> return False
 
-        prop "words" $ \bss' ->
+        prop "works" $ \bss' ->
             let bss = map S.pack bss'
              in runST $ runResourceT $
                 CL.sourceList bss C.$$ go (L.fromChunks bss)
+    describe "binary takeWhile" $ do
+        prop "works" $ \bss' ->
+            let bss = map S.pack bss'
+             in runST $ runResourceT $ do
+                bss2 <- CL.sourceList bss C.$$ CB.takeWhile (>= 5) C.=$ CL.consume
+                return $ L.fromChunks bss2 == L.takeWhile (>= 5) (L.fromChunks bss)
+
+    describe "binary dropWhile" $ do
+        prop "works" $ \bss' ->
+            let bss = map S.pack bss'
+             in runST $ runResourceT $ do
+                bss2 <- CL.sourceList bss C.$$ do
+                    CB.dropWhile (< 5)
+                    CL.consume
+                return $ L.fromChunks bss2 == L.dropWhile (< 5) (L.fromChunks bss)
 
 it' :: String -> IO () -> Writer [Spec] ()
 it' = it
