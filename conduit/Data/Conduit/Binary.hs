@@ -11,9 +11,10 @@ module Data.Conduit.Binary
     , isolate
     , openFile
     , head
+    , take
     ) where
 
-import Prelude hiding (head)
+import Prelude hiding (head, take)
 import qualified Data.ByteString as S
 import Data.Conduit
 import Control.Exception (assert)
@@ -200,3 +201,24 @@ head = Sink $ return $ SinkData
                 return $ Done lo (Just w)
     , sinkClose = return Nothing
     }
+
+-- | Take the given number of bytes from the stream, if available.
+take :: Resource m => Int -> Sink S.ByteString m S.ByteString
+take n =
+  sinkState
+    (n, S.empty)
+    push
+    close
+  where
+    push (count, acc) v
+      | count > bsLen  =
+        return ((count - bsLen, S.append acc v), Processing)
+      | count == bsLen =
+        return ((0, S.empty), Done Nothing (S.append acc v))
+      | otherwise      =
+        let (xs, rest) = S.splitAt count v in
+          return ((0, S.empty), Done (Just rest) (S.append acc xs))
+      where
+        bsLen  = S.length v
+    close (_, acc) = return acc
+
