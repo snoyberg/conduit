@@ -16,6 +16,7 @@ module Data.Conduit.Binary
 
 import Prelude hiding (head, take)
 import qualified Data.ByteString as S
+import qualified Data.ByteString.Lazy as L
 import Data.Conduit
 import qualified Data.Conduit.List as CL
 import Control.Exception (assert)
@@ -204,6 +205,6 @@ head = Sink $ return $ SinkData
     , sinkClose = return Nothing
     }
 
-take :: Resource m => Int -> Sink S.ByteString m S.ByteString
-take n = S.concat `liftM` (isolate n =$ CL.consume)
+take :: Resource m => Int -> Sink S.ByteString m L.ByteString
+take n = L.fromChunks `liftM` (isolate n =$ CL.consume)
 

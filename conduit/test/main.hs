@@ -349,7 +349,7 @@ main = hspecX $ do
       -- Taking nothing should result in an empty Bytestring
       it "nothing" $ do
         (a, b) <- runResourceT $ go 0 ["abc", "defg"]
-        a              @?= S.empty
+        a              @?= L.empty
         L.fromChunks b @?= "abcdefg"
 
       it "normal" $ do
