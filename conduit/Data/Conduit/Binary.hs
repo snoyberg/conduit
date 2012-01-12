@@ -13,12 +13,16 @@ module Data.Conduit.Binary
     , head
     , takeWhile
     , dropWhile
+    , take
     ) where
 
-import Prelude hiding (head, takeWhile, dropWhile)
+import Prelude hiding (head, take, takeWhile, dropWhile)
 import qualified Data.ByteString as S
+import qualified Data.ByteString.Lazy as L
 import Data.Conduit
+import qualified Data.Conduit.List as CL
 import Control.Exception (assert)
+import Control.Monad (liftM)
 import Control.Monad.IO.Class (liftIO)
 import qualified System.IO as IO
 import Control.Monad.Trans.Resource
@@ -230,3 +234,9 @@ dropWhile p = Sink $ return $ SinkData
                 else Done (Just bs') ()
     , sinkClose = return ()
     }
+
+-- | Take the given number of bytes, if available.
+--
+-- Since 0.0.3
+take :: Resource m => Int -> Sink S.ByteString m L.ByteString
+take n = L.fromChunks `liftM` (isolate n =$ CL.consume)

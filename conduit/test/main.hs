@@ -355,5 +355,35 @@ main = hspecX $ do
                     CL.consume
                 return $ L.fromChunks bss2 == L.dropWhile (< 5) (L.fromChunks bss)
 
+    describe "binary take" $ do
+      let go n l = CL.sourceList l C.$$ do
+          a <- CB.take n
+          b <- CL.consume
+          return (a, b)
+
+      -- Taking nothing should result in an empty Bytestring
+      it "nothing" $ do
+        (a, b) <- runResourceT $ go 0 ["abc", "defg"]
+        a              @?= L.empty
+        L.fromChunks b @?= "abcdefg"
+
+      it "normal" $ do
+        (a, b) <- runResourceT $ go 4 ["abc", "defg"]
+        a              @?= "abcd"
+        L.fromChunks b @?= "efg"
+
+      -- Taking exactly the data that is available should result in no
+      -- leftover.
+      it "all" $ do
+        (a, b) <- runResourceT $ go 7 ["abc", "defg"]
+        a @?= "abcdefg"
+        b @?= []
+
+      -- Take as much as possible.
+      it "more" $ do
+        (a, b) <- runResourceT $ go 10 ["abc", "defg"]
+        a @?= "abcdefg"
+        b @?= []
+
 it' :: String -> IO () -> Writer [Spec] ()
 it' = it
