@@ -163,8 +163,8 @@ class BufferSource s where
     -- resulting 'BufferedSource' will be used only once. As such, an
     -- implementation may implement fake buffering, such as coding
     -- 'bsourceUnpull' as a no-op.
-    fastBufferSource :: Resource m => s m a -> ResourceT m (BufferedSource m a)
-    fastBufferSource = bufferSource
+    unsafeBufferSource :: Resource m => s m a -> ResourceT m (BufferedSource m a)
+    unsafeBufferSource = bufferSource
 
 -- | Note that this instance hides the 'bsourceClose' record, so that a
 -- @BufferedSource@ remains resumable. The correct way to handle closing of a
@@ -222,7 +222,7 @@ instance BufferSource PreparedSource where
                         BClosed _ -> (state, return ())
                 action
             }
-    fastBufferSource src = return BufferedSource
+    unsafeBufferSource src = return BufferedSource
         { bsourcePull = sourcePull src
         , bsourceClose = sourceClose src
         , bsourceUnpull = const $ return ()
@@ -230,7 +230,7 @@ instance BufferSource PreparedSource where
 
 instance BufferSource Source where
     bufferSource (Source msrc) = msrc >>= bufferSource
-    fastBufferSource (Source msrc) = msrc >>= fastBufferSource
+    unsafeBufferSource (Source msrc) = msrc >>= unsafeBufferSource
 
 -- | Turn a 'BufferedSource' into a 'Source'. Note that in general this will
 -- mean your original 'BufferedSource' will be closed. Additionally, all

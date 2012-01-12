@@ -35,7 +35,9 @@ module Data.Conduit
     ) where
 
 import Control.Monad.Trans.Resource
-import Data.Conduit.Types.Source
+import Data.Conduit.Types.Source hiding (BufferSource (..))
+import Data.Conduit.Types.Source (BufferSource (bufferSource))
+import qualified Data.Conduit.Types.Source
 import Data.Conduit.Util.Source
 import Data.Conduit.Types.Sink
 import Data.Conduit.Util.Sink
@@ -56,7 +58,7 @@ infixr 0 $$
 -- 3. The source return @Closed@, in which case the sink is closed.
 --
 -- Note that the input source is converted to a 'BufferedSource' via
--- 'fastBufferSource'. As such, if the input to this function is itself a
+-- 'bufferSource'. As such, if the input to this function is itself a
 -- 'BufferedSource', the call to 'bsourceClose' will have no effect, as
 -- described in the comments on that instance.
 ($$) :: (BufferSource bsrc, Resource m) => bsrc m a -> Sink a m b -> ResourceT m b
@@ -65,7 +67,7 @@ bs' $$ Sink msink = do
     case sinkI of
         SinkNoData output -> return output
         SinkData push close -> do
-            bs <- fastBufferSource bs'
+            bs <- Data.Conduit.Types.Source.unsafeBufferSource bs'
             connect' bs push close
   where
     connect' bs push close =
@@ -98,7 +100,7 @@ infixl 1 $=
      -> Source m b
 bsrc' $= Conduit mc = Source $ do
     istate <- newRef $ FLOpen [] -- still open, no buffer
-    bsrc <- fastBufferSource bsrc'
+    bsrc <- Data.Conduit.Types.Source.unsafeBufferSource bsrc'
     c <- mc
     return $ PreparedSource
         (pull istate bsrc c)
