@@ -56,7 +56,7 @@ infixr 0 $$
 -- 3. The source return @Closed@, in which case the sink is closed.
 --
 -- Note that the input source is converted to a 'BufferedSource' via
--- 'bufferSource'. As such, if the input to this function is itself a
+-- 'fastBufferSource'. As such, if the input to this function is itself a
 -- 'BufferedSource', the call to 'bsourceClose' will have no effect, as
 -- described in the comments on that instance.
 ($$) :: (BufferSource bsrc, Resource m) => bsrc m a -> Sink a m b -> ResourceT m b
@@ -65,7 +65,7 @@ bs' $$ Sink msink = do
     case sinkI of
         SinkNoData output -> return output
         SinkData push close -> do
-            bs <- bufferSource bs'
+            bs <- fastBufferSource bs'
             connect' bs push close
   where
     connect' bs push close =
@@ -85,6 +85,7 @@ bs' $$ Sink msink = do
                             bsourceClose bs
                             return res'
                         Processing -> loop
+{-# SPECIALIZE ($$) :: Resource m => Source m a -> Sink a m b -> ResourceT m b #-}
 
 data FuseLeftState a = FLClosed [a] | FLOpen [a]
 
@@ -97,7 +98,7 @@ infixl 1 $=
      -> Source m b
 bsrc' $= Conduit mc = Source $ do
     istate <- newRef $ FLOpen [] -- still open, no buffer
-    bsrc <- bufferSource bsrc'
+    bsrc <- fastBufferSource bsrc'
     c <- mc
     return $ PreparedSource
         (pull istate bsrc c)

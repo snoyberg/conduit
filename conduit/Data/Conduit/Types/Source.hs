@@ -159,6 +159,13 @@ instance Exception SourceInvariantException
 class BufferSource s where
     bufferSource :: Resource m => s m a -> ResourceT m (BufferedSource m a)
 
+    -- | Same as 'bufferSource', but an implementation is guaranteed that the
+    -- resulting 'BufferedSource' will be used only once. As such, an
+    -- implementation may implement fake buffering, such as coding
+    -- 'bsourceUnpull' as a no-op.
+    fastBufferSource :: Resource m => s m a -> ResourceT m (BufferedSource m a)
+    fastBufferSource = bufferSource
+
 -- | Note that this instance hides the 'bsourceClose' record, so that a
 -- @BufferedSource@ remains resumable. The correct way to handle closing of a
 -- resumable source would be to call @bsourceClose@ on the originally
@@ -215,9 +222,15 @@ instance BufferSource PreparedSource where
                         BClosed _ -> (state, return ())
                 action
             }
+    fastBufferSource src = return BufferedSource
+        { bsourcePull = sourcePull src
+        , bsourceClose = sourceClose src
+        , bsourceUnpull = const $ return ()
+        }
 
 instance BufferSource Source where
     bufferSource (Source msrc) = msrc >>= bufferSource
+    fastBufferSource (Source msrc) = msrc >>= fastBufferSource
 
 -- | Turn a 'BufferedSource' into a 'Source'. Note that in general this will
 -- mean your original 'BufferedSource' will be closed. Additionally, all
