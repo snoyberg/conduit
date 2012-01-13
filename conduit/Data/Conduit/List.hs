@@ -11,6 +11,7 @@
 module Data.Conduit.List
     ( -- * Sources
       sourceList
+    , sourceNull
       -- * Sinks
       -- ** Pure
     , fold
@@ -44,6 +45,7 @@ import Prelude
 import qualified Prelude
 import Data.Conduit
 import Control.Monad.Trans.Class (lift)
+import Data.Monoid (mempty)
 
 -- | A strict left fold.
 --
@@ -279,3 +281,10 @@ sinkNull :: Resource m => Sink a m ()
 sinkNull = Sink $ return $ SinkData
     (\_ -> return Processing)
     (return ())
+
+-- | A source that returns nothing. Note that this is just a type-restricted
+-- synonym for 'mempty'.
+--
+-- Since 0.0.4
+sourceNull :: Resource m => Source m a
+sourceNull = mempty
