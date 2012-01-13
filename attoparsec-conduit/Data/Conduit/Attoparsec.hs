@@ -1,17 +1,20 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE BangPatterns #-}
 
 -- |
 -- Copyright: 2011 Michael Snoyman, 2010 John Millikin
 -- License: MIT
 --
--- Turn an Attoparsec parser into a 'C.Sink'.
+-- Turn an Attoparsec parser into a 'C.Sink' or 'C.Conduit'.
 --
 -- This code was taken from attoparsec-enumerator and adapted for conduits.
 module Data.Conduit.Attoparsec
     ( ParseError (..)
     , AttoparsecInput
+    , ConduitInput
     , sinkParser
+    , conduitParser
     ) where
 
 import           Control.Exception (Exception)
@@ -42,12 +45,19 @@ class AttoparsecInput a where
     isNull :: a -> Bool
     notEmpty :: [a] -> [a]
 
+-- | Extra functions needed for conduitParser
+class (AttoparsecInput a) => ConduitInput a where
+    append :: a -> a -> a
+
 instance AttoparsecInput B.ByteString where
     parseA = Data.Attoparsec.ByteString.parse
     feedA = Data.Attoparsec.ByteString.feed
     empty = B.empty
     isNull = B.null
     notEmpty = filter (not . B.null)
+
+instance ConduitInput B.ByteString where
+    append = B.append
 
 instance AttoparsecInput T.Text where
     parseA = Data.Attoparsec.Text.parse
@@ -77,5 +87,37 @@ sinkParser p0 = C.sinkState
     close parser = do
         case feedA (parser empty) empty of
             A.Done _leftover y -> return y
+            A.Fail _ contexts msg -> lift $ C.resourceThrow $ ParseError contexts msg
+            A.Partial _ -> lift $ C.resourceThrow DivergentParser
+
+-- | Convert an Attoparsec 'A.Parser' into a 'C.Conduit'. The parser will
+-- be streamed bytes until the source is exhausted. When done is returned a new
+-- parser is created and fed with anything leftover in the stream before resuming. 
+--
+-- If parsing fails, a 'ParseError' will be thrown with 'C.resourceThrow'.
+conduitParser :: (ConduitInput a, C.ResourceThrow m) =>
+                        A.Parser a b
+                     -> C.Conduit a m b
+conduitParser p0 = C.conduitState
+    (parseA p0)
+    push
+    close
+  where
+    push parser c | isNull c = return (parser, C.Producing [])
+    push parser c =
+        case parser c of
+            A.Done leftover x
+                | isNull leftover ->    
+                    return (parseA p0, C.Producing  [x])
+                | otherwise ->
+                    let newP = parseA p0 
+                    in
+                     return ((\inp -> newP $ append leftover inp),
+                             C.Producing [x])
+            A.Fail _ contexts msg -> lift $ C.resourceThrow $ ParseError contexts msg
+            A.Partial p -> return (p, C.Producing [])
+    close parser = do
+        case feedA (parser empty) empty of
+            A.Done _leftover y -> return [y]
             A.Fail _ contexts msg -> lift $ C.resourceThrow $ ParseError contexts msg
             A.Partial _ -> lift $ C.resourceThrow DivergentParser
