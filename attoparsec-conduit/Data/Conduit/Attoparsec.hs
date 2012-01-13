@@ -66,6 +66,7 @@ sinkParser p0 = C.sinkState
     push
     close
   where
+    push parser c | isNull c = return (parser, C.Processing)
     push parser c =
         case parser c of
             A.Done leftover x ->

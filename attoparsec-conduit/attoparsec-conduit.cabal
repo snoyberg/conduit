@@ -1,5 +1,5 @@
 Name:                attoparsec-conduit
-Version:             0.0.0
+Version:             0.0.0.1
 Synopsis:            Turn attoparsec parsers into sinks.
 Description:         Turn attoparsec parsers into sinks.
 License:             BSD3
