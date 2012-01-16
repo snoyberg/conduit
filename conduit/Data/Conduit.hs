@@ -113,7 +113,6 @@ normalConnect (Source msrc) (Sink msink) = do
                             sourceClose src
                             return res'
                         Processing -> loop
-{-# SPECIALIZE ($$) :: Resource m => Source m a -> Sink a m b -> ResourceT m b #-}
 
 data FuseLeftState a = FLClosed [a] | FLOpen [a]
 
