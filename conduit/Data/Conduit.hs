@@ -32,6 +32,10 @@ module Data.Conduit
     , ResourceUnsafeIO
     , runResourceT
     , ResourceThrow (..)
+      -- * experimental
+    , BufferedSource2 (..)
+    , bufferSource2
+    , connect2
     ) where
 
 import Control.Monad.Trans.Resource
@@ -237,3 +241,52 @@ conduitPushClose c (input:rest) = do
         Producing b -> do
             b' <- conduitPushClose c rest
             return $ b ++ b'
+
+data BufferedSource2 m a = BufferedSource2
+    { bsSource :: PreparedSource m a
+    , bsBuffer :: Ref (Base m) (BSState a)
+    }
+
+data BSState a = ClosedEmpty | OpenEmpty | ClosedFull a | OpenFull a
+
+bufferSource2 :: Resource m => Source m a -> ResourceT m (BufferedSource2 m a)
+bufferSource2 (Source msrc) = do
+    src <- msrc
+    buf <- newRef OpenEmpty
+    return $ BufferedSource2 src buf
+
+connect2 :: Resource m => BufferedSource2 m a -> Sink a m b -> ResourceT m b
+connect2 bs (Sink msink) = do
+    sinkI <- msink
+    case sinkI of
+        SinkNoData output -> return output
+        SinkData push close -> do
+            bsState <- readRef $ bsBuffer bs
+            case bsState of
+                ClosedEmpty -> close
+                OpenEmpty -> connect' push close
+                ClosedFull a -> do
+                    res <- push a
+                    case res of
+                        Done mleftover res' -> do
+                            writeRef (bsBuffer bs) $ maybe ClosedEmpty ClosedFull mleftover
+                            return res'
+                        Processing -> do
+                            writeRef (bsBuffer bs) ClosedEmpty
+                            close
+                OpenFull a -> push a >>= onRes (connect' push close)
+  where
+    connect' push close =
+        loop
+      where
+        loop = do
+            res <- sourcePull $ bsSource bs
+            case res of
+                Closed -> do
+                    res' <- close
+                    return res'
+                Open a -> push a >>= onRes loop
+    onRes _ (Done mleftover res) = do
+        writeRef (bsBuffer bs) (maybe OpenEmpty OpenFull mleftover)
+        return res
+    onRes loop Processing = loop
