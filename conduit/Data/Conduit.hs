@@ -36,6 +36,7 @@ module Data.Conduit
     , BufferedSource2 (..)
     , bufferSource2
     , connect2
+    , fuseLeft2
     ) where
 
 import Control.Monad.Trans.Resource
@@ -290,3 +291,81 @@ connect2 bs (Sink msink) = do
         writeRef (bsBuffer bs) (maybe OpenEmpty OpenFull mleftover)
         return res
     onRes loop Processing = loop
+
+fuseLeft2 :: Resource m
+     => BufferedSource2 m a
+     -> Conduit a m b
+     -> Source m b
+fuseLeft2 bsrc (Conduit mc) = Source $ do
+    istate <- newRef $ FLOpen [] -- still open, no buffer
+    c <- mc
+    return $ PreparedSource
+        (pull istate c)
+        (close istate c)
+  where
+    pull istate c = do
+        state' <- readRef istate
+        case state' of
+            FLClosed [] -> return Closed
+            FLClosed (x:xs) -> do
+                writeRef istate $ FLClosed xs
+                return $ Open x
+            FLOpen (x:xs) -> do
+                writeRef istate $ FLOpen xs
+                return $ Open x
+            FLOpen [] -> do
+                mres <- bsource2Pull bsrc
+                case mres of
+                    Closed -> do
+                        res <- conduitClose c
+                        case res of
+                            [] -> do
+                                writeRef istate $ FLClosed []
+                                return Closed
+                            x:xs -> do
+                                writeRef istate $ FLClosed xs
+                                return $ Open x
+                    Open input -> do
+                        res' <- conduitPush c input
+                        case res' of
+                            Producing [] -> pull istate c
+                            Producing (x:xs) -> do
+                                writeRef istate $ FLOpen xs
+                                return $ Open x
+                            Finished leftover output -> do
+                                bsource2Unpull bsrc leftover
+                                case output of
+                                    [] -> do
+                                        writeRef istate $ FLClosed []
+                                        return Closed
+                                    x:xs -> do
+                                        writeRef istate $ FLClosed xs
+                                        return $ Open x
+    close istate c = do
+        -- Invariant: sourceClose cannot be called twice, so we will assume
+        -- it is currently open. We could add a sanity check here.
+        writeRef istate $ FLClosed []
+        _ignored <- conduitClose c
+        return ()
+
+bsource2Pull :: Resource m => BufferedSource2 m a -> ResourceT m (SourceResult a)
+bsource2Pull (BufferedSource2 src bufRef) = do
+    buf <- readRef bufRef
+    case buf of
+        OpenEmpty -> sourcePull src
+        ClosedEmpty -> return Closed
+        OpenFull a -> do
+            writeRef bufRef OpenEmpty
+            return $ Open a
+        ClosedFull a -> do
+            writeRef bufRef ClosedEmpty
+            return $ Open a
+
+bsource2Unpull :: Resource m => BufferedSource2 m a -> Maybe a -> ResourceT m ()
+bsource2Unpull _ Nothing = return ()
+bsource2Unpull (BufferedSource2 _ bufRef) (Just a) = do
+    buf <- readRef bufRef
+    case buf of
+        OpenEmpty -> writeRef bufRef $ OpenFull a
+        ClosedEmpty -> writeRef bufRef $ ClosedFull a
+        _ -> error $ "Invariant violated: bsource2Unpull called on full data"

@@ -20,13 +20,17 @@ main = defaultMain
     , bench "map-buffer" (whnfIO $ C.runResourceT $ do
         bsrc <- C.bufferSource $ CL.sourceList [1..1000 :: Int]
         bsrc C.$= CL.map (+ 1) C.$$ CL.fold (+) 0)
+    , bench "map-buffer2" (whnfIO $ C.runResourceT $ do
+        bsrc <- C.bufferSource2 $ CL.sourceList [1..1000 :: Int]
+        bsrc `C.fuseLeft2` CL.map (+ 1) C.$$ CL.fold (+) 0)
     , bench "bigsum-buffer2" (whnfIO $ C.runResourceT $ do
         bsrc <- C.bufferSource2 $ CL.sourceList [1..1000 :: Int]
         bsrc `C.connect2` CL.fold (+) 0)
-    {-
-    , bench "map-buffer" (whnfIO $ C.runResourceT $ do
-        bsrc <- C.bufferSource2 $ CL.sourceList [1..1000 :: Int]
-        bsrc C.$= CL.map (+ 1) C.$$ CL.fold (+) 0)
-    -}
+    , bench "map-buffer-alt" (whnfIO $ C.runResourceT $ do
+        bsrc <- C.bufferSource $ CL.sourceList [1..1000 :: Int] C.$= CL.map (+ 1)
+        bsrc C.$$ CL.fold (+) 0)
+    , bench "map-buffer-alt2" (whnfIO $ C.runResourceT $ do
+        bsrc <- C.bufferSource2 $ CL.sourceList [1..1000 :: Int] C.$= CL.map (+ 1)
+        bsrc `C.connect2` CL.fold (+) 0)
     ]
 
