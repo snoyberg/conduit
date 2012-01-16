@@ -140,6 +140,7 @@ main = hspecX $ do
                 x <- bs C.$$ CL.take 5
                 y <- bs C.$$ CL.fold (+) 0
                 z <- bs C.$$ CL.consume
+                C.bsourceClose bs
                 return (x, y, z)
             x @?= [1..5] :: IO ()
             y @?= sum [6..10]

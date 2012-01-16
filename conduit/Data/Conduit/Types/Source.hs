@@ -5,10 +5,7 @@ module Data.Conduit.Types.Source
     ( SourceResult (..)
     , PreparedSource (..)
     , Source (..)
-    , BufferedSource (..)
     , SourceInvariantException (..)
-    , BufferSource (..)
-    , unbufferSource
     ) where
 
 import Control.Monad.Trans.Resource
@@ -124,124 +121,8 @@ instance Resource m => Monoid (Source m a) where
             (current, _) <- readRef istate
             sourceClose current
 
--- | When actually interacting with 'Source's, we usually want to be able to
--- buffer the output, in case any intermediate steps return leftover data. A
--- 'BufferedSource' allows for such buffering, via the 'bsourceUnpull' function.
---
--- A 'BufferedSource', unlike a 'Source', is resumable, meaning it can be passed to
--- multiple 'Sink's without restarting.
---
--- Finally, a 'BufferedSource' relaxes one of the invariants of a 'Source': calling
--- 'bsourcePull' after an 'EOF' will simply return another 'EOF'.
---
--- A @BufferedSource@ is also known as a /resumable source/, in that it can be
--- called multiple times, and each time will provide new data. One caveat:
--- while the types will allow you to use the buffered source in multiple
--- threads, there is no guarantee that all @BufferedSource@s will handle this
--- correctly.
---
--- Since 0.0.0
-data BufferedSource m a = BufferedSource
-    { bsourcePull :: ResourceT m (SourceResult a)
-    , bsourceUnpull :: a -> ResourceT m ()
-    , bsourceClose :: ResourceT m ()
-    }
-
 -- |
 -- Since 0.0.0
 data SourceInvariantException = PullAfterEOF String
     deriving (Show, Typeable)
 instance Exception SourceInvariantException
-
--- | This typeclass allows us to unify operators on 'Source' and 'BufferedSource'.
---
--- Since 0.0.0
-class BufferSource s where
-    bufferSource :: Resource m => s m a -> ResourceT m (BufferedSource m a)
-
-    -- | Same as 'bufferSource', but an implementation is guaranteed that the
-    -- resulting 'BufferedSource' will be used only once. As such, an
-    -- implementation may implement fake buffering, such as coding
-    -- 'bsourceUnpull' as a no-op.
-    unsafeBufferSource :: Resource m => s m a -> ResourceT m (BufferedSource m a)
-    unsafeBufferSource = bufferSource
-
--- | Note that this instance hides the 'bsourceClose' record, so that a
--- @BufferedSource@ remains resumable. The correct way to handle closing of a
--- resumable source would be to call @bsourceClose@ on the originally
--- @BufferedSource@, e.g.:
---
--- > bsrc <- bufferSource $ sourceFile "myfile.txt"
--- > bsrc $$ drop 5
--- > rest <- bsrc $$ consume
--- > bsourceClose bsrc
---
--- Note that the call to the @$$@ operator allocates a /new/ 'BufferedSource'
--- internally, so that when @$$@ calls @bsourceClose@ the first time, it does
--- not close the actual file, thereby allowing us to pass the same @bsrc@ to
--- the @consume@ function. Afterwards, we should call @bsourceClose@ manually
--- (though @runResourceT@ will handle it for us eventually).
-instance BufferSource BufferedSource where
-    bufferSource bsrc = return bsrc
-        { bsourceClose = return ()
-        }
-
--- | State of a 'BufferedSource'
-data BState a = BOpen [a]
-              | BClosed [a]
-    deriving Show
-
-instance BufferSource PreparedSource where
-    bufferSource src = do
-        istate <- newRef $ BOpen []
-        return BufferedSource
-            { bsourcePull = do
-                mresult <- modifyRef istate $ \state ->
-                    case state of
-                        BOpen [] -> (state, Nothing)
-                        BClosed [] -> (state, Just Closed)
-                        BOpen (x:xs) -> (BOpen xs, Just $ Open x)
-                        BClosed (x:xs) -> (BClosed xs, Just $ Open x)
-                case mresult of
-                    Nothing -> do
-                        result <- sourcePull src
-                        case result of
-                            Closed -> writeRef istate $ BClosed []
-                            Open _ -> return ()
-                        return result
-                    Just result -> return result
-            , bsourceUnpull = \x ->
-                modifyRef istate $ \state ->
-                    case state of
-                        BOpen buffer -> (BOpen (x : buffer), ())
-                        BClosed buffer -> (BClosed (x : buffer), ())
-            , bsourceClose = do
-                action <- modifyRef istate $ \state ->
-                    case state of
-                        BOpen x -> (BClosed x, sourceClose src)
-                        BClosed _ -> (state, return ())
-                action
-            }
-    unsafeBufferSource src = return BufferedSource
-        { bsourcePull = sourcePull src
-        , bsourceClose = sourceClose src
-        , bsourceUnpull = const $ return ()
-        }
-
-instance BufferSource Source where
-    bufferSource (Source msrc) = msrc >>= bufferSource
-    unsafeBufferSource (Source msrc) = msrc >>= unsafeBufferSource
-
--- | Turn a 'BufferedSource' into a 'Source'. Note that in general this will
--- mean your original 'BufferedSource' will be closed. Additionally, all
--- leftover data from usage of the returned @Source@ will be discarded. In
--- other words: this is a no-going-back move.
---
--- Note: @bufferSource@ . @unbufferSource@ is /not/ the identity function.
---
--- Since 0.0.1
-unbufferSource :: Monad m
-               => BufferedSource m a
-               -> Source m a
-unbufferSource (BufferedSource pull _unpull close) =
-    Source $ return $ PreparedSource pull close

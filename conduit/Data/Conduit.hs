@@ -9,6 +9,13 @@ module Data.Conduit
     ( -- * Types
       -- ** Source
       module Data.Conduit.Types.Source
+      -- *** Buffering
+    , BufferedSource
+    , bufferSource
+    , unbufferSource
+    , bsourceClose
+      -- *** Unifying
+    , IsSource
       -- ** Sink
     , module Data.Conduit.Types.Sink
       -- ** Conduit
@@ -32,17 +39,10 @@ module Data.Conduit
     , ResourceUnsafeIO
     , runResourceT
     , ResourceThrow (..)
-      -- * experimental
-    , BufferedSource2 (..)
-    , bufferSource2
-    , connect2
-    , fuseLeft2
     ) where
 
 import Control.Monad.Trans.Resource
-import Data.Conduit.Types.Source hiding (BufferSource (..))
-import Data.Conduit.Types.Source (BufferSource (bufferSource))
-import qualified Data.Conduit.Types.Source
+import Data.Conduit.Types.Source
 import Data.Conduit.Util.Source
 import Data.Conduit.Types.Sink
 import Data.Conduit.Util.Sink
@@ -62,24 +62,46 @@ infixr 0 $$
 --
 -- 3. The source return @Closed@, in which case the sink is closed.
 --
--- Note that the input source is converted to a 'BufferedSource' via
--- 'bufferSource'. As such, if the input to this function is itself a
--- 'BufferedSource', the call to 'bsourceClose' will have no effect, as
--- described in the comments on that instance.
-($$) :: (BufferSource bsrc, Resource m) => bsrc m a -> Sink a m b -> ResourceT m b
-bs' $$ Sink msink = do
+-- Note that this function will automatically close any 'Source's, but will not
+-- close any 'BufferedSource's, allowing them to be reused.
+--
+-- Since 0.0.0
+($$) :: (IsSource src, Resource m) => src m a -> Sink a m b -> ResourceT m b
+($$) = connect
+{-# INLINE ($$) #-}
+
+-- | A typeclass allowing us to unify operators for 'Source' and
+-- 'BufferedSource'.
+class IsSource src where
+    connect :: Resource m => src m a -> Sink a m b -> ResourceT m b
+    fuseLeft :: Resource m => src m a -> Conduit a m b -> Source m b
+
+instance IsSource Source where
+    connect = normalConnect
+    {-# INLINE connect #-}
+    fuseLeft = normalFuseLeft
+    {-# INLINE fuseLeft #-}
+
+instance IsSource BufferedSource where
+    connect = bufferedConnect
+    {-# INLINE connect #-}
+    fuseLeft = bufferedFuseLeft
+    {-# INLINE fuseLeft #-}
+
+normalConnect :: Resource m => Source m a -> Sink a m b -> ResourceT m b
+normalConnect (Source msrc) (Sink msink) = do
     sinkI <- msink
     case sinkI of
         SinkNoData output -> return output
         SinkData push close -> do
-            bs <- Data.Conduit.Types.Source.unsafeBufferSource bs'
-            connect' bs push close
+            src <- msrc
+            connect' src push close
   where
-    connect' bs push close =
+    connect' src push close =
         loop
       where
         loop = do
-            res <- bsourcePull bs
+            res <- sourcePull src
             case res of
                 Closed -> do
                     res' <- close
@@ -87,9 +109,8 @@ bs' $$ Sink msink = do
                 Open a -> do
                     mres <- push a
                     case mres of
-                        Done leftover res' -> do
-                            maybe (return ()) (bsourceUnpull bs) leftover
-                            bsourceClose bs
+                        Done _leftover res' -> do
+                            sourceClose src
                             return res'
                         Processing -> loop
 {-# SPECIALIZE ($$) :: Resource m => Source m a -> Sink a m b -> ResourceT m b #-}
@@ -99,19 +120,25 @@ data FuseLeftState a = FLClosed [a] | FLOpen [a]
 infixl 1 $=
 
 -- | Left fuse, combining a source and a conduit together into a new source.
-($=) :: (Resource m, BufferSource bsrc)
-     => bsrc m a
+--
+-- Since 0.0.0
+($=) :: (IsSource src, Resource m)
+     => src m a
      -> Conduit a m b
      -> Source m b
-bsrc' $= Conduit mc = Source $ do
+($=) = fuseLeft
+{-# INLINE ($=) #-}
+
+normalFuseLeft :: Resource m => Source m a -> Conduit a m b -> Source m b
+normalFuseLeft (Source msrc) (Conduit mc) = Source $ do
     istate <- newRef $ FLOpen [] -- still open, no buffer
-    bsrc <- Data.Conduit.Types.Source.unsafeBufferSource bsrc'
+    src <- msrc
     c <- mc
     return $ PreparedSource
-        (pull istate bsrc c)
-        (close istate bsrc c)
+        (pull istate src c)
+        (close istate src c)
   where
-    pull istate bsrc c = do
+    pull istate src c = do
         state' <- readRef istate
         case state' of
             FLClosed [] -> return Closed
@@ -122,7 +149,7 @@ bsrc' $= Conduit mc = Source $ do
                 writeRef istate $ FLOpen xs
                 return $ Open x
             FLOpen [] -> do
-                mres <- bsourcePull bsrc
+                mres <- sourcePull src
                 case mres of
                     Closed -> do
                         res <- conduitClose c
@@ -136,13 +163,12 @@ bsrc' $= Conduit mc = Source $ do
                     Open input -> do
                         res' <- conduitPush c input
                         case res' of
-                            Producing [] -> pull istate bsrc c
+                            Producing [] -> pull istate src c
                             Producing (x:xs) -> do
                                 writeRef istate $ FLOpen xs
                                 return $ Open x
-                            Finished leftover output -> do
-                                maybe (return ()) (bsourceUnpull bsrc) leftover
-                                bsourceClose bsrc
+                            Finished _leftover output -> do
+                                sourceClose src
                                 case output of
                                     [] -> do
                                         writeRef istate $ FLClosed []
@@ -150,16 +176,18 @@ bsrc' $= Conduit mc = Source $ do
                                     x:xs -> do
                                         writeRef istate $ FLClosed xs
                                         return $ Open x
-    close istate bsrc c = do
+    close istate src c = do
         -- Invariant: sourceClose cannot be called twice, so we will assume
         -- it is currently open. We could add a sanity check here.
         writeRef istate $ FLClosed []
         _ignored <- conduitClose c
-        bsourceClose bsrc
+        sourceClose src
 
 infixr 0 =$
 
 -- | Right fuse, combining a conduit and a sink together into a new sink.
+--
+-- Since 0.0.0
 (=$) :: Resource m => Conduit a m b -> Sink b m c -> Sink a m c
 Conduit mc =$ Sink ms = Sink $ do
     s <- ms
@@ -205,6 +233,8 @@ Conduit mc =$ Sink ms = Sink $ do
 infixr 0 =$=
 
 -- | Middle fuse, combining two conduits together into a new conduit.
+--
+-- Since 0.0.0
 (=$=) :: Resource m => Conduit a m b -> Conduit b m c -> Conduit a m c
 Conduit outerM =$= Conduit innerM = Conduit $ do
     outer <- outerM
@@ -243,21 +273,87 @@ conduitPushClose c (input:rest) = do
             b' <- conduitPushClose c rest
             return $ b ++ b'
 
-data BufferedSource2 m a = BufferedSource2
+-- | When actually interacting with 'Source's, we usually want to be able to
+-- buffer the output, in case any intermediate steps return leftover data. A
+-- 'BufferedSource' allows for such buffering.
+--
+-- A 'BufferedSource', unlike a 'Source', is resumable, meaning it can be passed to
+-- multiple 'Sink's without restarting.
+--
+-- Finally, a 'BufferedSource' relaxes one of the invariants of a 'Source':
+-- pulling after an the source is closed is allowed.
+--
+-- A @BufferedSource@ is also known as a /resumable source/, in that it can be
+-- called multiple times, and each time will provide new data. One caveat:
+-- while the types will allow you to use the buffered source in multiple
+-- threads, there is no guarantee that all @BufferedSource@s will handle this
+-- correctly.
+--
+-- Since 0.0.0
+data BufferedSource m a = BufferedSource
     { bsSource :: PreparedSource m a
     , bsBuffer :: Ref (Base m) (BSState a)
     }
 
 data BSState a = ClosedEmpty | OpenEmpty | ClosedFull a | OpenFull a
 
-bufferSource2 :: Resource m => Source m a -> ResourceT m (BufferedSource2 m a)
-bufferSource2 (Source msrc) = do
+-- | Prepare a 'Source' and initialize a buffer. Note that you should manually
+-- call 'bsourceClose' when the 'BufferedSource' is no longer in use.
+--
+-- Since 0.0.0
+bufferSource :: Resource m => Source m a -> ResourceT m (BufferedSource m a)
+bufferSource (Source msrc) = do
     src <- msrc
     buf <- newRef OpenEmpty
-    return $ BufferedSource2 src buf
+    return $ BufferedSource src buf
 
-connect2 :: Resource m => BufferedSource2 m a -> Sink a m b -> ResourceT m b
-connect2 bs (Sink msink) = do
+-- | Turn a 'BufferedSource' into a 'Source'. Note that in general this will
+-- mean your original 'BufferedSource' will be closed. Additionally, all
+-- leftover data from usage of the returned @Source@ will be discarded. In
+-- other words: this is a no-going-back move.
+--
+-- Note: @bufferSource@ . @unbufferSource@ is /not/ the identity function.
+--
+-- Since 0.0.1
+unbufferSource :: Resource m
+               => BufferedSource m a
+               -> Source m a
+unbufferSource (BufferedSource src bufRef) = Source $ do
+    buf <- readRef bufRef
+    case buf of
+        OpenEmpty -> return src
+        OpenFull a -> do
+            isUsedRef <- newRef False
+            return PreparedSource
+                { sourcePull = do
+                    isUsed <- readRef isUsedRef
+                    if isUsed
+                        then sourcePull src
+                        else do
+                            writeRef isUsedRef True
+                            return $ Open a
+                , sourceClose = sourceClose src
+                }
+        ClosedEmpty -> return PreparedSource
+            -- Note: we could put some invariant checking in here if we wanted
+            { sourcePull = return Closed
+            , sourceClose = return ()
+            }
+        ClosedFull a -> do
+            isUsedRef <- newRef False
+            return PreparedSource
+                { sourcePull = do
+                    isUsed <- readRef isUsedRef
+                    if isUsed
+                        then return Closed
+                        else do
+                            writeRef isUsedRef True
+                            return $ Open a
+                , sourceClose = sourceClose src
+                }
+
+bufferedConnect :: Resource m => BufferedSource m a -> Sink a m b -> ResourceT m b
+bufferedConnect bs (Sink msink) = do
     sinkI <- msink
     case sinkI of
         SinkNoData output -> return output
@@ -284,6 +380,7 @@ connect2 bs (Sink msink) = do
             res <- sourcePull $ bsSource bs
             case res of
                 Closed -> do
+                    writeRef (bsBuffer bs) ClosedEmpty
                     res' <- close
                     return res'
                 Open a -> push a >>= onRes loop
@@ -292,11 +389,12 @@ connect2 bs (Sink msink) = do
         return res
     onRes loop Processing = loop
 
-fuseLeft2 :: Resource m
-     => BufferedSource2 m a
-     -> Conduit a m b
-     -> Source m b
-fuseLeft2 bsrc (Conduit mc) = Source $ do
+bufferedFuseLeft
+    :: Resource m
+    => BufferedSource m a
+    -> Conduit a m b
+    -> Source m b
+bufferedFuseLeft bsrc (Conduit mc) = Source $ do
     istate <- newRef $ FLOpen [] -- still open, no buffer
     c <- mc
     return $ PreparedSource
@@ -314,7 +412,7 @@ fuseLeft2 bsrc (Conduit mc) = Source $ do
                 writeRef istate $ FLOpen xs
                 return $ Open x
             FLOpen [] -> do
-                mres <- bsource2Pull bsrc
+                mres <- bsourcePull bsrc
                 case mres of
                     Closed -> do
                         res <- conduitClose c
@@ -333,7 +431,7 @@ fuseLeft2 bsrc (Conduit mc) = Source $ do
                                 writeRef istate $ FLOpen xs
                                 return $ Open x
                             Finished leftover output -> do
-                                bsource2Unpull bsrc leftover
+                                bsourceUnpull bsrc leftover
                                 case output of
                                     [] -> do
                                         writeRef istate $ FLClosed []
@@ -342,17 +440,19 @@ fuseLeft2 bsrc (Conduit mc) = Source $ do
                                         writeRef istate $ FLClosed xs
                                         return $ Open x
     close istate c = do
-        -- Invariant: sourceClose cannot be called twice, so we will assume
-        -- it is currently open. We could add a sanity check here.
         writeRef istate $ FLClosed []
         _ignored <- conduitClose c
         return ()
 
-bsource2Pull :: Resource m => BufferedSource2 m a -> ResourceT m (SourceResult a)
-bsource2Pull (BufferedSource2 src bufRef) = do
+bsourcePull :: Resource m => BufferedSource m a -> ResourceT m (SourceResult a)
+bsourcePull (BufferedSource src bufRef) = do
     buf <- readRef bufRef
     case buf of
-        OpenEmpty -> sourcePull src
+        OpenEmpty -> do
+            res <- sourcePull src
+            case res of
+                Open _ -> return res
+                Closed -> writeRef bufRef ClosedEmpty >> return Closed
         ClosedEmpty -> return Closed
         OpenFull a -> do
             writeRef bufRef OpenEmpty
@@ -361,11 +461,25 @@ bsource2Pull (BufferedSource2 src bufRef) = do
             writeRef bufRef ClosedEmpty
             return $ Open a
 
-bsource2Unpull :: Resource m => BufferedSource2 m a -> Maybe a -> ResourceT m ()
-bsource2Unpull _ Nothing = return ()
-bsource2Unpull (BufferedSource2 _ bufRef) (Just a) = do
+bsourceUnpull :: Resource m => BufferedSource m a -> Maybe a -> ResourceT m ()
+bsourceUnpull _ Nothing = return ()
+bsourceUnpull (BufferedSource _ bufRef) (Just a) = do
     buf <- readRef bufRef
     case buf of
         OpenEmpty -> writeRef bufRef $ OpenFull a
         ClosedEmpty -> writeRef bufRef $ ClosedFull a
-        _ -> error $ "Invariant violated: bsource2Unpull called on full data"
+        _ -> error $ "Invariant violated: bsourceUnpull called on full data"
+
+-- | Close the underlying 'PreparedSource' for the given 'BufferedSource'. Note
+-- that this function can safely be called multiple times, as it will first
+-- check if the 'PreparedSource' was previously closed.
+--
+-- Since 0.0.0
+bsourceClose :: Resource m => BufferedSource m a -> ResourceT m ()
+bsourceClose (BufferedSource src bufRef) = do
+    buf <- readRef bufRef
+    case buf of
+        OpenEmpty -> sourceClose src
+        OpenFull _ -> sourceClose src
+        ClosedEmpty -> return ()
+        ClosedFull _ -> return ()
