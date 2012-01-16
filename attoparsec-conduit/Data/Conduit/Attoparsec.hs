@@ -25,6 +25,7 @@ import qualified Data.Attoparsec.ByteString
 import qualified Data.Attoparsec.Text
 import qualified Data.Attoparsec.Types as A
 import qualified Data.Conduit as C
+import Data.Monoid
 import Control.Monad.Trans.Class (lift)
 
 -- | The context and message from a 'A.Fail' value.
@@ -45,8 +46,9 @@ class AttoparsecInput a where
     notEmpty :: [a] -> [a]
 
 -- | Extra functions needed for conduitParser
-class (AttoparsecInput a) => ConduitInput a where
+class (AttoparsecInput a, Monoid a) => ConduitInput a where
     append :: a -> a -> a
+    append = mappend
 
 instance AttoparsecInput B.ByteString where
     parseA = Data.Attoparsec.ByteString.parse
@@ -55,8 +57,8 @@ instance AttoparsecInput B.ByteString where
     isNull = B.null
     notEmpty = filter (not . B.null)
 
-instance ConduitInput B.ByteString where
-    append = B.append
+-- instance ConduitInput B.ByteString where
+--     append = B.append
 
 instance AttoparsecInput T.Text where
     parseA = Data.Attoparsec.Text.parse
@@ -103,18 +105,20 @@ conduitParser p0 = C.conduitState
     close
   where
     push parser c | isNull c = return (parser, C.Producing [])
-    push parser c =
-        case parser c of
+    push parser c = {-# SCC "pushOuter" #-} undefined
+        
+    
+    doParse parser inp results =
+        case parser inp of
             A.Done leftover x
                 | isNull leftover ->    
-                    return (parseA p0, C.Producing  [x])
+                    (parseA p0, Nothing, x : results)
                 | otherwise ->
-                    let newP = parseA p0 
-                    in
-                     return ((\inp -> newP $ append leftover inp),
-                             C.Producing [x])
+                    undefined 
+                     -- return ((\inp -> {-# SCC "pushInner" #-} newP $ leftover `append` inp),  C.Producing [x])
             A.Fail _ contexts msg -> lift $ C.resourceThrow $ ParseError contexts msg
-            A.Partial p -> return (p, C.Producing [])
+            A.Partial p -> (p, Nothing, []) 
+
     close parser = do
         case feedA (parser empty) empty of
             A.Done _leftover y -> return [y]
