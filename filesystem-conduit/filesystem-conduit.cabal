@@ -1,5 +1,5 @@
 Name:                filesystem-conduit
-Version:             0.0.0
+Version:             0.0.1
 Synopsis:            Use system-filepath data types with conduits.
 Description:         Provides ability to traverse a folder structure efficiently, as well as convenience wrappers for reading from and writing to files.
 License:             BSD3
@@ -21,7 +21,7 @@ Library
                      , system-filepath          >= 0.4.3        && < 0.5
                      , bytestring               >= 0.9
                      , text                     >= 0.11
-                     , conduit                  >= 0.0          && < 0.1
+                     , conduit
   ghc-options:     -Wall
 
   if os(windows)
