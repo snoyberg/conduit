@@ -2,3 +2,5 @@
 dist/
 conduit/tmp
 conduit/tmp2
+*.hi
+*.o
