@@ -125,6 +125,8 @@ conduitParser p0 = C.conduitState
     close parser = do
         case feedA (parser empty) empty of
             A.Done _leftover y -> return [y]
-            A.Fail _ contexts msg -> lift $ C.resourceThrow $ ParseError contexts msg
+            A.Fail leftover _ _ | isNull leftover -> return []
+            A.Fail _ contexts msg -> lift $ C.resourceThrow $ ParseError contexts ("closing " ++ msg)
+
             A.Partial _ -> lift $ C.resourceThrow DivergentParser
 
