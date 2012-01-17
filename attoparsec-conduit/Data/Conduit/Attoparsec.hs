@@ -57,8 +57,7 @@ instance AttoparsecInput B.ByteString where
     isNull = B.null
     notEmpty = filter (not . B.null)
 
--- instance ConduitInput B.ByteString where
---     append = B.append
+instance ConduitInput B.ByteString
 
 instance AttoparsecInput T.Text where
     parseA = Data.Attoparsec.Text.parse
