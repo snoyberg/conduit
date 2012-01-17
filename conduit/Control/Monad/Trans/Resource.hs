@@ -141,6 +141,8 @@ instance HasRef IO where
     type Ref IO = I.IORef
     newRef' = I.newIORef
     {-# INLINE newRef' #-}
+    modifyRef' = I.atomicModifyIORef
+    {-# INLINE modifyRef' #-}
     readRef' = I.readIORef
     {-# INLINE readRef' #-}
     writeRef' = I.writeIORef
