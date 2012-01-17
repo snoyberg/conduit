@@ -91,6 +91,7 @@ sinkParser p0 = C.sinkState
             A.Fail _ contexts msg -> lift $ C.resourceThrow $ ParseError contexts msg
             A.Partial _ -> lift $ C.resourceThrow DivergentParser
 
+
 -- | Convert an Attoparsec 'A.Parser' into a 'C.Conduit'. The parser will
 -- be streamed bytes until the source is exhausted. When done is returned a new
 -- parser is created and fed with anything leftover in the stream before resuming. 
@@ -105,22 +106,26 @@ conduitParser p0 = C.conduitState
     close
   where
     push parser c | isNull c = return (parser, C.Producing [])
-    push parser c = {-# SCC "pushOuter" #-} undefined
-        
-    
-    doParse parser inp results =
+    push parser c = {-# SCC "push" #-} do
+        case doParse parser c [] of
+            Left pErr -> lift $ C.resourceThrow pErr
+            Right (cont, results) -> return (cont, C.Producing results)
+
+    -- doParse :: (A.Parser a b) -> a -> [b]
+    --            -> Either ParseError ((a -> A.IResult a b), [b])
+    doParse parser inp results = {-# SCC "parse" #-}
         case parser inp of
             A.Done leftover x
                 | isNull leftover ->    
-                    (parseA p0, Nothing, x : results)
+                    Right (parseA p0, x : results)
                 | otherwise ->
-                    undefined 
-                     -- return ((\inp -> {-# SCC "pushInner" #-} newP $ leftover `append` inp),  C.Producing [x])
-            A.Fail _ contexts msg -> lift $ C.resourceThrow $ ParseError contexts msg
-            A.Partial p -> (p, Nothing, []) 
+                    doParse (parseA p0) leftover (x:results) 
+            A.Fail _ contexts msg -> Left $ ParseError contexts msg
+            A.Partial p -> return (p, results) 
 
     close parser = do
         case feedA (parser empty) empty of
             A.Done _leftover y -> return [y]
             A.Fail _ contexts msg -> lift $ C.resourceThrow $ ParseError contexts msg
             A.Partial _ -> lift $ C.resourceThrow DivergentParser
+
