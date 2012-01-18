@@ -25,7 +25,6 @@ module Control.Monad.Trans.Resource
     , register
     , release
       -- * Use references
-    , modifyRef
     , readRef
     , writeRef
     , newRef
@@ -100,12 +99,6 @@ writeRef :: Resource m => Ref (Base m) a -> a -> ResourceT m ()
 writeRef r = lift . resourceLiftBase . writeRef' r
 {-# INLINE writeRef #-}
 
--- | Modify a value in a reference. Note that, in the case of @IO@ stacks, this
--- is an atomic action.
-modifyRef :: Resource m => Ref (Base m) a -> (a -> (a, b)) -> ResourceT m b
-modifyRef r = lift . resourceLiftBase . modifyRef' r
-{-# INLINE modifyRef #-}
-
 -- | A base monad which provides mutable references and some exception-safe way
 -- of interacting with them. For monads which cannot handle exceptions (e.g.,
 -- 'ST'), exceptions may be ignored. However, in such cases, scarce resources
@@ -121,8 +114,10 @@ class Monad m => HasRef m where
     readRef' :: Ref m a -> m a
     writeRef' :: Ref m a -> a -> m ()
 
-    modifyRef' :: Ref m a -> (a -> (a, b)) -> m b
-    modifyRef' sa f = do
+    -- | For monads supporting multi-threaded access (e.g., @IO@), this much be
+    -- an atomic modification.
+    atomicModifyRef' :: Ref m a -> (a -> (a, b)) -> m b
+    atomicModifyRef' sa f = do
         a0 <- readRef' sa
         let (a, b) = f a0
         writeRef' sa a
@@ -141,8 +136,8 @@ instance HasRef IO where
     type Ref IO = I.IORef
     newRef' = I.newIORef
     {-# INLINE newRef' #-}
-    modifyRef' = I.atomicModifyIORef
-    {-# INLINE modifyRef' #-}
+    atomicModifyRef' = I.atomicModifyIORef
+    {-# INLINE atomicModifyRef' #-}
     readRef' = I.readIORef
     {-# INLINE readRef' #-}
     writeRef' = I.writeIORef
@@ -322,7 +317,7 @@ register' :: HasRef base
           => Ref base (ReleaseMap base)
           -> base ()
           -> base ReleaseKey
-register' istate rel = modifyRef' istate $ \(ReleaseMap key rf m) ->
+register' istate rel = atomicModifyRef' istate $ \(ReleaseMap key rf m) ->
     ( ReleaseMap (key + 1) rf (IntMap.insert key rel m)
     , ReleaseKey key
     )
@@ -339,7 +334,7 @@ release' :: HasRef base
          -> ReleaseKey
          -> base ()
 release' istate (ReleaseKey key) = mask $ \restore -> do
-    maction <- modifyRef' istate lookupAction
+    maction <- atomicModifyRef' istate lookupAction
     maybe (return ()) restore maction
   where
     lookupAction rm@(ReleaseMap next rf m) =
@@ -352,12 +347,12 @@ release' istate (ReleaseKey key) = mask $ \restore -> do
 
 stateAlloc :: HasRef m => Ref m (ReleaseMap m) -> m ()
 stateAlloc istate = do
-    modifyRef' istate $ \(ReleaseMap nk rf m) ->
+    atomicModifyRef' istate $ \(ReleaseMap nk rf m) ->
         (ReleaseMap nk (rf + 1) m, ())
 
 stateCleanup :: HasRef m => Ref m (ReleaseMap m) -> m ()
 stateCleanup istate = mask_ $ do
-    (rf, m) <- modifyRef' istate $ \(ReleaseMap nk rf m) ->
+    (rf, m) <- atomicModifyRef' istate $ \(ReleaseMap nk rf m) ->
         (ReleaseMap nk (rf - 1) m, (rf - 1, m))
     if rf == minBound
         then do
