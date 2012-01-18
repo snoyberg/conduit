@@ -4,9 +4,11 @@
 module Data.Conduit.Binary
     ( sourceFile
     , sourceHandle
+    , sourceIOHandle
     , sourceFileRange
     , sinkFile
     , sinkHandle
+    , sinkIOHandle
     , conduitFile
     , isolate
     , openFile
@@ -54,19 +56,13 @@ openFile fp mode = fmap snd $ withIO (IO.openBinaryFile fp mode) IO.hClose
 sourceFile :: ResourceIO m
            => FilePath
            -> Source m S.ByteString
-sourceFile fp = sourceIO
+sourceFile fp =
 #if CABAL_OS_WINDOWS || NO_HANDLES
-    (F.openRead fp)
-    F.close
-    (liftIO . F.read)
+    sourceIO (F.openRead fp)
+             F.close
+             (liftIO . F.read)
 #else
-    (IO.openBinaryFile fp IO.ReadMode)
-    IO.hClose
-    (\handle -> do
-        bs <- liftIO $ S.hGetSome handle 4096
-        if S.null bs
-            then return Closed
-            else return $ Open bs)
+    sourceIOHandle (IO.openBinaryFile fp IO.ReadMode)
 #endif
 
 -- | Stream the contents of a 'IO.Handle' as binary data. Note that this
@@ -86,6 +82,20 @@ sourceHandle h = Source $ return $ PreparedSource
     , sourceClose = return ()
     }
 
+-- | An alternative to 'sourceHandle'.
+-- Instead of taking a pre-opened 'IO.Handle', it takes an action that opens
+-- a 'IO.Handle' (in read mode), so that it can open it only when needed
+-- and close it as soon as possible.
+sourceIOHandle :: ResourceIO m
+               => IO IO.Handle
+               -> Source m S.ByteString
+sourceIOHandle alloc = sourceIO alloc IO.hClose
+    (\handle -> do
+        bs <- liftIO (S.hGetSome handle 4096)
+        if S.null bs
+            then return Closed
+            else return $ Open bs)
+
 -- | Stream all incoming data to the given 'IO.Handle'. Note that this function
 -- will /not/ automatically close the @Handle@ when processing completes.
 --
@@ -97,6 +107,17 @@ sinkHandle h = Sink $ return $ SinkData
     { sinkPush = \input -> liftIO (S.hPut h input) >> return Processing
     , sinkClose = return ()
     }
+
+-- | An alternative to 'sinkHandle'.
+-- Instead of taking a pre-opened 'IO.Handle', it takes an action that opens
+-- a 'IO.Handle' (in write mode), so that it can open it only when needed
+-- and close it as soon as possible.
+sinkIOHandle :: ResourceIO m
+             => IO IO.Handle
+             -> Sink S.ByteString m ()
+sinkIOHandle alloc = sinkIO alloc IO.hClose
+    (\handle bs -> liftIO (S.hPut handle bs) >> return Processing)
+    (const $ return ())
 
 -- | Stream the contents of a file as binary data, starting from a certain
 -- offset and only consuming up to a certain number of bytes.
@@ -149,11 +170,7 @@ sourceFileRange fp offset count = Source $ do
 sinkFile :: ResourceIO m
          => FilePath
          -> Sink S.ByteString m ()
-sinkFile fp = sinkIO
-    (IO.openBinaryFile fp IO.WriteMode)
-    IO.hClose
-    (\handle bs -> liftIO (S.hPut handle bs) >> return Processing)
-    (const $ return ())
+sinkFile fp = sinkIOHandle (IO.openBinaryFile fp IO.WriteMode)
 
 -- | Stream the contents of the input to a file, and also send it along the
 -- pipeline. Similar in concept to the Unix command @tee@.
