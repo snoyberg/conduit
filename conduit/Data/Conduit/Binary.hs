@@ -86,6 +86,8 @@ sourceHandle h = Source $ return $ PreparedSource
 -- Instead of taking a pre-opened 'IO.Handle', it takes an action that opens
 -- a 'IO.Handle' (in read mode), so that it can open it only when needed
 -- and close it as soon as possible.
+--
+-- Since 0.1.1
 sourceIOHandle :: ResourceIO m
                => IO IO.Handle
                -> Source m S.ByteString
@@ -112,6 +114,8 @@ sinkHandle h = Sink $ return $ SinkData
 -- Instead of taking a pre-opened 'IO.Handle', it takes an action that opens
 -- a 'IO.Handle' (in write mode), so that it can open it only when needed
 -- and close it as soon as possible.
+--
+-- Since 0.1.1
 sinkIOHandle :: ResourceIO m
              => IO IO.Handle
              -> Sink S.ByteString m ()

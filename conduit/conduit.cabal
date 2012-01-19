@@ -1,5 +1,5 @@
 Name:                conduit
-Version:             0.1.0
+Version:             0.1.1
 Synopsis:            Streaming data processing library.
 Description:
 	Conduits are an approach to the streaming data problem. It is meant as an alternative to enumerators\/iterators, hoping to address the same issues with different trade-offs based on real-world experience with enumerators. For more information, see <http://www.yesodweb.com/book/conduit>.
