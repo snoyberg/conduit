@@ -108,7 +108,7 @@ conduitParser p0 = C.conduitState
     push parser c = {-# SCC "push" #-} do
         case doParse parser c [] of
             Left pErr -> lift $ C.resourceThrow pErr
-            Right (cont, results) -> return (cont, C.Producing results)
+            Right (cont, results) -> return (cont, C.Producing $ reverse results)
 
     -- doParse :: (A.Parser a b) -> a -> [b]
     --            -> Either ParseError ((a -> A.IResult a b), [b])
