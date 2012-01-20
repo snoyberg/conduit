@@ -44,6 +44,7 @@ testParseWord s = (AC8.string $ C8.pack s) <* AC8.space
 
 main :: IO ()
 main = hspecX $ do
+    
     describe "parserSink" $ do
         let pWord = testParseWord "test"
         let src = CL.sourceList $ C8.pack <$> lines "test one two"
@@ -64,3 +65,11 @@ main = hspecX $ do
                  let res = runST $ runExceptionT_ $ runResourceT $ CL.sourceList [inp, inp2]
                         $$ CA.sinkParser $ AC8.takeWhile (/=' ')
                  in res == C8.takeWhile (/=' ') (inp `mappend` inp2)
+
+        prop "parse first word leaves exactly tail" $
+            \inp inp2 -> not (S.null inp) ==>
+                 let res = runST $ runExceptionT_ $ runResourceT $ do
+                     bsrc <- C.bufferSource $ CL.sourceList [inp, inp2]
+                     _ <- bsrc $$ CA.sinkParser $ AC8.takeWhile (/=' ')
+                     C8.concat <$> (bsrc $$ CL.consume)
+                 in res == C8.dropWhile (/=' ') (inp `mappend` inp2)
