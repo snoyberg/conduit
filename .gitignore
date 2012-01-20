@@ -1,4 +1,6 @@
 *.swp
+\#*
+.#*
 dist/
 conduit/tmp
 conduit/tmp2
