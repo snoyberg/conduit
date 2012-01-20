@@ -14,62 +14,75 @@ import qualified Data.Conduit as C
 import Data.Conduit
 import qualified Data.Conduit.Attoparsec as CA
 import qualified Data.Conduit.List as CL
-import qualified Data.Conduit.Lazy as CLazy
-import qualified Data.Conduit.Text as CT
-import Data.Conduit.Blaze (builderToByteString)
-import Data.Conduit (runResourceT)
+import Control.Monad
 import Control.Monad.ST (runST)
 import Data.Monoid
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Char8 as C8
-import qualified Data.IORef as I
-import Blaze.ByteString.Builder (fromByteString, toLazyByteString, insertLazyByteString)
-import qualified Data.ByteString.Lazy as L
 import Data.ByteString.Lazy.Char8 ()
-import Data.Maybe (catMaybes)
-import Control.Monad.Trans.Writer (Writer)
-import qualified Data.Text as T
-import qualified Data.Text.Lazy as TL
-import qualified Data.Text.Lazy.Encoding as TLE
-import Control.Monad.Trans.Resource (runExceptionT_, withIO, resourceForkIO)
-import Control.Concurrent (threadDelay, killThread)
-import Control.Monad.IO.Class (liftIO)
+import Data.List (intersperse)
+import Control.Monad.Trans.Resource (runExceptionT_)
 import Control.Applicative -- (pure, (<$>), (<*>))
 
 instance Arbitrary S.ByteString where
-      arbitrary   = fmap S.pack arbitrary
+      arbitrary = do
+           len <- choose (0, 10)
+           chars <- replicateM len (choose ('a', 'z'))
+           return $ C8.pack chars
 
 testParseWord :: String -> A.Parser S.ByteString
-testParseWord s = (AC8.string $ C8.pack s) <* AC8.space
+testParseWord s = AC8.string (C8.pack s) <* AC8.space
 
 main :: IO ()
 main = hspecX $ do
+
+    let src = CL.sourceList $ C8.pack <$> lines "test one two\nthree four "
+    let takeWord = AC8.takeWhile (/=' ')
     
+    
+
     describe "parserSink" $ do
-        let pWord = testParseWord "test"
-        let src = CL.sourceList $ C8.pack <$> lines "test one two"
+        
         it "only runs parser once" $ do
-            res <- C.runResourceT $ src $$ CA.sinkParser pWord
-            res @?= C8.pack "test"
+            res <- C.runResourceT $ src $$ CA.sinkParser $ testParseWord "test"
+            res @?= "test"
         
         it "leaves the rest of input" $ do
             (x, y) <- runResourceT $ do
                 bsrc <- C.bufferSource src
-                x <- bsrc $$ CA.sinkParser pWord
+                x <- bsrc $$ CA.sinkParser $ testParseWord "test"
                 y <- bsrc $$ CL.consume
                 return (x, y)
-            y @?= [C8.pack "one two"]
+            y @?= C8.lines "one two\nthree four "
 
         prop "parse first word == head" $
             \inp inp2 -> not (S.null inp) ==>
-                 let res = runST $ runExceptionT_ $ runResourceT $ CL.sourceList [inp, inp2]
-                        $$ CA.sinkParser $ AC8.takeWhile (/=' ')
+                 let res = runST $ runExceptionT_ $ runResourceT $
+                         CL.sourceList [inp, inp2]
+                         $$ CA.sinkParser $ AC8.takeWhile (/=' ')
                  in res == C8.takeWhile (/=' ') (inp `mappend` inp2)
 
         prop "parse first word leaves exactly tail" $
             \inp inp2 -> not (S.null inp) ==>
                  let res = runST $ runExceptionT_ $ runResourceT $ do
                      bsrc <- C.bufferSource $ CL.sourceList [inp, inp2]
-                     _ <- bsrc $$ CA.sinkParser $ AC8.takeWhile (/=' ')
+                     _ <- bsrc $$ CA.sinkParser $ takeWord
                      C8.concat <$> (bsrc $$ CL.consume)
                  in res == C8.dropWhile (/=' ') (inp `mappend` inp2)
+
+    describe "paserConduit" $ do
+    
+        it "runs parser continuously" $ do
+            res <- runResourceT $ src
+                   $= CA.conduitParser (takeWord <* AC8.space)
+                   $$ CL.consume
+            res @?= ["test", "one", "twothree", "four"]
+
+        prop "parse word and space == init words" $
+            \inp -> length inp > 3 ==>
+                let res = runST $ runExceptionT_ $ runResourceT $
+                         CL.sourceList  (intersperse " " inp)
+                         $= CA.conduitParser (takeWord <* AC8.char ' ')
+                         $$ CL.consume
+                in res == init inp
+
