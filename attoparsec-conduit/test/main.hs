@@ -6,6 +6,7 @@ import Test.Hspec.Monadic
 import Test.Hspec.HUnit ()
 import Test.Hspec.QuickCheck (prop)
 import Test.HUnit
+import Test.QuickCheck
 
 import qualified Data.Attoparsec as A
 import qualified Data.Attoparsec.Char8 as AC8
@@ -35,6 +36,8 @@ import Control.Concurrent (threadDelay, killThread)
 import Control.Monad.IO.Class (liftIO)
 import Control.Applicative -- (pure, (<$>), (<*>))
 
+instance Arbitrary S.ByteString where
+      arbitrary   = fmap S.pack arbitrary
 
 testParseWord :: String -> A.Parser S.ByteString
 testParseWord s = (AC8.string $ C8.pack s) <* AC8.space
@@ -55,3 +58,9 @@ main = hspecX $ do
                 y <- bsrc $$ CL.consume
                 return (x, y)
             y @?= [C8.pack "one two"]
+
+        prop "parse first word == head" $
+            \inp inp2 -> not (S.null inp) ==>
+                 let res = runST $ runExceptionT_ $ runResourceT $ CL.sourceList [inp, inp2]
+                        $$ CA.sinkParser $ AC8.takeWhile (/=' ')
+                 in res == C8.takeWhile (/=' ') (inp `mappend` inp2)
