@@ -386,5 +386,19 @@ main = hspecX $ do
         a @?= "abcdefg"
         b @?= []
 
+    describe "normalFuseLeft" $ do
+        it "does not double close conduit" $ do
+            x <- runResourceT $ do
+                let src = CL.sourceList ["foobarbazbin"]
+                src C.$= CB.isolate 10 C.$$ CL.head
+            x @?= Just "foobarbazb"
+
+    describe "bufferedFuseLeft" $ do
+        it "does not double close conduit" $ do
+            x <- runResourceT $ do
+                bsrc <- C.bufferSource $ CL.sourceList ["foobarbazbin"]
+                bsrc C.$= CB.isolate 10 C.$$ CL.head
+            x @?= Just "foobarbazb"
+
 it' :: String -> IO () -> Writer [Spec] ()
 it' = it

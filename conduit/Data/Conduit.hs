@@ -176,11 +176,14 @@ normalFuseLeft (Source msrc) (Conduit mc) = Source $ do
                                         writeRef istate $ FLClosed xs
                                         return $ Open x
     close istate src c = do
-        -- Invariant: sourceClose cannot be called twice, so we will assume
-        -- it is currently open. We could add a sanity check here.
-        writeRef istate $ FLClosed []
-        _ignored <- conduitClose c
-        sourceClose src
+        -- See comment on bufferedFuseLeft for why we need to have the
+        -- following check
+        state <- readRef istate
+        case state of
+            FLClosed _ -> return ()
+            FLOpen _ -> do
+                _ignored <- conduitClose c
+                sourceClose src
 
 infixr 0 =$
 
@@ -439,9 +442,17 @@ bufferedFuseLeft bsrc (Conduit mc) = Source $ do
                                         writeRef istate $ FLClosed xs
                                         return $ Open x
     close istate c = do
-        writeRef istate $ FLClosed []
-        _ignored <- conduitClose c
-        return ()
+        -- Normally we don't have to worry about double closing, as the
+        -- invariant of a source is that close is never called twice. However,
+        -- here, if the Conduit returned Finished with some data, the overall
+        -- Source will return an Open while the Conduit will be Closed.
+        -- Therefore, we have to do a check.
+        state <- readRef istate
+        case state of
+            FLClosed _ -> return ()
+            FLOpen _ -> do
+                _ignored <- conduitClose c
+                return ()
 
 bsourcePull :: Resource m => BufferedSource m a -> ResourceT m (SourceResult a)
 bsourcePull (BufferedSource src bufRef) = do
