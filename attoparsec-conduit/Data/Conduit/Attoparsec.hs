@@ -85,6 +85,7 @@ sinkParser p0 = C.sinkState
             A.Fail _ contexts msg -> lift $ C.resourceThrow $ ParseError contexts msg
             A.Partial p -> return (C.StateProcessing p)
     close parser = do
+
         case feedA (parser empty) empty of
             A.Done _leftover y -> return y
             A.Fail _ contexts msg -> lift $ C.resourceThrow $ ParseError contexts msg
@@ -93,7 +94,7 @@ sinkParser p0 = C.sinkState
 
 -- | Convert an Attoparsec 'A.Parser' into a 'C.Conduit'. The parser will
 -- be streamed bytes until the source is exhausted. When done is returned a new
--- parser is created and fed with anything leftover in the stream before resuming. 
+-- parser is created and fed with anything leftover in the stream before resuming.
 --
 -- If parsing fails, a 'ParseError' will be thrown with 'C.resourceThrow'.
 conduitParser :: (ConduitInput a, C.ResourceThrow m) =>
@@ -105,7 +106,7 @@ conduitParser p0 = C.conduitState
     close
   where
     push parser c | isNull c = return (parser, C.Producing [])
-    push parser c = {-# SCC "push" #-} do
+    push parser c = {-# SCC "push" #-}
         case doParse parser c [] of
             Left pErr -> lift $ C.resourceThrow pErr
             Right (cont, results) -> return (cont, C.Producing $ reverse results)
@@ -115,18 +116,17 @@ conduitParser p0 = C.conduitState
     doParse parser inp results = {-# SCC "parse" #-}
         case parser inp of
             A.Done leftover x
-                | isNull leftover ->    
+                | isNull leftover ->
                     Right (parseA p0, x : results)
                 | otherwise ->
-                    doParse (parseA p0) leftover (x:results) 
+                    doParse (parseA p0) leftover (x:results)
             A.Fail _ contexts msg -> Left $ ParseError contexts msg
-            A.Partial p -> return (p, results) 
+            A.Partial p -> return (p, results)
 
-    close parser = do
+    close parser =
         case feedA (parser empty) empty of
             A.Done _leftover y -> return [y]
             A.Fail leftover _ _ | isNull leftover -> return []
             A.Fail _ contexts msg -> lift $ C.resourceThrow $ ParseError contexts ("closing " ++ msg)
 
             A.Partial _ -> lift $ C.resourceThrow DivergentParser
-
