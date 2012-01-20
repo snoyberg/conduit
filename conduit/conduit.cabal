@@ -20,6 +20,8 @@ Homepage:            http://github.com/snoyberg/conduit
 extra-source-files:  test/main.hs, test/random
 
 flag debug
+    default: True
+    description: Turn on some runtime check to ensure invariants are respected.
 
 flag nohandles
 
