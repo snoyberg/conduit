@@ -18,7 +18,6 @@ import qualified Data.ByteString as S
 import qualified Data.IORef as I
 import qualified Data.ByteString.Lazy as L
 import Data.ByteString.Lazy.Char8 ()
-import Control.Monad.Trans.Writer (Writer)
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Encoding as TLE
@@ -400,5 +399,5 @@ main = hspecX $ do
                 bsrc C.$= CB.isolate 10 C.$$ CL.head
             x @?= Just "foobarbazb"
 
-it' :: String -> IO () -> Writer [Spec] ()
+it' :: String -> IO () -> Specs
 it' = it
