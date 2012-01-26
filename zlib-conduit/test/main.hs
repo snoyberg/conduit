@@ -1,5 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE CPP #-}
 import Test.Hspec.Monadic
 import Test.Hspec.HUnit ()
 import Test.Hspec.QuickCheck (prop)
@@ -23,3 +21,13 @@ main = hspecX $ do
                 src = mconcat $ map (CL.sourceList . return) bss
             outBss <- src C.$= CZ.gzip C.$= CZ.ungzip C.$$ CL.consume
             return $ lbs == L.fromChunks outBss
+        prop "flush" $ \bss' -> runST $ runResourceT $ do
+            let bss = map S.pack $ filter (not . null) bss'
+                src = mconcat $ map (CL.sourceList . return)
+                              $ concatMap (\bs -> [bs, S.empty]) bss
+            outBss <- src C.$= CZ.gzip
+                          C.$= CL.concatMap (\bs -> [bs, S.empty])
+                          C.$= CZ.ungzip
+                          C.$= CL.filter (not . S.null)
+                          C.$$ CL.consume
+            return $ bss == outBss

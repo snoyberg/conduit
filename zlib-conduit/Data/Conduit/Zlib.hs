@@ -28,6 +28,9 @@ ungzip = decompress (WindowBits 31)
 -- Decompress (inflate) a stream of 'ByteString's. For example:
 --
 -- >    sourceFile "test.z" $= decompress defaultWindowBits $$ sinkFile "test"
+--
+-- Note: if a null chunk is encountered in the stream, it will be taken as an
+-- instruction to flush the buffer.
 
 decompress
     :: ResourceUnsafeIO m
@@ -38,7 +41,10 @@ decompress config = Conduit $ do
     return $ PreparedConduit (push inf) (close inf)
   where
     push inf x = do
-        chunks <- lift $ unsafeFromIO $ withInflateInput inf x callback
+        let action = if S.null x
+                        then fmap return $ flushInflate inf
+                        else withInflateInput inf x callback
+        chunks <- lift $ unsafeFromIO action
         return $ Producing chunks
     close inf = do
         chunk <- lift $ unsafeFromIO $ finishInflate inf
@@ -47,6 +53,9 @@ decompress config = Conduit $ do
 -- |
 -- Compress (deflate) a stream of 'ByteString's. The 'WindowBits' also control
 -- the format (zlib vs. gzip).
+--
+-- Note: if a null chunk is encountered in the stream, it will be taken as an
+-- instruction to flush the buffer.
 
 compress
     :: ResourceUnsafeIO m
@@ -58,7 +67,10 @@ compress level config = Conduit $ do
     return $ PreparedConduit (push def) (close def)
   where
     push def x = do
-        chunks <- lift $ unsafeFromIO $ withDeflateInput def x callback
+        let action = if S.null x
+                        then flushDeflate
+                        else flip withDeflateInput x
+        chunks <- lift $ unsafeFromIO $ action def callback
         return $ Producing chunks
     close def = do
         chunks <- lift $ unsafeFromIO $ finishDeflate def callback
