@@ -23,11 +23,9 @@ main = hspecX $ do
             return $ lbs == L.fromChunks outBss
         prop "flush" $ \bss' -> runST $ runResourceT $ do
             let bss = map S.pack $ filter (not . null) bss'
-                src = mconcat $ map (CL.sourceList . return)
-                              $ concatMap (\bs -> [bs, S.empty]) bss
-            outBss <- src C.$= CZ.gzip
-                          C.$= CL.concatMap (\bs -> [bs, S.empty])
-                          C.$= CZ.ungzip
-                          C.$= CL.filter (not . S.null)
-                          C.$$ CL.consume
-            return $ bss == outBss
+                bssC = concatMap (\bs -> [CZ.Chunk bs, CZ.Flush]) bss
+                src = mconcat $ map (CL.sourceList . return) bssC
+            outBssC <- src C.$= CZ.compressFlush 5 (CZ.WindowBits 31)
+                           C.$= CZ.decompressFlush (CZ.WindowBits 31)
+                           C.$$ CL.consume
+            return $ bssC == outBssC
