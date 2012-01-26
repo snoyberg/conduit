@@ -36,6 +36,9 @@ module Data.Conduit.Blaze
   , unsafeBuilderToByteString
   , builderToByteStringWith
 
+  -- ** Flush
+  , builderToByteStringFlush
+  , builderToByteStringWithFlush
     ) where
 
 import Data.Conduit hiding (SinkResult (Done))
@@ -53,6 +56,13 @@ import Blaze.ByteString.Builder.Internal.Buffer
 builderToByteString :: ResourceUnsafeIO m => Conduit Builder m S.ByteString
 builderToByteString =
   builderToByteStringWith (allNewBuffersStrategy defaultBufferSize)
+
+-- |
+--
+-- Since 0.0.2
+builderToByteStringFlush :: ResourceUnsafeIO m => Conduit (Flush Builder) m (Flush S.ByteString)
+builderToByteStringFlush =
+  builderToByteStringWithFlush (allNewBuffersStrategy defaultBufferSize)
 
 -- | Incrementally execute builders on the given buffer and pass on the filled
 -- chunks as bytestrings. Note that, if the given buffer is too small for the
@@ -76,18 +86,52 @@ builderToByteStringWith :: ResourceUnsafeIO m
                         -> Conduit Builder m S.ByteString
 builderToByteStringWith (ioBuf0, nextBuf) = conduitState
     ioBuf0
-    push
+    (push nextBuf)
     close
   where
-    finalStep !(BufRange pf _) = return $ Done pf ()
-
     close ioBuf = lift $ unsafeFromIO $ do
         buf <- ioBuf
         return $ maybe [] return $ unsafeFreezeNonEmptyBuffer buf
 
-    push ioBuf x = lift $ unsafeFromIO $ do
-        (ioBuf', front) <- go (unBuilder x (buildStep finalStep)) ioBuf id
-        return (ioBuf', Producing $ front [])
+-- |
+--
+-- Since 0.0.2
+builderToByteStringWithFlush
+    :: ResourceUnsafeIO m
+    => BufferAllocStrategy
+    -> Conduit (Flush Builder) m (Flush S.ByteString)
+builderToByteStringWithFlush (ioBuf0, nextBuf) = conduitState
+    ioBuf0
+    push'
+    close
+  where
+    close ioBuf = lift $ unsafeFromIO $ do
+        buf <- ioBuf
+        return $ maybe [] (return . Chunk) $ unsafeFreezeNonEmptyBuffer buf
+
+    push' :: ResourceUnsafeIO m
+          => IO Buffer
+          -> Flush Builder
+          -> ResourceT m (IO Buffer, ConduitResult input (Flush S.ByteString))
+    push' ioBuf Flush = do
+        (ioBuf', Producing chunks) <- push nextBuf ioBuf flush
+        let myFold bs rest
+                | S.null bs = rest
+                | otherwise = Chunk bs : rest
+            chunks' = foldr myFold [Flush] chunks
+        return (ioBuf', Producing chunks')
+    push' ioBuf (Chunk builder) = (fmap . fmap . fmap) Chunk (push nextBuf ioBuf builder)
+
+push :: ResourceUnsafeIO m
+     => (Int -> Buffer -> IO (IO Buffer))
+     -> IO Buffer
+     -> Builder
+     -> ResourceT m (IO Buffer, ConduitResult input S.ByteString)
+push nextBuf ioBuf0 x = lift $ unsafeFromIO $ do
+    (ioBuf', front) <- go (unBuilder x (buildStep finalStep)) ioBuf0 id
+    return (ioBuf', Producing $ front [])
+  where
+    finalStep !(BufRange pf _) = return $ Done pf ()
 
     go bStep ioBuf front = do
         !buf   <- ioBuf

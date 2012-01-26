@@ -32,6 +32,8 @@ module Data.Conduit
     , module Data.Conduit.Util.Sink
       -- ** Conduit
     , module Data.Conduit.Util.Conduit
+      -- * Flushing
+    , Flush (..)
       -- * Convenience re-exports
     , ResourceT
     , Resource (..)
@@ -493,3 +495,15 @@ bsourceClose (BufferedSource src bufRef) = do
         OpenFull _ -> sourceClose src
         ClosedEmpty -> return ()
         ClosedFull _ -> return ()
+-- | Provide for a stream of data that can be flushed.
+--
+-- A number of @Conduit@s (e.g., zlib compression) need the ability to flush
+-- the stream at some point. This provides a single wrapper datatype to be used
+-- in all such circumstances.
+--
+-- Since 0.1.2
+data Flush a = Chunk a | Flush
+    deriving (Show, Eq, Ord)
+instance Functor Flush where
+    fmap _ Flush = Flush
+    fmap f (Chunk a) = Chunk (f a)

@@ -8,7 +8,7 @@ import Test.HUnit
 import qualified Data.Conduit as C
 import qualified Data.Conduit.List as CL
 import Data.ByteString.Char8 ()
-import Data.Conduit.Blaze (builderToByteString)
+import Data.Conduit.Blaze (builderToByteString, builderToByteStringFlush)
 import Data.Conduit (runResourceT)
 import Control.Monad.ST (runST)
 import Data.Monoid
@@ -42,3 +42,10 @@ main = hspecX $ do
             let src = mconcat $ map (CL.sourceList . return) builders
             outBss <- src C.$= builderToByteString C.$$ CL.consume :: C.ResourceT IO [S.ByteString]
             liftIO $ lbs @=? L.fromChunks outBss
+
+        prop "flushing" $ \bss' -> runST $ runResourceT $ do
+            let bss = concatMap (\bs -> [C.Chunk $ S.pack bs, C.Flush]) $ filter (not . null) bss'
+            let src = CL.sourceList $ map (fmap fromByteString) bss
+            outBss <- src C.$= builderToByteStringFlush C.$$ CL.consume
+            if bss == outBss then return () else error (show (bss, outBss))
+            return $ bss == outBss

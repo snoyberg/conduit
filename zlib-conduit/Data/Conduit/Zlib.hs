@@ -6,7 +6,7 @@ module Data.Conduit.Zlib (
     -- * Conduits
     compress, decompress, gzip, ungzip,
     -- * Flushing
-    ByteStringChunk (..), compressFlush, decompressFlush,
+    compressFlush, decompressFlush,
     -- * Re-exported from zlib-bindings
     WindowBits (..), defaultWindowBits
 ) where
@@ -50,7 +50,7 @@ decompress config = Conduit $ do
 decompressFlush
     :: ResourceUnsafeIO m
     => WindowBits -- ^ Zlib parameter (see the zlib-bindings package as well as the zlib C library)
-    -> Conduit ByteStringChunk m ByteStringChunk
+    -> Conduit (Flush ByteString) m (Flush ByteString)
 decompressFlush config = Conduit $ do
     inf <- lift $ unsafeFromIO $ initInflate config
     return $ PreparedConduit (push inf) (close inf)
@@ -86,15 +86,12 @@ compress level config = Conduit $ do
         chunks <- lift $ unsafeFromIO $ finishDeflate def callback
         return chunks
 
-data ByteStringChunk = Chunk ByteString | Flush
-    deriving (Show, Eq, Ord)
-
 -- | Same as 'compress', but allows you to explicitly flush the stream.
 compressFlush
     :: ResourceUnsafeIO m
     => Int         -- ^ Compression level
     -> WindowBits  -- ^ Zlib parameter (see the zlib-bindings package as well as the zlib C library)
-    -> Conduit ByteStringChunk m ByteStringChunk
+    -> Conduit (Flush ByteString) m (Flush ByteString)
 compressFlush level config = Conduit $ do
     def <- lift $ unsafeFromIO $ initDeflate level config
     return $ PreparedConduit (push def) (close def)
