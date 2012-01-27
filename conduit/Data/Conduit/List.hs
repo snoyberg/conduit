@@ -170,10 +170,11 @@ peek =
 --
 -- Since 0.0.0
 map :: Monad m => (a -> b) -> Conduit a m b
-map f = Conduit $ return $ PreparedConduit
-    { conduitPush = return . Producing . return . f
-    , conduitClose = return []
-    }
+map f =
+    Conduit $ return $ PreparedConduit push close
+  where
+    push = return . Producing push close . return . f
+    close = return []
 
 -- | Apply a monadic transformation to all values in a stream.
 --
@@ -182,30 +183,33 @@ map f = Conduit $ return $ PreparedConduit
 --
 -- Since 0.0.0
 mapM :: Monad m => (a -> m b) -> Conduit a m b
-mapM f = Conduit $ return $ PreparedConduit
-    { conduitPush = fmap (Producing . return) . lift . f
-    , conduitClose = return []
-    }
+mapM f =
+    Conduit $ return $ PreparedConduit push close
+  where
+    push = fmap (Producing push close . return) . lift . f
+    close = return []
 
 -- | Apply a transformation to all values in a stream, concatenating the output
 -- values.
 --
 -- Since 0.0.0
 concatMap :: Monad m => (a -> [b]) -> Conduit a m b
-concatMap f = Conduit $ return $ PreparedConduit
-    { conduitPush = return . Producing . f
-    , conduitClose = return []
-    }
+concatMap f =
+    Conduit $ return $ PreparedConduit push close
+  where
+    push = return . Producing push close . f
+    close = return []
 
 -- | Apply a monadic transformation to all values in a stream, concatenating
 -- the output values.
 --
 -- Since 0.0.0
 concatMapM :: Monad m => (a -> m [b]) -> Conduit a m b
-concatMapM f = Conduit $ return $ PreparedConduit
-    { conduitPush = fmap Producing . lift . f
-    , conduitClose = return []
-    }
+concatMapM f =
+    Conduit $ return $ PreparedConduit push close
+  where
+    push = fmap (Producing push close) . lift . f
+    close = return []
 
 -- | Consume all values from the stream and return as a list. Note that this
 -- will pull all values into memory. For a lazy variant, see
@@ -227,12 +231,12 @@ groupBy f = conduitState
     push
     close
   where
-    push []      v = return ([v], Producing [])
+    push []      v = return $ StateProducing [v] []
     push s@(x:_) v =
       if f x v then
-        return (v:s, Producing [])
+        return $ StateProducing (v:s) []
       else
-        return ([v], Producing [s])
+        return $ StateProducing [v] [s]
     close s = return [s]
 
 -- | Ensure that the inner sink consumes no more than the given number of
@@ -257,22 +261,22 @@ isolate count0 = conduitState
     close _ = return []
     push count x = do
         if count == 0
-            then return (count, Finished (Just x) [])
+            then return $ StateFinished (Just x) []
             else do
                 let count' = count - 1
-                return (count',
-                    if count' == 0
-                        then Finished Nothing [x]
-                        else Producing [x])
+                return $ if count' == 0
+                    then StateFinished Nothing [x]
+                    else StateProducing count' [x]
 
 -- | Keep only values in the stream passing a given predicate.
 --
 -- Since 0.0.0
 filter :: Resource m => (a -> Bool) -> Conduit a m a
-filter f = Conduit $ return $ PreparedConduit
-    { conduitPush = return . Producing . Prelude.filter f . return
-    , conduitClose = return []
-    }
+filter f =
+    Conduit $ return $ PreparedConduit push close
+  where
+    push = return . Producing push close . Prelude.filter f . return
+    close = return []
 
 -- | Ignore the remainder of values in the source. Particularly useful when
 -- combined with 'isolate'.

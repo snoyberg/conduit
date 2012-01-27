@@ -9,16 +9,21 @@ module Data.Conduit.Types.Conduit
 import Control.Monad.Trans.Resource (ResourceT)
 import Control.Monad (liftM)
 
+type ConduitPush input m output = input -> ResourceT m (ConduitResult input m output)
+type ConduitClose m output = ResourceT m [output]
+
 -- | When data is pushed to a @Conduit@, it may either indicate that it is
 -- still producing output and provide some, or indicate that it is finished
 -- producing output, in which case it returns optional leftover input and some
 -- final output.
 --
 -- Since 0.0.0
-data ConduitResult input output = Producing [output] | Finished (Maybe input) [output]
+data ConduitResult input m output =
+    Producing (ConduitPush input m output) (ConduitClose m output) [output]
+  | Finished (Maybe input) [output]
 
-instance Functor (ConduitResult input) where
-    fmap f (Producing o) = Producing (fmap f o)
+instance Monad m => Functor (ConduitResult input m) where
+    fmap f (Producing p c o) = Producing ((fmap . fmap . fmap) f p) ((fmap . fmap) f c) (fmap f o)
     fmap f (Finished i o) = Finished i (fmap f o)
 
 -- | A conduit has two operations: it can receive new input (a push), and can
@@ -31,8 +36,8 @@ instance Functor (ConduitResult input) where
 --
 -- Since 0.0.0
 data PreparedConduit input m output = PreparedConduit
-    { conduitPush :: input -> ResourceT m (ConduitResult input output)
-    , conduitClose :: ResourceT m [output]
+    { conduitPush :: ConduitPush input m output
+    , conduitClose :: ConduitClose m output
     }
 
 instance Monad m => Functor (PreparedConduit input m) where

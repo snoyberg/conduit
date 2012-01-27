@@ -189,7 +189,7 @@ conduitFile fp = conduitIO
     IO.hClose
     (\handle bs -> do
         liftIO $ S.hPut handle bs
-        return $ Producing [bs])
+        return $ IOProducing [bs])
     (const $ return [])
 
 -- | Ensure that only up to the given number of bytes are consume by the inner
@@ -205,14 +205,14 @@ isolate count0 = conduitState
     push
     close
   where
-    push 0 bs = return (0, Finished (Just bs) [])
+    push 0 bs = return $ StateFinished (Just bs) []
     push count bs = do
         let (a, b) = S.splitAt count bs
         let count' = count - S.length a
-        return (count',
+        return $
             if count' == 0
-                then Finished (if S.null b then Nothing else Just b) (if S.null a then [] else [a])
-                else assert (S.null b) $ Producing [a])
+                then StateFinished (if S.null b then Nothing else Just b) (if S.null a then [] else [a])
+                else assert (S.null b) $ StateProducing count' [a]
     close _ = return []
 
 -- | Return the next byte from the stream, if available.
@@ -234,15 +234,16 @@ head =
 --
 -- Since 0.0.2
 takeWhile :: Resource m => (Word8 -> Bool) -> Conduit S.ByteString m S.ByteString
-takeWhile p = Conduit $ return $ PreparedConduit
-    { conduitPush = \bs -> do
+takeWhile p =
+    Conduit $ return $ PreparedConduit push close
+  where
+    push bs = do
         let (x, y) = S.span p bs
         return $
             if S.null y
-                then Producing [x]
+                then Producing push close [x]
                 else Finished (Just y) (if S.null x then [] else [x])
-    , conduitClose = return []
-    }
+    close = return []
 
 -- | Ignore all bytes while the predicate returns @True@.
 --

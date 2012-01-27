@@ -86,7 +86,7 @@ decode codec = C.conduitState
   where
     push mb input = do
         (mb', ts) <- go' mb input
-        return $ (mb', C.Producing ts)
+        return $ C.StateProducing mb' ts
     close mb =
         case mb of
             Nothing -> return []
