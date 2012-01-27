@@ -293,9 +293,13 @@ conduitPushClose c (input:rest) = do
 -- correctly.
 --
 -- Since 0.0.0
-data BufferedSource m a = BufferedSource (Ref (Base m) (PreparedSource m a, BSState a))
+data BufferedSource m a = BufferedSource (Ref (Base m) (BSState m a))
 
-data BSState a = ClosedEmpty | OpenEmpty | ClosedFull a | OpenFull a
+data BSState m a =
+    ClosedEmpty
+  | OpenEmpty (PreparedSource m a)
+  | ClosedFull a
+  | OpenFull (PreparedSource m a) a
 
 -- | Prepare a 'Source' and initialize a buffer. Note that you should manually
 -- call 'bsourceClose' when the 'BufferedSource' is no longer in use.
@@ -304,7 +308,7 @@ data BSState a = ClosedEmpty | OpenEmpty | ClosedFull a | OpenFull a
 bufferSource :: Resource m => Source m a -> ResourceT m (BufferedSource m a)
 bufferSource (Source msrc) = do
     src <- msrc
-    BufferedSource <$> newRef (src, OpenEmpty)
+    BufferedSource <$> newRef (OpenEmpty src)
 
 -- | Turn a 'BufferedSource' into a 'Source'. Note that in general this will
 -- mean your original 'BufferedSource' will be closed. Additionally, all
@@ -317,40 +321,25 @@ bufferSource (Source msrc) = do
 unbufferSource :: Resource m
                => BufferedSource m a
                -> Source m a
-unbufferSource = error "unbufferSource" {- FIXME (BufferedSource src bufRef) = Source $ do
-    buf <- readRef bufRef
+unbufferSource (BufferedSource bs) = Source $ do
+    buf <- readRef bs
     case buf of
-        OpenEmpty -> return src
-        OpenFull a -> do
-            isUsedRef <- newRef False
-            return PreparedSource
-                { sourcePull = do
-                    isUsed <- readRef isUsedRef
-                    if isUsed
-                        then sourcePull src
-                        else do
-                            writeRef isUsedRef True
-                            return $ Open a
-                , sourceClose = sourceClose src
-                }
+        OpenEmpty src -> return src
+        OpenFull src a -> return PreparedSource
+            { sourcePull = return $ Open src a
+            , sourceClose = sourceClose src
+            }
         ClosedEmpty -> return PreparedSource
             -- Note: we could put some invariant checking in here if we wanted
             { sourcePull = return Closed
             , sourceClose = return ()
             }
-        ClosedFull a -> do
-            isUsedRef <- newRef False
-            return PreparedSource
-                { sourcePull = do
-                    isUsed <- readRef isUsedRef
-                    if isUsed
-                        then return Closed
-                        else do
-                            writeRef isUsedRef True
-                            return $ Open a
-                , sourceClose = sourceClose src
-                }
-    -}
+        ClosedFull a -> return PreparedSource
+            { sourcePull = return $ Open
+                (PreparedSource (return Closed) (return ()))
+                a
+            , sourceClose = return ()
+            }
 
 bufferedConnect :: Resource m => BufferedSource m a -> Sink a m b -> ResourceT m b
 bufferedConnect (BufferedSource bs) (Sink msink) = do
@@ -358,31 +347,31 @@ bufferedConnect (BufferedSource bs) (Sink msink) = do
     case sinkI of
         SinkNoData output -> return output
         SinkData push close -> do
-            (src, bsState) <- readRef bs
+            bsState <- readRef bs
             case bsState of
                 ClosedEmpty -> close
-                OpenEmpty -> connect' src push close
+                OpenEmpty src -> connect' src push close
                 ClosedFull a -> do
                     res <- push a
                     case res of
                         Done mleftover res' -> do
-                            writeRef bs (src, maybe ClosedEmpty ClosedFull mleftover)
+                            writeRef bs $ maybe ClosedEmpty ClosedFull mleftover
                             return res'
                         Processing _ close' -> do
-                            writeRef bs (src, ClosedEmpty)
+                            writeRef bs ClosedEmpty
                             close'
-                OpenFull a -> push a >>= onRes src
+                OpenFull src a -> push a >>= onRes src
   where
     connect' src push close = do
         res <- sourcePull src
         case res of
             Closed -> do
-                writeRef bs (error "Data.Conduit.bufferedConnect", ClosedEmpty)
+                writeRef bs ClosedEmpty
                 res' <- close
                 return res'
             Open src' a -> push a >>= onRes src'
     onRes src (Done mleftover res) = do
-        writeRef bs (src, maybe OpenEmpty OpenFull mleftover)
+        writeRef bs $ maybe (OpenEmpty src) (OpenFull src) mleftover
         return res
     onRes src (Processing push close) = connect' src push close
 
@@ -471,10 +460,10 @@ _bsourcePull = error "bsourcePull" {- FIXME (BufferedSource src bufRef) = do
 _bsourceUnpull :: Resource m => BufferedSource m a -> Maybe a -> ResourceT m ()
 _bsourceUnpull _ Nothing = return ()
 _bsourceUnpull (BufferedSource ref) (Just a) = do
-    (src, buf) <- readRef ref
+    buf <- readRef ref
     case buf of
-        OpenEmpty -> writeRef ref (src, OpenFull a)
-        ClosedEmpty -> writeRef ref (src, ClosedFull a)
+        OpenEmpty src -> writeRef ref (OpenFull src a)
+        ClosedEmpty -> writeRef ref (ClosedFull a)
         _ -> error $ "Invariant violated: bsourceUnpull called on full data"
 
 -- | Close the underlying 'PreparedSource' for the given 'BufferedSource'. Note
@@ -484,10 +473,10 @@ _bsourceUnpull (BufferedSource ref) (Just a) = do
 -- Since 0.0.0
 bsourceClose :: Resource m => BufferedSource m a -> ResourceT m ()
 bsourceClose (BufferedSource ref) = do
-    (src, buf) <- readRef ref
+    buf <- readRef ref
     case buf of
-        OpenEmpty -> sourceClose src
-        OpenFull _ -> sourceClose src
+        OpenEmpty src -> sourceClose src
+        OpenFull src _ -> sourceClose src
         ClosedEmpty -> return ()
         ClosedFull _ -> return ()
 -- | Provide for a stream of data that can be flushed.
