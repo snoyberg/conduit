@@ -380,86 +380,81 @@ bufferedFuseLeft
     => BufferedSource m a
     -> Conduit a m b
     -> Source m b
-bufferedFuseLeft = error "bufferedFuseLeft" {- FIXME bsrc (Conduit mc) = Source $ do
+bufferedFuseLeft bsrc (Conduit mc) = Source $ do
     PreparedConduit push close <- mc
-    istate <- newRef (FLOpen [], push, close) -- still open, no buffer
-    return $ PreparedSource (pullF istate) (closeF istate)
+    return $ mkSrc (FLOpen []) push close -- still open, no buffer
   where
-    pullF istate = do
-        (state', push, close) <- readRef istate
+    mkSrc state push close = PreparedSource
+        (pullF state push close)
+        (closeF state push close)
+    pullF state' push close =
         case state' of
             FLClosed [] -> return Closed
-            FLClosed (x:xs) -> do
-                writeRef istate (FLClosed xs, push, close)
-                return $ Open x
-            FLOpen (x:xs) -> do
-                writeRef istate (FLOpen xs, push, close)
-                return $ Open x
+            FLClosed (x:xs) -> return $ Open
+                (mkSrc (FLClosed xs) push close)
+                x
+            FLOpen (x:xs) -> return $ Open
+                (mkSrc (FLOpen xs) push close)
+                x
             FLOpen [] -> do
                 mres <- bsourcePull bsrc
                 case mres of
-                    Closed -> do
+                    Nothing -> do
                         res <- close
                         case res of
-                            [] -> do
-                                writeRef istate (FLClosed [], push, close)
-                                return Closed
-                            x:xs -> do
-                                writeRef istate (FLClosed xs, push, close)
-                                return $ Open x
-                    Open input -> do
+                            [] -> return Closed
+                            x:xs -> return $ Open
+                                (mkSrc (FLClosed xs) push close)
+                                x
+                    Just input -> do
                         res' <- push input
                         case res' of
-                            Producing push' close' [] -> do
-                                writeRef istate (FLOpen [], push', close')
-                                pullF istate
-                            Producing push' close' (x:xs) -> do
-                                writeRef istate (FLOpen xs, push', close')
-                                return $ Open x
+                            Producing push' close' [] ->
+                                pullF (FLOpen []) push' close'
+                            Producing push' close' (x:xs) -> return $ Open
+                                (mkSrc (FLOpen xs) push' close')
+                                x
                             Finished leftover output -> do
                                 bsourceUnpull bsrc leftover
                                 case output of
-                                    [] -> do
-                                        writeRef istate (FLClosed [], push, close)
-                                        return Closed
-                                    x:xs -> do
-                                        writeRef istate (FLClosed xs, push, close)
-                                        return $ Open x
-    closeF istate = do
+                                    [] -> return Closed
+                                    x:xs -> return $ Open
+                                        (mkSrc (FLClosed xs) push close)
+                                        x
+    closeF state _ close = do
         -- Normally we don't have to worry about double closing, as the
         -- invariant of a source is that close is never called twice. However,
         -- here, if the Conduit returned Finished with some data, the overall
         -- Source will return an Open while the Conduit will be Closed.
         -- Therefore, we have to do a check.
-        (state, _, close) <- readRef istate
         case state of
             FLClosed _ -> return ()
             FLOpen _ -> do
                 _ignored <- close
                 return ()
-    -}
 
-_bsourcePull :: Resource m => BufferedSource m a -> ResourceT m (SourceResult m a)
-_bsourcePull = error "bsourcePull" {- FIXME (BufferedSource src bufRef) = do
-    buf <- readRef bufRef
+bsourcePull :: Resource m => BufferedSource m a -> ResourceT m (Maybe a)
+bsourcePull (BufferedSource bs) = do
+    buf <- readRef bs
     case buf of
-        OpenEmpty -> do
+        OpenEmpty src -> do
             res <- sourcePull src
             case res of
-                Open _ -> return res
-                Closed -> writeRef bufRef ClosedEmpty >> return Closed
-        ClosedEmpty -> return Closed
-        OpenFull a -> do
-            writeRef bufRef OpenEmpty
-            return $ Open a
+                Open src' a -> do
+                    writeRef bs $ OpenEmpty src'
+                    return $ Just a
+                Closed -> writeRef bs ClosedEmpty >> return Nothing
+        ClosedEmpty -> return Nothing
+        OpenFull src a -> do
+            writeRef bs (OpenEmpty src)
+            return $ Just a
         ClosedFull a -> do
-            writeRef bufRef ClosedEmpty
-            return $ Open a
-            -}
+            writeRef bs ClosedEmpty
+            return $ Just a
 
-_bsourceUnpull :: Resource m => BufferedSource m a -> Maybe a -> ResourceT m ()
-_bsourceUnpull _ Nothing = return ()
-_bsourceUnpull (BufferedSource ref) (Just a) = do
+bsourceUnpull :: Resource m => BufferedSource m a -> Maybe a -> ResourceT m ()
+bsourceUnpull _ Nothing = return ()
+bsourceUnpull (BufferedSource ref) (Just a) = do
     buf <- readRef ref
     case buf of
         OpenEmpty src -> writeRef ref (OpenFull src a)
