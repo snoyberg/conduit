@@ -114,7 +114,9 @@ normalConnect (Source msrc) (Sink msink) = do
                         return res'
                     Processing push' close' -> connect' src' push' close'
 
-data FuseLeftState a = FLClosed [a] | FLOpen [a]
+data FuseLeftState src input m output =
+    FLClosed [output]
+  | FLOpen src [output] (ConduitPush input m output) (ConduitClose m output)
 
 infixl 1 $=
 
@@ -132,51 +134,49 @@ normalFuseLeft :: Resource m => Source m a -> Conduit a m b -> Source m b
 normalFuseLeft (Source msrc) (Conduit mc) = Source $ do
     src0 <- msrc
     PreparedConduit pushC closeC <- mc
-    return $ src src0 (FLOpen []) pushC closeC -- still open, no buffer
+    return $ mkSrc (FLOpen src0 [] pushC closeC) -- still open, no buffer
   where
-    src src' state pushC closeC = PreparedSource
-        (pull src' state pushC closeC)
-        (close src' state pushC closeC)
-    pull src' state' pushC closeC =
+    mkSrc state = PreparedSource (pull state) (close state)
+    pull state' =
         case state' of
             FLClosed [] -> return Closed
             FLClosed (x:xs) -> return $ Open
-                (src src' (FLClosed xs) pushC closeC)
+                (mkSrc (FLClosed xs))
                 x
-            FLOpen (x:xs) -> return $ Open
-                (src src' (FLOpen xs) pushC closeC)
+            FLOpen src (x:xs) pushC closeC -> return $ Open
+                (mkSrc (FLOpen src xs pushC closeC))
                 x
-            FLOpen [] -> do
-                mres <- sourcePull src'
+            FLOpen src [] pushC closeC -> do
+                mres <- sourcePull src
                 case mres of
                     Closed -> do
                         res <- closeC
                         case res of
                             [] -> return Closed
                             x:xs -> return $ Open
-                                (src (error "Data.Conduit.normalFuseLeft") (FLClosed xs) pushC closeC)
+                                (mkSrc (FLClosed xs))
                                 x
                     Open src'' input -> do
                         res' <- pushC input
                         case res' of
                             Producing pushC' closeC' [] ->
-                                pull src'' (FLOpen []) pushC' closeC'
+                                pull $ FLOpen src'' [] pushC' closeC'
                             Producing pushC' closeC' (x:xs) -> return $ Open
-                                (src src'' (FLOpen xs) pushC' closeC')
+                                (mkSrc (FLOpen src'' xs pushC' closeC'))
                                 x
                             Finished _leftover output -> do
                                 sourceClose src''
                                 case output of
                                     [] -> return Closed
                                     x:xs -> return $ Open
-                                        (src (error "Data.Conduit.normalFuseLeft") (FLClosed xs) pushC closeC)
+                                        (mkSrc (FLClosed xs))
                                         x
-    close src' state _ closeC = do
+    close state = do
         -- See comment on bufferedFuseLeft for why we need to have the
         -- following check
         case state of
             FLClosed _ -> return ()
-            FLOpen _ -> do
+            FLOpen src' _ _ closeC -> do
                 _ignored <- closeC
                 sourceClose src'
 
@@ -382,21 +382,21 @@ bufferedFuseLeft
     -> Source m b
 bufferedFuseLeft bsrc (Conduit mc) = Source $ do
     PreparedConduit push close <- mc
-    return $ mkSrc (FLOpen []) push close -- still open, no buffer
+    return $ mkSrc (FLOpen () [] push close) -- still open, no buffer
   where
-    mkSrc state push close = PreparedSource
-        (pullF state push close)
-        (closeF state push close)
-    pullF state' push close =
+    mkSrc state = PreparedSource
+        (pullF state)
+        (closeF state)
+    pullF state' =
         case state' of
             FLClosed [] -> return Closed
             FLClosed (x:xs) -> return $ Open
-                (mkSrc (FLClosed xs) push close)
+                (mkSrc (FLClosed xs))
                 x
-            FLOpen (x:xs) -> return $ Open
-                (mkSrc (FLOpen xs) push close)
+            FLOpen () (x:xs) push close -> return $ Open
+                (mkSrc (FLOpen ()xs push close))
                 x
-            FLOpen [] -> do
+            FLOpen () [] push close -> do
                 mres <- bsourcePull bsrc
                 case mres of
                     Nothing -> do
@@ -404,24 +404,24 @@ bufferedFuseLeft bsrc (Conduit mc) = Source $ do
                         case res of
                             [] -> return Closed
                             x:xs -> return $ Open
-                                (mkSrc (FLClosed xs) push close)
+                                (mkSrc (FLClosed xs))
                                 x
                     Just input -> do
                         res' <- push input
                         case res' of
                             Producing push' close' [] ->
-                                pullF (FLOpen []) push' close'
+                                pullF (FLOpen () [] push' close')
                             Producing push' close' (x:xs) -> return $ Open
-                                (mkSrc (FLOpen xs) push' close')
+                                (mkSrc (FLOpen () xs push' close'))
                                 x
                             Finished leftover output -> do
                                 bsourceUnpull bsrc leftover
                                 case output of
                                     [] -> return Closed
                                     x:xs -> return $ Open
-                                        (mkSrc (FLClosed xs) push close)
+                                        (mkSrc (FLClosed xs))
                                         x
-    closeF state _ close = do
+    closeF state = do
         -- Normally we don't have to worry about double closing, as the
         -- invariant of a source is that close is never called twice. However,
         -- here, if the Conduit returned Finished with some data, the overall
@@ -429,7 +429,7 @@ bufferedFuseLeft bsrc (Conduit mc) = Source $ do
         -- Therefore, we have to do a check.
         case state of
             FLClosed _ -> return ()
-            FLOpen _ -> do
+            FLOpen () _ _ close -> do
                 _ignored <- close
                 return ()
 

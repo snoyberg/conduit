@@ -4,6 +4,8 @@ module Data.Conduit.Types.Conduit
     ( ConduitResult (..)
     , PreparedConduit (..)
     , Conduit (..)
+    , ConduitPush
+    , ConduitClose
     ) where
 
 import Control.Monad.Trans.Resource (ResourceT)
