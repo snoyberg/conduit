@@ -15,7 +15,7 @@ module Data.Conduit.Util.Sink
 import Control.Monad.Trans.Resource
 import Control.Monad.Trans.Class (lift)
 import Data.Conduit.Types.Sink
---import Control.Monad (liftM)
+import Control.Monad (liftM)
 
 -- | A helper type for @sinkState@, indicating the result of being pushed to.
 -- It can either indicate that processing is done, or to continue with the
@@ -86,13 +86,19 @@ transSink :: (Base m ~ Base n, Monad m)
            => (forall a. m a -> n a)
            -> Sink input m output
            -> Sink input n output
-transSink _f (Sink _mc) =
-    error "transSink"
-    {-
+transSink f (Sink mc) =
     Sink (transResourceT f (liftM go mc))
   where
     go c = c
-        { sinkPush = transResourceT f . sinkPush c
+        { sinkPush = transResourceT f . fmap (transSinkPush f) . sinkPush c
         , sinkClose = transResourceT f (sinkClose c)
         }
-    -}
+
+transSinkPush :: (Base m ~ Base n, Monad m)
+              => (forall a. m a -> n a)
+              -> SinkResult input m output
+              -> SinkResult input n output
+transSinkPush _ (Done a b) = Done a b
+transSinkPush f (Processing push close) = Processing
+    (transResourceT f . fmap (transSinkPush f) . push)
+    (transResourceT f close)
