@@ -17,15 +17,20 @@ import Control.Monad (liftM, ap)
 import Control.Applicative (Applicative (..))
 import Control.Monad.Base (MonadBase (liftBase))
 
+type SinkPush input m output = input -> ResourceT m (SinkResult input m output)
+type SinkClose m output = ResourceT m output
+
 -- | A @Sink@ ultimately returns a single output value. Each time data is
 -- pushed to it, a @Sink@ may indicate that it is still processing data, or
 -- that it is done, in which case it returns some optional leftover input and
 -- an output value.
 --
 -- Since 0.0.0
-data SinkResult input output = Processing | Done (Maybe input) output
-instance Functor (SinkResult input) where
-    fmap _ Processing = Processing
+data SinkResult input m output =
+    Processing (SinkPush input m output) (SinkClose m output)
+  | Done (Maybe input) output
+instance Monad m => Functor (SinkResult input m) where
+    fmap f (Processing push close) = Processing ((fmap . fmap . fmap) f push) (fmap f close)
     fmap f (Done input output) = Done input (f output)
 
 -- | In general, a sink will consume data and eventually produce an output when
@@ -59,8 +64,8 @@ instance Functor (SinkResult input) where
 data PreparedSink input m output =
     SinkNoData output
   | SinkData
-        { sinkPush :: input -> ResourceT m (SinkResult input output)
-        , sinkClose :: ResourceT m output
+        { sinkPush :: SinkPush input m output
+        , sinkClose :: SinkClose m output
         }
 
 instance Monad m => Functor (PreparedSink input m) where
@@ -94,36 +99,29 @@ instance Resource m => Monad (Sink input m) where
         x <- prepareSink mx
         case x of
             SinkNoData x' -> prepareSink $ f x'
-            SinkData push' close' -> do
-                istate <- newRef $ Left (push', close')
-                return $ SinkData (push istate) (close istate)
+            SinkData push' close' ->
+                return $ SinkData (push push') (close close')
       where
-        push istate input = do
-            state <- readRef istate
-            case state of
-                Left (push', _) -> do
-                    res <- push' input
-                    case res of
-                        Done leftover output -> do
-                            f' <- prepareSink $ f output
-                            case f' of
-                                SinkNoData y ->
-                                    return $ Done leftover y
-                                SinkData pushF closeF -> do
-                                    writeRef istate $ Right (pushF, closeF)
-                                    maybe (return Processing) (push istate) leftover
-                        Processing -> return Processing
-                Right (push', _) -> push' input
-        close istate = do
-            state <- readRef istate
-            case state of
-                Left (_, close') -> do
-                    output <- close'
+        push push' input = do
+            res <- push' input
+            case res of
+                Done leftover output -> do
                     f' <- prepareSink $ f output
                     case f' of
-                        SinkNoData y -> return y
-                        SinkData _ closeF -> closeF
-                Right (_, close') -> close'
+                        SinkNoData y ->
+                            return $ Done leftover y
+                        SinkData pushF closeF -> do
+                            case leftover of
+                                Nothing -> return $ Processing pushF closeF
+                                Just l -> pushF l
+                Processing push'' close'' ->
+                    return $ Processing (push push'') (close close'')
+        close close' = do
+            output <- close'
+            f' <- prepareSink $ f output
+            case f' of
+                SinkNoData y -> return y
+                SinkData _ closeF -> closeF
 
 instance (Resource m, Base m ~ base, Applicative base) => MonadBase base (Sink input m) where
     liftBase = lift . resourceLiftBase

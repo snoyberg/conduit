@@ -11,9 +11,9 @@ module Data.Conduit.Util.Sink
     ) where
 
 import Control.Monad.Trans.Resource
-import Control.Monad.Trans.Class (lift)
+--import Control.Monad.Trans.Class (lift)
 import Data.Conduit.Types.Sink
-import Control.Monad (liftM)
+--import Control.Monad (liftM)
 
 -- | Construct a 'Sink' with some stateful functions. This function address
 -- all mutable state for you.
@@ -22,35 +22,17 @@ import Control.Monad (liftM)
 sinkState
     :: Resource m
     => state -- ^ initial state
-    -> (state -> input -> ResourceT m (state, SinkResult input output)) -- ^ push
+    -> (state -> input -> ResourceT m (Either state (Maybe input, output))) -- ^ push
     -> (state -> ResourceT m output) -- ^ Close. Note that the state is not returned, as it is not needed.
     -> Sink input m output
-sinkState state0 push close = Sink $ do
-    istate <- newRef state0
-#if DEBUG
-    iclosed <- newRef False
-#endif
-    return SinkData
-        { sinkPush = \input -> do
-#if DEBUG
-            False <- readRef iclosed
-#endif
-            state <- readRef istate
-            (state', res) <- state `seq` push state input
-            writeRef istate state'
-#if DEBUG
-            case res of
-                Done{} -> writeRef iclosed True
-                Processing -> return ()
-#endif
-            return res
-        , sinkClose = do
-#if DEBUG
-            False <- readRef iclosed
-            writeRef iclosed True
-#endif
-            readRef istate >>= close
-        }
+sinkState state0 push0 close0 =
+    Sink $ return $ SinkData (push state0) (close0 state0)
+  where
+    push state input = do
+        res <- state `seq` push0 state input
+        case res of
+            Left state' -> return $ Processing (push state') (close0 state')
+            Right (mleftover, output) -> return $ Done mleftover output
 
 -- | Construct a 'Sink'. Note that your push and close functions need not
 -- explicitly perform any cleanup.
@@ -59,9 +41,10 @@ sinkState state0 push close = Sink $ do
 sinkIO :: ResourceIO m
         => IO state -- ^ resource and/or state allocation
         -> (state -> IO ()) -- ^ resource and/or state cleanup
-        -> (state -> input -> m (SinkResult input output)) -- ^ push
+        -> (state -> input -> m (SinkResult input m output)) -- ^ push
         -> (state -> m output) -- ^ close
         -> Sink input m output
+sinkIO = error "sinkIO" {- FIXME
 sinkIO alloc cleanup push close = Sink $ do
     (key, state) <- withIO alloc cleanup
 #if DEBUG
@@ -79,7 +62,7 @@ sinkIO alloc cleanup push close = Sink $ do
 #if DEBUG
                     writeRef iclosed True
 #endif
-                Processing -> return ()
+                Processing{} -> return ()
             return res
         , sinkClose = do
 #if DEBUG
@@ -90,6 +73,7 @@ sinkIO alloc cleanup push close = Sink $ do
             release key
             return res
         }
+    -}
 
 -- | Transform the monad a 'Sink' lives in.
 --
@@ -98,10 +82,13 @@ transSink :: (Base m ~ Base n, Monad m)
            => (forall a. m a -> n a)
            -> Sink input m output
            -> Sink input n output
-transSink f (Sink mc) =
+transSink _f (Sink _mc) =
+    error "transSink"
+    {-
     Sink (transResourceT f (liftM go mc))
   where
     go c = c
         { sinkPush = transResourceT f . sinkPush c
         , sinkClose = transResourceT f (sinkClose c)
         }
+    -}

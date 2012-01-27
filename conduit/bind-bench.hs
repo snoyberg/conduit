@@ -1,7 +1,6 @@
 import Criterion.Main
 import qualified Data.Conduit as C
 import qualified Data.Conduit.List as CL
-import qualified Data.Conduit.Binary as CB
 import Control.Monad (foldM)
 import Data.List (foldl')
 

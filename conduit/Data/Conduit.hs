@@ -99,22 +99,19 @@ normalConnect (Source msrc) (Sink msink) = do
             src <- msrc
             connect' src push close
   where
-    connect' src push close =
-        loop
-      where
-        loop = do
-            res <- sourcePull src
-            case res of
-                Closed -> do
-                    res' <- close
-                    return res'
-                Open a -> do
-                    mres <- push a
-                    case mres of
-                        Done _leftover res' -> do
-                            sourceClose src
-                            return res'
-                        Processing -> loop
+    connect' src push close = do
+        res <- sourcePull src
+        case res of
+            Closed -> do
+                res' <- close
+                return res'
+            Open a -> do
+                mres <- push a
+                case mres of
+                    Done _leftover res' -> do
+                        sourceClose src
+                        return res'
+                    Processing push' close' -> connect' src push' close'
 
 data FuseLeftState a = FLClosed [a] | FLOpen [a]
 
@@ -193,7 +190,7 @@ infixr 0 =$
 --
 -- Since 0.0.0
 (=$) :: Resource m => Conduit a m b -> Sink b m c -> Sink a m c
-Conduit mc =$ Sink ms = Sink $ do
+Conduit _mc =$ Sink _ms = error "=$" {- Sink $ do
     s <- ms
     case s of
         SinkData pushI closeI -> mc >>= go pushI closeI
@@ -233,6 +230,7 @@ Conduit mc =$ Sink ms = Sink $ do
                             Done _sleftover res' -> return res'
                 push sinput
             }
+            -}
 
 infixr 0 =$=
 
@@ -295,8 +293,8 @@ conduitPushClose c (input:rest) = do
 --
 -- Since 0.0.0
 data BufferedSource m a = BufferedSource
-    { bsSource :: PreparedSource m a
-    , bsBuffer :: Ref (Base m) (BSState a)
+    { _bsSource :: PreparedSource m a
+    , _bsBuffer :: Ref (Base m) (BSState a)
     }
 
 data BSState a = ClosedEmpty | OpenEmpty | ClosedFull a | OpenFull a
@@ -357,7 +355,7 @@ unbufferSource (BufferedSource src bufRef) = Source $ do
                 }
 
 bufferedConnect :: Resource m => BufferedSource m a -> Sink a m b -> ResourceT m b
-bufferedConnect bs (Sink msink) = do
+bufferedConnect _bs (Sink _msink) = error "bufferedConnect" {- do
     sinkI <- msink
     case sinkI of
         SinkNoData output -> return output
@@ -392,6 +390,7 @@ bufferedConnect bs (Sink msink) = do
         writeRef (bsBuffer bs) (maybe OpenEmpty OpenFull mleftover)
         return res
     onRes loop Processing = loop
+    -}
 
 bufferedFuseLeft
     :: Resource m
