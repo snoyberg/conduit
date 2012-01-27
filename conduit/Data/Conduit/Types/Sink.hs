@@ -8,6 +8,8 @@ module Data.Conduit.Types.Sink
     ( SinkResult (..)
     , PreparedSink (..)
     , Sink (..)
+    , SinkPush
+    , SinkClose
     ) where
 
 import Control.Monad.Trans.Resource
@@ -24,6 +26,10 @@ type SinkClose m output = ResourceT m output
 -- pushed to it, a @Sink@ may indicate that it is still processing data, or
 -- that it is done, in which case it returns some optional leftover input and
 -- an output value.
+--
+-- Since 0.2, the @Processing@ constructor also provides updated push and close
+-- functions, allowing us to bypass some usage of mutable variables, and
+-- greatly increase performance of operations like monadic bind.
 --
 -- Since 0.0.0
 data SinkResult input m output =

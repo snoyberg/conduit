@@ -190,47 +190,47 @@ infixr 0 =$
 --
 -- Since 0.0.0
 (=$) :: Resource m => Conduit a m b -> Sink b m c -> Sink a m c
-Conduit _mc =$ Sink _ms = error "=$" {- Sink $ do
+Conduit mc =$ Sink ms = Sink $ do
     s <- ms
     case s of
-        SinkData pushI closeI -> mc >>= go pushI closeI
+        SinkData pushI closeI -> do
+            c <- mc
+            return $ SinkData
+                (push pushI closeI c)
+                (close pushI closeI c)
         SinkNoData mres -> return $ SinkNoData mres
   where
-    go pushI closeI c = do
-        return SinkData
-            { sinkPush = \cinput -> do
-                res <- conduitPush c cinput
-                case res of
-                    Producing sinput -> do
-                        let push [] = return Processing
-                            push (i:is) = do
-                                mres <- pushI i
-                                case mres of
-                                    Processing -> push is
-                                    Done _sleftover res' -> do
-                                        _ <- conduitClose c
-                                        return $ Done Nothing res'
-                        push sinput
-                    Finished cleftover sinput -> do
-                        let push [] = closeI
-                            push (i:is) = do
-                                mres <- pushI i
-                                case mres of
-                                    Processing -> push is
-                                    Done _sleftover res' -> return res'
-                        res' <- push sinput
-                        return $ Done cleftover res'
-            , sinkClose = do
-                sinput <- conduitClose c
-                let push [] = closeI
-                    push (i:is) = do
-                        mres <- pushI i
+    push pushI closeI conduit cinput = do
+        res <- conduitPush conduit cinput
+        case res of
+            Producing sinput -> do
+                let loop p c [] = return (Processing (push p c conduit) (close p c conduit))
+                    loop p _ (i:is) = do
+                        mres <- p i
                         case mres of
-                            Processing -> push is
+                            Processing p' c' -> loop p' c' is
+                            Done _sleftover res' -> do
+                                _ <- conduitClose conduit
+                                return $ Done Nothing res'
+                loop pushI closeI sinput
+            Finished cleftover sinput -> do
+                let loop _ c [] = c
+                    loop p _ (i:is) = do
+                        mres <- p i
+                        case mres of
+                            Processing p' c' -> loop p' c' is
                             Done _sleftover res' -> return res'
-                push sinput
-            }
-            -}
+                res' <- loop pushI closeI sinput
+                return $ Done cleftover res'
+    close pushI closeI conduit = do
+        sinput <- conduitClose conduit
+        let loop _ c [] = c
+            loop p _ (i:is) = do
+                mres <- p i
+                case mres of
+                    Processing p' c' -> loop p' c' is
+                    Done _sleftover res' -> return res'
+        loop pushI closeI sinput
 
 infixr 0 =$=
 
@@ -293,8 +293,8 @@ conduitPushClose c (input:rest) = do
 --
 -- Since 0.0.0
 data BufferedSource m a = BufferedSource
-    { _bsSource :: PreparedSource m a
-    , _bsBuffer :: Ref (Base m) (BSState a)
+    { bsSource :: PreparedSource m a
+    , bsBuffer :: Ref (Base m) (BSState a)
     }
 
 data BSState a = ClosedEmpty | OpenEmpty | ClosedFull a | OpenFull a
@@ -355,7 +355,7 @@ unbufferSource (BufferedSource src bufRef) = Source $ do
                 }
 
 bufferedConnect :: Resource m => BufferedSource m a -> Sink a m b -> ResourceT m b
-bufferedConnect _bs (Sink _msink) = error "bufferedConnect" {- do
+bufferedConnect bs (Sink msink) = do
     sinkI <- msink
     case sinkI of
         SinkNoData output -> return output
@@ -370,27 +370,23 @@ bufferedConnect _bs (Sink _msink) = error "bufferedConnect" {- do
                         Done mleftover res' -> do
                             writeRef (bsBuffer bs) $ maybe ClosedEmpty ClosedFull mleftover
                             return res'
-                        Processing -> do
+                        Processing _ close' -> do
                             writeRef (bsBuffer bs) ClosedEmpty
-                            close
-                OpenFull a -> push a >>= onRes (connect' push close)
+                            close'
+                OpenFull a -> push a >>= onRes
   where
-    connect' push close =
-        loop
-      where
-        loop = do
-            res <- sourcePull $ bsSource bs
-            case res of
-                Closed -> do
-                    writeRef (bsBuffer bs) ClosedEmpty
-                    res' <- close
-                    return res'
-                Open a -> push a >>= onRes loop
-    onRes _ (Done mleftover res) = do
+    connect' push close = do
+        res <- sourcePull $ bsSource bs
+        case res of
+            Closed -> do
+                writeRef (bsBuffer bs) ClosedEmpty
+                res' <- close
+                return res'
+            Open a -> push a >>= onRes
+    onRes (Done mleftover res) = do
         writeRef (bsBuffer bs) (maybe OpenEmpty OpenFull mleftover)
         return res
-    onRes loop Processing = loop
-    -}
+    onRes (Processing push close) = connect' push close
 
 bufferedFuseLeft
     :: Resource m

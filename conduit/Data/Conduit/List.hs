@@ -41,9 +41,6 @@ import Prelude
     , (.), id, Maybe (..), fmap, Monad
     , Bool (..)
     , (>>)
-    , error
-    , undefined
-    , Either (..)
     )
 import qualified Prelude
 import Data.Conduit
@@ -59,7 +56,7 @@ fold :: Resource m
      -> Sink a m b
 fold f accum0 = sinkState
     accum0
-    (\accum input -> return (Left $ f accum input))
+    (\accum input -> return (StateProcessing $ f accum input))
     return
 
 -- | A monadic strict left fold.
@@ -73,7 +70,7 @@ foldM f accum0 = sinkState
     accum0
     (\accum input -> do
         accum' <- lift $ f accum input
-        return $ Left accum'
+        return $ StateProcessing accum'
     )
     return
 
@@ -83,9 +80,11 @@ foldM f accum0 = sinkState
 mapM_ :: Resource m
       => (a -> m ())
       -> Sink a m ()
-mapM_ f = Sink $ return $ SinkData
-    (\input -> lift (f input) >> return (Processing undefined undefined))
-    (return ())
+mapM_ f =
+    Sink $ return $ SinkData push close
+  where
+    push input = lift (f input) >> return (Processing push close)
+    close = return ()
 
 -- | Convert a list into a source.
 --
@@ -114,12 +113,12 @@ drop count0 = sinkState
     push
     close
   where
-    push 0 x = return $ Right (Just x, ())
+    push 0 x = return $ StateDone (Just x) ()
     push count _ = do
         let count' = count - 1
         return $ if count' == 0
-            then Right (Nothing, ())
-            else Left count'
+            then StateDone Nothing ()
+            else StateProcessing count'
     close _ = return ()
 
 -- | Take some values from the stream and return as a list. If you want to
@@ -137,13 +136,13 @@ take count0 = sinkState
     push
     close
   where
-    push (0, front) x = return (Right (Just x, front []))
+    push (0, front) x = return (StateDone (Just x) (front []))
     push (count, front) x = do
         let count' = count - 1
             front' = front . (x:)
         return $ if count' == 0
-                    then Right (Nothing, front' [])
-                    else Left (count', front')
+                    then StateDone Nothing (front' [])
+                    else StateProcessing (count', front')
     close (_, front) = return $ front []
 
 -- | Take a single value from the stream, if available.
@@ -216,7 +215,7 @@ concatMapM f = Conduit $ return $ PreparedConduit
 consume :: Resource m => Sink a m [a]
 consume = sinkState
     id
-    (\front input -> return (Left $ front . (input :)))
+    (\front input -> return (StateProcessing $ front . (input :)))
     (\front -> return $ front [])
 
 -- | Grouping input according to an equality function.
@@ -280,10 +279,11 @@ filter f = Conduit $ return $ PreparedConduit
 --
 -- Since 0.0.0
 sinkNull :: Resource m => Sink a m ()
-sinkNull = error "sinkNull" {- Sink $ return $ SinkData
-    (\_ -> return Processing)
-    (return ())
-    -}
+sinkNull =
+    Sink $ return $ SinkData push close
+  where
+    push _ = return $ Processing push close
+    close = return ()
 
 -- | A source that returns nothing. Note that this is just a type-restricted
 -- synonym for 'mempty'.

@@ -105,10 +105,11 @@ sourceIOHandle alloc = sourceIO alloc IO.hClose
 sinkHandle :: ResourceIO m
            => IO.Handle
            -> Sink S.ByteString m ()
-sinkHandle h = Sink $ return $ SinkData
-    { sinkPush = \input -> liftIO (S.hPut h input) >> return Processing
-    , sinkClose = return ()
-    }
+sinkHandle h =
+    Sink $ return $ SinkData push close
+  where
+    push input = liftIO (S.hPut h input) >> return (Processing push close)
+    close = return ()
 
 -- | An alternative to 'sinkHandle'.
 -- Instead of taking a pre-opened 'IO.Handle', it takes an action that opens
@@ -120,7 +121,7 @@ sinkIOHandle :: ResourceIO m
              => IO IO.Handle
              -> Sink S.ByteString m ()
 sinkIOHandle alloc = sinkIO alloc IO.hClose
-    (\handle bs -> liftIO (S.hPut handle bs) >> return Processing)
+    (\handle bs -> liftIO (S.hPut handle bs) >> return IOProcessing)
     (const $ return ())
 
 -- | Stream the contents of a file as binary data, starting from a certain
@@ -218,15 +219,16 @@ isolate count0 = conduitState
 --
 -- Since 0.0.2
 head :: Resource m => Sink S.ByteString m (Maybe Word8)
-head = Sink $ return $ SinkData
-    { sinkPush = \bs ->
+head =
+    Sink $ return $ SinkData push close
+  where
+    push bs =
         case S.uncons bs of
-            Nothing -> return Processing
+            Nothing -> return $ Processing push close
             Just (w, bs') -> do
                 let lo = if S.null bs' then Nothing else Just bs'
                 return $ Done lo (Just w)
-    , sinkClose = return Nothing
-    }
+    close = return Nothing
 
 -- | Return all bytes while the predicate returns @True@.
 --
@@ -246,15 +248,16 @@ takeWhile p = Conduit $ return $ PreparedConduit
 --
 -- Since 0.0.2
 dropWhile :: Resource m => (Word8 -> Bool) -> Sink S.ByteString m ()
-dropWhile p = Sink $ return $ SinkData
-    { sinkPush = \bs -> do
+dropWhile p =
+    Sink $ return $ SinkData push close
+  where
+    push bs = do
         let bs' = S.dropWhile p bs
         return $
             if S.null bs'
-                then Processing
+                then Processing push close
                 else Done (Just bs') ()
-    , sinkClose = return ()
-    }
+    close = return ()
 
 -- | Take the given number of bytes, if available.
 --
