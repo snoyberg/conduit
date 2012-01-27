@@ -29,9 +29,10 @@ sourceSocket socket = Source $ return $ PreparedSource
 --
 -- Since 0.0.0
 sinkSocket :: ResourceIO m => Socket -> Sink ByteString m ()
-sinkSocket socket = Sink $ return $ SinkData
-    { sinkPush = \bs -> do
+sinkSocket socket =
+    Sink $ return $ SinkData push close
+  where
+    push bs = do
         liftIO (sendAll socket bs)
-        return Processing
-    , sinkClose = return ()
-    }
+        return (Processing push close)
+    close = return ()
