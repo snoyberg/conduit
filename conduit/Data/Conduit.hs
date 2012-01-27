@@ -43,6 +43,7 @@ module Data.Conduit
     , ResourceThrow (..)
     ) where
 
+import Control.Applicative ((<$>))
 import Control.Monad.Trans.Resource
 import Data.Conduit.Types.Source
 import Data.Conduit.Util.Source
@@ -292,10 +293,7 @@ conduitPushClose c (input:rest) = do
 -- correctly.
 --
 -- Since 0.0.0
-data BufferedSource m a = BufferedSource
-    { _bsSource :: PreparedSource m a
-    , _bsBuffer :: Ref (Base m) (BSState a)
-    }
+data BufferedSource m a = BufferedSource (Ref (Base m) (PreparedSource m a, BSState a))
 
 data BSState a = ClosedEmpty | OpenEmpty | ClosedFull a | OpenFull a
 
@@ -306,8 +304,7 @@ data BSState a = ClosedEmpty | OpenEmpty | ClosedFull a | OpenFull a
 bufferSource :: Resource m => Source m a -> ResourceT m (BufferedSource m a)
 bufferSource (Source msrc) = do
     src <- msrc
-    buf <- newRef OpenEmpty
-    return $ BufferedSource src buf
+    BufferedSource <$> newRef (src, OpenEmpty)
 
 -- | Turn a 'BufferedSource' into a 'Source'. Note that in general this will
 -- mean your original 'BufferedSource' will be closed. Additionally, all
@@ -356,39 +353,38 @@ unbufferSource = error "unbufferSource" {- FIXME (BufferedSource src bufRef) = S
     -}
 
 bufferedConnect :: Resource m => BufferedSource m a -> Sink a m b -> ResourceT m b
-bufferedConnect = error "bufferedConnect" {- FIXME bs (Sink msink) = do
+bufferedConnect (BufferedSource bs) (Sink msink) = do
     sinkI <- msink
     case sinkI of
         SinkNoData output -> return output
         SinkData push close -> do
-            bsState <- readRef $ bsBuffer bs
+            (src, bsState) <- readRef bs
             case bsState of
                 ClosedEmpty -> close
-                OpenEmpty -> connect' push close
+                OpenEmpty -> connect' src push close
                 ClosedFull a -> do
                     res <- push a
                     case res of
                         Done mleftover res' -> do
-                            writeRef (bsBuffer bs) $ maybe ClosedEmpty ClosedFull mleftover
+                            writeRef bs (src, maybe ClosedEmpty ClosedFull mleftover)
                             return res'
                         Processing _ close' -> do
-                            writeRef (bsBuffer bs) ClosedEmpty
+                            writeRef bs (src, ClosedEmpty)
                             close'
-                OpenFull a -> push a >>= onRes
+                OpenFull a -> push a >>= onRes src
   where
-    connect' push close = do
-        res <- sourcePull $ bsSource bs
+    connect' src push close = do
+        res <- sourcePull src
         case res of
             Closed -> do
-                writeRef (bsBuffer bs) ClosedEmpty
+                writeRef bs (error "Data.Conduit.bufferedConnect", ClosedEmpty)
                 res' <- close
                 return res'
-            Open a -> push a >>= onRes
-    onRes (Done mleftover res) = do
-        writeRef (bsBuffer bs) (maybe OpenEmpty OpenFull mleftover)
+            Open src' a -> push a >>= onRes src'
+    onRes src (Done mleftover res) = do
+        writeRef bs (src, maybe OpenEmpty OpenFull mleftover)
         return res
-    onRes (Processing push close) = connect' push close
-    -}
+    onRes src (Processing push close) = connect' src push close
 
 bufferedFuseLeft
     :: Resource m
@@ -474,11 +470,11 @@ _bsourcePull = error "bsourcePull" {- FIXME (BufferedSource src bufRef) = do
 
 _bsourceUnpull :: Resource m => BufferedSource m a -> Maybe a -> ResourceT m ()
 _bsourceUnpull _ Nothing = return ()
-_bsourceUnpull (BufferedSource _ bufRef) (Just a) = do
-    buf <- readRef bufRef
+_bsourceUnpull (BufferedSource ref) (Just a) = do
+    (src, buf) <- readRef ref
     case buf of
-        OpenEmpty -> writeRef bufRef $ OpenFull a
-        ClosedEmpty -> writeRef bufRef $ ClosedFull a
+        OpenEmpty -> writeRef ref (src, OpenFull a)
+        ClosedEmpty -> writeRef ref (src, ClosedFull a)
         _ -> error $ "Invariant violated: bsourceUnpull called on full data"
 
 -- | Close the underlying 'PreparedSource' for the given 'BufferedSource'. Note
@@ -487,8 +483,8 @@ _bsourceUnpull (BufferedSource _ bufRef) (Just a) = do
 --
 -- Since 0.0.0
 bsourceClose :: Resource m => BufferedSource m a -> ResourceT m ()
-bsourceClose (BufferedSource src bufRef) = do
-    buf <- readRef bufRef
+bsourceClose (BufferedSource ref) = do
+    (src, buf) <- readRef ref
     case buf of
         OpenEmpty -> sourceClose src
         OpenFull _ -> sourceClose src
