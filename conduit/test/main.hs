@@ -225,13 +225,13 @@ main = hspecX $ do
         it' "works inside a ResourceT" $ runResourceT $ do
             counter <- liftIO $ I.newIORef 0
             let incr i = C.sourceIO
-                    (liftIO $ I.newIORef $ C.Open (i :: Int))
+                    (liftIO $ I.newIORef $ C.IOOpen (i :: Int))
                     (const $ return ())
                     (\istate -> do
                         res <- liftIO $ I.atomicModifyIORef istate
-                            (\state -> (C.Closed, state))
+                            (\state -> (C.IOClosed, state))
                         case res of
-                            C.Closed -> return ()
+                            C.IOClosed -> return ()
                             _ -> do
                                 count <- liftIO $ I.atomicModifyIORef counter
                                     (\j -> (j + 1, j + 1))

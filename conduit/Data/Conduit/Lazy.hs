@@ -23,6 +23,6 @@ lazyConsume (Source msrc) = do
         res <- sourcePull src
         case res of
             Closed -> return []
-            Open x -> do
-                y <- go src
+            Open src' x -> do
+                y <- go src'
                 return $ x : y

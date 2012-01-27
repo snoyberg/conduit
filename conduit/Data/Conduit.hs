@@ -105,13 +105,13 @@ normalConnect (Source msrc) (Sink msink) = do
             Closed -> do
                 res' <- close
                 return res'
-            Open a -> do
+            Open src' a -> do
                 mres <- push a
                 case mres of
                     Done _leftover res' -> do
-                        sourceClose src
+                        sourceClose src'
                         return res'
-                    Processing push' close' -> connect' src push' close'
+                    Processing push' close' -> connect' src' push' close'
 
 data FuseLeftState a = FLClosed [a] | FLOpen [a]
 
@@ -129,62 +129,55 @@ infixl 1 $=
 
 normalFuseLeft :: Resource m => Source m a -> Conduit a m b -> Source m b
 normalFuseLeft (Source msrc) (Conduit mc) = Source $ do
-    src <- msrc
+    src0 <- msrc
     PreparedConduit pushC closeC <- mc
-    istate <- newRef (FLOpen [], pushC, closeC) -- still open, no buffer
-    return $ PreparedSource
-        (pull istate src)
-        (close istate src)
+    return $ src src0 (FLOpen []) pushC closeC -- still open, no buffer
   where
-    pull istate src = do
-        (state', pushC, closeC) <- readRef istate
+    src src' state pushC closeC = PreparedSource
+        (pull src' state pushC closeC)
+        (close src' state pushC closeC)
+    pull src' state' pushC closeC =
         case state' of
             FLClosed [] -> return Closed
-            FLClosed (x:xs) -> do
-                writeRef istate (FLClosed xs, pushC, closeC)
-                return $ Open x
-            FLOpen (x:xs) -> do
-                writeRef istate (FLOpen xs, pushC, closeC)
-                return $ Open x
+            FLClosed (x:xs) -> return $ Open
+                (src src' (FLClosed xs) pushC closeC)
+                x
+            FLOpen (x:xs) -> return $ Open
+                (src src' (FLOpen xs) pushC closeC)
+                x
             FLOpen [] -> do
-                mres <- sourcePull src
+                mres <- sourcePull src'
                 case mres of
                     Closed -> do
                         res <- closeC
                         case res of
-                            [] -> do
-                                writeRef istate (FLClosed [], pushC, closeC)
-                                return Closed
-                            x:xs -> do
-                                writeRef istate (FLClosed xs, pushC, closeC)
-                                return $ Open x
-                    Open input -> do
+                            [] -> return Closed
+                            x:xs -> return $ Open
+                                (src (error "Data.Conduit.normalFuseLeft") (FLClosed xs) pushC closeC)
+                                x
+                    Open src'' input -> do
                         res' <- pushC input
                         case res' of
-                            Producing pushC' closeC' [] -> do
-                                writeRef istate (FLOpen [], pushC', closeC')
-                                pull istate src
-                            Producing pushC' closeC' (x:xs) -> do
-                                writeRef istate (FLOpen xs, pushC', closeC')
-                                return $ Open x
+                            Producing pushC' closeC' [] ->
+                                pull src'' (FLOpen []) pushC' closeC'
+                            Producing pushC' closeC' (x:xs) -> return $ Open
+                                (src src'' (FLOpen xs) pushC' closeC')
+                                x
                             Finished _leftover output -> do
-                                sourceClose src
+                                sourceClose src''
                                 case output of
-                                    [] -> do
-                                        writeRef istate (FLClosed [], pushC, closeC)
-                                        return Closed
-                                    x:xs -> do
-                                        writeRef istate (FLClosed xs, pushC, closeC)
-                                        return $ Open x
-    close istate src = do
+                                    [] -> return Closed
+                                    x:xs -> return $ Open
+                                        (src (error "Data.Conduit.normalFuseLeft") (FLClosed xs) pushC closeC)
+                                        x
+    close src' state _ closeC = do
         -- See comment on bufferedFuseLeft for why we need to have the
         -- following check
-        (state, _, closeC) <- readRef istate
         case state of
             FLClosed _ -> return ()
             FLOpen _ -> do
                 _ignored <- closeC
-                sourceClose src
+                sourceClose src'
 
 infixr 0 =$
 
@@ -300,8 +293,8 @@ conduitPushClose c (input:rest) = do
 --
 -- Since 0.0.0
 data BufferedSource m a = BufferedSource
-    { bsSource :: PreparedSource m a
-    , bsBuffer :: Ref (Base m) (BSState a)
+    { _bsSource :: PreparedSource m a
+    , _bsBuffer :: Ref (Base m) (BSState a)
     }
 
 data BSState a = ClosedEmpty | OpenEmpty | ClosedFull a | OpenFull a
@@ -327,7 +320,7 @@ bufferSource (Source msrc) = do
 unbufferSource :: Resource m
                => BufferedSource m a
                -> Source m a
-unbufferSource (BufferedSource src bufRef) = Source $ do
+unbufferSource = error "unbufferSource" {- FIXME (BufferedSource src bufRef) = Source $ do
     buf <- readRef bufRef
     case buf of
         OpenEmpty -> return src
@@ -360,9 +353,10 @@ unbufferSource (BufferedSource src bufRef) = Source $ do
                             return $ Open a
                 , sourceClose = sourceClose src
                 }
+    -}
 
 bufferedConnect :: Resource m => BufferedSource m a -> Sink a m b -> ResourceT m b
-bufferedConnect bs (Sink msink) = do
+bufferedConnect = error "bufferedConnect" {- FIXME bs (Sink msink) = do
     sinkI <- msink
     case sinkI of
         SinkNoData output -> return output
@@ -394,13 +388,14 @@ bufferedConnect bs (Sink msink) = do
         writeRef (bsBuffer bs) (maybe OpenEmpty OpenFull mleftover)
         return res
     onRes (Processing push close) = connect' push close
+    -}
 
 bufferedFuseLeft
     :: Resource m
     => BufferedSource m a
     -> Conduit a m b
     -> Source m b
-bufferedFuseLeft bsrc (Conduit mc) = Source $ do
+bufferedFuseLeft = error "bufferedFuseLeft" {- FIXME bsrc (Conduit mc) = Source $ do
     PreparedConduit push close <- mc
     istate <- newRef (FLOpen [], push, close) -- still open, no buffer
     return $ PreparedSource (pullF istate) (closeF istate)
@@ -457,9 +452,10 @@ bufferedFuseLeft bsrc (Conduit mc) = Source $ do
             FLOpen _ -> do
                 _ignored <- close
                 return ()
+    -}
 
-bsourcePull :: Resource m => BufferedSource m a -> ResourceT m (SourceResult a)
-bsourcePull (BufferedSource src bufRef) = do
+_bsourcePull :: Resource m => BufferedSource m a -> ResourceT m (SourceResult m a)
+_bsourcePull = error "bsourcePull" {- FIXME (BufferedSource src bufRef) = do
     buf <- readRef bufRef
     case buf of
         OpenEmpty -> do
@@ -474,10 +470,11 @@ bsourcePull (BufferedSource src bufRef) = do
         ClosedFull a -> do
             writeRef bufRef ClosedEmpty
             return $ Open a
+            -}
 
-bsourceUnpull :: Resource m => BufferedSource m a -> Maybe a -> ResourceT m ()
-bsourceUnpull _ Nothing = return ()
-bsourceUnpull (BufferedSource _ bufRef) (Just a) = do
+_bsourceUnpull :: Resource m => BufferedSource m a -> Maybe a -> ResourceT m ()
+_bsourceUnpull _ Nothing = return ()
+_bsourceUnpull (BufferedSource _ bufRef) (Just a) = do
     buf <- readRef bufRef
     case buf of
         OpenEmpty -> writeRef bufRef $ OpenFull a

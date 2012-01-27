@@ -27,9 +27,7 @@ import Control.Exception (assert)
 import Control.Monad (liftM)
 import Control.Monad.IO.Class (liftIO)
 import qualified System.IO as IO
-import Control.Monad.Trans.Resource
-    ( withIO, release, newRef, readRef, writeRef
-    )
+import Control.Monad.Trans.Resource (withIO, release)
 import Data.Word (Word8)
 #if CABAL_OS_WINDOWS
 import qualified System.Win32File as F
@@ -73,14 +71,18 @@ sourceFile fp =
 sourceHandle :: ResourceIO m
              => IO.Handle
              -> Source m S.ByteString
-sourceHandle h = Source $ return $ PreparedSource
-    { sourcePull = do
+sourceHandle h =
+    Source $ return src
+  where
+    src = PreparedSource pull close
+
+    pull = do
         bs <- liftIO (S.hGetSome h 4096)
         if S.null bs
             then return Closed
-            else return (Open bs)
-    , sourceClose = return ()
-    }
+            else return $ Open src bs
+
+    close = return ()
 
 -- | An alternative to 'sourceHandle'.
 -- Instead of taking a pre-opened 'IO.Handle', it takes an action that opens
@@ -95,8 +97,8 @@ sourceIOHandle alloc = sourceIO alloc IO.hClose
     (\handle -> do
         bs <- liftIO (S.hGetSome handle 4096)
         if S.null bs
-            then return Closed
-            else return $ Open bs)
+            then return IOClosed
+            else return $ IOOpen bs)
 
 -- | Stream all incoming data to the given 'IO.Handle'. Note that this function
 -- will /not/ automatically close the @Handle@ when processing completes.
@@ -141,9 +143,7 @@ sourceFileRange fp offset count = Source $ do
     pull <-
         case count of
             Nothing -> return $ pullUnlimited handle key
-            Just c -> do
-                ic <- newRef c
-                return $ pullLimited ic handle key
+            Just c -> return $ pullLimited c handle key
     return PreparedSource
         { sourcePull = pull
         , sourceClose = release key
@@ -155,9 +155,15 @@ sourceFileRange fp offset count = Source $ do
             then do
                 release key
                 return Closed
-            else return $ Open bs
-    pullLimited ic handle key = do
-        c <- fmap fromInteger $ readRef ic
+            else do
+                let src = PreparedSource
+                        { sourcePull = pullUnlimited handle key
+                        , sourceClose = release key
+                        }
+                return $ Open src bs
+
+    pullLimited c0 handle key = do
+        let c = fromInteger c0
         bs <- liftIO $ S.hGetSome handle (min c 4096)
         let c' = c - S.length bs
         assert (c' >= 0) $
@@ -166,8 +172,11 @@ sourceFileRange fp offset count = Source $ do
                     release key
                     return Closed
                 else do
-                    writeRef ic $ toInteger c'
-                    return $ Open bs
+                    let src = PreparedSource
+                            { sourcePull = pullLimited (toInteger c') handle key
+                            , sourceClose = release key
+                            }
+                    return $ Open src bs
 
 -- | Stream all incoming data to the given file.
 --

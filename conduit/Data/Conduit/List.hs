@@ -93,8 +93,8 @@ sourceList :: Resource m => [a] -> Source m a
 sourceList l0 =
     sourceState l0 go
   where
-    go [] = return ([], Closed)
-    go (x:xs) = return (xs, Open x)
+    go [] = return StateClosed
+    go (x:xs) = return $ StateOpen xs x
 
 -- | Ignore a certain number of values in the stream. This function is
 -- semantically equivalent to:

@@ -9,12 +9,16 @@ module Data.Conduit.Util.Source
     ( sourceState
     , sourceIO
     , transSource
+    , SourceStateResult (..)
+    , SourceIOResult (..)
     ) where
 
 import Control.Monad.Trans.Resource
 import Control.Monad.Trans.Class (lift)
 import Data.Conduit.Types.Source
 import Control.Monad (liftM)
+
+data SourceStateResult state output = StateOpen state output | StateClosed
 
 -- | Construct a 'Source' with some stateful functions. This function address
 -- all mutable state for you.
@@ -23,37 +27,22 @@ import Control.Monad (liftM)
 sourceState
     :: Resource m
     => state -- ^ Initial state
-    -> (state -> ResourceT m (state, SourceResult output)) -- ^ Pull function
+    -> (state -> ResourceT m (SourceStateResult state output)) -- ^ Pull function
     -> Source m output
-sourceState state0 pull = Source $ do
-    istate <- newRef state0
-#if DEBUG
-    iclosed <- newRef False
-#endif
-    return PreparedSource
-        { sourcePull = do
-#if DEBUG
-            False <- readRef iclosed
-#endif
-            state <- readRef istate
-            (state', res) <- pull state
-#if DEBUG
-            let isClosed =
-                    case res of
-                        Closed -> True
-                        Open _ -> False
-            writeRef iclosed isClosed
-#endif
-            writeRef istate state'
-            return res
-        , sourceClose = do
-#if DEBUG
-            False <- readRef iclosed
-            writeRef iclosed True
-#else
-            return ()
-#endif
-        }
+sourceState state0 pull0 =
+    Source $ return $ src state0
+  where
+    src state = PreparedSource (pull state) close
+
+    pull state = do
+        res <- pull0 state
+        return $ case res of
+            StateOpen state' val -> Open (src state') val
+            StateClosed -> Closed
+
+    close = return ()
+
+data SourceIOResult output = IOOpen output | IOClosed
 
 -- | Construct a 'Source' based on some IO actions for alloc/release.
 --
@@ -61,34 +50,21 @@ sourceState state0 pull = Source $ do
 sourceIO :: ResourceIO m
           => IO state -- ^ resource and/or state allocation
           -> (state -> IO ()) -- ^ resource and/or state cleanup
-          -> (state -> m (SourceResult output)) -- ^ Pull function. Note that this need not explicitly perform any cleanup.
+          -> (state -> m (SourceIOResult output)) -- ^ Pull function. Note that this need not explicitly perform any cleanup.
           -> Source m output
-sourceIO alloc cleanup pull = Source $ do
+sourceIO alloc cleanup pull0 = Source $ do
     (key, state) <- withIO alloc cleanup
-#if DEBUG
-    iclosed <- newRef False
-#endif
-    return PreparedSource
-        { sourcePull = do
-#if DEBUG
-            False <- readRef iclosed
-#endif
-            res <- lift $ pull state
-            case res of
-                Closed -> do
-#if DEBUG
-                    writeRef iclosed True
-#endif
-                    release key
-                _ -> return ()
-            return res
-        , sourceClose = do
-#if DEBUG
-            False <- readRef iclosed
-            writeRef iclosed True
-#endif
-            release key
-        }
+    return $ src key state
+  where
+    src key state = PreparedSource (pull key state) (release key)
+
+    pull key state = do
+        res <- lift $ pull0 state
+        case res of
+            IOClosed -> do
+                release key
+                return Closed
+            IOOpen val -> return $ Open (src key state) val
 
 -- | Transform the monad a 'Source' lives in.
 --
@@ -101,6 +77,9 @@ transSource f (Source mc) =
     Source (transResourceT f (liftM go mc))
   where
     go c = c
-        { sourcePull = transResourceT f (sourcePull c)
+        { sourcePull = transResourceT f (fmap go2 $ sourcePull c)
         , sourceClose = transResourceT f (sourceClose c)
         }
+
+    go2 (Open p a) = Open (go p) a
+    go2 Closed = Closed

@@ -12,17 +12,16 @@ import Control.Monad.Trans.Resource
 import Data.Monoid (Monoid (..))
 import Control.Monad (liftM)
 import Data.Typeable (Typeable)
-import Control.Exception (Exception, throw)
+import Control.Exception (Exception)
 
 -- | Result of pulling from a source. Either a new piece of data (@Open@), or
 -- indicates that the source is now @Closed@.
 --
 -- Since 0.0.0
-data SourceResult a = Open a | Closed
-    deriving (Show, Eq, Ord)
+data SourceResult m a = Open (PreparedSource m a) a | Closed
 
-instance Functor SourceResult where
-    fmap f (Open a) = Open (f a)
+instance Monad m => Functor (SourceResult m) where
+    fmap f (Open p a) = Open (fmap f p) (f a)
     fmap _ Closed = Closed
 
 -- | A 'PreparedSource' has two operations on it: pull some data, and close the
@@ -44,7 +43,7 @@ instance Functor SourceResult where
 --
 -- Since 0.0.0
 data PreparedSource m a = PreparedSource
-    { sourcePull :: ResourceT m (SourceResult a)
+    { sourcePull :: ResourceT m (SourceResult m a)
     , sourceClose :: ResourceT m ()
     }
 
@@ -84,41 +83,27 @@ instance Resource m => Monoid (Source m a) where
     mconcat (Source mnext:rest0) = Source $ do
         -- open up the first Source...
         next0 <- mnext
-        -- and place it in a mutable reference along with all of the upcoming
-        -- Sources
-        istate <- newRef (next0, rest0)
-        return PreparedSource
-            { sourcePull = pull istate
-            , sourceClose = close istate
-            }
+
+        return $ src next0 rest0
       where
-        pull istate =
-            readRef istate >>= pull'
-          where
-            pull' (current, rest) = do
-                res <- sourcePull current
-                case res of
-                    -- end of the current Source
-                    Closed -> do
-                        case rest of
-                            -- ... and open the next one
-                            Source ma:as -> do
-                                a <- ma
-                                writeRef istate (a, as)
-                                -- continue pulling base on this new state
-                                pull istate
-                            -- no more source, return an EOF
-                            [] -> do
-                                -- give an error message if the first Source
-                                -- invariant is violated (read data after EOF)
-                                writeRef istate $
-                                    throw $ PullAfterEOF "Source:mconcat"
-                                return Closed
-                    Open _ -> return res
-        close istate = do
+        src next rest = PreparedSource (pull next rest) (close next rest)
+
+        pull current rest = do
+            res <- sourcePull current
+            case res of
+                -- end of the current Source
+                Closed -> do
+                    case rest of
+                        -- ... and open the next one
+                        Source ma:as -> do
+                            a <- ma
+                            pull a as
+                        -- no more source, return an EOF
+                        [] -> return Closed
+                Open current' val -> return (Open (src current' rest) val)
+        close current _rest = do
             -- we only need to close the current Source, since they are opened
             -- one at a time
-            (current, _) <- readRef istate
             sourceClose current
 
 -- |
