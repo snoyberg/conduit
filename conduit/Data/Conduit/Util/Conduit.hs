@@ -26,6 +26,10 @@ data ConduitStateResult state input output =
     StateFinished (Maybe input) [output]
   | StateProducing state [output]
 
+instance Functor (ConduitStateResult state input) where
+    fmap f (StateFinished a b) = StateFinished a (map f b)
+    fmap f (StateProducing a b) = StateProducing a (map f b)
+
 -- | Construct a 'Conduit' with some stateful functions. This function address
 -- all mutable state for you.
 --
@@ -51,6 +55,10 @@ conduitState state0 push0 close0 =
 data ConduitIOResult input output =
     IOFinished (Maybe input) [output]
   | IOProducing [output]
+
+instance Functor (ConduitIOResult input) where
+    fmap f (IOFinished a b) = IOFinished a (map f b)
+    fmap f (IOProducing b) = IOProducing (map f b)
 
 -- | Construct a 'Conduit'.
 --

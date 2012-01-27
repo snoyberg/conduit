@@ -41,7 +41,7 @@ decompress config = Conduit $ do
   where
     push inf x = do
         chunks <- lift $ unsafeFromIO $ withInflateInput inf x callback
-        return $ Producing chunks
+        return $ Producing (push inf) (close inf) chunks
     close inf = do
         chunk <- lift $ unsafeFromIO $ finishInflate inf
         return $ if S.null chunk then [] else [chunk]
@@ -57,11 +57,11 @@ decompressFlush config = Conduit $ do
   where
     push inf (Chunk x) = do
         chunks <- lift $ unsafeFromIO $ withInflateInput inf x callback
-        return $ Producing $ map Chunk chunks
+        return $ Producing (push inf) (close inf) $ map Chunk chunks
     push inf Flush = do
         chunk <- lift $ unsafeFromIO $ flushInflate inf
         let chunk' = if S.null chunk then id else (Chunk chunk:)
-        return $ Producing $ chunk' [Flush]
+        return $ Producing (push inf) (close inf) $ chunk' [Flush]
     close inf = do
         chunk <- lift $ unsafeFromIO $ finishInflate inf
         return $ if S.null chunk then [] else [Chunk chunk]
@@ -81,7 +81,7 @@ compress level config = Conduit $ do
   where
     push def x = do
         chunks <- lift $ unsafeFromIO $ withDeflateInput def x callback
-        return $ Producing chunks
+        return $ Producing (push def) (close def) chunks
     close def = do
         chunks <- lift $ unsafeFromIO $ finishDeflate def callback
         return chunks
@@ -98,10 +98,10 @@ compressFlush level config = Conduit $ do
   where
     push def (Chunk x) = do
         chunks <- lift $ unsafeFromIO $ withDeflateInput def x callback
-        return $ Producing $ map Chunk chunks
+        return $ Producing (push def) (close def) $ map Chunk chunks
     push def Flush = do
         chunks <- lift $ unsafeFromIO $ flushDeflate def callback
-        return $ Producing $ map Chunk chunks ++ [Flush]
+        return $ Producing (push def) (close def) $ map Chunk chunks ++ [Flush]
     close def = do
         chunks <- lift $ unsafeFromIO $ finishDeflate def callback
         return $ map Chunk chunks

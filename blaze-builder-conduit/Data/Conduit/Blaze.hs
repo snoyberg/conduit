@@ -112,24 +112,24 @@ builderToByteStringWithFlush (ioBuf0, nextBuf) = conduitState
     push' :: ResourceUnsafeIO m
           => IO Buffer
           -> Flush Builder
-          -> ResourceT m (IO Buffer, ConduitResult input (Flush S.ByteString))
+          -> ResourceT m (ConduitStateResult (IO Buffer) input (Flush S.ByteString))
     push' ioBuf Flush = do
-        (ioBuf', Producing chunks) <- push nextBuf ioBuf flush
+        StateProducing ioBuf' chunks <- push nextBuf ioBuf flush
         let myFold bs rest
                 | S.null bs = rest
                 | otherwise = Chunk bs : rest
             chunks' = foldr myFold [Flush] chunks
-        return (ioBuf', Producing chunks')
-    push' ioBuf (Chunk builder) = (fmap . fmap . fmap) Chunk (push nextBuf ioBuf builder)
+        return $ StateProducing ioBuf' chunks'
+    push' ioBuf (Chunk builder) = (fmap . fmap) Chunk (push nextBuf ioBuf builder)
 
 push :: ResourceUnsafeIO m
      => (Int -> Buffer -> IO (IO Buffer))
      -> IO Buffer
      -> Builder
-     -> ResourceT m (IO Buffer, ConduitResult input S.ByteString)
+     -> ResourceT m (ConduitStateResult (IO Buffer) input S.ByteString)
 push nextBuf ioBuf0 x = lift $ unsafeFromIO $ do
     (ioBuf', front) <- go (unBuilder x (buildStep finalStep)) ioBuf0 id
-    return (ioBuf', Producing $ front [])
+    return $ StateProducing ioBuf' $ front []
   where
     finalStep !(BufRange pf _) = return $ Done pf ()
 

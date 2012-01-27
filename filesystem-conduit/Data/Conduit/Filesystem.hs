@@ -46,11 +46,11 @@ traverse followSymlinks root = C.Source $ do
     seq0 <- liftIO $ listDirectory root
     C.prepareSource $ C.sourceState seq0 pull
   where
-    pull [] = return ([], C.Closed)
+    pull [] = return C.StateClosed
     pull (p:ps) = do
         isFile' <- liftIO $ isFile p
         if isFile'
-            then return (ps, C.Open p)
+            then return $ C.StateOpen ps p
             else do
                 follow' <- liftIO $ follow p
                 if follow'

@@ -16,12 +16,15 @@ import Control.Monad.IO.Class (liftIO)
 --
 -- Since 0.0.0
 sourceSocket :: ResourceIO m => Socket -> Source m ByteString
-sourceSocket socket = Source $ return $ PreparedSource
-    { sourcePull = do
+sourceSocket socket =
+    Source $ return src
+  where
+    src = PreparedSource pull close
+
+    pull = do
         bs <- liftIO (recv socket 4096)
-        return $ if S.null bs then Closed else Open bs
-    , sourceClose = return ()
-    }
+        return $ if S.null bs then Closed else Open src bs
+    close = return ()
 
 -- | Stream data to the socket.
 --
