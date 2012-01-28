@@ -17,9 +17,9 @@ import Control.Monad.IO.Class (liftIO)
 -- Since 0.0.0
 sourceSocket :: ResourceIO m => Socket -> Source m ByteString
 sourceSocket socket =
-    Source $ return src
+    src
   where
-    src = PreparedSource pull close
+    src = Source pull close
 
     pull = do
         bs <- liftIO (recv socket 4096)
@@ -33,7 +33,7 @@ sourceSocket socket =
 -- Since 0.0.0
 sinkSocket :: ResourceIO m => Socket -> Sink ByteString m ()
 sinkSocket socket =
-    Sink $ return $ SinkData push close
+    SinkData push close
   where
     push bs = do
         liftIO (sendAll socket bs)

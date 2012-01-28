@@ -42,15 +42,20 @@ traverse :: C.ResourceIO m
          => Bool -- ^ Follow directory symlinks (only used on POSIX platforms)
          -> FilePath -- ^ Root directory
          -> C.Source m FilePath
-traverse followSymlinks root = C.Source $ do
-    seq0 <- liftIO $ listDirectory root
-    C.prepareSource $ C.sourceState seq0 pull
+traverse followSymlinks root = C.Source
+    { C.sourcePull = do
+        seq0 <- liftIO $ listDirectory root
+        pull seq0
+    , C.sourceClose = return ()
+    }
   where
-    pull [] = return C.StateClosed
+    mkSrc ps = C.Source (pull ps) (return ())
+
+    pull [] = return C.Closed
     pull (p:ps) = do
         isFile' <- liftIO $ isFile p
         if isFile'
-            then return $ C.StateOpen ps p
+            then return $ C.Open (mkSrc ps) p
             else do
                 follow' <- liftIO $ follow p
                 if follow'
