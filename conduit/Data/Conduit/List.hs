@@ -171,9 +171,10 @@ peek =
 -- Since 0.0.0
 map :: Monad m => (a -> b) -> Conduit a m b
 map f =
-    Conduit $ return $ PreparedConduit push close
+    conduit
   where
-    push = return . Producing push close . return . f
+    conduit = Conduit push close
+    push = return . Producing conduit . return . f
     close = return []
 
 -- | Apply a monadic transformation to all values in a stream.
@@ -184,9 +185,10 @@ map f =
 -- Since 0.0.0
 mapM :: Monad m => (a -> m b) -> Conduit a m b
 mapM f =
-    Conduit $ return $ PreparedConduit push close
+    conduit
   where
-    push = fmap (Producing push close . return) . lift . f
+    conduit = Conduit push close
+    push = fmap (Producing conduit . return) . lift . f
     close = return []
 
 -- | Apply a transformation to all values in a stream, concatenating the output
@@ -195,9 +197,10 @@ mapM f =
 -- Since 0.0.0
 concatMap :: Monad m => (a -> [b]) -> Conduit a m b
 concatMap f =
-    Conduit $ return $ PreparedConduit push close
+    conduit
   where
-    push = return . Producing push close . f
+    conduit = Conduit push close
+    push = return . Producing conduit . f
     close = return []
 
 -- | Apply a monadic transformation to all values in a stream, concatenating
@@ -206,9 +209,10 @@ concatMap f =
 -- Since 0.0.0
 concatMapM :: Monad m => (a -> m [b]) -> Conduit a m b
 concatMapM f =
-    Conduit $ return $ PreparedConduit push close
+    conduit
   where
-    push = fmap (Producing push close) . lift . f
+    conduit = Conduit push close
+    push = fmap (Producing conduit) . lift . f
     close = return []
 
 -- | Consume all values from the stream and return as a list. Note that this
@@ -273,9 +277,10 @@ isolate count0 = conduitState
 -- Since 0.0.0
 filter :: Resource m => (a -> Bool) -> Conduit a m a
 filter f =
-    Conduit $ return $ PreparedConduit push close
+    conduit
   where
-    push = return . Producing push close . Prelude.filter f . return
+    conduit = Conduit push close
+    push = return . Producing conduit . Prelude.filter f . return
     close = return []
 
 -- | Ignore the remainder of values in the source. Particularly useful when

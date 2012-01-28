@@ -2,7 +2,6 @@
 -- is almost always connected either left (to a source) or right (to a sink).
 module Data.Conduit.Types.Conduit
     ( ConduitResult (..)
-    , PreparedConduit (..)
     , Conduit (..)
     , ConduitPush
     , ConduitClose
@@ -21,11 +20,11 @@ type ConduitClose m output = ResourceT m [output]
 --
 -- Since 0.0.0
 data ConduitResult input m output =
-    Producing (ConduitPush input m output) (ConduitClose m output) [output]
+    Producing (Conduit input m output) [output]
   | Finished (Maybe input) [output]
 
 instance Monad m => Functor (ConduitResult input m) where
-    fmap f (Producing p c o) = Producing ((fmap . fmap . fmap) f p) ((fmap . fmap) f c) (fmap f o)
+    fmap f (Producing c o) = Producing (fmap f c) (fmap f o)
     fmap f (Finished i o) = Finished i (fmap f o)
 
 -- | A conduit has two operations: it can receive new input (a push), and can
@@ -37,23 +36,13 @@ instance Monad m => Functor (ConduitResult input m) where
 -- 'Finished' from a push, or after a close is performed.
 --
 -- Since 0.0.0
-data PreparedConduit input m output = PreparedConduit
+data Conduit input m output = Conduit
     { conduitPush :: ConduitPush input m output
     , conduitClose :: ConduitClose m output
     }
 
-instance Monad m => Functor (PreparedConduit input m) where
+instance Monad m => Functor (Conduit input m) where
     fmap f c = c
         { conduitPush = liftM (fmap f) . conduitPush c
         , conduitClose = liftM (fmap f) (conduitClose c)
         }
-
--- | A monadic action generating a 'PreparedConduit'. See @Source@ and @Sink@
--- for more motivation.
---
--- Since 0.0.0
-newtype Conduit input m output =
-    Conduit { prepareConduit :: ResourceT m (PreparedConduit input m output) }
-
-instance Monad m => Functor (Conduit input m) where
-    fmap f (Conduit mc) = Conduit (liftM (fmap f) mc)
