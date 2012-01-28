@@ -108,7 +108,7 @@ sinkHandle :: ResourceIO m
            => IO.Handle
            -> Sink S.ByteString m ()
 sinkHandle h =
-    Sink $ return $ SinkData push close
+    SinkData push close
   where
     push input = liftIO (S.hPut h input) >> return (Processing push close)
     close = return ()
@@ -227,7 +227,7 @@ isolate count0 = conduitState
 -- Since 0.0.2
 head :: Resource m => Sink S.ByteString m (Maybe Word8)
 head =
-    Sink $ return $ SinkData push close
+    SinkData push close
   where
     push bs =
         case S.uncons bs of
@@ -257,7 +257,7 @@ takeWhile p =
 -- Since 0.0.2
 dropWhile :: Resource m => (Word8 -> Bool) -> Sink S.ByteString m ()
 dropWhile p =
-    Sink $ return $ SinkData push close
+    SinkData push close
   where
     push bs = do
         let bs' = S.dropWhile p bs

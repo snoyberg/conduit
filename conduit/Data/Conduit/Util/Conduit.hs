@@ -173,11 +173,12 @@ scPush :: Resource m
      -> SCState state input m output
      -> input
      -> ResourceT m (ConduitStateResult (SCState state input m output) input output)
-scPush front fsink (SCNewState state) input = do
-    sink <- prepareSink $ fsink state
-    case sink of
-        SinkData push' close' -> scPush front fsink (SCSink push' close') input
-        SinkNoData res -> goRes res (Just input) front fsink
+scPush front fsink (SCNewState state) input =
+    go (fsink state)
+  where
+    go (SinkData push' close') = scPush front fsink (SCSink push' close') input
+    go (SinkNoData res) = goRes res (Just input) front fsink
+    go (SinkMonad msink) = lift msink >>= go
 scPush front _ (SCConduit conduit) input = do
     res <- conduitPush conduit input
     return $ case res of

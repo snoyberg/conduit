@@ -6,7 +6,6 @@
 -- | Defines the types for a sink, which is a consumer of data.
 module Data.Conduit.Types.Sink
     ( SinkResult (..)
-    , PreparedSink (..)
     , Sink (..)
     , SinkPush
     , SinkClose
@@ -57,7 +56,7 @@ instance Monad m => Functor (SinkResult input m) where
 --
 -- Invariants:
 --
--- * After a 'PreparedSink' produces a result (either via 'sinkPush' or
+-- * After a 'Sink' produces a result (either via 'sinkPush' or
 -- 'sinkClose'), neither of those two functions may be called on the @Sink@
 -- again.
 --
@@ -67,73 +66,61 @@ instance Monad m => Functor (SinkResult input m) where
 -- optimization.
 --
 -- Since 0.0.0
-data PreparedSink input m output =
+data Sink input m output =
     SinkNoData output
   | SinkData
         { sinkPush :: SinkPush input m output
         , sinkClose :: SinkClose m output
         }
+  | SinkMonad (m (Sink input m output))
 
-instance Monad m => Functor (PreparedSink input m) where
+instance Monad m => Functor (Sink input m) where
     fmap f (SinkNoData x) = SinkNoData (f x)
     fmap f (SinkData p c) = SinkData
         { sinkPush = liftM (fmap f) . p
         , sinkClose = liftM f c
         }
-
--- | Most 'PreparedSink's require some type of state, similar to
--- 'PreparedSource's. Like a @Source@ for a @PreparedSource@, a @Sink@ is a
--- simple monadic wrapper around a @PreparedSink@ which allows initialization
--- of such state. See @Source@ for further caveats.
---
--- Note that this type provides a 'Monad' instance, allowing you to easily
--- compose @Sink@s together.
---
--- Since 0.0.0
-newtype Sink input m output = Sink { prepareSink :: ResourceT m (PreparedSink input m output) }
-
-instance Monad m => Functor (Sink input m) where
-    fmap f (Sink msink) = Sink (liftM (fmap f) msink)
+    fmap f (SinkMonad msink) = SinkMonad (liftM (fmap f) msink)
 
 instance Resource m => Applicative (Sink input m) where
     pure = return
     (<*>) = ap
 
 instance Resource m => Monad (Sink input m) where
-    return x = Sink (return (SinkNoData x))
-    mx >>= f = Sink $ do
-        x <- prepareSink mx
-        case x of
-            SinkNoData x' -> prepareSink $ f x'
-            SinkData push' close' ->
-                return $ SinkData (push push') (close close')
+    return = SinkNoData
+    SinkNoData x >>= f = f x
+    SinkMonad mx >>= f = SinkMonad $ do
+        x <- mx
+        return $ x >>= f
+    SinkData push0 close0 >>= f =
+        SinkData (push push0) (close close0)
       where
         push push' input = do
             res <- push' input
             case res of
-                Done leftover output -> do
-                    f' <- prepareSink $ f output
-                    case f' of
-                        SinkNoData y ->
-                            return $ Done leftover y
-                        SinkData pushF closeF -> do
-                            case leftover of
-                                Nothing -> return $ Processing pushF closeF
-                                Just l -> pushF l
+                Done lo output -> pushHelper lo (f output)
                 Processing push'' close'' ->
                     return $ Processing (push push'') (close close'')
+
+        pushHelper lo (SinkNoData y) = return $ Done lo y
+        pushHelper (Just l) (SinkData pushF _) = pushF l
+        pushHelper Nothing (SinkData pushF closeF) =
+            return (Processing pushF closeF)
+        pushHelper lo (SinkMonad msink) = lift msink >>= pushHelper lo
+
         close close' = do
             output <- close'
-            f' <- prepareSink $ f output
-            case f' of
-                SinkNoData y -> return y
-                SinkData _ closeF -> closeF
+            closeHelper (f output)
+
+        closeHelper (SinkNoData y) = return y
+        closeHelper (SinkData _ closeF) = closeF
+        closeHelper (SinkMonad msink) = lift msink >>= closeHelper
 
 instance (Resource m, Base m ~ base, Applicative base) => MonadBase base (Sink input m) where
     liftBase = lift . resourceLiftBase
 
 instance MonadTrans (Sink input) where
-    lift f = Sink (lift (liftM SinkNoData f))
+    lift = SinkMonad . liftM SinkNoData
 
 instance (Resource m, MonadIO m) => MonadIO (Sink input m) where
     liftIO = lift . liftIO

@@ -37,7 +37,7 @@ sinkState
     -> (state -> ResourceT m output) -- ^ Close. Note that the state is not returned, as it is not needed.
     -> Sink input m output
 sinkState state0 push0 close0 =
-    Sink $ return $ SinkData (push state0) (close0 state0)
+    SinkData (push state0) (close0 state0)
   where
     push state input = do
         res <- state `seq` push0 state input
@@ -61,9 +61,14 @@ sinkIO :: ResourceIO m
         -> (state -> input -> m (SinkIOResult input output)) -- ^ push
         -> (state -> m output) -- ^ close
         -> Sink input m output
-sinkIO alloc cleanup push0 close0 = Sink $ do
-    (key, state) <- withIO alloc cleanup
-    return $ SinkData (push key state) (close key state)
+sinkIO alloc cleanup push0 close0 = SinkData
+    { sinkPush = \input -> do
+        (key, state) <- withIO alloc cleanup
+        push key state input
+    , sinkClose = do
+        (key, state) <- withIO alloc cleanup
+        close key state
+    }
   where
     push key state input = do
         res <- lift $ push0 state input
@@ -86,13 +91,11 @@ transSink :: (Base m ~ Base n, Monad m)
            => (forall a. m a -> n a)
            -> Sink input m output
            -> Sink input n output
-transSink f (Sink mc) =
-    Sink (transResourceT f (liftM go mc))
-  where
-    go c = c
-        { sinkPush = transResourceT f . fmap (transSinkPush f) . sinkPush c
-        , sinkClose = transResourceT f (sinkClose c)
-        }
+transSink _ (SinkNoData x) = SinkNoData x
+transSink f (SinkMonad msink) = SinkMonad (f (liftM (transSink f) msink))
+transSink f (SinkData push close) = SinkData
+    (transResourceT f . fmap (transSinkPush f) . push)
+    (transResourceT f close)
 
 transSinkPush :: (Base m ~ Base n, Monad m)
               => (forall a. m a -> n a)

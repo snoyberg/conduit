@@ -81,7 +81,7 @@ mapM_ :: Resource m
       => (a -> m ())
       -> Sink a m ()
 mapM_ f =
-    Sink $ return $ SinkData push close
+    SinkData push close
   where
     push input = lift (f input) >> return (Processing push close)
     close = return ()
@@ -150,7 +150,7 @@ take count0 = sinkState
 -- Since 0.0.0
 head :: Resource m => Sink a m (Maybe a)
 head =
-    Sink $ return $ SinkData push close
+    SinkData push close
   where
     push x = return $ Done Nothing (Just x)
     close = return Nothing
@@ -161,7 +161,7 @@ head =
 -- Since 0.0.0
 peek :: Resource m => Sink a m (Maybe a)
 peek =
-    Sink $ return $ SinkData push close
+    SinkData push close
   where
     push x = return $ Done (Just x) (Just x)
     close = return Nothing
@@ -284,7 +284,7 @@ filter f =
 -- Since 0.0.0
 sinkNull :: Resource m => Sink a m ()
 sinkNull =
-    Sink $ return $ SinkData push close
+    SinkData push close
   where
     push _ = return $ Processing push close
     close = return ()

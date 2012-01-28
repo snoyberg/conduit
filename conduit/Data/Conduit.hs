@@ -44,6 +44,8 @@ module Data.Conduit
     ) where
 
 import Control.Applicative ((<$>))
+import Control.Monad (liftM)
+import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Resource
 import Data.Conduit.Types.Source
 import Data.Conduit.Util.Source
@@ -92,11 +94,10 @@ instance IsSource BufferedSource where
     {-# INLINE fuseLeft #-}
 
 normalConnect :: Resource m => Source m a -> Sink a m b -> ResourceT m b
-normalConnect src0 (Sink msink) = do
-    sinkI <- msink
-    case sinkI of
-        SinkNoData output -> return output
-        SinkData push close -> connect' src0 push close
+normalConnect _ (SinkNoData output) = return output
+normalConnect src0 (SinkMonad msink) = lift msink >>= normalConnect src0
+normalConnect src0 (SinkData push0 close0) =
+    connect' src0 push0 close0
   where
     connect' src push close = do
         res <- sourcePull src
@@ -186,15 +187,16 @@ infixr 0 =$
 --
 -- Since 0.0.0
 (=$) :: Resource m => Conduit a m b -> Sink b m c -> Sink a m c
-Conduit mc =$ Sink ms = Sink $ do
-    s <- ms
-    case s of
-        SinkData pushI closeI -> do
-            c <- mc
-            return $ SinkData
-                (push pushI closeI c)
-                (close pushI closeI c)
-        SinkNoData mres -> return $ SinkNoData mres
+_ =$ SinkNoData res = SinkNoData res
+conduit =$ SinkMonad msink = SinkMonad (liftM (conduit =$) msink)
+Conduit mc =$ SinkData pushI0 closeI0 = SinkData
+    { sinkPush = \input -> do
+        c <- mc
+        push pushI0 closeI0 c input
+    , sinkClose = do
+        c <- mc
+        close pushI0 closeI0 c
+    }
   where
     push pushI closeI conduit0 cinput = do
         res <- conduitPush conduit0 cinput
@@ -340,25 +342,23 @@ unbufferSource (BufferedSource bs) = do
             }
 
 bufferedConnect :: Resource m => BufferedSource m a -> Sink a m b -> ResourceT m b
-bufferedConnect (BufferedSource bs) (Sink msink) = do
-    sinkI <- msink
-    case sinkI of
-        SinkNoData output -> return output
-        SinkData push close -> do
-            bsState <- readRef bs
-            case bsState of
-                ClosedEmpty -> close
-                OpenEmpty src -> connect' src push close
-                ClosedFull a -> do
-                    res <- push a
-                    case res of
-                        Done mleftover res' -> do
-                            writeRef bs $ maybe ClosedEmpty ClosedFull mleftover
-                            return res'
-                        Processing _ close' -> do
-                            writeRef bs ClosedEmpty
-                            close'
-                OpenFull src a -> push a >>= onRes src
+bufferedConnect _ (SinkNoData output) = return output
+bufferedConnect bsrc (SinkMonad msink) = lift msink >>= bufferedConnect bsrc
+bufferedConnect (BufferedSource bs) (SinkData push0 close0) = do
+    bsState <- readRef bs
+    case bsState of
+        ClosedEmpty -> close0
+        OpenEmpty src -> connect' src push0 close0
+        ClosedFull a -> do
+            res <- push0 a
+            case res of
+                Done mleftover res' -> do
+                    writeRef bs $ maybe ClosedEmpty ClosedFull mleftover
+                    return res'
+                Processing _ close' -> do
+                    writeRef bs ClosedEmpty
+                    close'
+        OpenFull src a -> push0 a >>= onRes src
   where
     connect' src push close = do
         res <- sourcePull src
