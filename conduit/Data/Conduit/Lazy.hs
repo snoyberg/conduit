@@ -14,9 +14,8 @@ import Control.Monad.Trans.Control
 --
 -- Since 0.0.0
 lazyConsume :: MonadBaseControl IO m => Source m a -> ResourceT m [a]
-lazyConsume (Source msrc) = do
-    src <- msrc
-    go src
+lazyConsume src0 = do
+    go src0
   where
 
     go src = liftBaseOp_ unsafeInterleaveIO $ do

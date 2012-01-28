@@ -72,9 +72,9 @@ sourceHandle :: ResourceIO m
              => IO.Handle
              -> Source m S.ByteString
 sourceHandle h =
-    Source $ return src
+    src
   where
-    src = PreparedSource pull close
+    src = Source pull close
 
     pull = do
         bs <- liftIO (S.hGetSome h 4096)
@@ -135,19 +135,17 @@ sourceFileRange :: ResourceIO m
                 -> Maybe Integer -- ^ Offset
                 -> Maybe Integer -- ^ Maximum count
                 -> Source m S.ByteString
-sourceFileRange fp offset count = Source $ do
-    (key, handle) <- withIO (IO.openBinaryFile fp IO.ReadMode) IO.hClose
-    case offset of
-        Nothing -> return ()
-        Just off -> liftIO $ IO.hSeek handle IO.AbsoluteSeek off
-    pull <-
+sourceFileRange fp offset count = Source
+    { sourcePull = do
+        (key, handle) <- withIO (IO.openBinaryFile fp IO.ReadMode) IO.hClose
+        case offset of
+            Nothing -> return ()
+            Just off -> liftIO $ IO.hSeek handle IO.AbsoluteSeek off
         case count of
-            Nothing -> return $ pullUnlimited handle key
-            Just c -> return $ pullLimited c handle key
-    return PreparedSource
-        { sourcePull = pull
-        , sourceClose = release key
-        }
+            Nothing -> pullUnlimited handle key
+            Just c -> pullLimited c handle key
+    , sourceClose = return ()
+    }
   where
     pullUnlimited handle key = do
         bs <- liftIO $ S.hGetSome handle 4096
@@ -156,7 +154,7 @@ sourceFileRange fp offset count = Source $ do
                 release key
                 return Closed
             else do
-                let src = PreparedSource
+                let src = Source
                         { sourcePull = pullUnlimited handle key
                         , sourceClose = release key
                         }
@@ -172,7 +170,7 @@ sourceFileRange fp offset count = Source $ do
                     release key
                     return Closed
                 else do
-                    let src = PreparedSource
+                    let src = Source
                             { sourcePull = pullLimited (toInteger c') handle key
                             , sourceClose = release key
                             }

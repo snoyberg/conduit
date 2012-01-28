@@ -16,7 +16,6 @@ module Data.Conduit.Util.Source
 import Control.Monad.Trans.Resource
 import Control.Monad.Trans.Class (lift)
 import Data.Conduit.Types.Source
-import Control.Monad (liftM)
 
 data SourceStateResult state output = StateOpen state output | StateClosed
 
@@ -30,9 +29,9 @@ sourceState
     -> (state -> ResourceT m (SourceStateResult state output)) -- ^ Pull function
     -> Source m output
 sourceState state0 pull0 =
-    Source $ return $ src state0
+    src state0
   where
-    src state = PreparedSource (pull state) close
+    src state = Source (pull state) close
 
     pull state = do
         res <- pull0 state
@@ -52,11 +51,15 @@ sourceIO :: ResourceIO m
           -> (state -> IO ()) -- ^ resource and/or state cleanup
           -> (state -> m (SourceIOResult output)) -- ^ Pull function. Note that this need not explicitly perform any cleanup.
           -> Source m output
-sourceIO alloc cleanup pull0 = Source $ do
-    (key, state) <- withIO alloc cleanup
-    return $ src key state
+sourceIO alloc cleanup pull0 =
+    Source
+        { sourcePull = do
+            (key, state) <- withIO alloc cleanup
+            pull key state
+        , sourceClose = return ()
+        }
   where
-    src key state = PreparedSource (pull key state) (release key)
+    src key state = Source (pull key state) (release key)
 
     pull key state = do
         res <- lift $ pull0 state
@@ -73,13 +76,10 @@ transSource :: (Base m ~ Base n, Monad m)
              => (forall a. m a -> n a)
              -> Source m output
              -> Source n output
-transSource f (Source mc) =
-    Source (transResourceT f (liftM go mc))
+transSource f c = c
+    { sourcePull = transResourceT f (fmap go2 $ sourcePull c)
+    , sourceClose = transResourceT f (sourceClose c)
+    }
   where
-    go c = c
-        { sourcePull = transResourceT f (fmap go2 $ sourcePull c)
-        , sourceClose = transResourceT f (sourceClose c)
-        }
-
-    go2 (Open p a) = Open (go p) a
+    go2 (Open p a) = Open (transSource f p) a
     go2 Closed = Closed
