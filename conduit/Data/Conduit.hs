@@ -313,26 +313,31 @@ bufferSource src = BufferedSource <$> newRef (OpenEmpty src)
 -- Since 0.0.1
 unbufferSource :: Resource m
                => BufferedSource m a
-               -> ResourceT m (Source m a)
-unbufferSource (BufferedSource bs) = do
-    buf <- readRef bs
-    case buf of
-        OpenEmpty src -> return src
-        OpenFull src a -> return Source
-            { sourcePull = return $ Open src a
-            , sourceClose = sourceClose src
-            }
-        ClosedEmpty -> return Source
-            -- Note: we could put some invariant checking in here if we wanted
-            { sourcePull = return Closed
-            , sourceClose = return ()
-            }
-        ClosedFull a -> return Source
-            { sourcePull = return $ Open
-                (Source (return Closed) (return ()))
-                a
-            , sourceClose = return ()
-            }
+               -> Source m a
+unbufferSource (BufferedSource bs) = Source
+    { sourcePull = msrc >>= sourcePull
+    , sourceClose = msrc >>= sourceClose
+    }
+  where
+    msrc = do
+        buf <- readRef bs
+        case buf of
+            OpenEmpty src -> return src
+            OpenFull src a -> return Source
+                { sourcePull = return $ Open src a
+                , sourceClose = sourceClose src
+                }
+            ClosedEmpty -> return Source
+                -- Note: we could put some invariant checking in here if we wanted
+                { sourcePull = return Closed
+                , sourceClose = return ()
+                }
+            ClosedFull a -> return Source
+                { sourcePull = return $ Open
+                    (Source (return Closed) (return ()))
+                    a
+                , sourceClose = return ()
+                }
 
 bufferedConnect :: Resource m => BufferedSource m a -> Sink a m b -> ResourceT m b
 bufferedConnect _ (SinkNoData output) = return output

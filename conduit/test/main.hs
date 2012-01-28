@@ -316,7 +316,7 @@ main = hspecX $ do
             x <- runResourceT $ do
                 bsrc <- C.bufferSource $ CL.sourceList [1..10 :: Int]
                 bsrc C.$$ CL.drop 5
-                src <- C.unbufferSource bsrc
+                let src = C.unbufferSource bsrc
                 src C.$$ CL.fold (+) 0
             x @?= sum [6..10]
 
