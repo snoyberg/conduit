@@ -17,6 +17,10 @@ import Control.Exception (Exception)
 -- | Result of pulling from a source. Either a new piece of data (@Open@), or
 -- indicates that the source is now @Closed@.
 --
+-- The @Open@ constructor returns both a new value, as well as a new
+-- @PreparedSource@, which should be used in place of the previous
+-- @PreparedSource@.
+--
 -- Since 0.0.0
 data SourceResult m a = Open (PreparedSource m a) a | Closed
 
@@ -30,16 +34,15 @@ instance Monad m => Functor (SourceResult m) where
 -- 'PreparedSource' early
 -- is merely an optimization to free scarce resources as soon as possible.
 --
--- A 'PreparedSource' has three invariants:
+-- A 'PreparedSource' has one invariant: it may only be used /once/. When
+-- pulling from a @PreparedSource@, the @Open@ constructor can provide a new
+-- @PreparedSource@ to use for the next call. If closing the @PreparedSource@,
+-- or if pulling results in a @Closed@ constructor, no new @PreparedSource@ is
+-- provided, and therefore no more actions may be performed.
 --
--- * It is illegal to call 'sourcePull' after a previous call returns 'Closed', or after a call to 'sourceClose'.
---
--- * It is illegal to call 'sourceClose' multiple times, or after a previous
--- 'sourcePull' returns a 'Closed'.
---
--- * A 'PreparedSource' is responsible to free any resources when either 'sourceClose'
--- is called or a 'Closed' is returned. However, based on the usage of
--- 'ResourceT', this is simply an optimization.
+-- A 'PreparedSource' is responsible to free any resources when either
+-- 'sourceClose' is called or a 'Closed' is returned. However, based on the
+-- usage of 'ResourceT', this is simply an optimization.
 --
 -- Since 0.0.0
 data PreparedSource m a = PreparedSource
