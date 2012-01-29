@@ -41,7 +41,7 @@ import qualified System.PosixFile as F
 -- While you are not required to call @hClose@ on the resulting handle, you
 -- should do so as early as possible to free scarce resources.
 --
--- Since 0.0.2
+-- Since 0.2.0
 openFile :: ResourceIO m
          => FilePath
          -> IO.IOMode
@@ -50,7 +50,7 @@ openFile fp mode = fmap snd $ withIO (IO.openBinaryFile fp mode) IO.hClose
 
 -- | Stream the contents of a file as binary data.
 --
--- Since 0.0.0
+-- Since 0.2.0
 sourceFile :: ResourceIO m
            => FilePath
            -> Source m S.ByteString
@@ -67,7 +67,7 @@ sourceFile fp =
 -- function will /not/ automatically close the @Handle@ when processing
 -- completes, since it did not acquire the @Handle@ in the first place.
 --
--- Since 0.0.2.
+-- Since 0.2.0
 sourceHandle :: ResourceIO m
              => IO.Handle
              -> Source m S.ByteString
@@ -89,7 +89,7 @@ sourceHandle h =
 -- a 'IO.Handle' (in read mode), so that it can open it only when needed
 -- and close it as soon as possible.
 --
--- Since 0.1.1
+-- Since 0.2.0
 sourceIOHandle :: ResourceIO m
                => IO IO.Handle
                -> Source m S.ByteString
@@ -103,7 +103,7 @@ sourceIOHandle alloc = sourceIO alloc IO.hClose
 -- | Stream all incoming data to the given 'IO.Handle'. Note that this function
 -- will /not/ automatically close the @Handle@ when processing completes.
 --
--- Since 0.0.2.
+-- Since 0.2.0
 sinkHandle :: ResourceIO m
            => IO.Handle
            -> Sink S.ByteString m ()
@@ -118,7 +118,7 @@ sinkHandle h =
 -- a 'IO.Handle' (in write mode), so that it can open it only when needed
 -- and close it as soon as possible.
 --
--- Since 0.1.1
+-- Since 0.2.0
 sinkIOHandle :: ResourceIO m
              => IO IO.Handle
              -> Sink S.ByteString m ()
@@ -129,7 +129,7 @@ sinkIOHandle alloc = sinkIO alloc IO.hClose
 -- | Stream the contents of a file as binary data, starting from a certain
 -- offset and only consuming up to a certain number of bytes.
 --
--- Since 0.0.0
+-- Since 0.2.0
 sourceFileRange :: ResourceIO m
                 => FilePath
                 -> Maybe Integer -- ^ Offset
@@ -178,7 +178,7 @@ sourceFileRange fp offset count = Source
 
 -- | Stream all incoming data to the given file.
 --
--- Since 0.0.0
+-- Since 0.2.0
 sinkFile :: ResourceIO m
          => FilePath
          -> Sink S.ByteString m ()
@@ -187,7 +187,7 @@ sinkFile fp = sinkIOHandle (IO.openBinaryFile fp IO.WriteMode)
 -- | Stream the contents of the input to a file, and also send it along the
 -- pipeline. Similar in concept to the Unix command @tee@.
 --
--- Since 0.0.0
+-- Since 0.2.0
 conduitFile :: ResourceIO m
             => FilePath
             -> Conduit S.ByteString m S.ByteString
@@ -203,7 +203,7 @@ conduitFile fp = conduitIO
 -- sink. Note that this does /not/ ensure that all of those bytes are in fact
 -- consumed.
 --
--- Since 0.0.0
+-- Since 0.2.0
 isolate :: Resource m
         => Int
         -> Conduit S.ByteString m S.ByteString
@@ -224,7 +224,7 @@ isolate count0 = conduitState
 
 -- | Return the next byte from the stream, if available.
 --
--- Since 0.0.2
+-- Since 0.2.0
 head :: Resource m => Sink S.ByteString m (Maybe Word8)
 head =
     SinkData push close
@@ -239,7 +239,7 @@ head =
 
 -- | Return all bytes while the predicate returns @True@.
 --
--- Since 0.0.2
+-- Since 0.2.0
 takeWhile :: Resource m => (Word8 -> Bool) -> Conduit S.ByteString m S.ByteString
 takeWhile p =
     conduit
@@ -255,7 +255,7 @@ takeWhile p =
 
 -- | Ignore all bytes while the predicate returns @True@.
 --
--- Since 0.0.2
+-- Since 0.2.0
 dropWhile :: Resource m => (Word8 -> Bool) -> Sink S.ByteString m ()
 dropWhile p =
     SinkData push close
@@ -270,6 +270,6 @@ dropWhile p =
 
 -- | Take the given number of bytes, if available.
 --
--- Since 0.0.3
+-- Since 0.2.0
 take :: Resource m => Int -> Sink S.ByteString m L.ByteString
 take n = L.fromChunks `liftM` (isolate n =$ CL.consume)

@@ -6,10 +6,10 @@
 -- "Data.Conduit.Types.Conduit" for more information on the base types.
 module Data.Conduit.Util.Conduit
     ( conduitState
-    , conduitIO
-    , transConduit
     , ConduitStateResult (..)
+    , conduitIO
     , ConduitIOResult (..)
+    , transConduit
       -- *** Sequencing
     , SequencedSink
     , sequenceSink
@@ -21,6 +21,11 @@ import Control.Monad.Trans.Class
 import Data.Conduit.Types.Conduit
 import Data.Conduit.Types.Sink
 
+-- | A helper type for @conduitState@, indicating the result of being pushed
+-- to.  It can either indicate that processing is done, or to continue with the
+-- updated state.
+--
+-- Since 0.2.0
 data ConduitStateResult state input output =
     StateFinished (Maybe input) [output]
   | StateProducing state [output]
@@ -29,10 +34,10 @@ instance Functor (ConduitStateResult state input) where
     fmap f (StateFinished a b) = StateFinished a (map f b)
     fmap f (StateProducing a b) = StateProducing a (map f b)
 
--- | Construct a 'Conduit' with some stateful functions. This function address
--- all mutable state for you.
+-- | Construct a 'Conduit' with some stateful functions. This function addresses
+-- threading the state value for you.
 --
--- Since 0.0.0
+-- Since 0.2.0
 conduitState
     :: Resource m
     => state -- ^ initial state
@@ -50,6 +55,10 @@ conduitState state0 push0 close0 =
                 (Conduit (push state') (close0 state'))
                 output
 
+-- | A helper type for @conduitIO@, indicating the result of being pushed to.
+-- It can either indicate that processing is done, or to continue.
+--
+-- Since 0.2.0
 data ConduitIOResult input output =
     IOFinished (Maybe input) [output]
   | IOProducing [output]
@@ -60,7 +69,7 @@ instance Functor (ConduitIOResult input) where
 
 -- | Construct a 'Conduit'.
 --
--- Since 0.0.0
+-- Since 0.2.0
 conduitIO :: ResourceIO m
            => IO state -- ^ resource and/or state allocation
            -> (state -> IO ()) -- ^ resource and/or state cleanup
@@ -92,11 +101,13 @@ conduitIO alloc cleanup push0 close0 = Conduit
 
 -- | Transform the monad a 'Conduit' lives in.
 --
--- Since 0.0.0
+-- See @transSource@ for more information.
+--
+-- Since 0.2.0
 transConduit :: (Monad m, Base m ~ Base n)
-              => (forall a. m a -> n a)
-              -> Conduit input m output
-              -> Conduit input n output
+             => (forall a. m a -> n a)
+             -> Conduit input m output
+             -> Conduit input n output
 transConduit f c = c
     { conduitPush = transResourceT f . fmap (transConduitPush f) . conduitPush c
     , conduitClose = transResourceT f (conduitClose c)
@@ -113,7 +124,7 @@ transConduitPush f (Producing conduit output) = Producing
 
 -- | Return value from a 'SequencedSink'.
 --
--- Since 0.0.0
+-- Since 0.2.0
 data SequencedSinkResponse state input m output =
     Emit state [output] -- ^ Set a new state, and emit some new output.
   | Stop -- ^ End the conduit.
@@ -123,7 +134,7 @@ data SequencedSinkResponse state input m output =
 -- to write higher-level code that takes advantage of existing conduits and
 -- sinks, and leverages a sink's monadic interface.
 --
--- Since 0.0.0
+-- Since 0.2.0
 type SequencedSink state input m output =
     state -> Sink input m (SequencedSinkResponse state input m output)
 
@@ -135,7 +146,7 @@ data SCState state input m output =
 
 -- | Convert a 'SequencedSink' into a 'Conduit'.
 --
--- Since 0.0.0
+-- Since 0.2.0
 sequenceSink
     :: Resource m
     => state -- ^ initial state

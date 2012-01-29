@@ -6,10 +6,10 @@
 -- for more information on the base types.
 module Data.Conduit.Util.Sink
     ( sinkState
-    , sinkIO
-    , transSink
     , SinkStateResult (..)
+    , sinkIO
     , SinkIOResult (..)
+    , transSink
     ) where
 
 import Control.Monad.Trans.Resource
@@ -26,10 +26,10 @@ data SinkStateResult state input output =
     StateDone (Maybe input) output
   | StateProcessing state
 
--- | Construct a 'Sink' with some stateful functions. This function address
--- all mutable state for you.
+-- | Construct a 'Sink' with some stateful functions. This function addresses
+-- threading the state value for you.
 --
--- Since 0.0.0
+-- Since 0.2.0
 sinkState
     :: Resource m
     => state -- ^ initial state
@@ -54,7 +54,7 @@ data SinkIOResult input output = IODone (Maybe input) output | IOProcessing
 -- | Construct a 'Sink'. Note that your push and close functions need not
 -- explicitly perform any cleanup.
 --
--- Since 0.0.0
+-- Since 0.2.0
 sinkIO :: ResourceIO m
         => IO state -- ^ resource and/or state allocation
         -> (state -> IO ()) -- ^ resource and/or state cleanup
@@ -86,11 +86,13 @@ sinkIO alloc cleanup push0 close0 = SinkData
 
 -- | Transform the monad a 'Sink' lives in.
 --
--- Since 0.0.0
+-- See @transSource@ for more information.
+--
+-- Since 0.2.0
 transSink :: (Base m ~ Base n, Monad m)
-           => (forall a. m a -> n a)
-           -> Sink input m output
-           -> Sink input n output
+          => (forall a. m a -> n a)
+          -> Sink input m output
+          -> Sink input n output
 transSink _ (SinkNoData x) = SinkNoData x
 transSink f (SinkMonad msink) = SinkMonad (f (liftM (transSink f) msink))
 transSink f (SinkData push close) = SinkData

@@ -4,7 +4,6 @@
 module Data.Conduit.Types.Source
     ( SourceResult (..)
     , Source (..)
-    , SourceInvariantException (..)
     ) where
 
 import Control.Monad.Trans.Resource
@@ -16,34 +15,26 @@ import Control.Exception (Exception)
 -- | Result of pulling from a source. Either a new piece of data (@Open@), or
 -- indicates that the source is now @Closed@.
 --
--- The @Open@ constructor returns both a new value, as well as a new
--- @PreparedSource@, which should be used in place of the previous
--- @PreparedSource@.
+-- The @Open@ constructor returns both a new value, as well as a new @Source@,
+-- which should be used in place of the previous @Source@.
 --
--- Since 0.0.0
+-- Since 0.2.0
 data SourceResult m a = Open (Source m a) a | Closed
 
 instance Monad m => Functor (SourceResult m) where
     fmap f (Open p a) = Open (fmap f p) (f a)
     fmap _ Closed = Closed
 
--- | A 'PreparedSource' has two operations on it: pull some data, and close the
--- 'PreparedSource'. Since 'PreparedSource' is built on top of 'ResourceT', all
--- acquired resources should be automatically released anyway. Closing a
--- 'PreparedSource' early
+-- | A @Source@ has two operations on it: pull some data, and close the
+-- @Source@. Since @Source@ is built on top of 'ResourceT', all acquired
+-- resources should be automatically released anyway. Closing a @Source@ early
 -- is merely an optimization to free scarce resources as soon as possible.
 --
--- A 'PreparedSource' has one invariant: it may only be used /once/. When
--- pulling from a @PreparedSource@, the @Open@ constructor can provide a new
--- @PreparedSource@ to use for the next call. If closing the @PreparedSource@,
--- or if pulling results in a @Closed@ constructor, no new @PreparedSource@ is
--- provided, and therefore no more actions may be performed.
+-- A @Source@ is should free any resources it allocated when either
+-- @sourceClose@ is called or a @Closed@ is returned. However, based on the
+-- usage of @ResourceT@, this is simply an optimization.
 --
--- A 'PreparedSource' is responsible to free any resources when either
--- 'sourceClose' is called or a 'Closed' is returned. However, based on the
--- usage of 'ResourceT', this is simply an optimization.
---
--- Since 0.0.0
+-- Since 0.2.0
 data Source m a = Source
     { sourcePull :: ResourceT m (SourceResult m a)
     , sourceClose :: ResourceT m ()
@@ -81,9 +72,3 @@ instance Resource m => Monoid (Source m a) where
             -- we only need to close the current Source, since they are opened
             -- one at a time
             sourceClose current
-
--- |
--- Since 0.0.0
-data SourceInvariantException = PullAfterEOF String
-    deriving (Show, Typeable)
-instance Exception SourceInvariantException

@@ -12,7 +12,7 @@ import Control.Monad.Trans.Control
 
 -- | Use lazy I\/O to consume all elements from a @Source@.
 --
--- Since 0.0.0
+-- Since 0.2.0
 lazyConsume :: MonadBaseControl IO m => Source m a -> ResourceT m [a]
 lazyConsume src0 = do
     go src0

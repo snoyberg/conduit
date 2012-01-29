@@ -10,7 +10,10 @@ module Data.Conduit.Types.Conduit
 import Control.Monad.Trans.Resource (ResourceT)
 import Control.Monad (liftM)
 
+-- | The value of the @conduitPush@ record.
 type ConduitPush input m output = input -> ResourceT m (ConduitResult input m output)
+
+-- | The value of the @conduitClose@ record.
 type ConduitClose m output = ResourceT m [output]
 
 -- | When data is pushed to a @Conduit@, it may either indicate that it is
@@ -18,7 +21,10 @@ type ConduitClose m output = ResourceT m [output]
 -- producing output, in which case it returns optional leftover input and some
 -- final output.
 --
--- Since 0.0.0
+-- The @Producing@ constructor provides a new @Conduit@ to be used in place of
+-- the previous one.
+--
+-- Since 0.2.0
 data ConduitResult input m output =
     Producing (Conduit input m output) [output]
   | Finished (Maybe input) [output]
@@ -30,12 +36,7 @@ instance Monad m => Functor (ConduitResult input m) where
 -- | A conduit has two operations: it can receive new input (a push), and can
 -- be closed.
 --
--- Invariants:
---
--- * Neither a push nor close may be performed after a conduit returns a
--- 'Finished' from a push, or after a close is performed.
---
--- Since 0.0.0
+-- Since 0.2.0
 data Conduit input m output = Conduit
     { conduitPush :: ConduitPush input m output
     , conduitClose :: ConduitClose m output

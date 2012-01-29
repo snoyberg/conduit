@@ -7,22 +7,26 @@
 -- on the base types.
 module Data.Conduit.Util.Source
     ( sourceState
-    , sourceIO
-    , transSource
     , SourceStateResult (..)
+    , sourceIO
     , SourceIOResult (..)
+    , transSource
     ) where
 
 import Control.Monad.Trans.Resource
 import Control.Monad.Trans.Class (lift)
 import Data.Conduit.Types.Source
 
+-- | The return value when pulling in the @sourceState@ function. Either
+-- indicates no more data, or the next value and an updated state.
+--
+-- Since 0.2.0
 data SourceStateResult state output = StateOpen state output | StateClosed
 
--- | Construct a 'Source' with some stateful functions. This function address
--- all mutable state for you.
+-- | Construct a 'Source' with some stateful functions. This function addresses
+-- threading the state value for you.
 --
--- Since 0.0.0
+-- Since 0.2.0
 sourceState
     :: Resource m
     => state -- ^ Initial state
@@ -41,11 +45,13 @@ sourceState state0 pull0 =
 
     close = return ()
 
+-- | The return value when pulling in the @sourceIO@ function. Either indicates
+-- no more data, or the next value.
 data SourceIOResult output = IOOpen output | IOClosed
 
 -- | Construct a 'Source' based on some IO actions for alloc/release.
 --
--- Since 0.0.0
+-- Since 0.2.0
 sourceIO :: ResourceIO m
           => IO state -- ^ resource and/or state allocation
           -> (state -> IO ()) -- ^ resource and/or state cleanup
@@ -71,11 +77,15 @@ sourceIO alloc cleanup pull0 =
 
 -- | Transform the monad a 'Source' lives in.
 --
--- Since 0.0.0
+-- Note that this will /not/ thread the individual monads together, meaning
+-- side effects will be lost. This function is most useful for transformers
+-- only providing context and not producing side-effects, such as @ReaderT@.
+--
+-- Since 0.2.0
 transSource :: (Base m ~ Base n, Monad m)
-             => (forall a. m a -> n a)
-             -> Source m output
-             -> Source n output
+            => (forall a. m a -> n a)
+            -> Source m output
+            -> Source n output
 transSource f c = c
     { sourcePull = transResourceT f (fmap go2 $ sourcePull c)
     , sourceClose = transResourceT f (sourceClose c)

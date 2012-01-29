@@ -18,7 +18,10 @@ import Control.Monad (liftM, ap)
 import Control.Applicative (Applicative (..))
 import Control.Monad.Base (MonadBase (liftBase))
 
+-- | The value of the @sinkPush@ record.
 type SinkPush input m output = input -> ResourceT m (SinkResult input m output)
+
+-- | The value of the @sinkClose@ record.
 type SinkClose m output = ResourceT m output
 
 -- | A @Sink@ ultimately returns a single output value. Each time data is
@@ -26,11 +29,10 @@ type SinkClose m output = ResourceT m output
 -- that it is done, in which case it returns some optional leftover input and
 -- an output value.
 --
--- Since 0.2, the @Processing@ constructor also provides updated push and close
--- functions, allowing us to bypass some usage of mutable variables, and
--- greatly increase performance of operations like monadic bind.
+-- The @Processing@ constructors provides updated push and close functions to
+-- be used in place of the original @Sink@.
 --
--- Since 0.0.0
+-- Since 0.2.0
 data SinkResult input m output =
     Processing (SinkPush input m output) (SinkClose m output)
   | Done (Maybe input) output
@@ -54,24 +56,18 @@ instance Monad m => Functor (SinkResult input m) where
 -- cannot always produce output, this should be indicated in its return value,
 -- using something like a 'Maybe' or 'Either'.
 --
--- Invariants:
+-- A @Sink@ should clean up any resources it has allocated when it returns a
+-- value, whether that be via @sinkPush@ or @sinkClose@.
 --
--- * After a 'Sink' produces a result (either via 'sinkPush' or
--- 'sinkClose'), neither of those two functions may be called on the @Sink@
--- again.
---
--- * If a @Sink@ needs to clean up any resources (e.g., close a file handle),
--- it must do so whenever it returns a result, either via @sinkPush@ or
--- @sinkClose@. Note that, due to usage of @ResourceT@, this is merely an
--- optimization.
---
--- Since 0.0.0
+-- Since 0.2.0
 data Sink input m output =
     SinkNoData output
   | SinkData
         { sinkPush :: SinkPush input m output
         , sinkClose :: SinkClose m output
         }
+  -- | This constructor is provided to allow us to create an efficient
+  -- @MonadTrans@ instance.
   | SinkMonad (m (Sink input m output))
 
 instance Monad m => Functor (Sink input m) where

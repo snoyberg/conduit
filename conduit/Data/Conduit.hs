@@ -7,6 +7,20 @@
 -- operators.
 module Data.Conduit
     ( -- * Types
+      -- | The three core types to this package are 'Source' (the data
+      -- producer), 'Sink' (the data consumer), and 'Conduit' (the data
+      -- transformer). For all three types, a result will provide the next
+      -- value to be used. For example, the @Open@ constructor includes a new
+      -- @Source@ in it. This leads to the main invariant for all conduit code:
+      -- these three types may /never/ be reused.  While some specific values
+      -- may work fine with reuse, the result is generally unpredictable and
+      -- should no be relied upon.
+      --
+      -- The user-facing API provided by the connect and fuse operators
+      -- automatically addresses the low level details of pulling, pushing, and
+      -- closing, and there should rarely be need to perform these actions in
+      -- user code.
+
       -- ** Source
       module Data.Conduit.Types.Source
       -- *** Buffering
@@ -54,6 +68,8 @@ import Data.Conduit.Util.Sink
 import Data.Conduit.Types.Conduit
 import Data.Conduit.Util.Conduit
 
+-- $typeOverview
+
 infixr 0 $$
 
 -- | The connect operator, which pulls data from a source and pushes to a sink.
@@ -62,21 +78,24 @@ infixr 0 $$
 -- 1. In the case of a @SinkNoData@ constructor, the source is not opened at
 -- all, and the output value is returned immediately.
 --
--- 2. The sink returns @Done@, in which case any leftover input is returned via
--- @bsourceUnpull@ the source is closed.
+-- 2. The sink returns @Done@. If the input was a @BufferedSource@, any
+-- leftover input is put in the buffer. For a normal @Source@, the leftover
+-- value is discarded, and the source is closed.
 --
 -- 3. The source return @Closed@, in which case the sink is closed.
 --
--- Note that this function will automatically close any 'Source's, but will not
--- close any 'BufferedSource's, allowing them to be reused.
+-- Note that this function will automatically close any @Source@s, but will not
+-- close any @BufferedSource@s, allowing them to be reused.
 --
--- Since 0.0.0
+-- Since 0.2.0
 ($$) :: (IsSource src, Resource m) => src m a -> Sink a m b -> ResourceT m b
 ($$) = connect
 {-# INLINE ($$) #-}
 
 -- | A typeclass allowing us to unify operators for 'Source' and
 -- 'BufferedSource'.
+--
+-- Since 0.2.0
 class IsSource src where
     connect :: Resource m => src m a -> Sink a m b -> ResourceT m b
     fuseLeft :: Resource m => src m a -> Conduit a m b -> Source m b
@@ -121,7 +140,10 @@ infixl 1 $=
 
 -- | Left fuse, combining a source and a conduit together into a new source.
 --
--- Since 0.0.0
+-- Note that any @Source@ passed in will be automatically closed, while a
+-- @BufferedSource@ will be left open.
+--
+-- Since 0.2.0
 ($=) :: (IsSource src, Resource m)
      => src m a
      -> Conduit a m b
@@ -183,7 +205,7 @@ infixr 0 =$
 
 -- | Right fuse, combining a conduit and a sink together into a new sink.
 --
--- Since 0.0.0
+-- Since 0.2.0
 (=$) :: Resource m => Conduit a m b -> Sink b m c -> Sink a m c
 _ =$ SinkNoData res = SinkNoData res
 conduit =$ SinkMonad msink = SinkMonad (liftM (conduit =$) msink)
@@ -228,7 +250,7 @@ infixr 0 =$=
 
 -- | Middle fuse, combining two conduits together into a new conduit.
 --
--- Since 0.0.0
+-- Since 0.2.0
 (=$=) :: Resource m => Conduit a m b -> Conduit b m c -> Conduit a m c
 outerOrig =$= innerOrig = Conduit
     (pushF outerOrig innerOrig)
@@ -271,23 +293,26 @@ conduitPushClose c (input:rest) = do
             b' <- conduitPushClose conduit rest
             return $ b ++ b'
 
--- | When actually interacting with 'Source's, we usually want to be able to
+-- | When actually interacting with @Source@s, we sometimes want to be able to
 -- buffer the output, in case any intermediate steps return leftover data. A
--- 'BufferedSource' allows for such buffering.
+-- @BufferedSource@ allows for such buffering.
 --
--- A 'BufferedSource', unlike a 'Source', is resumable, meaning it can be passed to
--- multiple 'Sink's without restarting.
+-- A @BufferedSource@, unlike a @Source@, is resumable, meaning it can be
+-- passed to multiple @Sink@s without restarting. Therefore, a @BufferedSource@
+-- relaxes the main invariant of this package: the same value may be used
+-- multiple times.
 --
--- Finally, a 'BufferedSource' relaxes one of the invariants of a 'Source':
--- pulling after an the source is closed is allowed.
+-- The intention of a @BufferedSource@ is to be used internally by an
+-- application or library, not to be part of its user-facing API. For example,
+-- the Warp webserver uses a @BufferedSource@ internally for parsing the
+-- request headers, but then passes a normal @Source@ to the web application
+-- for reading the request body.
 --
--- A @BufferedSource@ is also known as a /resumable source/, in that it can be
--- called multiple times, and each time will provide new data. One caveat:
--- while the types will allow you to use the buffered source in multiple
--- threads, there is no guarantee that all @BufferedSource@s will handle this
--- correctly.
+-- One caveat: while the types will allow you to use the buffered source in
+-- multiple threads, there is no guarantee that all @BufferedSource@s will
+-- handle this correctly.
 --
--- Since 0.0.0
+-- Since 0.2.0
 data BufferedSource m a = BufferedSource (Ref (Base m) (BSState m a))
 
 data BSState m a =
@@ -296,10 +321,11 @@ data BSState m a =
   | ClosedFull a
   | OpenFull (Source m a) a
 
--- | Prepare a 'Source' and initialize a buffer. Note that you should manually
--- call 'bsourceClose' when the 'BufferedSource' is no longer in use.
+-- | Places the given @Source@ and a buffer into a mutable variable. Note that
+-- you should manually call 'bsourceClose' when the 'BufferedSource' is no
+-- longer in use.
 --
--- Since 0.0.0
+-- Since 0.2.0
 bufferSource :: Resource m => Source m a -> ResourceT m (BufferedSource m a)
 bufferSource src = BufferedSource <$> newRef (OpenEmpty src)
 
@@ -310,7 +336,7 @@ bufferSource src = BufferedSource <$> newRef (OpenEmpty src)
 --
 -- Note: @bufferSource@ . @unbufferSource@ is /not/ the identity function.
 --
--- Since 0.0.1
+-- Since 0.2.0
 unbufferSource :: Resource m
                => BufferedSource m a
                -> Source m a
@@ -462,7 +488,7 @@ bsourceUnpull (BufferedSource ref) (Just a) = do
 -- that this function can safely be called multiple times, as it will first
 -- check if the 'Source' was previously closed.
 --
--- Since 0.0.0
+-- Since 0.2.0
 bsourceClose :: Resource m => BufferedSource m a -> ResourceT m ()
 bsourceClose (BufferedSource ref) = do
     buf <- readRef ref
@@ -477,7 +503,7 @@ bsourceClose (BufferedSource ref) = do
 -- the stream at some point. This provides a single wrapper datatype to be used
 -- in all such circumstances.
 --
--- Since 0.1.2
+-- Since 0.2.0
 data Flush a = Chunk a | Flush
     deriving (Show, Eq, Ord)
 instance Functor Flush where
