@@ -40,6 +40,32 @@ instance Monad m => Functor (SinkResult input m) where
     fmap f (Processing push close) = Processing ((fmap . fmap . fmap) f push) (fmap f close)
     fmap f (Done input output) = Done input (f output)
 
+{-
+Note to my future self, and anyone else who reads my code: It's tempting to
+change `Sink` to look like:
+
+    newtype Sink input m output = Sink { runSink :: ResourceT m (SinkResult input m output) }
+
+If you start implementing this, eventually you'll realize that you will have to
+enforce an invariant to make it all work: a `SinkResult` can't return leftovers
+unless data was pushed to it.
+
+The idea is that, with the actual definition of `Sink`, it's impossible to get
+a `SinkResult` without first pushing in some input. Therefore, it's always
+valid at the type level to return leftovers. In this simplified `Sink`, it
+would be possible to have code that looks like:
+
+    sink1 = Sink $ return $ Done (Just "foo") ()
+    fsink2 () = Sink $ return $ Done (Just "bar") ()
+    sink1 >>= fsink2
+
+Now we'd have to coalesce "foo" and "bar" together (e.g., require `Monoid`),
+throw away data, or throw an exception.
+
+So the current three-constructor approach to `Sink` may not be as pretty, but
+it enforce the invariants much better.
+-}
+
 -- | In general, a sink will consume data and eventually produce an output when
 -- it has consumed \"enough\" data. There are two caveats to that statement:
 --
