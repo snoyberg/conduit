@@ -59,7 +59,6 @@ module Data.Conduit
 
 import Control.Applicative ((<$>))
 import Control.Monad (liftM)
-import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Resource
 import Data.Conduit.Types.Source
 import Data.Conduit.Util.Source
@@ -114,7 +113,7 @@ instance IsSource BufferedSource where
 
 normalConnect :: Resource m => Source m a -> Sink a m b -> ResourceT m b
 normalConnect _ (SinkNoData output) = return output
-normalConnect src0 (SinkMonad msink) = lift msink >>= normalConnect src0
+normalConnect src0 (SinkLift msink) = msink >>= normalConnect src0
 normalConnect src0 (SinkData push0 close0) =
     connect' src0 push0 close0
   where
@@ -208,7 +207,7 @@ infixr 0 =$
 -- Since 0.2.0
 (=$) :: Resource m => Conduit a m b -> Sink b m c -> Sink a m c
 _ =$ SinkNoData res = SinkNoData res
-conduit =$ SinkMonad msink = SinkMonad (liftM (conduit =$) msink)
+conduit =$ SinkLift msink = SinkLift (liftM (conduit =$) msink)
 conduitOrig =$ SinkData pushI0 closeI0 = SinkData
     { sinkPush = push pushI0 closeI0 conduitOrig
     , sinkClose = close pushI0 closeI0 conduitOrig
@@ -367,7 +366,7 @@ unbufferSource (BufferedSource bs) = Source
 
 bufferedConnect :: Resource m => BufferedSource m a -> Sink a m b -> ResourceT m b
 bufferedConnect _ (SinkNoData output) = return output
-bufferedConnect bsrc (SinkMonad msink) = lift msink >>= bufferedConnect bsrc
+bufferedConnect bsrc (SinkLift msink) = msink >>= bufferedConnect bsrc
 bufferedConnect (BufferedSource bs) (SinkData push0 close0) = do
     bsState <- readRef bs
     case bsState of

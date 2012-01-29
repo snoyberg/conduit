@@ -185,7 +185,7 @@ scPush front fsink (SCNewState state) input =
   where
     go (SinkData push' close') = scPush front fsink (SCSink push' close') input
     go (SinkNoData res) = goRes res (Just input) front fsink
-    go (SinkMonad msink) = lift msink >>= go
+    go (SinkLift msink) = msink >>= go
 scPush front _ (SCConduit conduit) input = do
     res <- conduitPush conduit input
     return $ case res of

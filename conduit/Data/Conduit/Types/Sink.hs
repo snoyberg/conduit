@@ -68,7 +68,7 @@ data Sink input m output =
         }
   -- | This constructor is provided to allow us to create an efficient
   -- @MonadTrans@ instance.
-  | SinkMonad (m (Sink input m output))
+  | SinkLift (ResourceT m (Sink input m output))
 
 instance Monad m => Functor (Sink input m) where
     fmap f (SinkNoData x) = SinkNoData (f x)
@@ -76,7 +76,7 @@ instance Monad m => Functor (Sink input m) where
         { sinkPush = liftM (fmap f) . p
         , sinkClose = liftM f c
         }
-    fmap f (SinkMonad msink) = SinkMonad (liftM (fmap f) msink)
+    fmap f (SinkLift msink) = SinkLift (liftM (fmap f) msink)
 
 instance Resource m => Applicative (Sink input m) where
     pure = return
@@ -85,7 +85,7 @@ instance Resource m => Applicative (Sink input m) where
 instance Resource m => Monad (Sink input m) where
     return = SinkNoData
     SinkNoData x >>= f = f x
-    SinkMonad mx >>= f = SinkMonad $ do
+    SinkLift mx >>= f = SinkLift $ do
         x <- mx
         return $ x >>= f
     SinkData push0 close0 >>= f =
@@ -102,7 +102,7 @@ instance Resource m => Monad (Sink input m) where
         pushHelper (Just l) (SinkData pushF _) = pushF l
         pushHelper Nothing (SinkData pushF closeF) =
             return (Processing pushF closeF)
-        pushHelper lo (SinkMonad msink) = lift msink >>= pushHelper lo
+        pushHelper lo (SinkLift msink) = msink >>= pushHelper lo
 
         close close' = do
             output <- close'
@@ -110,13 +110,13 @@ instance Resource m => Monad (Sink input m) where
 
         closeHelper (SinkNoData y) = return y
         closeHelper (SinkData _ closeF) = closeF
-        closeHelper (SinkMonad msink) = lift msink >>= closeHelper
+        closeHelper (SinkLift msink) = msink >>= closeHelper
 
 instance (Resource m, Base m ~ base, Applicative base) => MonadBase base (Sink input m) where
     liftBase = lift . resourceLiftBase
 
 instance MonadTrans (Sink input) where
-    lift = SinkMonad . liftM SinkNoData
+    lift = SinkLift . liftM SinkNoData . lift
 
 instance (Resource m, MonadIO m) => MonadIO (Sink input m) where
     liftIO = lift . liftIO

@@ -94,7 +94,7 @@ transSink :: (Base m ~ Base n, Monad m)
           -> Sink input m output
           -> Sink input n output
 transSink _ (SinkNoData x) = SinkNoData x
-transSink f (SinkMonad msink) = SinkMonad (f (liftM (transSink f) msink))
+transSink f (SinkLift msink) = SinkLift (transResourceT f (liftM (transSink f) msink))
 transSink f (SinkData push close) = SinkData
     (transResourceT f . fmap (transSinkPush f) . push)
     (transResourceT f close)

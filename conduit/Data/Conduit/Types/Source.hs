@@ -1,5 +1,4 @@
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE DeriveDataTypeable #-}
 -- | Defines the types for a source, which is a producer of data.
 module Data.Conduit.Types.Source
     ( SourceResult (..)
@@ -9,8 +8,6 @@ module Data.Conduit.Types.Source
 import Control.Monad.Trans.Resource
 import Data.Monoid (Monoid (..))
 import Control.Monad (liftM)
-import Data.Typeable (Typeable)
-import Control.Exception (Exception)
 
 -- | Result of pulling from a source. Either a new piece of data (@Open@), or
 -- indicates that the source is now @Closed@.
