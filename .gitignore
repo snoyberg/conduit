@@ -6,3 +6,5 @@ conduit/tmp
 conduit/tmp2
 *.hi
 *.o
+*/.compiled
+cabal-dev
