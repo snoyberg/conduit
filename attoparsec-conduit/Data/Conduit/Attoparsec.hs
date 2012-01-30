@@ -76,8 +76,7 @@ sinkParser p0 = C.sinkState
                  in return (C.StateDone lo x)
             A.Fail _ contexts msg -> lift $ C.resourceThrow $ ParseError contexts msg
             A.Partial p -> return (C.StateProcessing p)
-    close parser = do
-
+    close parser =
         case feedA (parser empty) empty of
             A.Done _leftover y -> return y
             A.Fail _ contexts msg -> lift $ C.resourceThrow $ ParseError contexts msg
