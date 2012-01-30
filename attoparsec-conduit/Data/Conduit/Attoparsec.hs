@@ -11,7 +11,6 @@
 module Data.Conduit.Attoparsec
     ( ParseError (..)
     , AttoparsecInput
-    , ConduitInput
     , sinkParser
     , conduitParser
     ) where
@@ -25,7 +24,6 @@ import qualified Data.Attoparsec.ByteString
 import qualified Data.Attoparsec.Text
 import qualified Data.Attoparsec.Types as A
 import qualified Data.Conduit as C
-import Data.Monoid
 import Control.Monad.Trans.Class (lift)
 
 -- | The context and message from a 'A.Fail' value.
@@ -45,11 +43,6 @@ class AttoparsecInput a where
     isNull :: a -> Bool
     notEmpty :: [a] -> [a]
 
--- | Extra functions needed for conduitParser
-class (AttoparsecInput a, Monoid a) => ConduitInput a where
-    append :: a -> a -> a
-    append = mappend
-
 instance AttoparsecInput B.ByteString where
     parseA = Data.Attoparsec.ByteString.parse
     feedA = Data.Attoparsec.ByteString.feed
@@ -57,7 +50,6 @@ instance AttoparsecInput B.ByteString where
     isNull = B.null
     notEmpty = filter (not . B.null)
 
-instance ConduitInput B.ByteString
 
 instance AttoparsecInput T.Text where
     parseA = Data.Attoparsec.Text.parse
@@ -97,7 +89,7 @@ sinkParser p0 = C.sinkState
 -- parser is created and fed with anything leftover in the stream before resuming.
 --
 -- If parsing fails, a 'ParseError' will be thrown with 'C.resourceThrow'.
-conduitParser :: (ConduitInput a, C.ResourceThrow m) =>
+conduitParser :: (AttoparsecInput a, C.ResourceThrow m) =>
                         A.Parser a b
                      -> C.Conduit a m b
 conduitParser p0 = C.conduitState
@@ -105,11 +97,11 @@ conduitParser p0 = C.conduitState
     push
     close
   where
-    push parser c | isNull c = return (parser, C.Producing [])
+    push parser c | isNull c = return $ C.StateProducing parser []
     push parser c = {-# SCC "push" #-}
         case doParse parser c [] of
             Left pErr -> lift $ C.resourceThrow pErr
-            Right (cont, results) -> return (cont, C.Producing $ reverse results)
+            Right (cont, results) -> return $ C.StateProducing cont (reverse results)
 
     -- doParse :: (A.Parser a b) -> a -> [b]
     --            -> Either ParseError ((a -> A.IResult a b), [b])
