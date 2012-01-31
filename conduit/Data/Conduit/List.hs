@@ -35,6 +35,7 @@ module Data.Conduit.List
       -- ** Monadic
     , mapM
     , concatMapM
+    , concatMapAccumM
     ) where
 
 import Prelude
@@ -216,21 +217,25 @@ concatMapM f =
     push = fmap (Producing conduit) . lift . f
     close = return []
 
--- | like concatMap, with a accumerator.
+-- | 'concatMap' with accumerator.
 --
--- Since 0.0.0
+-- Since 0.2.0
 concatMapAccum :: Resource m => (a -> accum -> (accum, [b])) -> accum -> Conduit a m b
 concatMapAccum f accum = conduitState accum push close
   where
     push state input = let (state', result) = f input state
-                       in return $ (state', Producing result)
-    close s = return []
+                       in return $ StateProducing state' result
+    close _ = return []
 
--- concatMapAccumM :: Monad m => (a -> accum -> m (accum, [b])) -> accum -> Conduit a m (b, accum)
--- concatMapAccumM f c = Conduit $ return $ PreparedConduit
---     { conduitPush = return . Producing . f
---     , conduitClose = return []
---     }
+-- | 'concatMapM' with accumerator.
+--
+-- Since 0.2.0
+concatMapAccumM :: Resource m => (a -> accum -> m (accum, [b])) -> accum -> Conduit a m b
+concatMapAccumM f accum = conduitState accum push close
+  where
+    push state input = do (state', result) <- lift (f input state)
+                          return $ StateProducing state' result
+    close _ = return []
 
 -- | Consume all values from the stream and return as a list. Note that this
 -- will pull all values into memory. For a lazy variant, see
