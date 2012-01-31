@@ -217,7 +217,7 @@ concatMapM f =
     push = fmap (Producing conduit) . lift . f
     close = return []
 
--- | 'concatMap' with accumerator.
+-- | 'concatMap' with an accumulator.
 --
 -- Since 0.2.0
 concatMapAccum :: Resource m => (a -> accum -> (accum, [b])) -> accum -> Conduit a m b
@@ -227,7 +227,7 @@ concatMapAccum f accum = conduitState accum push close
                        in return $ StateProducing state' result
     close _ = return []
 
--- | 'concatMapM' with accumerator.
+-- | 'concatMapM' with an accumulator.
 --
 -- Since 0.2.0
 concatMapAccumM :: Resource m => (a -> accum -> m (accum, [b])) -> accum -> Conduit a m b
