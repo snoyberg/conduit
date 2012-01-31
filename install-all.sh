@@ -1,18 +1,11 @@
-#!/bin/bash -e
-
+#!/bin/bash -e 
 # allow a CABAL env var to override
 CABAL=${CABAL:-cabal}
 
 # install testing dependencies
 $CABAL install HUnit QuickCheck hspec
 
-pkgs=( conduit
-       attoparsec-conduit
-       blaze-builder-conduit
-       filesystem-conduit
-       zlib-conduit
-       network-conduit
-     )
+source package-list.sh
 
 # install each sub-respository
 for pkg in "${pkgs[@]}"; do
