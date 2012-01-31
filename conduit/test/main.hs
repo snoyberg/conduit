@@ -15,6 +15,7 @@ import qualified Data.List as DL
 import Control.Monad.ST (runST)
 import Data.Monoid
 import qualified Data.ByteString as S
+import qualified Data.ByteString.Char8 as S8
 import qualified Data.IORef as I
 import qualified Data.ByteString.Lazy as L
 import Data.ByteString.Lazy.Char8 ()
@@ -398,6 +399,14 @@ main = hspecX $ do
                 bsrc <- C.bufferSource $ CL.sourceList ["foobarbazbin"]
                 bsrc C.$= CB.isolate 10 C.$$ CL.head
             x @?= Just "foobarbazb"
+
+    describe "binary" $ do
+        prop "lines" $ \bss' -> runST $ runResourceT $ do
+            let bss = map S.pack bss'
+                bs = S.concat bss
+                src = CL.sourceList bss
+            res <- src C.$$ CB.lines C.=$ CL.consume
+            return $ S8.lines bs == res
 
 it' :: String -> IO () -> Specs
 it' = it

@@ -16,6 +16,7 @@ module Data.Conduit.Binary
     , takeWhile
     , dropWhile
     , take
+    , Data.Conduit.Binary.lines
     ) where
 
 import Prelude hiding (head, take, takeWhile, dropWhile)
@@ -273,3 +274,29 @@ dropWhile p =
 -- Since 0.2.0
 take :: Resource m => Int -> Sink S.ByteString m L.ByteString
 take n = L.fromChunks `liftM` (isolate n =$ CL.consume)
+
+-- | Split the input bytes into lines. In other words, split on the LF byte
+-- (10), and strip it from the output.
+--
+-- Since 0.2.0
+lines :: Resource m => Conduit S.ByteString m S.ByteString
+lines =
+    conduitState id push close
+  where
+    push front bs' = return $ StateProducing leftover ls
+      where
+        bs = front bs'
+        (leftover, ls) = getLines id bs
+
+    getLines front bs
+        | S.null bs = (id, front [])
+        | S.null y = (S.append x, front [])
+        | otherwise = getLines (front . (x:)) (S.drop 1 y)
+      where
+        (x, y) = S.breakByte 10 bs
+
+    close front
+        | S.null bs = return []
+        | otherwise = return [bs]
+      where
+        bs = front S.empty
