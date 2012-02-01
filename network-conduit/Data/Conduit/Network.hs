@@ -102,9 +102,10 @@ data ClientSettings = ClientSettings
 --
 -- Since 0.2.1
 runTCPClient :: ClientSettings -> Application -> IO ()
-runTCPClient (ClientSettings port host) app = do
-    socket <- getSocket host port
-    runResourceT $ app (sourceSocket socket) (sinkSocket socket)
+runTCPClient (ClientSettings port host) app = bracket
+    (getSocket host port)
+    NS.sClose
+    (\s -> runResourceT $ app (sourceSocket s) (sinkSocket s))
 
 -- | Attempt to connect to the given host/port.
 --
