@@ -10,6 +10,7 @@ Category:            Data, Conduit, Network
 Build-type:          Simple
 Cabal-version:       >=1.8
 Homepage:            http://github.com/snoyberg/conduit
+extra-source-files:  test/main.hs
 
 flag network-bytestring
     default: False
@@ -26,6 +27,16 @@ Library
   else
         build-depends: network               >= 2.3     && < 2.4
   ghc-options:     -Wall
+
+test-suite test
+    hs-source-dirs: test
+    main-is: main.hs
+    type: exitcode-stdio-1.0
+    cpp-options:   -DTEST
+    build-depends:   conduit
+                   , base
+                   , network-conduit
+    ghc-options:     -Wall -threaded
 
 source-repository head
   type:     git
