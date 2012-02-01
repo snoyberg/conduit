@@ -25,6 +25,7 @@ import qualified Data.ByteString as S
 import Control.Monad.IO.Class (liftIO)
 import Control.Exception (bracketOnError, IOException, bracket, throwIO, SomeException, try)
 import Control.Monad (forever)
+import Control.Monad.Trans.Resource (register)
 import Control.Concurrent (forkIO)
 
 -- | Stream data from the socket.
@@ -87,7 +88,9 @@ runTCPServer (ServerSettings port host) app = bracket
   where
     serve lsocket = do
         (socket, _addr) <- NS.accept lsocket
-        forkIO $ runResourceT $ app (sourceSocket socket) (sinkSocket socket)
+        forkIO $ runResourceT $ do
+            _ <- register $ NS.sClose socket
+            app (sourceSocket socket) (sinkSocket socket)
 
 -- | Settings for a TCP client, specifying how to connect to the server.
 data ClientSettings = ClientSettings
