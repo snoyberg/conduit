@@ -1,0 +1,27 @@
+name:            cereal-conduit
+version:         0.0.1
+license:         BSD3
+license-file:    LICENSE
+author:          Myles C. Maxfield <myles.maxfield@gmail.com>
+maintainer:      Myles C. Maxfield <myles.maxfield@gmail.com>
+synopsis:        Turn Data.Serialize Gets and Puts into Sources and Sinks
+description:     Turn Data.Serialize Gets and Puts into Sources and Sinks
+category:        Conduit
+stability:       Experimental
+cabal-version:   >= 1.8
+build-type:      Simple
+homepage:        https://github.com/litherum/cereal-conduit
+
+library
+    build-depends: base     >= 4       && < 5
+                 , conduit  >= 0.2.0
+                 , cereal   >= 0.3.1.0
+                 , mtl
+                 , bytestring
+    exposed-modules: Data.Conduit.Cereal
+    ghc-options:     -Wall
+
+
+source-repository head
+  type:     git
+  location: git://github.com/litherum/cereal-conduit.git
