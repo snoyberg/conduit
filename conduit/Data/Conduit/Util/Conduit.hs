@@ -13,9 +13,11 @@ module Data.Conduit.Util.Conduit
       -- *** Sequencing
     , SequencedSink
     , sequenceSink
+    , sequence
     , SequencedSinkResponse (..)
     ) where
 
+import Prelude hiding (sequence)
 import Control.Monad.Trans.Resource
 import Control.Monad.Trans.Class
 import Data.Conduit.Types.Conduit
@@ -206,3 +208,27 @@ scClose (SCSink _ close) = do
         Emit _ os -> return os
         Stop -> return []
         StartConduit c -> conduitClose c
+
+-- | Specialised version of 'sequenceSink'
+--
+-- Since 0.2.1
+sequence :: Resource m => Sink input m output -> Conduit input m output
+sequence (SinkData spush sclose) = Conduit (push spush) (close sclose)
+  where
+    push spush' input = do
+        res <- spush' input
+        case res of
+            Processing spush'' sclose'' ->
+                return $ Producing (Conduit (push spush'') (close sclose'')) []
+            Done Nothing output ->
+                return $ Producing (Conduit (push spush) (close sclose)) [output]
+            Done (Just input') output -> do
+                res' <- push spush input'
+                case res' of
+                    Producing conduit' output' ->
+                        return $ Producing conduit' (output:output')
+                    Finished _ _ -> error "impossible [sequence]"
+    close sclose' = fmap (:[]) sclose'
+
+sequence (SinkNoData output) = undefined
+sequence (SinkLift msink) = undefined -- msink >>= sequence

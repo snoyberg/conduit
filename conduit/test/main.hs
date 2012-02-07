@@ -11,6 +11,7 @@ import qualified Data.Conduit.Lazy as CLazy
 import qualified Data.Conduit.Binary as CB
 import qualified Data.Conduit.Text as CT
 import Data.Conduit (runResourceT)
+import Data.Maybe (fromMaybe)
 import qualified Data.List as DL
 import Control.Monad.ST (runST)
 import Data.Monoid
@@ -241,6 +242,34 @@ main = hspecX $ do
                             )
             nums <- CLazy.lazyConsume $ mconcat $ map incr [1..10]
             liftIO $ nums @?= [1..10]
+
+    describe "sequence" $ do
+        it "simple sink" $ do
+            let sumSink :: C.Resource m => C.Sink Int m Int
+                sumSink = do
+                    ma <- CL.head
+                    case ma of
+                        Nothing -> return 0
+                        Just a  -> (+a) . fromMaybe 0 <$> CL.head
+
+            res <- runResourceT $ CL.sourceList [1..11]
+                             C.$= C.sequence sumSink
+                             C.$$ CL.consume
+            res @?= [3, 7, 11, 15, 19, 11]
+
+        it "sink with unpull behaviour" $ do
+            let sumSink :: C.Resource m => C.Sink Int m Int
+                sumSink = do
+                    ma <- CL.head
+                    case ma of
+                        Nothing -> return 0
+                        Just a  -> (+a) . fromMaybe 0 <$> CL.peek
+
+            res <- runResourceT $ CL.sourceList [1..11]
+                             C.$= C.sequence sumSink
+                             C.$$ CL.consume
+            res @?= [3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 11]
+           
 
     describe "sequenceSink" $ do
         it "simple sink" $ do
