@@ -13,9 +13,11 @@ module Data.Conduit.Util.Conduit
       -- *** Sequencing
     , SequencedSink
     , sequenceSink
+    , sequence
     , SequencedSinkResponse (..)
     ) where
 
+import Prelude hiding (sequence)
 import Control.Monad.Trans.Resource
 import Control.Monad.Trans.Class
 import Data.Conduit.Types.Conduit
@@ -156,6 +158,12 @@ sequenceSink state0 fsink = conduitState
     (SCNewState state0)
     (scPush id fsink)
     scClose
+
+-- | Specialised version of 'sequenceSink'
+--
+-- Since 0.2.1
+sequence :: Resource m => Sink input m output -> Conduit input m output
+sequence = sequenceSink () . const . fmap (Emit () . return)
 
 goRes :: Resource m
       => SequencedSinkResponse state input m output
