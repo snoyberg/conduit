@@ -211,6 +211,10 @@ scClose (SCSink _ close) = do
 
 -- | Specialised version of 'sequenceSink'
 --
+-- Note that this function will return an infinite stream if provided a
+-- @SinkNoData@ constructor. In other words, you probably don\'t want to do
+-- @sequence . return@.
+--
 -- Since 0.2.1
 sequence :: Resource m => Sink input m output -> Conduit input m output
 sequence (SinkData spush sclose) = Conduit (push spush) (close sclose)
@@ -230,5 +234,13 @@ sequence (SinkData spush sclose) = Conduit (push spush) (close sclose)
                     Finished _ _ -> error "impossible [sequence]"
     close sclose' = fmap (:[]) sclose'
 
-sequence (SinkNoData output) = undefined
-sequence (SinkLift msink) = undefined -- msink >>= sequence
+sequence (SinkNoData output) = Conduit
+    { conduitPush = \input -> return $ Finished (Just input) (repeat output)
+    , conduitClose = return $ repeat output
+    }
+sequence (SinkLift msink) = Conduit
+    { conduitPush = \input -> do
+        sink <- msink
+        conduitPush (sequence sink) input
+    , conduitClose = return []
+    }
