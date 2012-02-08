@@ -7,6 +7,7 @@
 -- on the base types.
 module Data.Conduit.Util.Source
     ( sourceState
+    , sourceStateIO
     , SourceStateResult (..)
     , sourceIO
     , SourceIOResult (..)
@@ -74,6 +75,32 @@ sourceIO alloc cleanup pull0 =
                 release key
                 return Closed
             IOOpen val -> return $ Open (src key state) val
+
+-- | A combination of 'sourceIO' and 'sourceState'.
+--
+-- Since 0.2.1
+sourceStateIO :: ResourceIO m
+              => IO state -- ^ resource and/or state allocation
+              -> (state -> IO ()) -- ^ resource and/or state cleanup
+              -> (state -> m (SourceStateResult state output)) -- ^ Pull function. Note that this need not explicitly perform any cleanup.
+              -> Source m output
+sourceStateIO alloc cleanup pull0 =
+    Source
+        { sourcePull = do
+            (key, state) <- withIO alloc cleanup
+            pull key state
+        , sourceClose = return ()
+        }
+  where
+    src key state = Source (pull key state) (release key)
+
+    pull key state = do
+        res <- lift $ pull0 state
+        case res of
+            StateClosed -> do
+                release key
+                return Closed
+            StateOpen state' val -> return $ Open (src key state') val
 
 -- | Transform the monad a 'Source' lives in.
 --
