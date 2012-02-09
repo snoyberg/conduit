@@ -27,6 +27,7 @@ module Data.Conduit.List
       -- Conduits
       -- ** Pure
     , map
+    , zip
     , concatMap
     , concatMapAccum
     , groupBy
@@ -178,6 +179,19 @@ map f =
     conduit = Conduit push close
     push = return . Producing conduit . return . f
     close = return []
+
+-- | Injects a list into a stream, zipping it with whatever values come by.
+--   The conduit will stop producing after either the list is exhausted, or the
+--   stream is closed.
+zip :: Monad m => [b] -> Conduit a m (a, b)
+zip [] = Conduit emptyPush close
+    where
+        emptyPush x = return $ Finished (Just x) []
+        close = return []
+zip (y:ys) = Conduit push close
+    where
+        push x = return $ Producing (zip ys) [(x, y)]
+        close  = return []
 
 -- | Apply a monadic transformation to all values in a stream.
 --
