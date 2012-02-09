@@ -330,11 +330,11 @@ zip :: Resource m => Source m a -> Source m b -> Source m (a, b)
 zip sa sb = Source pull close
     where
         pull = do ra <- sourcePull sa
-                  rb <- sourcePull sb
                   case ra of
                     Closed -> return Closed
-                    Open ra' a -> case rb of
-                                    Closed -> return Closed
-                                    Open rb' b -> return $ Open (zip ra' rb') (a, b)
+                    Open ra' a -> do rb <- sourcePull sb
+                                     case rb of
+                                        Closed -> return Closed
+                                        Open rb' b -> return $ Open (zip ra' rb') (a, b)
         close = sourceClose sa >> sourceClose sb
 
