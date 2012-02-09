@@ -18,6 +18,7 @@ module Data.Conduit.List
     , take
     , drop
     , head
+    , zip
     , peek
     , consume
     , sinkNull
@@ -27,7 +28,6 @@ module Data.Conduit.List
       -- Conduits
       -- ** Pure
     , map
-    , zip
     , concatMap
     , concatMapAccum
     , groupBy
@@ -180,19 +180,6 @@ map f =
     push = return . Producing conduit . return . f
     close = return []
 
--- | Injects a list into a stream, zipping it with whatever values come by.
---   The conduit will stop producing after either the list is exhausted, or the
---   stream is closed.
-zip :: Monad m => [b] -> Conduit a m (a, b)
-zip [] = Conduit emptyPush close
-    where
-        emptyPush x = return $ Finished (Just x) []
-        close = return []
-zip (y:ys) = Conduit push close
-    where
-        push x = return $ Producing (zip ys) [(x, y)]
-        close  = return []
-
 -- | Apply a monadic transformation to all values in a stream.
 --
 -- If you do not need the transformed values, and instead just want the monadic
@@ -336,3 +323,18 @@ sinkNull =
 -- Since 0.2.0
 sourceNull :: Resource m => Source m a
 sourceNull = mempty
+
+-- | Combines two sources. The new source will stop producing once either
+--   source has been exhausted.
+zip :: Resource m => Source m a -> Source m b -> Source m (a, b)
+zip sa sb = Source pull close
+    where
+        pull = do ra <- sourcePull sa
+                  rb <- sourcePull sb
+                  case ra of
+                    Closed -> return Closed
+                    Open ra' a -> case rb of
+                                    Closed -> return Closed
+                                    Open rb' b -> return $ Open (zip ra' rb') (a, b)
+        close = sourceClose sa >> sourceClose sb
+
