@@ -18,6 +18,7 @@ module Data.Conduit.List
     , take
     , drop
     , head
+    , zip
     , peek
     , consume
     , sinkNull
@@ -322,3 +323,18 @@ sinkNull =
 -- Since 0.2.0
 sourceNull :: Resource m => Source m a
 sourceNull = mempty
+
+-- | Combines two sources. The new source will stop producing once either
+--   source has been exhausted.
+zip :: Resource m => Source m a -> Source m b -> Source m (a, b)
+zip sa sb = Source pull close
+    where
+        pull = do ra <- sourcePull sa
+                  case ra of
+                    Closed -> return Closed
+                    Open ra' a -> do rb <- sourcePull sb
+                                     case rb of
+                                        Closed -> return Closed
+                                        Open rb' b -> return $ Open (zip ra' rb') (a, b)
+        close = sourceClose sa >> sourceClose sb
+
