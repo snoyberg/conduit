@@ -121,6 +121,11 @@ main = hspecX $ do
             bs1 @=? bs2
             bs1 @=? bs3
 
+    describe "zipping" $ do
+        it "zipping two small lists" $ do
+            res <- runResourceT $ CL.zip (CL.sourceList [1..10], CL.sourceList [11..12]) $$ CL.consume
+            res @=? zip [1..10] [11..12]
+
     describe "Monad instance for Sink" $ do
         it "binding" $ do
             x <- runResourceT $ CL.sourceList [1..10] C.$$ do
