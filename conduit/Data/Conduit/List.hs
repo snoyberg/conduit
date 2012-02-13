@@ -326,6 +326,8 @@ sourceNull = mempty
 
 -- | Combines two sources. The new source will stop producing once either
 --   source has been exhausted.
+--
+-- Since 0.2.2
 zip :: Resource m => Source m a -> Source m b -> Source m (a, b)
 zip sa sb = Source pull close
     where
