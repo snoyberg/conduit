@@ -1,0 +1,39 @@
+Name:                imagesize-conduit
+Version:             0.2.0
+Synopsis:            Determine the size of some common image formats.
+Description:         Currently supports PNG, GIF, and JPEG. This package provides a Sink that will consume the minimum number of bytes necessary to determine the image dimensions.
+License:             BSD3
+License-file:        LICENSE
+Author:              Michael Snoyman
+Maintainer:          michael@snoyman.com
+Category:            Graphics, Conduit
+Build-type:          Simple
+Cabal-version:       >=1.8
+Homepage:            http://github.com/snoyberg/conduit
+extra-source-files:  test/main.hs
+                     test/logo.png
+                     test/logo.gif
+                     test/logo.jpg
+
+Library
+  Exposed-modules:     Data.Conduit.ImageSize
+  Build-depends:       base                     >= 4            && < 5
+                     , conduit                  >= 0.2          && < 0.3
+                     , bytestring               >= 0.9
+  ghc-options:     -Wall
+
+test-suite test
+    hs-source-dirs: test
+    main-is: main.hs
+    type: exitcode-stdio-1.0
+    build-depends:   conduit
+                   , imagesize-conduit
+                   , base
+                   , hspec
+                   , HUnit
+                   , bytestring
+    ghc-options:     -Wall
+
+source-repository head
+  type:     git
+  location: git://github.com/snoyberg/conduit.git
