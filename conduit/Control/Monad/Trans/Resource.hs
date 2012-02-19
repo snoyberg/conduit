@@ -382,9 +382,9 @@ runResourceT (ResourceT r) = do
 -- strip or add new transformers to a stack, e.g. to run a @ReaderT@. Note that
 -- the original and new monad must both have the same 'Base' monad.
 transResourceT :: (Base m ~ Base n)
-               => (m a -> n a)
+               => (m a -> n b)
                -> ResourceT m a
-               -> ResourceT n a
+               -> ResourceT n b
 transResourceT f (ResourceT mx) = ResourceT (\r -> f (mx r))
 
 -------- All of our monad et al instances
