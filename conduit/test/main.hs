@@ -123,7 +123,7 @@ main = hspecX $ do
 
     describe "zipping" $ do
         it "zipping two small lists" $ do
-            res <- runResourceT $ CL.zip (CL.sourceList [1..10], CL.sourceList [11..12]) $$ CL.consume
+            res <- runResourceT $ CL.zip (CL.sourceList [1..10]) (CL.sourceList [11..12]) C.$$ CL.consume
             res @=? zip [1..10] [11..12]
 
     describe "Monad instance for Sink" $ do
