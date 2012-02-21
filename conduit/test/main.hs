@@ -124,7 +124,7 @@ main = hspecX $ do
     describe "zipping" $ do
         it "zipping two small lists" $ do
             res <- runResourceT $ CL.zip (CL.sourceList [1..10]) (CL.sourceList [11..12]) C.$$ CL.consume
-            res @=? zip [1..10] [11..12]
+            res @=? zip [1..10 :: Int] [11..12 :: Int]
 
     describe "Monad instance for Sink" $ do
         it "binding" $ do
@@ -247,6 +247,10 @@ main = hspecX $ do
                             )
             nums <- CLazy.lazyConsume $ mconcat $ map incr [1..10]
             liftIO $ nums @?= [1..10]
+
+        it' "returns nothing outside ResourceT" $ do
+            bss <- runResourceT $ CLazy.lazyConsume $ CB.sourceFile "test/main.hs"
+            bss @?= []
 
     describe "sequence" $ do
         it "simple sink" $ do

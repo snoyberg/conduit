@@ -8,20 +8,25 @@ module Data.Conduit.Lazy
 
 import Data.Conduit
 import System.IO.Unsafe (unsafeInterleaveIO)
-import Control.Monad.Trans.Control
+import Control.Monad.Trans.Control (MonadBaseControl, liftBaseOp_)
+import Control.Monad.Trans.Resource (resourceActive)
 
 -- | Use lazy I\/O to consume all elements from a @Source@.
 --
 -- Since 0.2.0
-lazyConsume :: MonadBaseControl IO m => Source m a -> ResourceT m [a]
+lazyConsume :: (Resource m, MonadBaseControl IO m) => Source m a -> ResourceT m [a]
 lazyConsume src0 = do
     go src0
   where
 
     go src = liftBaseOp_ unsafeInterleaveIO $ do
-        res <- sourcePull src
-        case res of
-            Closed -> return []
-            Open src' x -> do
-                y <- go src'
-                return $ x : y
+        ra <- resourceActive
+        if ra
+            then do
+                res <- sourcePull src
+                case res of
+                    Closed -> return []
+                    Open src' x -> do
+                        y <- go src'
+                        return $ x : y
+            else return []

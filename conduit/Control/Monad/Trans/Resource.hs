@@ -43,12 +43,14 @@ module Control.Monad.Trans.Resource
     , ResourceThrow (..)
       -- ** Low-level
     , HasRef (..)
+    , InvalidAccess (..)
+    , resourceActive
     ) where
 
 import Data.Typeable
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
-import Control.Exception (SomeException)
+import Control.Exception (SomeException, throw, Exception)
 import Control.Monad.Trans.Control
     ( MonadTransControl (..), MonadBaseControl (..)
     , ComposeSt, defaultLiftBaseWith, defaultRestoreM
@@ -260,6 +262,7 @@ type NextKey = Int
 
 data ReleaseMap base =
     ReleaseMap !NextKey !RefCount !(IntMap (base ()))
+  | ReleaseMapClosed
 
 -- | The Resource transformer. This transformer keeps track of all registered
 -- actions, and calls them upon exit (via 'runResourceT'). Actions may be
@@ -317,10 +320,25 @@ register' :: HasRef base
           => Ref base (ReleaseMap base)
           -> base ()
           -> base ReleaseKey
-register' istate rel = atomicModifyRef' istate $ \(ReleaseMap key rf m) ->
-    ( ReleaseMap (key + 1) rf (IntMap.insert key rel m)
-    , ReleaseKey key
-    )
+register' istate rel = atomicModifyRef' istate $ \rm ->
+    case rm of
+        ReleaseMap key rf m ->
+            ( ReleaseMap (key + 1) rf (IntMap.insert key rel m)
+            , ReleaseKey key
+            )
+        ReleaseMapClosed -> throw $ InvalidAccess "register'"
+
+data InvalidAccess = InvalidAccess { functionName :: String }
+    deriving Typeable
+
+instance Show InvalidAccess where
+    show (InvalidAccess f) = concat
+        [ "Control.Monad.Trans.Resource."
+        , f
+        , ": The mutable state is being accessed after cleanup. Please contact the maintainers."
+        ]
+
+instance Exception InvalidAccess
 
 -- | Call a release action early, and deregister it from the list of cleanup
 -- actions to be performed.
@@ -344,25 +362,30 @@ release' istate (ReleaseKey key) = mask $ \restore -> do
                 ( ReleaseMap next rf $ IntMap.delete key m
                 , Just action
                 )
+    lookupAction ReleaseMapClosed = throw $ InvalidAccess "release'"
 
 stateAlloc :: HasRef m => Ref m (ReleaseMap m) -> m ()
 stateAlloc istate = do
-    atomicModifyRef' istate $ \(ReleaseMap nk rf m) ->
-        (ReleaseMap nk (rf + 1) m, ())
+    atomicModifyRef' istate $ \rm ->
+        case rm of
+            ReleaseMap nk rf m ->
+                (ReleaseMap nk (rf + 1) m, ())
+            ReleaseMapClosed -> throw $ InvalidAccess "stateAlloc"
 
 stateCleanup :: HasRef m => Ref m (ReleaseMap m) -> m ()
 stateCleanup istate = mask_ $ do
-    (rf, m) <- atomicModifyRef' istate $ \(ReleaseMap nk rf m) ->
-        (ReleaseMap nk (rf - 1) m, (rf - 1, m))
-    if rf == minBound
-        then do
+    mm <- atomicModifyRef' istate $ \rm ->
+        case rm of
+            ReleaseMap nk rf m ->
+                let rf' = rf - 1
+                 in if rf' == minBound
+                        then (ReleaseMapClosed, Just m)
+                        else (ReleaseMap nk rf' m, Nothing)
+            ReleaseMapClosed -> throw $ InvalidAccess "stateCleanup"
+    case mm of
+        Just m ->
             mapM_ (\x -> try x >> return ()) $ IntMap.elems m
-            -- Trigger an exception consistently for one race condition:
-            -- let's put an undefined value in the state. If somehow
-            -- another thread is still able to access it, at least we get
-            -- clearer error messages.
-            writeRef' istate $ error "Control.Monad.Trans.Resource.stateCleanup: There is a bug in the implementation. The mutable state is being accessed after cleanup. Please contact the maintainers."
-        else return ()
+        Nothing -> return ()
 
 -- | Unwrap a 'ResourceT' transformer, and call all registered release actions.
 --
@@ -523,3 +546,13 @@ resourceForkIO (ResourceT f) = ResourceT $ \r -> L.mask $ \restore ->
             (return ())
             (stateCleanup r)
             (restore $ f r))
+
+-- | Determine if the current @ResourceT@ is still active. This is necessary
+-- for such cases as lazy I\/O, where an unevaluated thunk may still refer to a
+-- closed @ResourceT@.
+resourceActive :: Resource m => ResourceT m Bool
+resourceActive = ResourceT $ \rmMap -> do
+    rm <- resourceLiftBase $ readRef' rmMap
+    case rm of
+        ReleaseMapClosed -> return False
+        _ -> return True
