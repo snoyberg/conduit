@@ -1,4 +1,5 @@
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeFamilies #-}
 module Data.Conduit.Network
     ( -- * Basic utilities
       sourceSocket
@@ -23,10 +24,11 @@ import Network.Socket.ByteString (sendAll, recv)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as S
 import Control.Monad.IO.Class (liftIO)
-import Control.Exception (bracketOnError, IOException, bracket, throwIO, SomeException, try)
+import Control.Exception (bracketOnError, IOException, throwIO, SomeException, try)
+import Control.Exception.Lifted (bracket)
 import Control.Monad (forever)
 import Control.Monad.Trans.Resource (register)
-import Control.Concurrent (forkIO)
+import Control.Concurrent.Lifted (fork)
 
 -- | Stream data from the socket.
 --
@@ -66,6 +68,11 @@ type Application = Source IO ByteString
                 -> Sink ByteString IO ()
                 -> ResourceT IO ()
 
+-- | Same as @Application@, but allows an arbitrary inner monad.
+type ApplicationM m = Source m ByteString
+                   -> Sink ByteString m ()
+                   -> ResourceT m ()
+
 -- | Settings for a TCP server. It takes a port to listen on, and an optional
 -- hostname to bind to.
 --
@@ -80,15 +87,15 @@ data ServerSettings = ServerSettings
 -- each connection.
 --
 -- Since 0.2.1
-runTCPServer :: ServerSettings -> Application -> IO ()
+runTCPServer :: (Base m ~ IO, ResourceIO m) => ServerSettings -> ApplicationM m -> m ()
 runTCPServer (ServerSettings port host) app = bracket
-    (bindPort host port)
-    NS.sClose
+    (liftIO $ bindPort host port)
+    (liftIO . NS.sClose)
     (forever . serve)
   where
     serve lsocket = do
-        (socket, _addr) <- NS.accept lsocket
-        forkIO $ runResourceT $ do
+        (socket, _addr) <- liftIO $ NS.accept lsocket
+        fork $ runResourceT $ do
             _ <- register $ NS.sClose socket
             app (sourceSocket socket) (sinkSocket socket)
 
@@ -101,10 +108,10 @@ data ClientSettings = ClientSettings
 -- | Run an @Application@ by connecting to the specified server.
 --
 -- Since 0.2.1
-runTCPClient :: ClientSettings -> Application -> IO ()
+runTCPClient :: ResourceIO m => ClientSettings -> ApplicationM m -> m ()
 runTCPClient (ClientSettings port host) app = bracket
-    (getSocket host port)
-    NS.sClose
+    (liftIO $ getSocket host port)
+    (liftIO . NS.sClose)
     (\s -> runResourceT $ app (sourceSocket s) (sinkSocket s))
 
 -- | Attempt to connect to the given host/port.
