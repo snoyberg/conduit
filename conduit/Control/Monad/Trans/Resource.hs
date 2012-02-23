@@ -32,8 +32,8 @@ module Control.Monad.Trans.Resource
     , runExceptionT_
       -- * Type class/associated types
     , ResourceIO
-    --, ResourceUnsafeIO (..)
-    , ResourceThrow (..)
+    , MonadUnsafeIO (..)
+    , MonadThrow (..)
       -- ** Low-level
     , InvalidAccess (..)
     , resourceActive
@@ -57,10 +57,6 @@ import Control.Monad.Trans.Class (MonadTrans (..))
 import Control.Monad.IO.Class (MonadIO (..))
 import Control.Monad (liftM)
 import qualified Control.Exception as E
-import Control.Monad.ST (ST, unsafeIOToST)
-import qualified Control.Monad.ST.Lazy as Lazy
-import qualified Data.STRef as S
-import qualified Data.STRef.Lazy as SL
 import Data.Monoid (Monoid)
 import qualified Control.Exception.Lifted as L
 
@@ -80,22 +76,8 @@ import qualified Control.Monad.Trans.State.Strict  as Strict ( StateT )
 import qualified Control.Monad.Trans.Writer.Strict as Strict ( WriterT )
 import Control.Concurrent (ThreadId, forkIO)
 
-{-
-instance Resource IO where
-    type Base IO = IO
-    resourceLiftBase = id
-    resourceBracket_ = E.bracket_
-
-instance (MonadTransControl t, Resource m, Monad (t m))
-        => Resource (t m) where
-    type Base (t m) = Base m
-
-    resourceLiftBase = lift . resourceLiftBase
-    resourceBracket_ a b c =
-        control' $ \run -> resourceBracket_ a b (run c)
-      where
-        control' f = liftWith f >>= restoreT . return
--}
+import Control.Monad.ST (ST, unsafeIOToST)
+import qualified Control.Monad.ST.Lazy as Lazy
 
 -- | A lookup key for a specific release action. This value is returned by
 -- 'register', 'with' and 'withIO', and is passed to 'release'.
@@ -291,12 +273,12 @@ instance MonadBaseControl b m => MonadBaseControl b (ResourceT m) where
          liftBaseWith $ \runInBase ->
              f $ liftM StMT . runInBase . (\(ResourceT r) -> r reader)
      restoreM (StMT base) = ResourceT $ const $ restoreM base
-instance Monad m => ResourceThrow (ExceptionT m) where
-    resourceThrow = ExceptionT . return . Left . E.toException
+instance Monad m => MonadThrow (ExceptionT m) where
+    monadThrow = ExceptionT . return . Left . E.toException
 
 
 -- | The express purpose of this transformer is to allow the 'ST' monad to
--- catch exceptions via the 'ResourceThrow' typeclass.
+-- catch exceptions via the 'MonadThrow' typeclass.
 newtype ExceptionT m a = ExceptionT { runExceptionT :: m (Either SomeException a) }
 
 -- | Same as 'runExceptionT', but immediately 'E.throw' any exception returned.
@@ -339,14 +321,14 @@ instance MonadBaseControl b m => MonadBaseControl b (ExceptionT m) where
 -- | A 'Resource' which can throw exceptions. Note that this does not work in a
 -- vanilla @ST@ monad. Instead, you should use the 'ExceptionT' transformer on
 -- top of @ST@.
-class Monad m => ResourceThrow m where
-    resourceThrow :: E.Exception e => e -> m a
+class Monad m => MonadThrow m where
+    monadThrow :: E.Exception e => e -> m a
 
-instance ResourceThrow IO where
-    resourceThrow = E.throwIO
+instance MonadThrow IO where
+    monadThrow = E.throwIO
 
-#define GO(T) instance (ResourceThrow m) => ResourceThrow (T m) where resourceThrow = lift . resourceThrow
-#define GOX(X, T) instance (X, ResourceThrow m) => ResourceThrow (T m) where resourceThrow = lift . resourceThrow
+#define GO(T) instance (MonadThrow m) => MonadThrow (T m) where monadThrow = lift . monadThrow
+#define GOX(X, T) instance (X, MonadThrow m) => MonadThrow (T m) where monadThrow = lift . monadThrow
 GO(IdentityT)
 GO(ListT)
 GO(MaybeT)
@@ -395,3 +377,20 @@ resourceActive = ResourceT $ \rmMap -> do
     case rm of
         ReleaseMapClosed -> return False
         _ -> return True
+
+-- | A 'Resource' based on some monad which allows running of some 'IO'
+-- actions, via unsafe calls. This applies to 'IO' and 'ST', for instance.
+class Monad m => MonadUnsafeIO m where
+    unsafeLiftIO :: IO a -> m a
+
+instance MonadUnsafeIO IO where
+    unsafeLiftIO = id
+
+instance MonadUnsafeIO (ST s) where
+    unsafeLiftIO = unsafeIOToST
+
+instance MonadUnsafeIO (Lazy.ST s) where
+    unsafeLiftIO = Lazy.unsafeIOToST
+
+instance (MonadTrans t, MonadUnsafeIO m, Monad (t m)) => MonadUnsafeIO (t m) where
+    unsafeLiftIO = lift . unsafeLiftIO

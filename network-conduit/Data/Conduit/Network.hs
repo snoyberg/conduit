@@ -23,19 +23,18 @@ import Network.Socket (Socket)
 import Network.Socket.ByteString (sendAll, recv)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as S
-import Control.Monad.IO.Class (liftIO)
-import Control.Exception (bracketOnError, IOException, throwIO, SomeException, try)
-import Control.Exception.Lifted (bracket)
+import Control.Monad.IO.Class (MonadIO (liftIO))
+import Control.Exception (bracketOnError, IOException, throwIO, SomeException, try, finally, bracket)
 import Control.Monad (forever)
-import Control.Monad.Trans.Resource (register)
-import Control.Concurrent.Lifted (fork)
+import Control.Monad.Trans.Control (control)
+import Control.Concurrent (forkIO)
 
 -- | Stream data from the socket.
 --
 -- This function does /not/ automatically close the socket.
 --
 -- Since 0.0.0
-sourceSocket :: ResourceIO m => Socket -> Source m ByteString
+sourceSocket :: MonadIO m => Socket -> Source m ByteString
 sourceSocket socket =
     src
   where
@@ -51,7 +50,7 @@ sourceSocket socket =
 -- This function does /not/ automatically close the socket.
 --
 -- Since 0.0.0
-sinkSocket :: ResourceIO m => Socket -> Sink ByteString m ()
+sinkSocket :: MonadIO m => Socket -> Sink ByteString m ()
 sinkSocket socket =
     SinkData push close
   where
@@ -63,15 +62,10 @@ sinkSocket socket =
 -- | A simple TCP application. It takes two arguments: the @Source@ to read
 -- input data from, and the @Sink@ to send output data to.
 --
--- Since 0.2.1
-type Application = Source IO ByteString
-                -> Sink ByteString IO ()
-                -> ResourceT IO ()
-
--- | Same as @Application@, but allows an arbitrary inner monad.
-type ApplicationM m = Source m ByteString
-                   -> Sink ByteString m ()
-                   -> ResourceT m ()
+-- Since 0.3.0
+type Application m = Source m ByteString
+                  -> Sink ByteString m ()
+                  -> m ()
 
 -- | Settings for a TCP server. It takes a port to listen on, and an optional
 -- hostname to bind to.
@@ -87,17 +81,19 @@ data ServerSettings = ServerSettings
 -- each connection.
 --
 -- Since 0.2.1
-runTCPServer :: (Base m ~ IO, ResourceIO m) => ServerSettings -> ApplicationM m -> m ()
-runTCPServer (ServerSettings port host) app = bracket
+runTCPServer :: ResourceIO m => ServerSettings -> Application m -> m ()
+runTCPServer (ServerSettings port host) app = control $ \run -> bracket
     (liftIO $ bindPort host port)
     (liftIO . NS.sClose)
-    (forever . serve)
+    (run . forever . serve)
   where
     serve lsocket = do
         (socket, _addr) <- liftIO $ NS.accept lsocket
-        fork $ runResourceT $ do
-            _ <- register $ NS.sClose socket
-            app (sourceSocket socket) (sinkSocket socket)
+        let src = sourceSocket socket
+            sink = sinkSocket socket
+            app' run = run (app src sink) >> return ()
+            appClose run = app' run `finally` NS.sClose socket
+        control $ \run -> forkIO (appClose run) >> run (return ())
 
 -- | Settings for a TCP client, specifying how to connect to the server.
 data ClientSettings = ClientSettings
@@ -108,11 +104,11 @@ data ClientSettings = ClientSettings
 -- | Run an @Application@ by connecting to the specified server.
 --
 -- Since 0.2.1
-runTCPClient :: ResourceIO m => ClientSettings -> ApplicationM m -> m ()
-runTCPClient (ClientSettings port host) app = bracket
-    (liftIO $ getSocket host port)
-    (liftIO . NS.sClose)
-    (\s -> runResourceT $ app (sourceSocket s) (sinkSocket s))
+runTCPClient :: ResourceIO m => ClientSettings -> Application m -> m ()
+runTCPClient (ClientSettings port host) app = control $ \run -> bracket
+    (getSocket host port)
+    NS.sClose
+    (\s -> run $ app (sourceSocket s) (sinkSocket s))
 
 -- | Attempt to connect to the given host/port.
 --

@@ -23,7 +23,6 @@ import qualified Data.Attoparsec.ByteString
 import qualified Data.Attoparsec.Text
 import qualified Data.Attoparsec.Types as A
 import qualified Data.Conduit as C
-import Control.Monad.Trans.Class (lift)
 
 -- | The context and message from a 'A.Fail' value.
 data ParseError = ParseError
@@ -59,8 +58,8 @@ instance AttoparsecInput T.Text where
 -- | Convert an Attoparsec 'A.Parser' into a 'C.Sink'. The parser will
 -- be streamed bytes until it returns 'A.Done' or 'A.Fail'.
 --
--- If parsing fails, a 'ParseError' will be thrown with 'C.resourceThrow'.
-sinkParser :: (AttoparsecInput a, C.ResourceThrow m) => A.Parser a b -> C.Sink a m b
+-- If parsing fails, a 'ParseError' will be thrown with 'C.monadThrow'.
+sinkParser :: (AttoparsecInput a, C.MonadThrow m) => A.Parser a b -> C.Sink a m b
 sinkParser p0 = C.sinkState
     (parseA p0)
     push
@@ -72,10 +71,10 @@ sinkParser p0 = C.sinkState
             A.Done leftover x ->
                 let lo = if isNull leftover then Nothing else Just leftover
                  in return (C.StateDone lo x)
-            A.Fail _ contexts msg -> lift $ C.resourceThrow $ ParseError contexts msg
+            A.Fail _ contexts msg -> C.monadThrow $ ParseError contexts msg
             A.Partial p -> return (C.StateProcessing p)
     close parser = do
         case feedA (parser empty) empty of
             A.Done _leftover y -> return y
-            A.Fail _ contexts msg -> lift $ C.resourceThrow $ ParseError contexts msg
-            A.Partial _ -> lift $ C.resourceThrow DivergentParser
+            A.Fail _ contexts msg -> C.monadThrow $ ParseError contexts msg
+            A.Partial _ -> C.monadThrow DivergentParser

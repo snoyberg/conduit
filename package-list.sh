@@ -4,4 +4,5 @@ pkgs=( conduit
        filesystem-conduit
        zlib-conduit
        network-conduit
+       imagesize-conduit
      )

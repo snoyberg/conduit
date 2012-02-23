@@ -51,6 +51,8 @@ module Data.Conduit
       -- * Convenience re-exports
     , ResourceT
     , ResourceIO
+    , MonadThrow (..)
+    , MonadUnsafeIO (..)
     , runResourceT
     ) where
 

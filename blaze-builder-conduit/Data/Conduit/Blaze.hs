@@ -42,8 +42,7 @@ module Data.Conduit.Blaze
     ) where
 
 import Data.Conduit hiding (SinkResult (Done))
-import Control.Monad.Trans.Resource
-import Control.Monad.Trans.Class
+import Control.Monad (liftM)
 
 import qualified Data.ByteString                   as S
 
@@ -53,14 +52,14 @@ import Blaze.ByteString.Builder.Internal.Buffer
 
 -- | Incrementally execute builders and pass on the filled chunks as
 -- bytestrings.
-builderToByteString :: ResourceUnsafeIO m => Conduit Builder m S.ByteString
+builderToByteString :: MonadUnsafeIO m => Conduit Builder m S.ByteString
 builderToByteString =
   builderToByteStringWith (allNewBuffersStrategy defaultBufferSize)
 
 -- |
 --
 -- Since 0.0.2
-builderToByteStringFlush :: ResourceUnsafeIO m => Conduit (Flush Builder) m (Flush S.ByteString)
+builderToByteStringFlush :: MonadUnsafeIO m => Conduit (Flush Builder) m (Flush S.ByteString)
 builderToByteStringFlush =
   builderToByteStringWithFlush (allNewBuffersStrategy defaultBufferSize)
 
@@ -71,7 +70,7 @@ builderToByteStringFlush =
 -- WARNING: This conduit yields bytestrings that are NOT
 -- referentially transparent. Their content will be overwritten as soon
 -- as control is returned from the inner sink!
-unsafeBuilderToByteString :: ResourceUnsafeIO m
+unsafeBuilderToByteString :: MonadUnsafeIO m
                           => IO Buffer  -- action yielding the inital buffer.
                           -> Conduit Builder m S.ByteString
 unsafeBuilderToByteString = builderToByteStringWith . reuseBufferStrategy
@@ -81,7 +80,7 @@ unsafeBuilderToByteString = builderToByteStringWith . reuseBufferStrategy
 -- filled chunks as bytestrings to an inner sink.
 --
 -- INV: All bytestrings passed to the inner sink are non-empty.
-builderToByteStringWith :: ResourceUnsafeIO m
+builderToByteStringWith :: MonadUnsafeIO m
                         => BufferAllocStrategy
                         -> Conduit Builder m S.ByteString
 builderToByteStringWith (ioBuf0, nextBuf) = conduitState
@@ -89,7 +88,7 @@ builderToByteStringWith (ioBuf0, nextBuf) = conduitState
     (push nextBuf)
     close
   where
-    close ioBuf = lift $ unsafeFromIO $ do
+    close ioBuf = unsafeLiftIO $ do
         buf <- ioBuf
         return $ maybe [] return $ unsafeFreezeNonEmptyBuffer buf
 
@@ -97,7 +96,7 @@ builderToByteStringWith (ioBuf0, nextBuf) = conduitState
 --
 -- Since 0.0.2
 builderToByteStringWithFlush
-    :: ResourceUnsafeIO m
+    :: MonadUnsafeIO m
     => BufferAllocStrategy
     -> Conduit (Flush Builder) m (Flush S.ByteString)
 builderToByteStringWithFlush (ioBuf0, nextBuf) = conduitState
@@ -105,14 +104,14 @@ builderToByteStringWithFlush (ioBuf0, nextBuf) = conduitState
     push'
     close
   where
-    close ioBuf = lift $ unsafeFromIO $ do
+    close ioBuf = unsafeLiftIO $ do
         buf <- ioBuf
         return $ maybe [] (return . Chunk) $ unsafeFreezeNonEmptyBuffer buf
 
-    push' :: ResourceUnsafeIO m
+    push' :: MonadUnsafeIO m
           => IO Buffer
           -> Flush Builder
-          -> ResourceT m (ConduitStateResult (IO Buffer) input (Flush S.ByteString))
+          -> m (ConduitStateResult (IO Buffer) input (Flush S.ByteString))
     push' ioBuf Flush = do
         StateProducing ioBuf' chunks <- push nextBuf ioBuf flush
         let myFold bs rest
@@ -120,14 +119,14 @@ builderToByteStringWithFlush (ioBuf0, nextBuf) = conduitState
                 | otherwise = Chunk bs : rest
             chunks' = foldr myFold [Flush] chunks
         return $ StateProducing ioBuf' chunks'
-    push' ioBuf (Chunk builder) = (fmap . fmap) Chunk (push nextBuf ioBuf builder)
+    push' ioBuf (Chunk builder) = (liftM . fmap) Chunk (push nextBuf ioBuf builder)
 
-push :: ResourceUnsafeIO m
+push :: MonadUnsafeIO m
      => (Int -> Buffer -> IO (IO Buffer))
      -> IO Buffer
      -> Builder
-     -> ResourceT m (ConduitStateResult (IO Buffer) input S.ByteString)
-push nextBuf ioBuf0 x = lift $ unsafeFromIO $ do
+     -> m (ConduitStateResult (IO Buffer) input S.ByteString)
+push nextBuf ioBuf0 x = unsafeLiftIO $ do
     (ioBuf', front) <- go (unBuilder x (buildStep finalStep)) ioBuf0 id
     return $ StateProducing ioBuf' $ front []
   where
