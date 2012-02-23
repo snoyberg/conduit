@@ -41,19 +41,19 @@ module Data.Conduit.List
 
 import Prelude
     ( ($), return, (==), (-), Int
-    , (.), id, Maybe (..), fmap, Monad
+    , (.), id, Maybe (..), Monad
     , Bool (..)
     , (>>)
     )
 import qualified Prelude
 import Data.Conduit
-import Control.Monad.Trans.Class (lift)
 import Data.Monoid (mempty)
+import Control.Monad (liftM)
 
 -- | A strict left fold.
 --
 -- Since 0.2.0
-fold :: Resource m
+fold :: Monad m
      => (b -> a -> b)
      -> b
      -> Sink a m b
@@ -65,14 +65,14 @@ fold f accum0 = sinkState
 -- | A monadic strict left fold.
 --
 -- Since 0.2.0
-foldM :: Resource m
+foldM :: Monad m
       => (b -> a -> m b)
       -> b
       -> Sink a m b
 foldM f accum0 = sinkState
     accum0
     (\accum input -> do
-        accum' <- lift $ f accum input
+        accum' <- f accum input
         return $ StateProcessing accum'
     )
     return
@@ -80,19 +80,19 @@ foldM f accum0 = sinkState
 -- | Apply the action to all values in the stream.
 --
 -- Since 0.2.0
-mapM_ :: Resource m
+mapM_ :: Monad m
       => (a -> m ())
       -> Sink a m ()
 mapM_ f =
     SinkData push close
   where
-    push input = lift (f input) >> return (Processing push close)
+    push input = f input >> return (Processing push close)
     close = return ()
 
 -- | Convert a list into a source.
 --
 -- Since 0.2.0
-sourceList :: Resource m => [a] -> Source m a
+sourceList :: Monad m => [a] -> Source m a
 sourceList l0 =
     sourceState l0 go
   where
@@ -108,7 +108,7 @@ sourceList l0 =
 -- memory.
 --
 -- Since 0.2.0
-drop :: Resource m
+drop :: Monad m
      => Int
      -> Sink a m ()
 drop count0 = sinkState
@@ -131,7 +131,7 @@ drop count0 = sinkState
 -- > take i = isolate i =$ consume
 --
 -- Since 0.2.0
-take :: Resource m
+take :: Monad m
      => Int
      -> Sink a m [a]
 take count0 = sinkState
@@ -151,7 +151,7 @@ take count0 = sinkState
 -- | Take a single value from the stream, if available.
 --
 -- Since 0.2.0
-head :: Resource m => Sink a m (Maybe a)
+head :: Monad m => Sink a m (Maybe a)
 head =
     SinkData push close
   where
@@ -162,7 +162,7 @@ head =
 -- change the state of the stream.
 --
 -- Since 0.2.0
-peek :: Resource m => Sink a m (Maybe a)
+peek :: Monad m => Sink a m (Maybe a)
 peek =
     SinkData push close
   where
@@ -191,7 +191,7 @@ mapM f =
     conduit
   where
     conduit = Conduit push close
-    push = fmap (Producing conduit . return) . lift . f
+    push = liftM (Producing conduit . return) . f
     close = return []
 
 -- | Apply a transformation to all values in a stream, concatenating the output
@@ -215,13 +215,13 @@ concatMapM f =
     conduit
   where
     conduit = Conduit push close
-    push = fmap (Producing conduit) . lift . f
+    push = liftM (Producing conduit) . f
     close = return []
 
 -- | 'concatMap' with an accumulator.
 --
 -- Since 0.2.0
-concatMapAccum :: Resource m => (a -> accum -> (accum, [b])) -> accum -> Conduit a m b
+concatMapAccum :: Monad m => (a -> accum -> (accum, [b])) -> accum -> Conduit a m b
 concatMapAccum f accum = conduitState accum push close
   where
     push state input = let (state', result) = f input state
@@ -231,10 +231,10 @@ concatMapAccum f accum = conduitState accum push close
 -- | 'concatMapM' with an accumulator.
 --
 -- Since 0.2.0
-concatMapAccumM :: Resource m => (a -> accum -> m (accum, [b])) -> accum -> Conduit a m b
+concatMapAccumM :: Monad m => (a -> accum -> m (accum, [b])) -> accum -> Conduit a m b
 concatMapAccumM f accum = conduitState accum push close
   where
-    push state input = do (state', result) <- lift (f input state)
+    push state input = do (state', result) <- f input state
                           return $ StateProducing state' result
     close _ = return []
 
@@ -243,7 +243,7 @@ concatMapAccumM f accum = conduitState accum push close
 -- "Data.Conduit.Lazy".
 --
 -- Since 0.2.0
-consume :: Resource m => Sink a m [a]
+consume :: Monad m => Sink a m [a]
 consume = sinkState
     id
     (\front input -> return (StateProcessing $ front . (input :)))
@@ -252,7 +252,7 @@ consume = sinkState
 -- | Grouping input according to an equality function.
 --
 -- Since 0.2.0
-groupBy :: Resource m => (a -> a -> Bool) -> Conduit a m [a]
+groupBy :: Monad m => (a -> a -> Bool) -> Conduit a m [a]
 groupBy f = conduitState
     []
     push
@@ -279,7 +279,7 @@ groupBy f = conduitState
 -- >     ...
 --
 -- Since 0.2.0
-isolate :: Resource m => Int -> Conduit a m a
+isolate :: Monad m => Int -> Conduit a m a
 isolate count0 = conduitState
     count0
     push
@@ -298,7 +298,7 @@ isolate count0 = conduitState
 -- | Keep only values in the stream passing a given predicate.
 --
 -- Since 0.2.0
-filter :: Resource m => (a -> Bool) -> Conduit a m a
+filter :: Monad m => (a -> Bool) -> Conduit a m a
 filter f =
     conduit
   where
@@ -310,7 +310,7 @@ filter f =
 -- combined with 'isolate'.
 --
 -- Since 0.2.0
-sinkNull :: Resource m => Sink a m ()
+sinkNull :: Monad m => Sink a m ()
 sinkNull =
     SinkData push close
   where
@@ -321,14 +321,14 @@ sinkNull =
 -- synonym for 'mempty'.
 --
 -- Since 0.2.0
-sourceNull :: Resource m => Source m a
+sourceNull :: Monad m => Source m a
 sourceNull = mempty
 
 -- | Combines two sources. The new source will stop producing once either
 --   source has been exhausted.
 --
 -- Since 0.2.2
-zip :: Resource m => Source m a -> Source m b -> Source m (a, b)
+zip :: Monad m => Source m a -> Source m b -> Source m (a, b)
 zip sa sb = Source pull close
     where
         pull = do ra <- sourcePull sa

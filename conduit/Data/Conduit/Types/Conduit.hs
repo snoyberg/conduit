@@ -7,14 +7,13 @@ module Data.Conduit.Types.Conduit
     , ConduitClose
     ) where
 
-import Control.Monad.Trans.Resource (ResourceT)
 import Control.Monad (liftM)
 
 -- | The value of the @conduitPush@ record.
-type ConduitPush input m output = input -> ResourceT m (ConduitResult input m output)
+type ConduitPush input m output = input -> m (ConduitResult input m output)
 
 -- | The value of the @conduitClose@ record.
-type ConduitClose m output = ResourceT m [output]
+type ConduitClose m output = m [output]
 
 -- | When data is pushed to a @Conduit@, it may either indicate that it is
 -- still producing output and provide some, or indicate that it is finished

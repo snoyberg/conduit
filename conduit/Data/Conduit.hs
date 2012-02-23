@@ -50,16 +50,14 @@ module Data.Conduit
     , Flush (..)
       -- * Convenience re-exports
     , ResourceT
-    , Resource (..)
     , ResourceIO
-    , ResourceUnsafeIO
     , runResourceT
-    , ResourceThrow (..)
     ) where
 
-import Control.Applicative ((<$>))
 import Control.Monad (liftM)
 import Control.Monad.Trans.Resource
+import Control.Monad.IO.Class (MonadIO (liftIO))
+import qualified Data.IORef as I
 import Data.Conduit.Types.Source
 import Data.Conduit.Util.Source
 import Data.Conduit.Types.Sink
@@ -87,7 +85,7 @@ infixr 0 $$
 -- close any @BufferedSource@s, allowing them to be reused.
 --
 -- Since 0.2.0
-($$) :: (IsSource src, Resource m) => src m a -> Sink a m b -> ResourceT m b
+($$) :: IsSource src m => src m a -> Sink a m b -> m b
 ($$) = connect
 {-# INLINE ($$) #-}
 
@@ -95,23 +93,23 @@ infixr 0 $$
 -- 'BufferedSource'.
 --
 -- Since 0.2.0
-class IsSource src where
-    connect :: Resource m => src m a -> Sink a m b -> ResourceT m b
-    fuseLeft :: Resource m => src m a -> Conduit a m b -> Source m b
+class IsSource src m where
+    connect :: src m a -> Sink a m b -> m b
+    fuseLeft :: src m a -> Conduit a m b -> Source m b
 
-instance IsSource Source where
+instance Monad m => IsSource Source m where
     connect = normalConnect
     {-# INLINE connect #-}
     fuseLeft = normalFuseLeft
     {-# INLINE fuseLeft #-}
 
-instance IsSource BufferedSource where
+instance MonadIO m => IsSource BufferedSource m where
     connect = bufferedConnect
     {-# INLINE connect #-}
     fuseLeft = bufferedFuseLeft
     {-# INLINE fuseLeft #-}
 
-normalConnect :: Resource m => Source m a -> Sink a m b -> ResourceT m b
+normalConnect :: Monad m => Source m a -> Sink a m b -> m b
 normalConnect _ (SinkNoData output) = return output
 normalConnect src0 (SinkLift msink) = msink >>= normalConnect src0
 normalConnect src0 (SinkData push0 close0) =
@@ -143,14 +141,14 @@ infixl 1 $=
 -- @BufferedSource@ will be left open.
 --
 -- Since 0.2.0
-($=) :: (IsSource src, Resource m)
+($=) :: IsSource src m
      => src m a
      -> Conduit a m b
      -> Source m b
 ($=) = fuseLeft
 {-# INLINE ($=) #-}
 
-normalFuseLeft :: Resource m => Source m a -> Conduit a m b -> Source m b
+normalFuseLeft :: Monad m => Source m a -> Conduit a m b -> Source m b
 normalFuseLeft src0 conduit0 = Source
     { sourcePull = pull $ FLOpen src0 conduit0 []
     , sourceClose = return ()
@@ -205,7 +203,7 @@ infixr 0 =$
 -- | Right fuse, combining a conduit and a sink together into a new sink.
 --
 -- Since 0.2.0
-(=$) :: Resource m => Conduit a m b -> Sink b m c -> Sink a m c
+(=$) :: Monad m => Conduit a m b -> Sink b m c -> Sink a m c
 _ =$ SinkNoData res = SinkNoData res
 conduit =$ SinkLift msink = SinkLift (liftM (conduit =$) msink)
 conduitOrig =$ SinkData pushI0 closeI0 = SinkData
@@ -250,7 +248,7 @@ infixr 0 =$=
 -- | Middle fuse, combining two conduits together into a new conduit.
 --
 -- Since 0.2.0
-(=$=) :: Resource m => Conduit a m b -> Conduit b m c -> Conduit a m c
+(=$=) :: Monad m => Conduit a m b -> Conduit b m c -> Conduit a m c
 outerOrig =$= innerOrig = Conduit
     (pushF outerOrig innerOrig)
     (closeF outerOrig innerOrig)
@@ -282,7 +280,7 @@ outerOrig =$= innerOrig = Conduit
         return c
 
 -- | Push some data to a conduit, then close it if necessary.
-conduitPushClose :: Monad m => Conduit a m b -> [a] -> ResourceT m [b]
+conduitPushClose :: Monad m => Conduit a m b -> [a] -> m [b]
 conduitPushClose c [] = conduitClose c
 conduitPushClose c (input:rest) = do
     res <- conduitPush c input
@@ -312,7 +310,7 @@ conduitPushClose c (input:rest) = do
 -- handle this correctly.
 --
 -- Since 0.2.0
-data BufferedSource m a = BufferedSource (Ref (Base m) (BSState m a))
+data BufferedSource m a = BufferedSource (I.IORef (BSState m a))
 
 data BSState m a =
     ClosedEmpty
@@ -325,8 +323,8 @@ data BSState m a =
 -- longer in use.
 --
 -- Since 0.2.0
-bufferSource :: Resource m => Source m a -> ResourceT m (BufferedSource m a)
-bufferSource src = BufferedSource <$> newRef (OpenEmpty src)
+bufferSource :: MonadIO m => Source m a -> m (BufferedSource m a)
+bufferSource src = liftM BufferedSource $ liftIO $ I.newIORef $ OpenEmpty src
 
 -- | Turn a 'BufferedSource' into a 'Source'. Note that in general this will
 -- mean your original 'BufferedSource' will be closed. Additionally, all
@@ -336,7 +334,7 @@ bufferSource src = BufferedSource <$> newRef (OpenEmpty src)
 -- Note: @bufferSource@ . @unbufferSource@ is /not/ the identity function.
 --
 -- Since 0.2.0
-unbufferSource :: Resource m
+unbufferSource :: MonadIO m
                => BufferedSource m a
                -> Source m a
 unbufferSource (BufferedSource bs) = Source
@@ -345,7 +343,7 @@ unbufferSource (BufferedSource bs) = Source
     }
   where
     msrc = do
-        buf <- readRef bs
+        buf <- liftIO $ I.readIORef bs
         case buf of
             OpenEmpty src -> return src
             OpenFull src a -> return Source
@@ -364,11 +362,11 @@ unbufferSource (BufferedSource bs) = Source
                 , sourceClose = return ()
                 }
 
-bufferedConnect :: Resource m => BufferedSource m a -> Sink a m b -> ResourceT m b
+bufferedConnect :: MonadIO m => BufferedSource m a -> Sink a m b -> m b
 bufferedConnect _ (SinkNoData output) = return output
 bufferedConnect bsrc (SinkLift msink) = msink >>= bufferedConnect bsrc
 bufferedConnect (BufferedSource bs) (SinkData push0 close0) = do
-    bsState <- readRef bs
+    bsState <- liftIO $ I.readIORef bs
     case bsState of
         ClosedEmpty -> close0
         OpenEmpty src -> connect' src push0 close0
@@ -376,10 +374,10 @@ bufferedConnect (BufferedSource bs) (SinkData push0 close0) = do
             res <- push0 a
             case res of
                 Done mleftover res' -> do
-                    writeRef bs $ maybe ClosedEmpty ClosedFull mleftover
+                    liftIO $ I.writeIORef bs $ maybe ClosedEmpty ClosedFull mleftover
                     return res'
                 Processing _ close' -> do
-                    writeRef bs ClosedEmpty
+                    liftIO $ I.writeIORef bs ClosedEmpty
                     close'
         OpenFull src a -> push0 a >>= onRes src
   where
@@ -387,17 +385,17 @@ bufferedConnect (BufferedSource bs) (SinkData push0 close0) = do
         res <- sourcePull src
         case res of
             Closed -> do
-                writeRef bs ClosedEmpty
+                liftIO $ I.writeIORef bs ClosedEmpty
                 res' <- close
                 return res'
             Open src' a -> push a >>= onRes src'
     onRes src (Done mleftover res) = do
-        writeRef bs $ maybe (OpenEmpty src) (OpenFull src) mleftover
+        liftIO $ I.writeIORef bs $ maybe (OpenEmpty src) (OpenFull src) mleftover
         return res
     onRes src (Processing push close) = connect' src push close
 
 bufferedFuseLeft
-    :: Resource m
+    :: MonadIO m
     => BufferedSource m a
     -> Conduit a m b
     -> Source m b
@@ -455,32 +453,32 @@ bufferedFuseLeft bsrc conduit0 = Source
                 _ignored <- close
                 return ()
 
-bsourcePull :: Resource m => BufferedSource m a -> ResourceT m (Maybe a)
+bsourcePull :: MonadIO m => BufferedSource m a -> m (Maybe a)
 bsourcePull (BufferedSource bs) = do
-    buf <- readRef bs
+    buf <- liftIO $ I.readIORef bs
     case buf of
         OpenEmpty src -> do
             res <- sourcePull src
             case res of
                 Open src' a -> do
-                    writeRef bs $ OpenEmpty src'
+                    liftIO $ I.writeIORef bs $ OpenEmpty src'
                     return $ Just a
-                Closed -> writeRef bs ClosedEmpty >> return Nothing
+                Closed -> liftIO $ I.writeIORef bs ClosedEmpty >> return Nothing
         ClosedEmpty -> return Nothing
         OpenFull src a -> do
-            writeRef bs (OpenEmpty src)
+            liftIO $ I.writeIORef bs (OpenEmpty src)
             return $ Just a
         ClosedFull a -> do
-            writeRef bs ClosedEmpty
+            liftIO $ I.writeIORef bs ClosedEmpty
             return $ Just a
 
-bsourceUnpull :: Resource m => BufferedSource m a -> Maybe a -> ResourceT m ()
+bsourceUnpull :: MonadIO m => BufferedSource m a -> Maybe a -> m ()
 bsourceUnpull _ Nothing = return ()
 bsourceUnpull (BufferedSource ref) (Just a) = do
-    buf <- readRef ref
+    buf <- liftIO $ I.readIORef ref
     case buf of
-        OpenEmpty src -> writeRef ref (OpenFull src a)
-        ClosedEmpty -> writeRef ref (ClosedFull a)
+        OpenEmpty src -> liftIO $ I.writeIORef ref (OpenFull src a)
+        ClosedEmpty -> liftIO $ I.writeIORef ref (ClosedFull a)
         _ -> error $ "Invariant violated: bsourceUnpull called on full data"
 
 -- | Close the underlying 'Source' for the given 'BufferedSource'. Note
@@ -488,9 +486,9 @@ bsourceUnpull (BufferedSource ref) (Just a) = do
 -- check if the 'Source' was previously closed.
 --
 -- Since 0.2.0
-bsourceClose :: Resource m => BufferedSource m a -> ResourceT m ()
+bsourceClose :: MonadIO m => BufferedSource m a -> m ()
 bsourceClose (BufferedSource ref) = do
-    buf <- readRef ref
+    buf <- liftIO $ I.readIORef ref
     case buf of
         OpenEmpty src -> sourceClose src
         OpenFull src _ -> sourceClose src

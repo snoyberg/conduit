@@ -29,7 +29,6 @@ import           Prelude hiding (head, drop, takeWhile, lines, zip, zip3, zipWit
 
 import           Control.Arrow (first)
 import qualified Control.Exception as Exc
-import           Control.Monad.Trans.Class (lift)
 import           Data.Bits ((.&.), (.|.), shiftL)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as B8
@@ -92,11 +91,11 @@ decode codec = C.conduitState
             Nothing -> return []
             Just b
                 | B.null b -> error "Data.Conduit.Text.decode: Received a null chunk"
-                | otherwise -> lift $ resourceThrow $ DecodeException codec (B.head b)
+                | otherwise -> resourceThrow $ DecodeException codec (B.head b)
 
     go' mb input = do -- FIXME This can be simplified significantly since input is now only a single BS
         let bss = maybe id (:) mb [input]
-        either (lift . resourceThrow) return $ go bss id
+        either resourceThrow return $ go bss id
 
     go [] front = Right (Nothing, front [])
     go (x:xs) front

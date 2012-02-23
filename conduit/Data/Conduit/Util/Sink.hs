@@ -13,7 +13,6 @@ module Data.Conduit.Util.Sink
     ) where
 
 import Control.Monad.Trans.Resource
-import Control.Monad.Trans.Class (lift)
 import Data.Conduit.Types.Sink
 import Control.Monad (liftM)
 
@@ -31,10 +30,10 @@ data SinkStateResult state input output =
 --
 -- Since 0.2.0
 sinkState
-    :: Resource m
+    :: Monad m
     => state -- ^ initial state
-    -> (state -> input -> ResourceT m (SinkStateResult state input output)) -- ^ push
-    -> (state -> ResourceT m output) -- ^ Close. Note that the state is not returned, as it is not needed.
+    -> (state -> input -> m (SinkStateResult state input output)) -- ^ push
+    -> (state -> m output) -- ^ Close. Note that the state is not returned, as it is not needed.
     -> Sink input m output
 sinkState state0 push0 close0 =
     SinkData (push state0) (close0 state0)
@@ -56,22 +55,22 @@ data SinkIOResult input output = IODone (Maybe input) output | IOProcessing
 --
 -- Since 0.2.0
 sinkIO :: ResourceIO m
-        => IO state -- ^ resource and/or state allocation
-        -> (state -> IO ()) -- ^ resource and/or state cleanup
-        -> (state -> input -> m (SinkIOResult input output)) -- ^ push
-        -> (state -> m output) -- ^ close
-        -> Sink input m output
+       => IO state -- ^ resource and/or state allocation
+       -> (state -> IO ()) -- ^ resource and/or state cleanup
+       -> (state -> input -> ResourceT m (SinkIOResult input output)) -- ^ push
+       -> (state -> ResourceT m output) -- ^ close
+       -> Sink input (ResourceT m) output
 sinkIO alloc cleanup push0 close0 = SinkData
     { sinkPush = \input -> do
-        (key, state) <- withIO alloc cleanup
+        (key, state) <- with alloc cleanup
         push key state input
     , sinkClose = do
-        (key, state) <- withIO alloc cleanup
+        (key, state) <- with alloc cleanup
         close key state
     }
   where
     push key state input = do
-        res <- lift $ push0 state input
+        res <- push0 state input
         case res of
             IODone a b -> do
                 release key
@@ -80,7 +79,7 @@ sinkIO alloc cleanup push0 close0 = SinkData
                 (push key state)
                 (close key state)
     close key state = do
-        res <- lift $ close0 state
+        res <- close0 state
         release key
         return res
 
@@ -89,21 +88,21 @@ sinkIO alloc cleanup push0 close0 = SinkData
 -- See @transSource@ for more information.
 --
 -- Since 0.2.0
-transSink :: (Base m ~ Base n, Monad m)
+transSink :: Monad m
           => (forall a. m a -> n a)
           -> Sink input m output
           -> Sink input n output
 transSink _ (SinkNoData x) = SinkNoData x
-transSink f (SinkLift msink) = SinkLift (transResourceT f (liftM (transSink f) msink))
+transSink f (SinkLift msink) = SinkLift (f (liftM (transSink f) msink))
 transSink f (SinkData push close) = SinkData
-    (transResourceT f . fmap (transSinkPush f) . push)
-    (transResourceT f close)
+    (f . liftM (transSinkPush f) . push)
+    (f close)
 
-transSinkPush :: (Base m ~ Base n, Monad m)
+transSinkPush :: Monad m
               => (forall a. m a -> n a)
               -> SinkResult input m output
               -> SinkResult input n output
 transSinkPush _ (Done a b) = Done a b
 transSinkPush f (Processing push close) = Processing
-    (transResourceT f . fmap (transSinkPush f) . push)
-    (transResourceT f close)
+    (f . liftM (transSinkPush f) . push)
+    (f close)

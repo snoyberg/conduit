@@ -23,10 +23,11 @@ import Data.ByteString.Lazy.Char8 ()
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Encoding as TLE
-import Control.Monad.Trans.Resource (runExceptionT_, withIO, resourceForkIO)
+import Control.Monad.Trans.Resource (runExceptionT_, with, resourceForkIO)
 import Control.Concurrent (threadDelay, killThread)
 import Control.Monad.IO.Class (liftIO)
 import Control.Applicative (pure, (<$>), (<*>))
+import Data.Functor.Identity (runIdentity)
 
 main :: IO ()
 main = hspecX $ do
@@ -53,7 +54,7 @@ main = hspecX $ do
     describe "ResourceT" $ do
         it "resourceForkIO" $ do
             counter <- I.newIORef 0
-            let w = withIO
+            let w = with
                         (I.atomicModifyIORef counter $ \i ->
                             (i + 1, ()))
                         (const $ I.atomicModifyIORef counter $ \i ->
@@ -79,7 +80,7 @@ main = hspecX $ do
             x <- runResourceT $ CL.sourceList [1..10] C.$$ CL.fold (+) (0 :: Int)
             x @?= sum [1..10]
         prop "is idempotent" $ \list ->
-            (runST $ runResourceT $ CL.sourceList list C.$$ CL.fold (+) (0 :: Int))
+            (runST $ CL.sourceList list C.$$ CL.fold (+) (0 :: Int))
             == sum list
 
     describe "Monoid instance for Source" $ do
@@ -254,7 +255,7 @@ main = hspecX $ do
 
     describe "sequence" $ do
         it "simple sink" $ do
-            let sumSink :: C.Resource m => C.Sink Int m Int
+            let sumSink :: C.ResourceIO m => C.Sink Int m Int
                 sumSink = do
                     ma <- CL.head
                     case ma of
@@ -267,7 +268,7 @@ main = hspecX $ do
             res @?= [3, 7, 11, 15, 19, 11]
 
         it "sink with unpull behaviour" $ do
-            let sumSink :: C.Resource m => C.Sink Int m Int
+            let sumSink :: C.ResourceIO m => C.Sink Int m Int
                 sumSink = do
                     ma <- CL.head
                     case ma of
@@ -320,19 +321,19 @@ main = hspecX $ do
 
     describe "text" $ do
         let go enc tenc cenc = do
-                prop (enc ++ " single chunk") $ \chars -> runST $ runExceptionT_ $ runResourceT $ do
+                prop (enc ++ " single chunk") $ \chars -> runST $ runExceptionT_ $ do
                     let tl = TL.pack chars
                         lbs = tenc tl
                         src = CL.sourceList $ L.toChunks lbs
                     ts <- src C.$= CT.decode cenc C.$$ CL.consume
                     return $ TL.fromChunks ts == tl
-                prop (enc ++ " many chunks") $ \chars -> runST $ runExceptionT_ $ runResourceT $ do
+                prop (enc ++ " many chunks") $ \chars -> runIdentity $ runExceptionT_ $ do
                     let tl = TL.pack chars
                         lbs = tenc tl
                         src = mconcat $ map (CL.sourceList . return . S.singleton) $ L.unpack lbs
                     ts <- src C.$= CT.decode cenc C.$$ CL.consume
                     return $ TL.fromChunks ts == tl
-                prop (enc ++ " encoding") $ \chars -> runST $ runExceptionT_ $ runResourceT $ do
+                prop (enc ++ " encoding") $ \chars -> runIdentity $ runExceptionT_ $ do
                     let tss = map T.pack chars
                         lbs = tenc $ TL.fromChunks tss
                         src = mconcat $ map (CL.sourceList . return) tss
@@ -376,19 +377,19 @@ main = hspecX $ do
 
         prop "works" $ \bss' ->
             let bss = map S.pack bss'
-             in runST $ runResourceT $
+             in runIdentity $
                 CL.sourceList bss C.$$ go (L.fromChunks bss)
     describe "binary takeWhile" $ do
         prop "works" $ \bss' ->
             let bss = map S.pack bss'
-             in runST $ runResourceT $ do
+             in runIdentity $ do
                 bss2 <- CL.sourceList bss C.$$ CB.takeWhile (>= 5) C.=$ CL.consume
                 return $ L.fromChunks bss2 == L.takeWhile (>= 5) (L.fromChunks bss)
 
     describe "binary dropWhile" $ do
         prop "works" $ \bss' ->
             let bss = map S.pack bss'
-             in runST $ runResourceT $ do
+             in runIdentity $ do
                 bss2 <- CL.sourceList bss C.$$ do
                     CB.dropWhile (< 5)
                     CL.consume
@@ -439,7 +440,7 @@ main = hspecX $ do
             x @?= Just "foobarbazb"
 
     describe "binary" $ do
-        prop "lines" $ \bss' -> runST $ runResourceT $ do
+        prop "lines" $ \bss' -> runIdentity $ do
             let bss = map S.pack bss'
                 bs = S.concat bss
                 src = CL.sourceList bss

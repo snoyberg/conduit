@@ -19,9 +19,9 @@ module Data.Conduit.Util.Conduit
 
 import Prelude hiding (sequence)
 import Control.Monad.Trans.Resource
-import Control.Monad.Trans.Class
 import Data.Conduit.Types.Conduit
 import Data.Conduit.Types.Sink
+import Control.Monad (liftM)
 
 -- | A helper type for @conduitState@, indicating the result of being pushed
 -- to.  It can either indicate that processing is done, or to continue with the
@@ -41,10 +41,10 @@ instance Functor (ConduitStateResult state input) where
 --
 -- Since 0.2.0
 conduitState
-    :: Resource m
+    :: Monad m
     => state -- ^ initial state
-    -> (state -> input -> ResourceT m (ConduitStateResult state input output)) -- ^ Push function.
-    -> (state -> ResourceT m [output]) -- ^ Close function. The state need not be returned, since it will not be used again.
+    -> (state -> input -> m (ConduitStateResult state input output)) -- ^ Push function.
+    -> (state -> m [output]) -- ^ Close function. The state need not be returned, since it will not be used again.
     -> Conduit input m output
 conduitState state0 push0 close0 =
     Conduit (push state0) (close0 state0)
@@ -75,20 +75,20 @@ instance Functor (ConduitIOResult input) where
 conduitIO :: ResourceIO m
            => IO state -- ^ resource and/or state allocation
            -> (state -> IO ()) -- ^ resource and/or state cleanup
-           -> (state -> input -> m (ConduitIOResult input output)) -- ^ Push function. Note that this need not explicitly perform any cleanup.
-           -> (state -> m [output]) -- ^ Close function. Note that this need not explicitly perform any cleanup.
-           -> Conduit input m output
+           -> (state -> input -> ResourceT m (ConduitIOResult input output)) -- ^ Push function. Note that this need not explicitly perform any cleanup.
+           -> (state -> ResourceT m [output]) -- ^ Close function. Note that this need not explicitly perform any cleanup.
+           -> Conduit input (ResourceT m) output
 conduitIO alloc cleanup push0 close0 = Conduit
     { conduitPush = \input -> do
-        (key, state) <- withIO alloc cleanup
+        (key, state) <- with alloc cleanup
         push key state input
     , conduitClose = do
-        (key, state) <- withIO alloc cleanup
+        (key, state) <- with alloc cleanup
         close key state
     }
   where
     push key state input = do
-        res <- lift $ push0 state input
+        res <- push0 state input
         case res of
             IOProducing output -> return $ Producing
                 (Conduit (push key state) (close key state))
@@ -97,7 +97,7 @@ conduitIO alloc cleanup push0 close0 = Conduit
                 release key
                 return $ Finished a b
     close key state = do
-        output <- lift $ close0 state
+        output <- close0 state
         release key
         return output
 
@@ -106,19 +106,19 @@ conduitIO alloc cleanup push0 close0 = Conduit
 -- See @transSource@ for more information.
 --
 -- Since 0.2.0
-transConduit :: (Monad m, Base m ~ Base n)
+transConduit :: Monad m
              => (forall a. m a -> n a)
              -> Conduit input m output
              -> Conduit input n output
 transConduit f c = c
-    { conduitPush = transResourceT f . fmap (transConduitPush f) . conduitPush c
-    , conduitClose = transResourceT f (conduitClose c)
+    { conduitPush = f . liftM (transConduitPush f) . conduitPush c
+    , conduitClose = f (conduitClose c)
     }
 
-transConduitPush :: (Base m ~ Base n, Monad m)
-              => (forall a. m a -> n a)
-              -> ConduitResult input m output
-              -> ConduitResult input n output
+transConduitPush :: Monad m
+                 => (forall a. m a -> n a)
+                 -> ConduitResult input m output
+                 -> ConduitResult input n output
 transConduitPush _ (Finished a b) = Finished a b
 transConduitPush f (Producing conduit output) = Producing
     (transConduit f conduit)
@@ -143,14 +143,14 @@ type SequencedSink state input m output =
 data SCState state input m output =
     SCNewState state
   | SCConduit (Conduit input m output)
-  | SCSink (input -> ResourceT m (SinkResult input m (SequencedSinkResponse state input m output)))
-           (ResourceT m (SequencedSinkResponse state input m output))
+  | SCSink (input -> m (SinkResult input m (SequencedSinkResponse state input m output)))
+           (m (SequencedSinkResponse state input m output))
 
 -- | Convert a 'SequencedSink' into a 'Conduit'.
 --
 -- Since 0.2.0
 sequenceSink
-    :: Resource m
+    :: Monad m
     => state -- ^ initial state
     -> SequencedSink state input m output
     -> Conduit input m output
@@ -159,12 +159,12 @@ sequenceSink state0 fsink = conduitState
     (scPush id fsink)
     scClose
 
-goRes :: Resource m
+goRes :: Monad m
       => SequencedSinkResponse state input m output
       -> Maybe input
       -> ([output] -> [output])
       -> SequencedSink state input m output
-      -> ResourceT m (ConduitStateResult (SCState state input m output) input output)
+      -> m (ConduitStateResult (SCState state input m output) input output)
 goRes (Emit state output) (Just input) front fsink =
     scPush (front . (output++)) fsink (SCNewState state) input
 goRes (Emit state output) Nothing front _ =
@@ -176,12 +176,12 @@ goRes (StartConduit c) Nothing front _ =
 goRes (StartConduit c) (Just input) front fsink =
     scPush front fsink (SCConduit c) input
 
-scPush :: Resource m
+scPush :: Monad m
      => ([output] -> [output])
      -> SequencedSink state input m output
      -> SCState state input m output
      -> input
-     -> ResourceT m (ConduitStateResult (SCState state input m output) input output)
+     -> m (ConduitStateResult (SCState state input m output) input output)
 scPush front fsink (SCNewState state) input =
     go (fsink state)
   where
@@ -199,7 +199,7 @@ scPush front fsink (SCSink push _) input = do
         Done minput res -> goRes res minput front fsink
         Processing push' close' -> return (StateProducing (SCSink push' close') $ front [])
 
-scClose :: Monad m => SCState state inptu m output -> ResourceT m [output]
+scClose :: Monad m => SCState state inptu m output -> m [output]
 scClose (SCNewState _) = return []
 scClose (SCConduit conduit) = conduitClose conduit
 scClose (SCSink _ close) = do
@@ -216,7 +216,7 @@ scClose (SCSink _ close) = do
 -- @sequence . return@.
 --
 -- Since 0.2.1
-sequence :: Resource m => Sink input m output -> Conduit input m output
+sequence :: ResourceIO m => Sink input m output -> Conduit input m output
 sequence (SinkData spush sclose) = Conduit (push spush) (close sclose)
   where
     push spush' input = do

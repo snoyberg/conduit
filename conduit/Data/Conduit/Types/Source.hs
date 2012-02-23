@@ -5,7 +5,6 @@ module Data.Conduit.Types.Source
     , Source (..)
     ) where
 
-import Control.Monad.Trans.Resource
 import Data.Monoid (Monoid (..))
 import Control.Monad (liftM)
 
@@ -33,8 +32,8 @@ instance Monad m => Functor (SourceResult m) where
 --
 -- Since 0.2.0
 data Source m a = Source
-    { sourcePull :: ResourceT m (SourceResult m a)
-    , sourceClose :: ResourceT m ()
+    { sourcePull :: m (SourceResult m a)
+    , sourceClose :: m ()
     }
 
 instance Monad m => Functor (Source m) where
@@ -42,7 +41,7 @@ instance Monad m => Functor (Source m) where
         { sourcePull = liftM (fmap f) (sourcePull src)
         }
 
-instance Resource m => Monoid (Source m a) where
+instance Monad m => Monoid (Source m a) where
     mempty = Source
         { sourcePull = return Closed
         , sourceClose = return ()
