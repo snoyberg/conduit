@@ -100,7 +100,7 @@ data ReleaseMap =
 -- highly recommended optimization, as it will ensure that scarce resources are
 -- freed early. Note that calling @release@ will deregister the action, so that
 -- a release action will only ever be called once.
-newtype ResourceT m a = ResourceT ((I.IORef ReleaseMap) -> m a)
+newtype ResourceT m a = ResourceT (I.IORef ReleaseMap -> m a)
 
 instance Typeable1 m => Typeable1 (ResourceT m) where
     typeOf1 = goType undefined
@@ -234,22 +234,20 @@ transResourceT :: (m a -> n b)
 transResourceT f (ResourceT mx) = ResourceT (\r -> f (mx r))
 
 -------- All of our monad et al instances
-instance Monad m => Functor (ResourceT m) where
-    fmap f (ResourceT m) = ResourceT $ \r -> liftM f (m r)
+instance Functor m => Functor (ResourceT m) where
+    fmap f (ResourceT m) = ResourceT $ \r -> fmap f (m r)
 
-instance Monad m => Applicative (ResourceT m) where
-    pure = ResourceT . const . return
-    ResourceT mf <*> ResourceT ma = ResourceT $ \r -> do
-        f <- mf r
-        a <- ma r
-        return $ f a
+instance Applicative m => Applicative (ResourceT m) where
+    pure = ResourceT . const . pure
+    ResourceT mf <*> ResourceT ma = ResourceT $ \r ->
+        mf r <*> ma r
 
 instance Monad m => Monad (ResourceT m) where
-    return = pure
-    ResourceT ma >>= f =
-        ResourceT $ \r -> ma r >>= flip un r . f
-      where
-        un (ResourceT x) = x
+    return = ResourceT . const . return
+    ResourceT ma >>= f = ResourceT $ \r -> do
+        a <- ma r
+        let ResourceT f' = f a
+        f' r
 
 instance MonadTrans ResourceT where
     lift = ResourceT . const
