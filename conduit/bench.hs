@@ -4,6 +4,8 @@ import qualified Data.Conduit.List as CL
 import qualified Data.Conduit.Binary as CB
 import Data.Functor.Identity (runIdentity)
 import Control.Monad.ST (runST)
+import Control.Monad (foldM)
+import Data.List (foldl')
 
 main :: IO ()
 main = defaultMain
@@ -11,21 +13,6 @@ main = defaultMain
     , bench "bigsum-io" (whnfIO $ CL.sourceList [1..1000 :: Int] C.$$ CL.fold (+) 0)
     , bench "bigsum-st" $ whnf (\i -> (runST $ CL.sourceList [1..1000 :: Int] C.$$ CL.fold (+) i)) 0
     , bench "bigsum-identity" $ whnf (\i -> (runIdentity $ CL.sourceList [1..1000 :: Int] C.$$ CL.fold (+) i)) 0
-    {-
-    , bench "bigsum-buffer" (whnfIO $ C.runResourceT $ do
-        bsrc <- C.bufferSource $ CL.sourceList [1..1000 :: Int]
-        bsrc C.$$ CL.fold (+) 0)
-    , bench "fileread" (whnfIO $ C.runResourceT $ CB.sourceFile "bench" C.$$ CL.sinkNull)
-    , bench "fileread-buffer" (whnfIO $ C.runResourceT $ do
-        bsrc <- C.bufferSource $ CB.sourceFile "bench"
-        bsrc C.$$ CL.sinkNull)
-    , bench "map" (whnfIO $ C.runResourceT $ CL.sourceList [1..1000 :: Int] C.$= CL.map (+ 1) C.$$ CL.fold (+) 0)
-    , bench "map-buffer" (whnfIO $ C.runResourceT $ do
-        bsrc <- C.bufferSource $ CL.sourceList [1..1000 :: Int]
-        bsrc C.$= CL.map (+ 1) C.$$ CL.fold (+) 0)
-    , bench "map-buffer-alt" (whnfIO $ C.runResourceT $ do
-        bsrc <- C.bufferSource $ CL.sourceList [1..1000 :: Int] C.$= CL.map (+ 1)
-        bsrc C.$$ CL.fold (+) 0)
-    -}
+    , bench "bigsum-foldM" $ whnf (\i -> (runIdentity $ foldM (\a b -> return $! a + b) i [1..1000 :: Int])) 0
+    , bench "bigsum-pure" $ whnf (\i -> foldl' (+) i [1..1000 :: Int]) 0
     ]
-
