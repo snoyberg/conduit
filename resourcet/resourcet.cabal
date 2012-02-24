@@ -1,0 +1,27 @@
+Name:                resourcet
+Version:             0.3.0
+Synopsis:            Deterministic allocation and freeing of scarce resources.
+Description:
+	This package was originally included with the conduit package, and has since been split off.
+License:             BSD3
+License-file:        LICENSE
+Author:              Michael Snoyman
+Maintainer:          michael@snoyman.com
+Category:            Data, Conduit
+Build-type:          Simple
+Cabal-version:       >=1.8
+Homepage:            http://github.com/snoyberg/conduit
+
+Library
+  Exposed-modules:     Control.Monad.Trans.Resource
+  Build-depends:       base                     >= 4.3          && < 5
+                     , lifted-base              >= 0.1          && < 0.2
+                     , transformers-base        >= 0.4.1        && < 0.5
+                     , monad-control            >= 0.3.1        && < 0.4
+                     , containers
+                     , transformers             >= 0.2.2        && < 0.3
+  ghc-options:     -Wall
+
+source-repository head
+  type:     git
+  location: git://github.com/snoyberg/conduit.git

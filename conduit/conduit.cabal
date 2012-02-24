@@ -40,7 +40,6 @@ Library
                        Data.Conduit.Text
                        Data.Conduit.List
                        Data.Conduit.Lazy
-                       Control.Monad.Trans.Resource
   Other-modules:       Data.Conduit.Types.Source
                        Data.Conduit.Types.Sink
                        Data.Conduit.Types.Conduit
@@ -48,6 +47,7 @@ Library
                        Data.Conduit.Util.Sink
                        Data.Conduit.Util.Conduit
   Build-depends:       base                     >= 4.3          && < 5
+                     , resourcet                >= 0.3          && < 0.4
                      , lifted-base              >= 0.1          && < 0.2
                      , transformers-base        >= 0.4.1        && < 0.5
                      , monad-control            >= 0.3.1        && < 0.4
@@ -72,6 +72,7 @@ test-suite test
                    , bytestring
                    , transformers
                    , text
+                   , resourcet
     ghc-options:     -Wall
 
 source-repository head
