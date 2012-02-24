@@ -53,11 +53,11 @@ data SourceIOResult output = IOOpen output | IOClosed
 -- | Construct a 'Source' based on some IO actions for alloc/release.
 --
 -- Since 0.2.0
-sourceIO :: ResourceIO m
+sourceIO :: MonadResource m
           => IO state -- ^ resource and/or state allocation
           -> (state -> IO ()) -- ^ resource and/or state cleanup
-          -> (state -> ResourceT m (SourceIOResult output)) -- ^ Pull function. Note that this need not explicitly perform any cleanup.
-          -> Source (ResourceT m) output
+          -> (state -> m (SourceIOResult output)) -- ^ Pull function. Note that this need not explicitly perform any cleanup.
+          -> Source m output
 sourceIO alloc cleanup pull0 =
     Source
         { sourcePull = do
@@ -79,11 +79,11 @@ sourceIO alloc cleanup pull0 =
 -- | A combination of 'sourceIO' and 'sourceState'.
 --
 -- Since 0.2.1
-sourceStateIO :: ResourceIO m
+sourceStateIO :: MonadResource m
               => IO state -- ^ resource and/or state allocation
               -> (state -> IO ()) -- ^ resource and/or state cleanup
-              -> (state -> ResourceT m (SourceStateResult state output)) -- ^ Pull function. Note that this need not explicitly perform any cleanup.
-              -> Source (ResourceT m) output
+              -> (state -> m (SourceStateResult state output)) -- ^ Pull function. Note that this need not explicitly perform any cleanup.
+              -> Source m output
 sourceStateIO alloc cleanup pull0 =
     Source
         { sourcePull = do

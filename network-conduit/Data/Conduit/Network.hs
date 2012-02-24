@@ -1,5 +1,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE FlexibleContexts #-}
 module Data.Conduit.Network
     ( -- * Basic utilities
       sourceSocket
@@ -26,7 +27,7 @@ import qualified Data.ByteString as S
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Exception (bracketOnError, IOException, throwIO, SomeException, try, finally, bracket)
 import Control.Monad (forever)
-import Control.Monad.Trans.Control (control)
+import Control.Monad.Trans.Control (MonadBaseControl, control)
 import Control.Concurrent (forkIO)
 
 -- | Stream data from the socket.
@@ -81,7 +82,7 @@ data ServerSettings = ServerSettings
 -- each connection.
 --
 -- Since 0.2.1
-runTCPServer :: ResourceIO m => ServerSettings -> Application m -> m ()
+runTCPServer :: (MonadIO m, MonadBaseControl IO m) => ServerSettings -> Application m -> m ()
 runTCPServer (ServerSettings port host) app = control $ \run -> bracket
     (liftIO $ bindPort host port)
     (liftIO . NS.sClose)
@@ -104,7 +105,7 @@ data ClientSettings = ClientSettings
 -- | Run an @Application@ by connecting to the specified server.
 --
 -- Since 0.2.1
-runTCPClient :: ResourceIO m => ClientSettings -> Application m -> m ()
+runTCPClient :: (MonadIO m, MonadBaseControl IO m) => ClientSettings -> Application m -> m ()
 runTCPClient (ClientSettings port host) app = control $ \run -> bracket
     (getSocket host port)
     NS.sClose

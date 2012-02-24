@@ -19,10 +19,6 @@ module Control.Monad.Trans.Resource
     , ReleaseKey
       -- * Unwrap
     , runResourceT
-      -- * Resource allocation
-    , with
-    , register
-    , release
       -- * Special actions
     , resourceForkIO
       -- * Monad transformation
@@ -31,7 +27,7 @@ module Control.Monad.Trans.Resource
     , ExceptionT (..)
     , runExceptionT_
       -- * Type class/associated types
-    , ResourceIO
+    , MonadResource (..)
     , MonadUnsafeIO (..)
     , MonadThrow (..)
       -- ** Low-level
@@ -112,28 +108,52 @@ instance Typeable1 m => Typeable1 (ResourceT m) where
                 [ typeOf1 m
                 ]
 
-class (MonadIO m, MonadBaseControl IO m) => ResourceIO m
-instance (MonadIO m, MonadBaseControl IO m) => ResourceIO m
+class (MonadIO m, MonadBaseControl IO m) => MonadResource m where
+    -- | Perform some allocation, and automatically register a cleanup action.
+    --
+    -- If you are performing an @IO@ action, it will likely be easier to use the
+    -- 'withIO' function, which handles types more cleanly.
+    with :: IO a -- ^ allocate
+         -> (a -> IO ()) -- ^ free resource
+         -> m (ReleaseKey, a)
 
--- | Perform some allocation, and automatically register a cleanup action.
---
--- If you are performing an @IO@ action, it will likely be easier to use the
--- 'withIO' function, which handles types more cleanly.
-with :: MonadIO m
-     => IO a -- ^ allocate
-     -> (a -> IO ()) -- ^ free resource
-     -> ResourceT m (ReleaseKey, a)
-with acquire rel = ResourceT $ \istate -> liftIO $ E.mask $ \restore -> do
-    a <- restore acquire
-    key <- register' istate $ rel a
-    return (key, a)
+    -- | Register some action that will be called precisely once, either when
+    -- 'runResourceT' is called, or when the 'ReleaseKey' is passed to 'release'.
+    register :: MonadIO m
+             => IO ()
+             -> m ReleaseKey
 
--- | Register some action that will be called precisely once, either when
--- 'runResourceT' is called, or when the 'ReleaseKey' is passed to 'release'.
-register :: MonadIO m
-         => IO ()
-         -> ResourceT m ReleaseKey
-register rel = ResourceT $ \istate -> liftIO $ register' istate rel
+    -- | Call a release action early, and deregister it from the list of cleanup
+    -- actions to be performed.
+    release :: MonadIO m
+            => ReleaseKey
+            -> m ()
+
+instance (MonadIO m, MonadBaseControl IO m) => MonadResource (ResourceT m) where
+    with acquire rel = ResourceT $ \istate -> liftIO $ E.mask $ \restore -> do
+        a <- restore acquire
+        key <- register' istate $ rel a
+        return (key, a)
+
+    register rel = ResourceT $ \istate -> liftIO $ register' istate rel
+
+    release rk = ResourceT $ \istate -> liftIO $ release' istate rk
+
+#define GO(T) instance (MonadResource m) => MonadResource (T m) where with a = lift . with a; register = lift . register; release = lift . release
+#define GOX(X, T) instance (X, MonadResource m) => MonadResource (T m) where with a = lift . with a; register = lift . register; release = lift . release
+GO(IdentityT)
+GO(ListT)
+GO(MaybeT)
+GOX(Error e, ErrorT e)
+GO(ReaderT r)
+GO(StateT s)
+GOX(Monoid w, WriterT w)
+GOX(Monoid w, RWST r w s)
+GOX(Monoid w, Strict.RWST r w s)
+GO(Strict.StateT s)
+GOX(Monoid w, Strict.WriterT w)
+#undef GO
+#undef GOX
 
 register' :: I.IORef ReleaseMap
           -> IO ()
@@ -157,13 +177,6 @@ instance Show InvalidAccess where
         ]
 
 instance Exception InvalidAccess
-
--- | Call a release action early, and deregister it from the list of cleanup
--- actions to be performed.
-release :: MonadIO m
-        => ReleaseKey
-        -> ResourceT m ()
-release rk = ResourceT $ \istate -> liftIO $ release' istate rk
 
 release' :: I.IORef ReleaseMap
          -> ReleaseKey

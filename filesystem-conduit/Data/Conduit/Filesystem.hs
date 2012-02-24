@@ -77,13 +77,13 @@ traverse followSymlinks root = C.Source
 #endif
 
 -- | Same as 'CB.sourceFile', but uses system-filepath\'s @FilePath@ type.
-sourceFile :: C.ResourceIO m
+sourceFile :: C.MonadResource m
            => FilePath
-           -> C.Source (C.ResourceT m) S.ByteString
+           -> C.Source m S.ByteString
 sourceFile = CB.sourceFile . encodeString
 
 -- | Same as 'CB.sinkFile', but uses system-filepath\'s @FilePath@ type.
-sinkFile :: C.ResourceIO m
+sinkFile :: C.MonadResource m
          => FilePath
-         -> C.Sink S.ByteString (C.ResourceT m) ()
+         -> C.Sink S.ByteString m ()
 sinkFile = CB.sinkFile . encodeString

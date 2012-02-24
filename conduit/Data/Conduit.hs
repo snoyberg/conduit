@@ -50,7 +50,7 @@ module Data.Conduit
     , Flush (..)
       -- * Convenience re-exports
     , ResourceT
-    , ResourceIO
+    , MonadResource
     , MonadThrow (..)
     , MonadUnsafeIO (..)
     , runResourceT

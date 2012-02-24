@@ -255,7 +255,7 @@ main = hspecX $ do
 
     describe "sequence" $ do
         it "simple sink" $ do
-            let sumSink :: C.ResourceIO m => C.Sink Int m Int
+            let sumSink :: C.MonadResource m => C.Sink Int m Int
                 sumSink = do
                     ma <- CL.head
                     case ma of
@@ -268,7 +268,7 @@ main = hspecX $ do
             res @?= [3, 7, 11, 15, 19, 11]
 
         it "sink with unpull behaviour" $ do
-            let sumSink :: C.ResourceIO m => C.Sink Int m Int
+            let sumSink :: C.MonadResource m => C.Sink Int m Int
                 sumSink = do
                     ma <- CL.head
                     case ma of

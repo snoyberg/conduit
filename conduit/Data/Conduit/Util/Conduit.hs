@@ -72,12 +72,12 @@ instance Functor (ConduitIOResult input) where
 -- | Construct a 'Conduit'.
 --
 -- Since 0.2.0
-conduitIO :: ResourceIO m
+conduitIO :: MonadResource m
            => IO state -- ^ resource and/or state allocation
            -> (state -> IO ()) -- ^ resource and/or state cleanup
-           -> (state -> input -> ResourceT m (ConduitIOResult input output)) -- ^ Push function. Note that this need not explicitly perform any cleanup.
-           -> (state -> ResourceT m [output]) -- ^ Close function. Note that this need not explicitly perform any cleanup.
-           -> Conduit input (ResourceT m) output
+           -> (state -> input -> m (ConduitIOResult input output)) -- ^ Push function. Note that this need not explicitly perform any cleanup.
+           -> (state -> m [output]) -- ^ Close function. Note that this need not explicitly perform any cleanup.
+           -> Conduit input m output
 conduitIO alloc cleanup push0 close0 = Conduit
     { conduitPush = \input -> do
         (key, state) <- with alloc cleanup
@@ -216,7 +216,7 @@ scClose (SCSink _ close) = do
 -- @sequence . return@.
 --
 -- Since 0.2.1
-sequence :: ResourceIO m => Sink input m output -> Conduit input m output
+sequence :: Monad m => Sink input m output -> Conduit input m output
 sequence (SinkData spush sclose) = Conduit (push spush) (close sclose)
   where
     push spush' input = do
@@ -232,7 +232,7 @@ sequence (SinkData spush sclose) = Conduit (push spush) (close sclose)
                     Producing conduit' output' ->
                         return $ Producing conduit' (output:output')
                     Finished _ _ -> error "impossible [sequence]"
-    close sclose' = fmap (:[]) sclose'
+    close sclose' = liftM (:[]) sclose'
 
 sequence (SinkNoData output) = Conduit
     { conduitPush = \input -> return $ Finished (Just input) (repeat output)

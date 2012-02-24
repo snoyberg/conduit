@@ -54,12 +54,12 @@ data SinkIOResult input output = IODone (Maybe input) output | IOProcessing
 -- explicitly perform any cleanup.
 --
 -- Since 0.2.0
-sinkIO :: ResourceIO m
+sinkIO :: MonadResource m
        => IO state -- ^ resource and/or state allocation
        -> (state -> IO ()) -- ^ resource and/or state cleanup
-       -> (state -> input -> ResourceT m (SinkIOResult input output)) -- ^ push
-       -> (state -> ResourceT m output) -- ^ close
-       -> Sink input (ResourceT m) output
+       -> (state -> input -> m (SinkIOResult input output)) -- ^ push
+       -> (state -> m output) -- ^ close
+       -> Sink input m output
 sinkIO alloc cleanup push0 close0 = SinkData
     { sinkPush = \input -> do
         (key, state) <- with alloc cleanup

@@ -43,18 +43,18 @@ import qualified System.PosixFile as F
 -- should do so as early as possible to free scarce resources.
 --
 -- Since 0.2.0
-openFile :: ResourceIO m
+openFile :: MonadResource m
          => FilePath
          -> IO.IOMode
-         -> ResourceT m IO.Handle
+         -> m IO.Handle
 openFile fp mode = fmap snd $ with (IO.openBinaryFile fp mode) IO.hClose
 
 -- | Stream the contents of a file as binary data.
 --
 -- Since 0.2.0
-sourceFile :: ResourceIO m
+sourceFile :: MonadResource m
            => FilePath
-           -> Source (ResourceT m) S.ByteString
+           -> Source m S.ByteString
 sourceFile fp =
 #if CABAL_OS_WINDOWS || NO_HANDLES
     sourceIO (F.openRead fp)
@@ -69,7 +69,7 @@ sourceFile fp =
 -- completes, since it did not acquire the @Handle@ in the first place.
 --
 -- Since 0.2.0
-sourceHandle :: ResourceIO m
+sourceHandle :: MonadResource m
              => IO.Handle
              -> Source m S.ByteString
 sourceHandle h =
@@ -91,9 +91,9 @@ sourceHandle h =
 -- and close it as soon as possible.
 --
 -- Since 0.2.0
-sourceIOHandle :: ResourceIO m
+sourceIOHandle :: MonadResource m
                => IO IO.Handle
-               -> Source (ResourceT m) S.ByteString
+               -> Source m S.ByteString
 sourceIOHandle alloc = sourceIO alloc IO.hClose
     (\handle -> do
         bs <- liftIO (S.hGetSome handle 4096)
@@ -105,7 +105,7 @@ sourceIOHandle alloc = sourceIO alloc IO.hClose
 -- will /not/ automatically close the @Handle@ when processing completes.
 --
 -- Since 0.2.0
-sinkHandle :: ResourceIO m
+sinkHandle :: MonadResource m
            => IO.Handle
            -> Sink S.ByteString m ()
 sinkHandle h =
@@ -120,9 +120,9 @@ sinkHandle h =
 -- and close it as soon as possible.
 --
 -- Since 0.2.0
-sinkIOHandle :: ResourceIO m
+sinkIOHandle :: MonadResource m
              => IO IO.Handle
-             -> Sink S.ByteString (ResourceT m) ()
+             -> Sink S.ByteString m ()
 sinkIOHandle alloc = sinkIO alloc IO.hClose
     (\handle bs -> liftIO (S.hPut handle bs) >> return IOProcessing)
     (const $ return ())
@@ -131,11 +131,11 @@ sinkIOHandle alloc = sinkIO alloc IO.hClose
 -- offset and only consuming up to a certain number of bytes.
 --
 -- Since 0.2.0
-sourceFileRange :: ResourceIO m
+sourceFileRange :: MonadResource m
                 => FilePath
                 -> Maybe Integer -- ^ Offset
                 -> Maybe Integer -- ^ Maximum count
-                -> Source (ResourceT m) S.ByteString
+                -> Source m S.ByteString
 sourceFileRange fp offset count = Source
     { sourcePull = do
         (key, handle) <- with (IO.openBinaryFile fp IO.ReadMode) IO.hClose
@@ -180,18 +180,18 @@ sourceFileRange fp offset count = Source
 -- | Stream all incoming data to the given file.
 --
 -- Since 0.2.0
-sinkFile :: ResourceIO m
+sinkFile :: MonadResource m
          => FilePath
-         -> Sink S.ByteString (ResourceT m) ()
+         -> Sink S.ByteString m ()
 sinkFile fp = sinkIOHandle (IO.openBinaryFile fp IO.WriteMode)
 
 -- | Stream the contents of the input to a file, and also send it along the
 -- pipeline. Similar in concept to the Unix command @tee@.
 --
 -- Since 0.2.0
-conduitFile :: ResourceIO m
+conduitFile :: MonadResource m
             => FilePath
-            -> Conduit S.ByteString (ResourceT m) S.ByteString
+            -> Conduit S.ByteString m S.ByteString
 conduitFile fp = conduitIO
     (IO.openBinaryFile fp IO.WriteMode)
     IO.hClose
