@@ -28,7 +28,7 @@ import Control.Exception (assert)
 import Control.Monad (liftM)
 import Control.Monad.IO.Class (liftIO)
 import qualified System.IO as IO
-import Control.Monad.Trans.Resource (with, release)
+import Control.Monad.Trans.Resource (allocate, release)
 import Data.Word (Word8)
 #if CABAL_OS_WINDOWS
 import qualified System.Win32File as F
@@ -47,7 +47,7 @@ openFile :: MonadResource m
          => FilePath
          -> IO.IOMode
          -> m IO.Handle
-openFile fp mode = fmap snd $ with (IO.openBinaryFile fp mode) IO.hClose
+openFile fp mode = liftM snd $ allocate (IO.openBinaryFile fp mode) IO.hClose
 
 -- | Stream the contents of a file as binary data.
 --
@@ -138,7 +138,7 @@ sourceFileRange :: MonadResource m
                 -> Source m S.ByteString
 sourceFileRange fp offset count = Source
     { sourcePull = do
-        (key, handle) <- with (IO.openBinaryFile fp IO.ReadMode) IO.hClose
+        (key, handle) <- allocate (IO.openBinaryFile fp IO.ReadMode) IO.hClose
         case offset of
             Nothing -> return ()
             Just off -> liftIO $ IO.hSeek handle IO.AbsoluteSeek off

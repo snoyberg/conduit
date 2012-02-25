@@ -62,10 +62,10 @@ sinkIO :: MonadResource m
        -> Sink input m output
 sinkIO alloc cleanup push0 close0 = SinkData
     { sinkPush = \input -> do
-        (key, state) <- with alloc cleanup
+        (key, state) <- allocate alloc cleanup
         push key state input
     , sinkClose = do
-        (key, state) <- with alloc cleanup
+        (key, state) <- allocate alloc cleanup
         close key state
     }
   where

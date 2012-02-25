@@ -108,29 +108,26 @@ instance Typeable1 m => Typeable1 (ResourceT m) where
                 [ typeOf1 m
                 ]
 
-class (MonadIO m, MonadBaseControl IO m) => MonadResource m where
-    -- | Perform some allocation, and automatically register a cleanup action.
-    --
-    -- If you are performing an @IO@ action, it will likely be easier to use the
-    -- 'withIO' function, which handles types more cleanly.
-    with :: IO a -- ^ allocate
-         -> (a -> IO ()) -- ^ free resource
-         -> m (ReleaseKey, a)
-
+class MonadIO m => MonadResource m where
     -- | Register some action that will be called precisely once, either when
     -- 'runResourceT' is called, or when the 'ReleaseKey' is passed to 'release'.
-    register :: MonadIO m
-             => IO ()
-             -> m ReleaseKey
+    register :: IO () -> m ReleaseKey
 
     -- | Call a release action early, and deregister it from the list of cleanup
     -- actions to be performed.
-    release :: MonadIO m
-            => ReleaseKey
-            -> m ()
+    release :: ReleaseKey -> m ()
+
+    -- | Perform some allocation, and automatically register a cleanup action.
+    --
+    -- This is almost identical to calling the allocation and then
+    -- @register@ing the release action, but this properly handles masking of
+    -- asynchronous exceptions.
+    allocate :: IO a -- ^ allocate
+             -> (a -> IO ()) -- ^ free resource
+             -> m (ReleaseKey, a)
 
 instance (MonadIO m, MonadBaseControl IO m) => MonadResource (ResourceT m) where
-    with acquire rel = ResourceT $ \istate -> liftIO $ E.mask $ \restore -> do
+    allocate acquire rel = ResourceT $ \istate -> liftIO $ E.mask $ \restore -> do
         a <- restore acquire
         key <- register' istate $ rel a
         return (key, a)
@@ -139,8 +136,8 @@ instance (MonadIO m, MonadBaseControl IO m) => MonadResource (ResourceT m) where
 
     release rk = ResourceT $ \istate -> liftIO $ release' istate rk
 
-#define GO(T) instance (MonadResource m) => MonadResource (T m) where with a = lift . with a; register = lift . register; release = lift . release
-#define GOX(X, T) instance (X, MonadResource m) => MonadResource (T m) where with a = lift . with a; register = lift . register; release = lift . release
+#define GO(T) instance (MonadResource m) => MonadResource (T m) where allocate a = lift . allocate a; register = lift . register; release = lift . release
+#define GOX(X, T) instance (X, MonadResource m) => MonadResource (T m) where allocate a = lift . allocate a; register = lift . register; release = lift . release
 GO(IdentityT)
 GO(ListT)
 GO(MaybeT)

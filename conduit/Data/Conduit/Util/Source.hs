@@ -61,7 +61,7 @@ sourceIO :: MonadResource m
 sourceIO alloc cleanup pull0 =
     Source
         { sourcePull = do
-            (key, state) <- with alloc cleanup
+            (key, state) <- allocate alloc cleanup
             pull key state
         , sourceClose = return ()
         }
@@ -87,7 +87,7 @@ sourceStateIO :: MonadResource m
 sourceStateIO alloc cleanup pull0 =
     Source
         { sourcePull = do
-            (key, state) <- with alloc cleanup
+            (key, state) <- allocate alloc cleanup
             pull key state
         , sourceClose = return ()
         }

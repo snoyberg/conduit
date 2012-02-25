@@ -23,7 +23,7 @@ import Data.ByteString.Lazy.Char8 ()
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Encoding as TLE
-import Control.Monad.Trans.Resource (runExceptionT_, with, resourceForkIO)
+import Control.Monad.Trans.Resource (runExceptionT_, allocate, resourceForkIO)
 import Control.Concurrent (threadDelay, killThread)
 import Control.Monad.IO.Class (liftIO)
 import Control.Applicative (pure, (<$>), (<*>))
@@ -54,7 +54,7 @@ main = hspecX $ do
     describe "ResourceT" $ do
         it "resourceForkIO" $ do
             counter <- I.newIORef 0
-            let w = with
+            let w = allocate
                         (I.atomicModifyIORef counter $ \i ->
                             (i + 1, ()))
                         (const $ I.atomicModifyIORef counter $ \i ->

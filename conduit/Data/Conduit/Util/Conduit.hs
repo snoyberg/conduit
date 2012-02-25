@@ -80,10 +80,10 @@ conduitIO :: MonadResource m
            -> Conduit input m output
 conduitIO alloc cleanup push0 close0 = Conduit
     { conduitPush = \input -> do
-        (key, state) <- with alloc cleanup
+        (key, state) <- allocate alloc cleanup
         push key state input
     , conduitClose = do
-        (key, state) <- with alloc cleanup
+        (key, state) <- allocate alloc cleanup
         close key state
     }
   where
