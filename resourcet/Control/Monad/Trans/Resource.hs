@@ -108,7 +108,7 @@ instance Typeable1 m => Typeable1 (ResourceT m) where
                 [ typeOf1 m
                 ]
 
-class MonadIO m => MonadResource m where
+class (MonadThrow m, MonadUnsafeIO m, MonadIO m) => MonadResource m where
     -- | Register some action that will be called precisely once, either when
     -- 'runResourceT' is called, or when the 'ReleaseKey' is passed to 'release'.
     register :: IO () -> m ReleaseKey
@@ -126,7 +126,13 @@ class MonadIO m => MonadResource m where
              -> (a -> IO ()) -- ^ free resource
              -> m (ReleaseKey, a)
 
-instance MonadIO m => MonadResource (ResourceT m) where
+    -- | Perform asynchronous exception masking.
+    --
+    -- This is more general then @Control.Exception.mask@, yet more efficient
+    -- than @Control.Exception.Lifted.mask@.
+    resourceMask :: ((forall a. ResourceT IO a -> ResourceT IO a) -> ResourceT IO b) -> m b
+
+instance (MonadThrow m, MonadUnsafeIO m, MonadIO m) => MonadResource (ResourceT m) where
     allocate acquire rel = ResourceT $ \istate -> liftIO $ E.mask $ \restore -> do
         a <- restore acquire
         key <- register' istate $ rel a
@@ -136,8 +142,15 @@ instance MonadIO m => MonadResource (ResourceT m) where
 
     release rk = ResourceT $ \istate -> liftIO $ release' istate rk
 
-#define GO(T) instance (MonadResource m) => MonadResource (T m) where allocate a = lift . allocate a; register = lift . register; release = lift . release
-#define GOX(X, T) instance (X, MonadResource m) => MonadResource (T m) where allocate a = lift . allocate a; register = lift . register; release = lift . release
+    resourceMask f = ResourceT $ \istate -> liftIO $ E.mask $ \restore ->
+        let ResourceT f' = f (go restore)
+         in f' istate
+      where
+        go :: (forall a. IO a -> IO a) -> (forall a. ResourceT IO a -> ResourceT IO a)
+        go r (ResourceT g) = ResourceT (\i -> r (g i))
+
+#define GO(T) instance (MonadResource m) => MonadResource (T m) where allocate a = lift . allocate a; register = lift . register; release = lift . release; resourceMask = lift . resourceMask
+#define GOX(X, T) instance (X, MonadResource m) => MonadResource (T m) where allocate a = lift . allocate a; register = lift . register; release = lift . release; resourceMask = lift . resourceMask
 GO(IdentityT)
 GO(ListT)
 GO(MaybeT)
@@ -342,6 +355,7 @@ GO(ListT)
 GO(MaybeT)
 GOX(Error e, ErrorT e)
 GO(ReaderT r)
+GO(ResourceT)
 GO(StateT s)
 GOX(Monoid w, WriterT w)
 GOX(Monoid w, RWST r w s)
