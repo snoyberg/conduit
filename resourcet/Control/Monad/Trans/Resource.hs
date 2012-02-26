@@ -126,7 +126,7 @@ class MonadIO m => MonadResource m where
              -> (a -> IO ()) -- ^ free resource
              -> m (ReleaseKey, a)
 
-instance (MonadIO m, MonadBaseControl IO m) => MonadResource (ResourceT m) where
+instance MonadIO m => MonadResource (ResourceT m) where
     allocate acquire rel = ResourceT $ \istate -> liftIO $ E.mask $ \restore -> do
         a <- restore acquire
         key <- register' istate $ rel a
