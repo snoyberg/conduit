@@ -70,6 +70,8 @@ type Application = Source IO ByteString
                 -> ResourceT IO ()
 
 -- | Same as @Application@, but allows an arbitrary inner monad.
+--
+-- Since 0.2.2
 type ApplicationM m = Source m ByteString
                    -> Sink ByteString m ()
                    -> ResourceT m ()
@@ -101,6 +103,8 @@ runTCPServer (ServerSettings port host) app = bracket
             app (sourceSocket socket) (sinkSocket socket)
 
 -- | Settings for a TCP client, specifying how to connect to the server.
+--
+-- Since 0.2.1
 data ClientSettings = ClientSettings
     { clientPort :: Int
     , clientHost :: String
