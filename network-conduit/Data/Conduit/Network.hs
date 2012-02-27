@@ -6,6 +6,7 @@ module Data.Conduit.Network
     , sinkSocket
       -- * Simple TCP server/client interface.
     , Application
+    , ApplicationM
       -- ** Server
     , ServerSettings (..)
     , runTCPServer
