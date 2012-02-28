@@ -35,7 +35,9 @@ test-suite test
                    , bytestring
                    , blaze-builder
                    , transformers
+                   , attoparsec-conduit
                    , text
+                   , attoparsec               >= 0.10
     ghc-options:     -Wall
 
 source-repository head

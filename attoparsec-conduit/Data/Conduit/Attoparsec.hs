@@ -5,13 +5,14 @@
 -- Copyright: 2011 Michael Snoyman, 2010 John Millikin
 -- License: MIT
 --
--- Turn an Attoparsec parser into a 'C.Sink'.
+-- Turn an Attoparsec parser into a 'C.Sink' or 'C.Conduit'.
 --
 -- This code was taken from attoparsec-enumerator and adapted for conduits.
 module Data.Conduit.Attoparsec
     ( ParseError (..)
     , AttoparsecInput
     , sinkParser
+    , conduitParser
     ) where
 
 import           Control.Exception (Exception)
@@ -49,6 +50,7 @@ instance AttoparsecInput B.ByteString where
     isNull = B.null
     notEmpty = filter (not . B.null)
 
+
 instance AttoparsecInput T.Text where
     parseA = Data.Attoparsec.Text.parse
     feedA = Data.Attoparsec.Text.feed
@@ -74,8 +76,48 @@ sinkParser p0 = C.sinkState
                  in return (C.StateDone lo x)
             A.Fail _ contexts msg -> lift $ C.resourceThrow $ ParseError contexts msg
             A.Partial p -> return (C.StateProcessing p)
-    close parser = do
+    close parser =
         case feedA (parser empty) empty of
             A.Done _leftover y -> return y
             A.Fail _ contexts msg -> lift $ C.resourceThrow $ ParseError contexts msg
+            A.Partial _ -> lift $ C.resourceThrow DivergentParser
+
+
+-- | Convert an Attoparsec 'A.Parser' into a 'C.Conduit'. The parser will
+-- be streamed bytes until the source is exhausted. When done is returned a new
+-- parser is created and fed with anything leftover in the stream before resuming.
+--
+-- If parsing fails, a 'ParseError' will be thrown with 'C.resourceThrow'.
+conduitParser :: (AttoparsecInput a, C.ResourceThrow m) =>
+                        A.Parser a b
+                     -> C.Conduit a m b
+conduitParser p0 = C.conduitState
+    (parseA p0)
+    push
+    close
+  where
+    push parser c | isNull c = return $ C.StateProducing parser []
+    push parser c = {-# SCC "push" #-}
+        case doParse parser c [] of
+            Left pErr -> lift $ C.resourceThrow pErr
+            Right (cont, results) -> return $ C.StateProducing cont (reverse results)
+
+    -- doParse :: (A.Parser a b) -> a -> [b]
+    --            -> Either ParseError ((a -> A.IResult a b), [b])
+    doParse parser inp results = {-# SCC "parse" #-}
+        case parser inp of
+            A.Done leftover x
+                | isNull leftover ->
+                    Right (parseA p0, x : results)
+                | otherwise ->
+                    doParse (parseA p0) leftover (x:results)
+            A.Fail _ contexts msg -> Left $ ParseError contexts msg
+            A.Partial p -> return (p, results)
+
+    close parser =
+        case feedA (parser empty) empty of
+            A.Done _leftover y -> return [y]
+            A.Fail leftover _ _ | isNull leftover -> return []
+            A.Fail _ contexts msg -> lift $ C.resourceThrow $ ParseError contexts ("closing " ++ msg)
+
             A.Partial _ -> lift $ C.resourceThrow DivergentParser
