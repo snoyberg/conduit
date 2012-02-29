@@ -243,14 +243,13 @@ head =
 -- Since 0.2.0
 takeWhile :: Monad m => (Word8 -> Bool) -> Conduit S.ByteString m S.ByteString
 takeWhile p =
-    conduit
+    Conduit push close
   where
-    conduit = Conduit push close
     push bs = do
         let (x, y) = S.span p bs
         return $
             if S.null y
-                then Producing conduit [x]
+                then Producing push close [x]
                 else Finished (Just y) (if S.null x then [] else [x])
     close = return []
 

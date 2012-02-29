@@ -12,6 +12,8 @@ import Control.Monad (liftM)
 -- | The value of the @conduitPush@ record.
 type ConduitPush input m output = input -> m (ConduitResult input m output)
 
+type ConduitPull input m output = m (ConduitResult input m output)
+
 -- | The value of the @conduitClose@ record.
 type ConduitClose m output = m [output]
 
@@ -25,12 +27,15 @@ type ConduitClose m output = m [output]
 --
 -- Since 0.2.0
 data ConduitResult input m output =
-    Producing (Conduit input m output) [output]
+    Producing (ConduitPush input m output) (ConduitClose m output) [output]
   | Finished (Maybe input) [output]
+  | HaveMore (ConduitPull input m output) (m ()) [output]
 
 instance Monad m => Functor (ConduitResult input m) where
-    fmap f (Producing c o) = Producing (fmap f c) (fmap f o)
+    fmap f (Producing p c o) = Producing (liftM (fmap f) . p) (liftM (fmap f) c) (fmap f o)
     fmap f (Finished i o) = Finished i (fmap f o)
+    fmap f (HaveMore pull close output) = HaveMore
+        (liftM (fmap f) pull) close (map f output)
 
 -- | A conduit has two operations: it can receive new input (a push), and can
 -- be closed.

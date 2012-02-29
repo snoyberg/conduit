@@ -131,9 +131,10 @@ normalConnect src0 (SinkData push0 close0) =
                         return res'
                     Processing push' close' -> connect' src' push' close'
 
-data FuseLeftState src conduit output =
+data FuseLeftState src push pull close close' output =
     FLClosed [output]
-  | FLOpen src conduit [output]
+  | FLOpen src push close [output]
+  | FLHaveMore src pull close' [output]
 
 infixl 1 $=
 
@@ -151,8 +152,8 @@ infixl 1 $=
 {-# INLINE ($=) #-}
 
 normalFuseLeft :: Monad m => Source m a -> Conduit a m b -> Source m b
-normalFuseLeft src0 conduit0 = Source
-    { sourcePull = pull $ FLOpen src0 conduit0 []
+normalFuseLeft src0 (Conduit initPush initClose) = Source
+    { sourcePull = pull $ FLOpen src0 initPush initClose []
     , sourceClose = return ()
     }
   where
@@ -163,26 +164,26 @@ normalFuseLeft src0 conduit0 = Source
             FLClosed (x:xs) -> return $ Open
                 (mkSrc (FLClosed xs))
                 x
-            FLOpen src conduit (x:xs) -> return $ Open
-                (mkSrc (FLOpen src conduit xs))
+            FLOpen src push close' (x:xs) -> return $ Open
+                (mkSrc (FLOpen src push close' xs))
                 x
-            FLOpen src conduit [] -> do
+            FLOpen src push close0 [] -> do
                 mres <- sourcePull src
                 case mres of
                     Closed -> do
-                        res <- conduitClose conduit
+                        res <- close0
                         case res of
                             [] -> return Closed
                             x:xs -> return $ Open
                                 (mkSrc (FLClosed xs))
                                 x
                     Open src'' input -> do
-                        res' <- conduitPush conduit input
+                        res' <- push input
                         case res' of
-                            Producing conduit' [] ->
-                                pull $ FLOpen src'' conduit' []
-                            Producing conduit' (x:xs) -> return $ Open
-                                (mkSrc (FLOpen src'' conduit' xs))
+                            Producing push' close' [] ->
+                                pull $ FLOpen src'' push' close' []
+                            Producing push' close' (x:xs) -> return $ Open
+                                (mkSrc (FLOpen src'' push' close' xs))
                                 x
                             Finished _leftover output -> do
                                 sourceClose src''
@@ -196,7 +197,7 @@ normalFuseLeft src0 conduit0 = Source
         -- following check
         case state of
             FLClosed _ -> return ()
-            FLOpen src' (Conduit _ closeC) _ -> do
+            FLOpen src' _ closeC _ -> do
                 _ignored <- closeC
                 sourceClose src'
 
@@ -208,22 +209,22 @@ infixr 0 =$
 (=$) :: Monad m => Conduit a m b -> Sink b m c -> Sink a m c
 _ =$ SinkNoData res = SinkNoData res
 conduit =$ SinkLift msink = SinkLift (liftM (conduit =$) msink)
-conduitOrig =$ SinkData pushI0 closeI0 = SinkData
-    { sinkPush = push pushI0 closeI0 conduitOrig
-    , sinkClose = close pushI0 closeI0 conduitOrig
+Conduit initPushC initCloseC =$ SinkData pushI0 closeI0 = SinkData
+    { sinkPush = push pushI0 closeI0 initPushC
+    , sinkClose = close pushI0 closeI0 initCloseC
     }
   where
-    push pushI closeI conduit0 cinput = do
-        res <- conduitPush conduit0 cinput
+    push pushI closeI pushC0 cinput = do
+        res <- pushC0 cinput
         case res of
-            Producing conduit' sinput -> do
-                let loop p c [] = return (Processing (push p c conduit') (close p c conduit'))
+            Producing pushC closeC sinput -> do
+                let loop p c [] = return (Processing (push p c pushC) (close p c closeC))
                     loop p _ (i:is) = do
                         mres <- p i
                         case mres of
                             Processing p' c' -> loop p' c' is
                             Done _sleftover res' -> do
-                                _ <- conduitClose conduit'
+                                _ <- closeC
                                 return $ Done Nothing res'
                 loop pushI closeI sinput
             Finished cleftover sinput -> do
@@ -235,8 +236,8 @@ conduitOrig =$ SinkData pushI0 closeI0 = SinkData
                             Done _sleftover res' -> return res'
                 res' <- loop pushI closeI sinput
                 return $ Done cleftover res'
-    close pushI closeI conduit = do
-        sinput <- conduitClose conduit
+    close pushI closeI closeC0 = do
+        sinput <- closeC0
         let loop _ c [] = c
             loop p _ (i:is) = do
                 mres <- p i
@@ -251,46 +252,50 @@ infixr 0 =$=
 --
 -- Since 0.2.0
 (=$=) :: Monad m => Conduit a m b -> Conduit b m c -> Conduit a m c
-outerOrig =$= innerOrig = Conduit
-    (pushF outerOrig innerOrig)
-    (closeF outerOrig innerOrig)
+Conduit initOuterPush initOuterClose =$= innerOrig = Conduit
+    (pushF initOuterPush innerOrig)
+    (closeF initOuterClose innerOrig)
   where
-    pushF outer0 inner0 inputO = do
-        res <- conduitPush outer0 inputO
+    pushF outerPush0 inner0 inputO = do
+        res <- outerPush0 inputO
         case res of
-            Producing outer inputI -> do
+            Producing outerPush outerClose inputI -> do
                 let loop inner [] front = return $ Producing
-                        (Conduit (pushF outer inner) (closeF outer inner))
+                        (pushF outerPush inner)
+                        (closeF outerClose inner)
                         (front [])
                     loop inner (i:is) front = do
                         resI <- conduitPush inner i
                         case resI of
-                            Producing conduit c -> loop
-                                conduit
+                            Producing push close c -> loop
+                                (Conduit push close)
                                 is
                                 (front . (c ++))
                             Finished _leftover c -> do
-                                _ <- conduitClose outer
+                                _ <- outerClose
                                 return $ Finished Nothing $ front c
                 loop inner0 inputI id
             Finished leftoverO inputI -> do
                 c <- conduitPushClose inner0 inputI
                 return $ Finished leftoverO c
-    closeF outer inner = do
-        b <- conduitClose outer
+    closeF outerClose0 inner = do
+        b <- outerClose0
         c <- conduitPushClose inner b
         return c
 
 -- | Push some data to a conduit, then close it if necessary.
 conduitPushClose :: Monad m => Conduit a m b -> [a] -> m [b]
 conduitPushClose c [] = conduitClose c
-conduitPushClose c (input:rest) = do
-    res <- conduitPush c input
-    case res of
-        Finished _ b -> return b
-        Producing conduit b -> do
-            b' <- conduitPushClose conduit rest
-            return $ b ++ b'
+conduitPushClose c (input:rest) =
+    conduitPush c input >>= goRes
+  where
+    goRes (Finished _ b) = return b
+    goRes (Producing push close b) = do
+        b' <- conduitPushClose (Conduit push close) rest
+        return $ b ++ b'
+    goRes (HaveMore pull _ b) = do
+        b' <- pull >>= goRes
+        return $ b ++ b'
 
 -- | When actually interacting with @Source@s, we sometimes want to be able to
 -- buffer the output, in case any intermediate steps return leftover data. A
@@ -401,48 +406,57 @@ bufferedFuseLeft
     => BufferedSource m a
     -> Conduit a m b
     -> Source m b
-bufferedFuseLeft bsrc conduit0 = Source
-    { sourcePull = pullF $ FLOpen () conduit0 [] -- still open, no buffer
+bufferedFuseLeft bsrc (Conduit push0 close0) = Source
+    { sourcePull = pullF $ FLOpen () push0 close0 [] -- still open, no buffer
     , sourceClose = return ()
     }
   where
     mkSrc state = Source
         (pullF state)
         (closeF state)
+
     pullF state' =
         case state' of
             FLClosed [] -> return Closed
             FLClosed (x:xs) -> return $ Open
                 (mkSrc (FLClosed xs))
                 x
-            FLOpen () conduit (x:xs) -> return $ Open
-                (mkSrc (FLOpen () conduit xs))
+            FLHaveMore () pull close (x:xs) -> return $ Open
+                (mkSrc (FLHaveMore () pull close xs))
                 x
-            FLOpen () conduit [] -> do
+            FLHaveMore () pull _ [] -> pull >>= goRes
+            FLOpen () push close (x:xs) -> return $ Open
+                (mkSrc (FLOpen () push close xs))
+                x
+            FLOpen () push close [] -> do
                 mres <- bsourcePull bsrc
                 case mres of
                     Nothing -> do
-                        res <- conduitClose conduit
+                        res <- close
                         case res of
                             [] -> return Closed
                             x:xs -> return $ Open
                                 (mkSrc (FLClosed xs))
                                 x
-                    Just input -> do
-                        res' <- conduitPush conduit input
-                        case res' of
-                            Producing conduit' [] ->
-                                pullF (FLOpen () conduit' [])
-                            Producing conduit' (x:xs) -> return $ Open
-                                (mkSrc (FLOpen () conduit' xs))
-                                x
-                            Finished leftover output -> do
-                                bsourceUnpull bsrc leftover
-                                case output of
-                                    [] -> return Closed
-                                    x:xs -> return $ Open
-                                        (mkSrc (FLClosed xs))
-                                        x
+                    Just input -> push input >>= goRes
+
+    goRes (Producing push' close' []) =
+        pullF (FLOpen () push' close' [])
+    goRes (Producing push' close' (x:xs)) = return $ Open
+        (mkSrc (FLOpen () push' close' xs))
+        x
+    goRes (Finished leftover output) = do
+        bsourceUnpull bsrc leftover
+        case output of
+            [] -> return Closed
+            x:xs -> return $ Open
+                (mkSrc (FLClosed xs))
+                x
+    goRes (HaveMore pull close' []) = pullF (FLHaveMore () pull close' [])
+    goRes (HaveMore pull close' (x:xs)) = return $ Open
+        (mkSrc (FLHaveMore () pull close' xs))
+        x
+
     closeF state = do
         -- Normally we don't have to worry about double closing, as the
         -- invariant of a source is that close is never called twice. However,
@@ -451,9 +465,10 @@ bufferedFuseLeft bsrc conduit0 = Source
         -- Therefore, we have to do a check.
         case state of
             FLClosed _ -> return ()
-            FLOpen () (Conduit _ close) _ -> do
+            FLOpen () _ close _ -> do
                 _ignored <- close
                 return ()
+            FLHaveMore () _ close _ -> close
 
 bsourcePull :: MonadIO m => BufferedSource m a -> m (Maybe a)
 bsourcePull (BufferedSource bs) = do
