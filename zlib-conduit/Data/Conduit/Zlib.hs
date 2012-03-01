@@ -40,10 +40,10 @@ decompress config = Conduit
     , conduitClose = return []
     }
   where
-    mkCon inf = Conduit (push inf) (close inf)
     push inf x = do
-        chunks <- unsafeLiftIO $ withInflateInput inf x callback
-        return $ Producing (mkCon inf) chunks
+        popper <- unsafeLiftIO $ feedInflate inf x
+        goPopper (push inf) (close inf) id [] popper
+
     close inf = do
         chunk <- unsafeLiftIO $ finishInflate inf
         return $ if S.null chunk then [] else [chunk]
@@ -60,14 +60,14 @@ decompressFlush config = Conduit
     , conduitClose = return []
     }
   where
-    mkCon inf = Conduit (push inf) (close inf)
     push inf (Chunk x) = do
-        chunks <- unsafeLiftIO $ withInflateInput inf x callback
-        return $ Producing (mkCon inf) $ map Chunk chunks
+        popper <- unsafeLiftIO $ feedInflate inf x
+        goPopper (push inf) (close inf) Chunk [] popper
     push inf Flush = do
         chunk <- unsafeLiftIO $ flushInflate inf
         let chunk' = if S.null chunk then id else (Chunk chunk:)
-        return $ Producing (mkCon inf) $ chunk' [Flush]
+        return $ Producing (push inf) (close inf) $ chunk' [Flush]
+
     close inf = do
         chunk <- unsafeLiftIO $ finishInflate inf
         return $ if S.null chunk then [] else [Chunk chunk]
@@ -89,11 +89,25 @@ compress level config = Conduit
     }
   where
     push def x = do
-        chunks <- unsafeLiftIO $ withDeflateInput def x callback
-        return $ Producing (Conduit (push def) (close def)) chunks
+        popper <- unsafeLiftIO $ feedDeflate def x
+        goPopper (push def) (close def) id [] popper
+
     close def = do
-        chunks <- unsafeLiftIO $ finishDeflate def callback
+        chunks <- unsafeLiftIO $ slurp $ finishDeflate def
         return chunks
+
+goPopper :: MonadUnsafeIO m
+         => ConduitPush input m output
+         -> ConduitClose m output
+         -> (S.ByteString -> output)
+         -> [output]
+         -> IO (Maybe S.ByteString)
+         -> m (ConduitResult input m output)
+goPopper push close wrap final popper = do
+    mbs <- unsafeLiftIO popper
+    return $ case mbs of
+        Nothing -> Producing push close final
+        Just bs -> HaveMore (goPopper push close wrap final popper) (return ()) [wrap bs]
 
 -- | Same as 'compress', but allows you to explicitly flush the stream.
 compressFlush
@@ -108,19 +122,17 @@ compressFlush level config = Conduit
     , conduitClose = return []
     }
   where
-    mkCon def = Conduit (push def) (close def)
     push def (Chunk x) = do
-        chunks <- unsafeLiftIO $ withDeflateInput def x callback
-        return $ Producing (mkCon def) $ map Chunk chunks
-    push def Flush = do
-        chunks <- unsafeLiftIO $ flushDeflate def callback
-        return $ Producing (mkCon def) $ map Chunk chunks ++ [Flush]
-    close def = do
-        chunks <- unsafeLiftIO $ finishDeflate def callback
-        return $ map Chunk chunks
+        popper <- unsafeLiftIO $ feedDeflate def x
+        goPopper (push def) (close def) Chunk [] popper
+    push def Flush = goPopper (push def) (close def) Chunk [Flush] $ flushDeflate def
 
-callback :: Monad m => m (Maybe a) -> m [a]
-callback pop = go id where
+    close def = do
+        mchunk <- unsafeLiftIO $ finishDeflate def
+        return $ maybe [] (return . Chunk) mchunk
+
+slurp :: Monad m => m (Maybe a) -> m [a]
+slurp pop = go id where
     go front = do
        x <- pop
        case x of
