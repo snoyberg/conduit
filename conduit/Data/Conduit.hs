@@ -164,6 +164,10 @@ normalFuseLeft src0 (Conduit initPush initClose) = Source
             FLClosed (x:xs) -> return $ Open
                 (mkSrc (FLClosed xs))
                 x
+            FLHaveMore src pull' close' (x:xs) -> return $ Open
+                (mkSrc (FLHaveMore src pull' close' xs))
+                x
+            FLHaveMore src pull' _ [] -> pull' >>= goRes src
             FLOpen src push close' (x:xs) -> return $ Open
                 (mkSrc (FLOpen src push close' xs))
                 x
@@ -177,21 +181,26 @@ normalFuseLeft src0 (Conduit initPush initClose) = Source
                             x:xs -> return $ Open
                                 (mkSrc (FLClosed xs))
                                 x
-                    Open src'' input -> do
-                        res' <- push input
-                        case res' of
-                            Producing push' close' [] ->
-                                pull $ FLOpen src'' push' close' []
-                            Producing push' close' (x:xs) -> return $ Open
-                                (mkSrc (FLOpen src'' push' close' xs))
-                                x
-                            Finished _leftover output -> do
-                                sourceClose src''
-                                case output of
-                                    [] -> return Closed
-                                    x:xs -> return $ Open
-                                        (mkSrc (FLClosed xs))
-                                        x
+                    Open src'' input -> push input >>= goRes src''
+
+    goRes src (Producing push' close' []) =
+        pull $ FLOpen src push' close' []
+    goRes src (Producing push' close' (x:xs)) = return $ Open
+        (mkSrc (FLOpen src push' close' xs))
+        x
+    goRes src (Finished _leftover output) = do
+        sourceClose src
+        case output of
+            [] -> return Closed
+            x:xs -> return $ Open
+                (mkSrc (FLClosed xs))
+                x
+    goRes src (HaveMore pull' close' []) =
+        pull $ FLHaveMore src pull' close' []
+    goRes src (HaveMore pull' close' (x:xs)) = return $ Open
+        (mkSrc (FLHaveMore src pull' close' xs))
+        x
+
     close state = do
         -- See comment on bufferedFuseLeft for why we need to have the
         -- following check
@@ -199,6 +208,9 @@ normalFuseLeft src0 (Conduit initPush initClose) = Source
             FLClosed _ -> return ()
             FLOpen src' _ closeC _ -> do
                 _ignored <- closeC
+                sourceClose src'
+            FLHaveMore src' _ closeC _ -> do
+                () <- closeC
                 sourceClose src'
 
 infixr 0 =$
@@ -214,28 +226,39 @@ Conduit initPushC initCloseC =$ SinkData pushI0 closeI0 = SinkData
     , sinkClose = close pushI0 closeI0 initCloseC
     }
   where
-    push pushI closeI pushC0 cinput = do
-        res <- pushC0 cinput
-        case res of
-            Producing pushC closeC sinput -> do
-                let loop p c [] = return (Processing (push p c pushC) (close p c closeC))
-                    loop p _ (i:is) = do
-                        mres <- p i
-                        case mres of
-                            Processing p' c' -> loop p' c' is
-                            Done _sleftover res' -> do
-                                _ <- closeC
-                                return $ Done Nothing res'
-                loop pushI closeI sinput
-            Finished cleftover sinput -> do
-                let loop _ c [] = c
-                    loop p _ (i:is) = do
-                        mres <- p i
-                        case mres of
-                            Processing p' c' -> loop p' c' is
-                            Done _sleftover res' -> return res'
-                res' <- loop pushI closeI sinput
-                return $ Done cleftover res'
+    push pushI closeI pushC0 cinput =
+        pushC0 cinput >>= goRes pushI closeI
+
+    goRes pushI closeI (Producing pushC closeC sinput) = do
+        let loop p c [] = return (Processing (push p c pushC) (close p c closeC))
+            loop p _ (i:is) = do
+                mres <- p i
+                case mres of
+                    Processing p' c' -> loop p' c' is
+                    Done _sleftover res' -> do
+                        _ <- closeC
+                        return $ Done Nothing res'
+        loop pushI closeI sinput
+    goRes pushI closeI (Finished cleftover sinput) = do
+        let loop _ c [] = c
+            loop p _ (i:is) = do
+                mres <- p i
+                case mres of
+                    Processing p' c' -> loop p' c' is
+                    Done _sleftover res' -> return res'
+        res' <- loop pushI closeI sinput
+        return $ Done cleftover res'
+    goRes pushI closeI (HaveMore pullC closeC sinput) = do
+        let loop p c [] = pullC >>= goRes p c
+            loop p _ (i:is) = do
+                mres <- p i
+                case mres of
+                    Processing p' c' -> loop p' c' is
+                    Done _sleftover res' -> do
+                        () <- closeC
+                        return $ Done Nothing res'
+        loop pushI closeI sinput
+
     close pushI closeI closeC0 = do
         sinput <- closeC0
         let loop _ c [] = c
@@ -256,32 +279,47 @@ Conduit initOuterPush initOuterClose =$= innerOrig = Conduit
     (pushF initOuterPush innerOrig)
     (closeF initOuterClose innerOrig)
   where
-    pushF outerPush0 inner0 inputO = do
-        res <- outerPush0 inputO
-        case res of
-            Producing outerPush outerClose inputI -> do
-                let loop inner [] front = return $ Producing
-                        (pushF outerPush inner)
-                        (closeF outerClose inner)
-                        (front [])
-                    loop inner (i:is) front = do
-                        resI <- conduitPush inner i
-                        case resI of
-                            Producing push close c -> loop
-                                (Conduit push close)
-                                is
-                                (front . (c ++))
-                            Finished _leftover c -> do
-                                _ <- outerClose
-                                return $ Finished Nothing $ front c
-                loop inner0 inputI id
-            Finished leftoverO inputI -> do
-                c <- conduitPushClose inner0 inputI
-                return $ Finished leftoverO c
+    pushF outerPush0 inner0 inputO = outerPush0 inputO >>= goResOuter inner0
+
     closeF outerClose0 inner = do
         b <- outerClose0
         c <- conduitPushClose inner b
         return c
+
+    pullF outerPull inner0 = outerPull >>= goResOuter inner0
+
+    loop retVal _ inner [] front = return $ retVal inner $ front []
+    loop retVal outerClose inner (i:is) front =
+        conduitPush inner i >>= goResInner
+      where
+        goResInner (Producing push close c) = loop
+            retVal
+            outerClose
+            (Conduit push close)
+            is
+            (front . (c ++)) -- FIXME we don't want the ++ here...
+        goResInner (Finished _leftover c) = do
+            () <- outerClose
+            return $ Finished Nothing $ front c
+        goResInner HaveMore{} = error "goResInner HaveMore"
+
+    goResOuter inner0 res =
+        case res of
+            Finished leftoverO inputI -> do
+                c <- conduitPushClose inner0 inputI
+                return $ Finished leftoverO c
+            Producing outerPush outerClose inputI -> loop
+                (\inner -> Producing (pushF outerPush inner) (closeF outerClose inner))
+                (outerClose >> return ())
+                inner0
+                inputI
+                id
+            HaveMore outerPull outerClose inputI -> loop
+                (\inner -> HaveMore (pullF outerPull inner) (outerClose >> conduitClose inner >> return ()))
+                outerClose
+                inner0
+                inputI
+                id
 
 -- | Push some data to a conduit, then close it if necessary.
 conduitPushClose :: Monad m => Conduit a m b -> [a] -> m [b]
