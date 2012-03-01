@@ -288,38 +288,77 @@ Conduit initOuterPush initOuterClose =$= innerOrig = Conduit
 
     pullF outerPull inner0 = outerPull >>= goResOuter inner0
 
-    loop retVal _ inner [] front = return $ retVal inner $ front []
-    loop retVal outerClose inner (i:is) front =
-        conduitPush inner i >>= goResInner
-      where
-        goResInner (Producing push close c) = loop
-            retVal
-            outerClose
-            (Conduit push close)
-            is
-            (front . (c ++)) -- FIXME we don't want the ++ here...
-        goResInner (Finished _leftover c) = do
-            () <- outerClose
-            return $ Finished Nothing $ front c
-        goResInner HaveMore{} = error "goResInner HaveMore"
-
     goResOuter inner0 res =
         case res of
             Finished leftoverO inputI -> do
                 c <- conduitPushClose inner0 inputI
                 return $ Finished leftoverO c
-            Producing outerPush outerClose inputI -> loop
-                (\inner -> Producing (pushF outerPush inner) (closeF outerClose inner))
-                (outerClose >> return ())
-                inner0
-                inputI
-                id
-            HaveMore outerPull outerClose inputI -> loop
-                (\inner -> HaveMore (pullF outerPull inner) (outerClose >> conduitClose inner >> return ()))
-                outerClose
-                inner0
-                inputI
-                id
+            Producing outerPush outerClose inputI -> do
+                let go inner [] = return $ Producing (pushF outerPush inner) (closeF outerClose inner) []
+                    go inner (i:is) = do
+                        resInner <- conduitPush inner i
+                        case resInner of
+                            Producing push close c -> return $ HaveMore
+                                (go (Conduit push close) is)
+                                (outerClose >> close >> return ())
+                                c
+                            Finished _leftover c -> do
+                                _ <- outerClose
+                                return $ Finished Nothing c
+                            HaveMore pullI closeI c -> return $ HaveMore
+                                (goI pullI is)
+                                (outerClose >> closeI)
+                                c
+                    goI pullI is = do
+                        resInner <- pullI
+                        case resInner of
+                            Producing push close c -> return $ HaveMore
+                                (go (Conduit push close) is)
+                                (outerClose >> close >> return ())
+                                c
+                            Finished _leftover c -> do
+                                _ <- outerClose
+                                return $ Finished Nothing c
+                            HaveMore pullI' closeI' c -> return $ HaveMore
+                                (goI pullI' is)
+                                (outerClose >> closeI')
+                                c
+                go inner0 inputI
+            HaveMore outerPull outerClose [] -> return $ HaveMore
+                (pullF outerPull inner0)
+                (outerClose >> conduitClose inner0 >> return ())
+                []
+            HaveMore outerPull outerClose inputI -> do
+                let go inner [] = outerPull >>= goResOuter inner
+                    go inner (i:is) = do
+                        resInner <- conduitPush inner i
+                        case resInner of
+                            Producing push close c -> return $ HaveMore
+                                (go (Conduit push close) is)
+                                (outerClose >> close >> return ())
+                                c
+                            Finished _leftover c -> do
+                                _ <- outerClose
+                                return $ Finished Nothing c
+                            HaveMore pullI' closeI' c -> return $ HaveMore
+                                (goI pullI' is)
+                                (outerClose >> closeI')
+                                c
+                    goI pullI is = do
+                        resInner <- pullI
+                        case resInner of
+                            Producing push close c -> return $ HaveMore
+                                (go (Conduit push close) is)
+                                (outerClose >> close >> return ())
+                                c
+                            Finished _leftover c -> do
+                                _ <- outerClose
+                                return $ Finished Nothing c
+                            HaveMore pullI' closeI' c -> return $ HaveMore
+                                (goI pullI' is)
+                                (outerClose >> closeI')
+                                c
+                go inner0 inputI
 
 -- | Push some data to a conduit, then close it if necessary.
 conduitPushClose :: Monad m => Conduit a m b -> [a] -> m [b]
