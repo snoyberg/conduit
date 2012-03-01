@@ -271,108 +271,61 @@ Conduit initPushC initCloseC =$ SinkData pushI0 closeI0 = SinkData
 
 infixr 0 =$=
 
+data FuseMiddleOuterState outerPush outerClose outerPull outerClose' inputO inputI =
+    FMOOpen outerPush outerClose
+  | FMOClosed (Maybe inputO)
+  | FMOHaveMore outerPull outerClose'
+
 -- | Middle fuse, combining two conduits together into a new conduit.
 --
 -- Since 0.2.0
 (=$=) :: Monad m => Conduit a m b -> Conduit b m c -> Conduit a m c
-Conduit initOuterPush initOuterClose =$= innerOrig = Conduit
-    (pushF initOuterPush innerOrig)
-    (closeF initOuterClose innerOrig)
+Conduit initOuterPush initOuterClose =$= (Conduit initInnerPush initInnerClose) = Conduit
+    (pushF initOuterPush initInnerPush initInnerClose)
+    (closeF initOuterClose initInnerClose)
   where
-    pushF outerPush0 inner0 inputO = outerPush0 inputO >>= goResOuter inner0
+    pushF outerPush innerPush innerClose inputO = outerPush inputO >>= goResOuter innerPush innerClose
 
-    closeF outerClose0 inner = do
-        b <- outerClose0
-        c <- conduitPushClose inner b
-        return c
+    goResOuter innerPush innerClose resOuter =
+        case resOuter of
+            Producing outerPush' outerClose' inputIs -> pushInnerF (FMOOpen outerPush' outerClose') innerPush innerClose inputIs
+            Finished leftoverO inputIs -> pushInnerF (FMOClosed leftoverO) innerPush innerClose inputIs
+            HaveMore outerPull' outerClose' inputIs -> pushInnerF (FMOHaveMore outerPull' outerClose') innerPush innerClose inputIs
 
-    pullF outerPull inner0 = outerPull >>= goResOuter inner0
+    pushInnerF (FMOOpen outerPush outerClose) innerPush innerClose [] = return $ Producing
+        (pushF outerPush innerPush innerClose)
+        (closeF outerClose innerClose)
+        []
+    pushInnerF (FMOClosed leftoverO) _ innerClose [] = do
+        outputIs <- innerClose
+        return $ Finished leftoverO outputIs
+    pushInnerF (FMOHaveMore outerPull _) innerPush innerClose [] = outerPull >>= goResOuter innerPush innerClose
+    pushInnerF fmo innerPush _ (inputI:inputIs) =
+        innerPush inputI >>= goResInner fmo inputIs
 
-    goResOuter inner0 res =
-        case res of
-            Finished leftoverO inputI -> do
-                c <- conduitPushClose inner0 inputI
-                return $ Finished leftoverO c
-            Producing outerPush outerClose inputI -> do
-                let go inner [] = return $ Producing (pushF outerPush inner) (closeF outerClose inner) []
-                    go inner (i:is) = do
-                        resInner <- conduitPush inner i
-                        case resInner of
-                            Producing push close c -> return $ HaveMore
-                                (go (Conduit push close) is)
-                                (outerClose >> close >> return ())
-                                c
-                            Finished _leftover c -> do
-                                _ <- outerClose
-                                return $ Finished Nothing c
-                            HaveMore pullI closeI c -> return $ HaveMore
-                                (goI pullI is)
-                                (outerClose >> closeI)
-                                c
-                    goI pullI is = do
-                        resInner <- pullI
-                        case resInner of
-                            Producing push close c -> return $ HaveMore
-                                (go (Conduit push close) is)
-                                (outerClose >> close >> return ())
-                                c
-                            Finished _leftover c -> do
-                                _ <- outerClose
-                                return $ Finished Nothing c
-                            HaveMore pullI' closeI' c -> return $ HaveMore
-                                (goI pullI' is)
-                                (outerClose >> closeI')
-                                c
-                go inner0 inputI
-            HaveMore outerPull outerClose [] -> return $ HaveMore
-                (pullF outerPull inner0)
-                (outerClose >> conduitClose inner0 >> return ())
-                []
-            HaveMore outerPull outerClose inputI -> do
-                let go inner [] = outerPull >>= goResOuter inner
-                    go inner (i:is) = do
-                        resInner <- conduitPush inner i
-                        case resInner of
-                            Producing push close c -> return $ HaveMore
-                                (go (Conduit push close) is)
-                                (outerClose >> close >> return ())
-                                c
-                            Finished _leftover c -> do
-                                _ <- outerClose
-                                return $ Finished Nothing c
-                            HaveMore pullI' closeI' c -> return $ HaveMore
-                                (goI pullI' is)
-                                (outerClose >> closeI')
-                                c
-                    goI pullI is = do
-                        resInner <- pullI
-                        case resInner of
-                            Producing push close c -> return $ HaveMore
-                                (go (Conduit push close) is)
-                                (outerClose >> close >> return ())
-                                c
-                            Finished _leftover c -> do
-                                _ <- outerClose
-                                return $ Finished Nothing c
-                            HaveMore pullI' closeI' c -> return $ HaveMore
-                                (goI pullI' is)
-                                (outerClose >> closeI')
-                                c
-                go inner0 inputI
+    goResInner fmo inputIs resInner =
+        case resInner of
+            Finished _leftoverI outputIs -> do
+                leftoverO <- closeOuterLeftover fmo
+                return $ Finished leftoverO outputIs
+            Producing innerPush' innerClose' outputIs -> return $ HaveMore
+                (pushInnerF fmo innerPush' innerClose' inputIs)
+                (closeUnit fmo innerClose')
+                outputIs
+            HaveMore innerPull' innerClose' outputIs -> return $ HaveMore
+                (pullInnerF fmo inputIs innerPull')
+                (closeUnit fmo innerClose')
+                outputIs
 
--- | Push some data to a conduit, then close it if necessary.
-conduitPushClose :: Monad m => Conduit a m b -> [a] -> m [b]
-conduitPushClose c [] = conduitClose c
-conduitPushClose c (input:rest) =
-    conduitPush c input >>= goRes
-  where
-    goRes (Finished _ b) = return b
-    goRes (Producing push close b) = do
-        b' <- conduitPushClose (Conduit push close) rest
-        return $ b ++ b'
-    goRes (HaveMore pull _ b) = do
-        b' <- pull >>= goRes
-        return $ b ++ b'
+    closeOuterLeftover (FMOOpen _ outerClose) = outerClose >> return Nothing
+    closeOuterLeftover (FMOClosed leftoverO) = return leftoverO
+    closeOuterLeftover (FMOHaveMore _ outerClose) = outerClose >> return Nothing
+
+    pullInnerF fmo inputIs innerPull = innerPull >>= goResInner fmo inputIs
+
+    closeUnit fmo innerClose = closeOuterLeftover fmo >> innerClose >> return ()
+
+    closeF outerClose innerClose = outerClose >> innerClose
 
 -- | When actually interacting with @Source@s, we sometimes want to be able to
 -- buffer the output, in case any intermediate steps return leftover data. A
