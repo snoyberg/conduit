@@ -5,38 +5,44 @@
 -- | Utilities for constructing and covnerting conduits. Please see
 -- "Data.Conduit.Types.Conduit" for more information on the base types.
 module Data.Conduit.Util.Conduit
-    ( conduitState
+    ( haveMore
+    , conduitState
     , ConduitStateResult (..)
     , conduitIO
     , ConduitIOResult (..)
+    {- FIXME
     , transConduit
       -- *** Sequencing
     , SequencedSink
     , sequenceSink
     , sequence
     , SequencedSinkResponse (..)
+    -}
     ) where
 
 import Prelude hiding (sequence)
 import Control.Monad.Trans.Resource
 import Data.Conduit.Types.Conduit
-import Data.Conduit.Types.Sink
+--import Data.Conduit.Types.Sink
+import Data.Conduit.Types.Source
 import Control.Monad (liftM)
+
+haveMore :: Monad m => ConduitResult a m b -> m () -> [b] -> ConduitResult a m b
+haveMore res _ [] = res
+haveMore res close (x:xs) = HaveMore (return $ haveMore res close xs) close x
 
 -- | A helper type for @conduitState@, indicating the result of being pushed
 -- to.  It can either indicate that processing is done, or to continue with the
 -- updated state.
 --
 -- Since 0.2.0
-data ConduitStateResult state input m output =
+data ConduitStateResult state input output =
     StateFinished (Maybe input) [output]
   | StateProducing state [output]
-  | StateHaveMore (m (ConduitStateResult state input m output)) (m ()) [output]
 
-instance Monad m => Functor (ConduitStateResult state input m) where
+instance Functor (ConduitStateResult state input) where
     fmap f (StateFinished a b) = StateFinished a (map f b)
     fmap f (StateProducing a b) = StateProducing a (map f b)
-    fmap f (StateHaveMore a b c) = StateHaveMore (liftM (fmap f) a) b (map f c)
 
 -- | Construct a 'Conduit' with some stateful functions. This function addresses
 -- threading the state value for you.
@@ -45,25 +51,29 @@ instance Monad m => Functor (ConduitStateResult state input m) where
 conduitState
     :: Monad m
     => state -- ^ initial state
-    -> (state -> input -> m (ConduitStateResult state input m output)) -- ^ Push function.
+    -> (state -> input -> m (ConduitStateResult state input output)) -- ^ Push function.
     -> (state -> m [output]) -- ^ Close function. The state need not be returned, since it will not be used again.
     -> Conduit input m output
 conduitState state0 push0 close0 =
-    Conduit (push state0) (close0 state0)
+    Conduit (push state0) (close state0)
   where
     push state input = liftM goRes' $ state `seq` push0 state input
 
-    goRes' (StateFinished a b) = Finished a b
-    goRes' (StateProducing state' output) = Producing
-        (push state')
-        (close0 state')
-        output
-    goRes' (StateHaveMore pull close output) = HaveMore
-        (goPull pull)
-        close
-        output
+    close state = Source
+        { sourcePull = do
+            os <- close0 state
+            return $ fromList os
+        , sourceClose = return ()
+        }
 
-    goPull pull = liftM goRes' pull
+    goRes' (StateFinished leftover output) = haveMore
+        (Finished leftover)
+        (return ())
+        output
+    goRes' (StateProducing state output) = haveMore
+        (Running (push state) (close state))
+        (return ())
+        output
 
 -- | A helper type for @conduitIO@, indicating the result of being pushed to.
 -- It can either indicate that processing is done, or to continue.
@@ -90,26 +100,43 @@ conduitIO alloc cleanup push0 close0 = Conduit
     { conduitPush = \input -> do
         (key, state) <- allocate alloc cleanup
         push key state input
-    , conduitClose = do
-        (key, state) <- allocate alloc cleanup
-        close key state
+    , conduitClose = Source
+        { sourcePull = do
+            (key, state) <- allocate alloc cleanup
+            os <- close0 state
+            release key
+            return $ fromList os
+        , sourceClose = return ()
+        }
     }
   where
     push key state input = do
         res <- push0 state input
         case res of
-            IOProducing output -> return $ Producing
-                (push key state)
-                (close key state)
+            IOProducing output -> return $ haveMore
+                (Running (push key state) (close key state))
+                (release key >> return ())
                 output
-            IOFinished a b -> do
+            IOFinished leftover output -> do
                 release key
-                return $ Finished a b
-    close key state = do
-        output <- close0 state
-        release key
-        return output
+                return $ haveMore
+                    (Finished leftover)
+                    (return ())
+                    output
 
+    close key state = Source
+        { sourcePull = do
+            output <- close0 state
+            release key
+            return $ fromList output
+        , sourceClose = release key
+        }
+
+fromList :: Monad m => [a] -> SourceResult m a
+fromList [] = Closed
+fromList (x:xs) = Open (Source (return $ fromList xs) (return ())) x
+
+{-
 -- | Transform the monad a 'Conduit' lives in.
 --
 -- See @transSource@ for more information.
@@ -137,7 +164,9 @@ transConduitPush f (HaveMore pull close output) = HaveMore
     (f $ liftM (transConduitPush f) pull)
     (f close)
     output
+-}
 
+{- FIXME
 -- | Return value from a 'SequencedSink'.
 --
 -- Since 0.2.0
@@ -168,7 +197,12 @@ sequenceSink
     => state -- ^ initial state
     -> SequencedSink state input m output
     -> Conduit input m output
-sequenceSink state0 fsink = conduitState
+sequenceSink state0 fsink =
+    Conduit (push initState) (close initState)
+  where
+    initState = SCNewState state0
+
+    push 
     (SCNewState state0)
     (scPush id fsink)
     scClose
@@ -261,3 +295,4 @@ sequence (SinkLift msink) = Conduit
         conduitPush (sequence sink) input
     , conduitClose = return []
     }
+-}

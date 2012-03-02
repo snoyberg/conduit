@@ -30,6 +30,7 @@ import Control.Monad.IO.Class (liftIO)
 import qualified System.IO as IO
 import Control.Monad.Trans.Resource (allocate, release)
 import Data.Word (Word8)
+import Data.Monoid (mempty)
 #if CABAL_OS_WINDOWS
 import qualified System.Win32File as F
 #elif NO_HANDLES
@@ -245,13 +246,20 @@ takeWhile :: Monad m => (Word8 -> Bool) -> Conduit S.ByteString m S.ByteString
 takeWhile p =
     Conduit push close
   where
-    push bs = do
-        let (x, y) = S.span p bs
-        return $
-            if S.null y
-                then Producing push close [x]
-                else Finished (Just y) (if S.null x then [] else [x])
-    close = return []
+    push bs
+        | S.null y =
+            let r = return $ Running push close
+             in if S.null x
+                    then r
+                    else return $ HaveMore r (return ()) x
+        | otherwise =
+            let f = return $ Finished $ Just y
+             in if S.null x
+                    then f
+                    else return $ HaveMore f (return ()) x
+      where
+        (x, y) = S.span p bs
+    close = mempty
 
 -- | Ignore all bytes while the predicate returns @True@.
 --

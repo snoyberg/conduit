@@ -45,7 +45,6 @@ import Prelude
     , Bool (..)
     , (>>)
     )
-import qualified Prelude
 import Data.Conduit
 import Data.Monoid (mempty)
 import Control.Monad (liftM)
@@ -176,8 +175,8 @@ map :: Monad m => (a -> b) -> Conduit a m b
 map f =
     Conduit push close
   where
-    push = return . Producing push close . return . f
-    close = return []
+    push i = return $ HaveMore (return $ Running push close) (return ()) (f i)
+    close = mempty
 
 -- | Apply a monadic transformation to all values in a stream.
 --
@@ -189,8 +188,8 @@ mapM :: Monad m => (a -> m b) -> Conduit a m b
 mapM f =
     Conduit push close
   where
-    push = liftM (Producing push close . return) . f
-    close = return []
+    push i = liftM (HaveMore (return $ Running push close) (return ())) $ f i
+    close = mempty
 
 -- | Apply a transformation to all values in a stream, concatenating the output
 -- values.
@@ -200,8 +199,8 @@ concatMap :: Monad m => (a -> [b]) -> Conduit a m b
 concatMap f =
     Conduit push close
   where
-    push = return . Producing push close . f
-    close = return []
+    push = return . haveMore (Running push close) (return ()) . f
+    close = mempty
 
 -- | Apply a monadic transformation to all values in a stream, concatenating
 -- the output values.
@@ -211,8 +210,8 @@ concatMapM :: Monad m => (a -> m [b]) -> Conduit a m b
 concatMapM f =
     Conduit push close
   where
-    push = liftM (Producing push close) . f
-    close = return []
+    push = liftM (haveMore (Running push close) (return ())) . f
+    close = mempty
 
 -- | 'concatMap' with an accumulator.
 --
@@ -298,8 +297,9 @@ filter :: Monad m => (a -> Bool) -> Conduit a m a
 filter f =
     Conduit push close
   where
-    push = return . Producing push close . Prelude.filter f . return
-    close = return []
+    push i | f i = return $ HaveMore (return $ Running push close) (return ()) i
+    push _       = return $ Running push close
+    close = mempty
 
 -- | Ignore the remainder of values in the source. Particularly useful when
 -- combined with 'isolate'.
