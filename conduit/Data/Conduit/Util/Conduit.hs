@@ -12,21 +12,21 @@ module Data.Conduit.Util.Conduit
     , ConduitIOResult (..)
     , transConduit
       -- *** Sequencing
-    {- FIXME
     , SequencedSink
     , sequenceSink
     , sequence
     , SequencedSinkResponse (..)
-    -}
+    , SCState (..) -- FIXME
     ) where
 
 import Prelude hiding (sequence)
 import Control.Monad.Trans.Resource
 import Data.Conduit.Types.Conduit
---import Data.Conduit.Types.Sink
+import Data.Conduit.Types.Sink
 import Data.Conduit.Types.Source
 import Data.Conduit.Util.Source
 import Control.Monad (liftM)
+import Data.Monoid (mempty)
 
 haveMore :: Monad m => ConduitResult a m b -> m () -> [b] -> ConduitResult a m b
 haveMore res _ [] = res
@@ -164,7 +164,6 @@ transConduitPush f (HaveMore pull close output) = HaveMore
     (f close)
     output
 
-{- FIXME
 -- | Return value from a 'SequencedSink'.
 --
 -- Since 0.2.0
@@ -200,11 +199,14 @@ sequenceSink state0 fsink =
   where
     initState = SCNewState state0
 
-    push 
-    (SCNewState state0)
-    (scPush id fsink)
-    scClose
+    push :: Monad m
+         => SCState state input m output
+         -> ConduitPush input m output
+    push = error "sequenceSink push" fsink
 
+    close = error "sequenceSink close"
+
+{- FIXME
 goRes :: Monad m
       => SequencedSinkResponse state input m output
       -> Maybe input
@@ -255,6 +257,7 @@ scClose (SCSink _ close) = do
         Emit _ os -> return os
         Stop -> return []
         StartConduit c -> conduitClose c
+-}
 
 -- | Specialised version of 'sequenceSink'
 --
@@ -264,33 +267,45 @@ scClose (SCSink _ close) = do
 --
 -- Since 0.2.1
 sequence :: Monad m => Sink input m output -> Conduit input m output
-sequence (SinkData spush sclose) = Conduit (push spush) (close sclose)
+sequence (SinkData spush0 sclose0) =
+    Conduit (push spush0) (close sclose0)
   where
-    push spush' input = do
-        res <- spush' input
+    push spush input = spush input >>= goRes
+
+    goRes res =
         case res of
             Processing spush'' sclose'' ->
-                return $ Producing (push spush'') (close sclose'') []
-            Done Nothing output ->
-                return $ Producing (push spush) (close sclose) [output]
-            Done (Just input') output -> do
-                res' <- push spush input'
-                case res' of
-                    Producing push' close' output' ->
-                        return $ Producing push' close' (output:output')
-                    HaveMore pull close' output' ->
-                        return $ HaveMore pull close' (output:output')
-                    Finished _ _ -> error "impossible [sequence]"
-    close sclose' = liftM (:[]) sclose'
+                return $ Running (push spush'') (close sclose'')
+            Done Nothing output -> return $ HaveMore
+                (return $ Running (push spush0) (close sclose0))
+                (return ())
+                output
+            Done (Just input') output -> return $ HaveMore
+                (spush0 input' >>= goRes)
+                (return ())
+                output
+
+    close sclose = Source
+        { sourcePull = do
+            output <- sclose
+            return $ Open mempty output
+        , sourceClose = return ()
+        }
 
 sequence (SinkNoData output) = Conduit
-    { conduitPush = \input -> return $ Finished (Just input) (repeat output)
-    , conduitClose = return $ repeat output
+    { conduitPush = \_input ->
+        let x = return $ HaveMore x (return ()) output
+         in x
+    , conduitClose =
+        let src = Source
+                { sourcePull = return $ Open src output
+                , sourceClose = return ()
+                }
+         in src
     }
 sequence (SinkLift msink) = Conduit
     { conduitPush = \input -> do
         sink <- msink
         conduitPush (sequence sink) input
-    , conduitClose = return []
+    , conduitClose = mempty
     }
--}
