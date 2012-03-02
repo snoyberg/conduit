@@ -16,7 +16,6 @@ module Data.Conduit.Util.Conduit
     , sequenceSink
     , sequence
     , SequencedSinkResponse (..)
-    , SCState (..) -- FIXME
     ) where
 
 import Prelude hiding (sequence)
@@ -31,6 +30,10 @@ import Data.Monoid (mempty)
 haveMore :: Monad m => ConduitResult a m b -> m () -> [b] -> ConduitResult a m b
 haveMore res _ [] = res
 haveMore res close (x:xs) = HaveMore (return $ haveMore res close xs) close x
+
+haveMoreM :: Monad m => m (ConduitResult a m b) -> m () -> [b] -> m (ConduitResult a m b)
+haveMoreM res _ [] = res
+haveMoreM res close (x:xs) = return $ HaveMore (haveMoreM res close xs) close x
 
 -- | A helper type for @conduitState@, indicating the result of being pushed
 -- to.  It can either indicate that processing is done, or to continue with the
@@ -180,12 +183,6 @@ data SequencedSinkResponse state input m output =
 type SequencedSink state input m output =
     state -> Sink input m (SequencedSinkResponse state input m output)
 
-data SCState state input m output =
-    SCNewState state
-  | SCConduit (ConduitPush input m output) (ConduitClose m output)
-  | SCSink (input -> m (SinkResult input m (SequencedSinkResponse state input m output)))
-           (m (SequencedSinkResponse state input m output))
-
 -- | Convert a 'SequencedSink' into a 'Conduit'.
 --
 -- Since 0.2.0
@@ -194,70 +191,46 @@ sequenceSink
     => state -- ^ initial state
     -> SequencedSink state input m output
     -> Conduit input m output
-sequenceSink state0 fsink =
-    Conduit (push initState) (close initState)
-  where
-    initState = SCNewState state0
-
-    push :: Monad m
-         => SCState state input m output
-         -> ConduitPush input m output
-    push = error "sequenceSink push" fsink
-
-    close = error "sequenceSink close"
-
-{- FIXME
-goRes :: Monad m
-      => SequencedSinkResponse state input m output
-      -> Maybe input
-      -> ([output] -> [output])
-      -> SequencedSink state input m output
-      -> m (ConduitStateResult (SCState state input m output) input m output)
-goRes (Emit state output) (Just input) front fsink =
-    scPush (front . (output++)) fsink (SCNewState state) input
-goRes (Emit state output) Nothing front _ =
-    return $ StateProducing (SCNewState state) $ front output
-goRes Stop minput front _ =
-    return $ StateFinished minput $ front []
-goRes (StartConduit (Conduit p c)) Nothing front _ =
-    return $ StateProducing (SCConduit p c) $ front []
-goRes (StartConduit (Conduit p c)) (Just input) front fsink =
-    scPush front fsink (SCConduit p c) input
+sequenceSink state0 fsink = Conduit (scPush fsink $ fsink state0) mempty
 
 scPush :: Monad m
-     => ([output] -> [output])
-     -> SequencedSink state input m output
-     -> SCState state input m output
-     -> input
-     -> m (ConduitStateResult (SCState state input m output) input m output)
-scPush front fsink (SCNewState state) input =
-    go (fsink state)
-  where
-    go (SinkData push' close') = scPush front fsink (SCSink push' close') input
-    go (SinkNoData res) = goRes res (Just input) front fsink
-    go (SinkLift msink) = msink >>= go
-scPush front _ (SCConduit push0 _) input = do
-    liftM goRes' $ push0 input
-  where
-    goRes' (Producing push close x) = StateProducing (SCConduit push close) $ front x
-    goRes' (Finished x y) = StateFinished x $ front y
-    goRes' (HaveMore pull close x) = StateHaveMore (liftM goRes' pull) close $ front x
-scPush front fsink (SCSink push _) input = do
-    mres <- push input
-    case mres of
-        Done minput res -> goRes res minput front fsink
-        Processing push' close' -> return (StateProducing (SCSink push' close') $ front [])
+       => SequencedSink state input m output
+       -> Sink input m (SequencedSinkResponse state input m output)
+       -> ConduitPush input m output
+scPush fsink (SinkData pushI _) input = pushI input >>= scGoRes fsink
+scPush fsink (SinkNoData res) input = scGoRes fsink (Done (Just input) res)
+scPush fsink (SinkLift msink) input = do
+    sink <- msink
+    scPush fsink sink input
 
-scClose :: Monad m => SCState state inptu m output -> m [output]
-scClose (SCNewState _) = return []
-scClose (SCConduit _ close) = close
-scClose (SCSink _ close) = do
-    res <- close
-    case res of
-        Emit _ os -> return os
-        Stop -> return []
-        StartConduit c -> conduitClose c
--}
+scGoRes :: Monad m
+        => SequencedSink state input m output
+        -> SinkResult input m (SequencedSinkResponse state input m output)
+        -> m (ConduitResult input m output)
+scGoRes fsink (Done (Just leftover) (Emit state os)) = haveMoreM
+    (scPush fsink (fsink state) leftover)
+    (return ())
+    os
+scGoRes fsink (Done Nothing (Emit state os)) = return $ haveMore
+    (Running p c)
+    (return ())
+    os
+  where
+    Conduit p c = sequenceSink state fsink
+scGoRes fsink (Processing pushI closeI) = return $ Running
+    (scPush fsink (SinkData pushI closeI))
+    Source
+        { sourcePull = do
+            res <- closeI
+            case res of
+                Emit _ os -> return $ fromList os
+                Stop -> return Closed
+                StartConduit (Conduit _ closeC) -> sourcePull closeC
+        , sourceClose = closeI >> return ()
+        }
+scGoRes _ (Done mleftover Stop) = return $ Finished mleftover
+scGoRes _ (Done Nothing (StartConduit (Conduit p c))) = return $ Running p c
+scGoRes _ (Done (Just leftover) (StartConduit (Conduit p _))) = p leftover
 
 -- | Specialised version of 'sequenceSink'
 --
