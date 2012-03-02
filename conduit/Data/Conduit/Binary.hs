@@ -28,8 +28,9 @@ import Control.Exception (assert)
 import Control.Monad (liftM)
 import Control.Monad.IO.Class (liftIO)
 import qualified System.IO as IO
-import Control.Monad.Trans.Resource (withIO, release)
+import Control.Monad.Trans.Resource (allocate, release)
 import Data.Word (Word8)
+import Data.Monoid (mempty)
 #if CABAL_OS_WINDOWS
 import qualified System.Win32File as F
 #elif NO_HANDLES
@@ -43,16 +44,16 @@ import qualified System.PosixFile as F
 -- should do so as early as possible to free scarce resources.
 --
 -- Since 0.2.0
-openFile :: ResourceIO m
+openFile :: MonadResource m
          => FilePath
          -> IO.IOMode
-         -> ResourceT m IO.Handle
-openFile fp mode = fmap snd $ withIO (IO.openBinaryFile fp mode) IO.hClose
+         -> m IO.Handle
+openFile fp mode = liftM snd $ allocate (IO.openBinaryFile fp mode) IO.hClose
 
 -- | Stream the contents of a file as binary data.
 --
 -- Since 0.2.0
-sourceFile :: ResourceIO m
+sourceFile :: MonadResource m
            => FilePath
            -> Source m S.ByteString
 sourceFile fp =
@@ -69,7 +70,7 @@ sourceFile fp =
 -- completes, since it did not acquire the @Handle@ in the first place.
 --
 -- Since 0.2.0
-sourceHandle :: ResourceIO m
+sourceHandle :: MonadResource m
              => IO.Handle
              -> Source m S.ByteString
 sourceHandle h =
@@ -91,7 +92,7 @@ sourceHandle h =
 -- and close it as soon as possible.
 --
 -- Since 0.2.0
-sourceIOHandle :: ResourceIO m
+sourceIOHandle :: MonadResource m
                => IO IO.Handle
                -> Source m S.ByteString
 sourceIOHandle alloc = sourceIO alloc IO.hClose
@@ -105,7 +106,7 @@ sourceIOHandle alloc = sourceIO alloc IO.hClose
 -- will /not/ automatically close the @Handle@ when processing completes.
 --
 -- Since 0.2.0
-sinkHandle :: ResourceIO m
+sinkHandle :: MonadResource m
            => IO.Handle
            -> Sink S.ByteString m ()
 sinkHandle h =
@@ -120,7 +121,7 @@ sinkHandle h =
 -- and close it as soon as possible.
 --
 -- Since 0.2.0
-sinkIOHandle :: ResourceIO m
+sinkIOHandle :: MonadResource m
              => IO IO.Handle
              -> Sink S.ByteString m ()
 sinkIOHandle alloc = sinkIO alloc IO.hClose
@@ -131,14 +132,14 @@ sinkIOHandle alloc = sinkIO alloc IO.hClose
 -- offset and only consuming up to a certain number of bytes.
 --
 -- Since 0.2.0
-sourceFileRange :: ResourceIO m
+sourceFileRange :: MonadResource m
                 => FilePath
                 -> Maybe Integer -- ^ Offset
                 -> Maybe Integer -- ^ Maximum count
                 -> Source m S.ByteString
 sourceFileRange fp offset count = Source
     { sourcePull = do
-        (key, handle) <- withIO (IO.openBinaryFile fp IO.ReadMode) IO.hClose
+        (key, handle) <- allocate (IO.openBinaryFile fp IO.ReadMode) IO.hClose
         case offset of
             Nothing -> return ()
             Just off -> liftIO $ IO.hSeek handle IO.AbsoluteSeek off
@@ -180,7 +181,7 @@ sourceFileRange fp offset count = Source
 -- | Stream all incoming data to the given file.
 --
 -- Since 0.2.0
-sinkFile :: ResourceIO m
+sinkFile :: MonadResource m
          => FilePath
          -> Sink S.ByteString m ()
 sinkFile fp = sinkIOHandle (IO.openBinaryFile fp IO.WriteMode)
@@ -189,7 +190,7 @@ sinkFile fp = sinkIOHandle (IO.openBinaryFile fp IO.WriteMode)
 -- pipeline. Similar in concept to the Unix command @tee@.
 --
 -- Since 0.2.0
-conduitFile :: ResourceIO m
+conduitFile :: MonadResource m
             => FilePath
             -> Conduit S.ByteString m S.ByteString
 conduitFile fp = conduitIO
@@ -205,7 +206,7 @@ conduitFile fp = conduitIO
 -- consumed.
 --
 -- Since 0.2.0
-isolate :: Resource m
+isolate :: Monad m
         => Int
         -> Conduit S.ByteString m S.ByteString
 isolate count0 = conduitState
@@ -226,7 +227,7 @@ isolate count0 = conduitState
 -- | Return the next byte from the stream, if available.
 --
 -- Since 0.2.0
-head :: Resource m => Sink S.ByteString m (Maybe Word8)
+head :: Monad m => Sink S.ByteString m (Maybe Word8)
 head =
     SinkData push close
   where
@@ -241,23 +242,29 @@ head =
 -- | Return all bytes while the predicate returns @True@.
 --
 -- Since 0.2.0
-takeWhile :: Resource m => (Word8 -> Bool) -> Conduit S.ByteString m S.ByteString
+takeWhile :: Monad m => (Word8 -> Bool) -> Conduit S.ByteString m S.ByteString
 takeWhile p =
-    conduit
+    Conduit push close
   where
-    conduit = Conduit push close
-    push bs = do
-        let (x, y) = S.span p bs
-        return $
-            if S.null y
-                then Producing conduit [x]
-                else Finished (Just y) (if S.null x then [] else [x])
-    close = return []
+    push bs
+        | S.null y =
+            let r = return $ Running push close
+             in if S.null x
+                    then r
+                    else return $ HaveMore r (return ()) x
+        | otherwise =
+            let f = return $ Finished $ Just y
+             in if S.null x
+                    then f
+                    else return $ HaveMore f (return ()) x
+      where
+        (x, y) = S.span p bs
+    close = mempty
 
 -- | Ignore all bytes while the predicate returns @True@.
 --
 -- Since 0.2.0
-dropWhile :: Resource m => (Word8 -> Bool) -> Sink S.ByteString m ()
+dropWhile :: Monad m => (Word8 -> Bool) -> Sink S.ByteString m ()
 dropWhile p =
     SinkData push close
   where
@@ -272,14 +279,14 @@ dropWhile p =
 -- | Take the given number of bytes, if available.
 --
 -- Since 0.2.0
-take :: Resource m => Int -> Sink S.ByteString m L.ByteString
+take :: Monad m => Int -> Sink S.ByteString m L.ByteString
 take n = L.fromChunks `liftM` (isolate n =$ CL.consume)
 
 -- | Split the input bytes into lines. In other words, split on the LF byte
 -- (10), and strip it from the output.
 --
 -- Since 0.2.0
-lines :: Resource m => Conduit S.ByteString m S.ByteString
+lines :: Monad m => Conduit S.ByteString m S.ByteString
 lines =
     conduitState id push close
   where

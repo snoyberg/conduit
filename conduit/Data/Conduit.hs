@@ -50,16 +50,16 @@ module Data.Conduit
     , Flush (..)
       -- * Convenience re-exports
     , ResourceT
-    , Resource (..)
-    , ResourceIO
-    , ResourceUnsafeIO
+    , MonadResource
+    , MonadThrow (..)
+    , MonadUnsafeIO (..)
     , runResourceT
-    , ResourceThrow (..)
     ) where
 
-import Control.Applicative ((<$>))
 import Control.Monad (liftM)
 import Control.Monad.Trans.Resource
+import Control.Monad.IO.Class (MonadIO (liftIO))
+import qualified Data.IORef as I
 import Data.Conduit.Types.Source
 import Data.Conduit.Util.Source
 import Data.Conduit.Types.Sink
@@ -87,7 +87,7 @@ infixr 0 $$
 -- close any @BufferedSource@s, allowing them to be reused.
 --
 -- Since 0.2.0
-($$) :: (IsSource src, Resource m) => src m a -> Sink a m b -> ResourceT m b
+($$) :: IsSource src m => src m a -> Sink a m b -> m b
 ($$) = connect
 {-# INLINE ($$) #-}
 
@@ -95,23 +95,23 @@ infixr 0 $$
 -- 'BufferedSource'.
 --
 -- Since 0.2.0
-class IsSource src where
-    connect :: Resource m => src m a -> Sink a m b -> ResourceT m b
-    fuseLeft :: Resource m => src m a -> Conduit a m b -> Source m b
+class IsSource src m where
+    connect :: src m a -> Sink a m b -> m b
+    fuseLeft :: src m a -> Conduit a m b -> Source m b
 
-instance IsSource Source where
+instance Monad m => IsSource Source m where
     connect = normalConnect
     {-# INLINE connect #-}
     fuseLeft = normalFuseLeft
     {-# INLINE fuseLeft #-}
 
-instance IsSource BufferedSource where
+instance MonadIO m => IsSource BufferedSource m where
     connect = bufferedConnect
     {-# INLINE connect #-}
     fuseLeft = bufferedFuseLeft
     {-# INLINE fuseLeft #-}
 
-normalConnect :: Resource m => Source m a -> Sink a m b -> ResourceT m b
+normalConnect :: Monad m => Source m a -> Sink a m b -> m b
 normalConnect _ (SinkNoData output) = return output
 normalConnect src0 (SinkLift msink) = msink >>= normalConnect src0
 normalConnect src0 (SinkData push0 close0) =
@@ -131,9 +131,10 @@ normalConnect src0 (SinkData push0 close0) =
                         return res'
                     Processing push' close' -> connect' src' push' close'
 
-data FuseLeftState src conduit output =
-    FLClosed [output]
-  | FLOpen src conduit [output]
+data FuseLeftState srcState input m output =
+    FLClosed
+  | FLOpen srcState (ConduitPush input m output) (ConduitClose m output)
+  | FLHaveMore srcState (ConduitPull input m output) (m ())
 
 infixl 1 $=
 
@@ -143,61 +144,51 @@ infixl 1 $=
 -- @BufferedSource@ will be left open.
 --
 -- Since 0.2.0
-($=) :: (IsSource src, Resource m)
+($=) :: IsSource src m
      => src m a
      -> Conduit a m b
      -> Source m b
 ($=) = fuseLeft
 {-# INLINE ($=) #-}
 
-normalFuseLeft :: Resource m => Source m a -> Conduit a m b -> Source m b
-normalFuseLeft src0 conduit0 = Source
-    { sourcePull = pull $ FLOpen src0 conduit0 []
+normalFuseLeft :: Monad m => Source m a -> Conduit a m b -> Source m b
+normalFuseLeft src0 (Conduit initPush initClose) = Source
+    { sourcePull = pull $ FLOpen src0 initPush initClose
     , sourceClose = return ()
     }
   where
+    mkSrc :: Monad m => FuseLeftState (Source m a) a m b -> Source m b
     mkSrc state = Source (pull state) (close state)
+
+    pull :: Monad m => FuseLeftState (Source m a) a m b -> m (SourceResult m b)
     pull state' =
         case state' of
-            FLClosed [] -> return Closed
-            FLClosed (x:xs) -> return $ Open
-                (mkSrc (FLClosed xs))
-                x
-            FLOpen src conduit (x:xs) -> return $ Open
-                (mkSrc (FLOpen src conduit xs))
-                x
-            FLOpen src conduit [] -> do
+            FLClosed -> return Closed
+            FLHaveMore src pull' _ -> pull' >>= goRes src
+            FLOpen src push close0 -> do
                 mres <- sourcePull src
                 case mres of
-                    Closed -> do
-                        res <- conduitClose conduit
-                        case res of
-                            [] -> return Closed
-                            x:xs -> return $ Open
-                                (mkSrc (FLClosed xs))
-                                x
-                    Open src'' input -> do
-                        res' <- conduitPush conduit input
-                        case res' of
-                            Producing conduit' [] ->
-                                pull $ FLOpen src'' conduit' []
-                            Producing conduit' (x:xs) -> return $ Open
-                                (mkSrc (FLOpen src'' conduit' xs))
-                                x
-                            Finished _leftover output -> do
-                                sourceClose src''
-                                case output of
-                                    [] -> return Closed
-                                    x:xs -> return $ Open
-                                        (mkSrc (FLClosed xs))
-                                        x
+                    Closed -> sourcePull close0
+                    Open src'' input -> push input >>= goRes src''
+
+    goRes src (Finished _leftover) = do
+        sourceClose src
+        return Closed
+    goRes src (HaveMore pull' close' x) = return $ Open
+        (mkSrc (FLHaveMore src pull' close'))
+        x
+    goRes src (Running pushI closeI) = pull $ FLOpen src pushI closeI
+
     close state = do
         -- See comment on bufferedFuseLeft for why we need to have the
         -- following check
         case state of
-            FLClosed _ -> return ()
-            FLOpen src' (Conduit _ closeC) _ -> do
-                _ignored <- closeC
+            FLClosed -> return ()
+            FLOpen src' _ closeC -> do
+                () <- sourceClose closeC
+                sourceClose src'
+            FLHaveMore src' _ closeC -> do
+                () <- closeC
                 sourceClose src'
 
 infixr 0 =$
@@ -205,92 +196,107 @@ infixr 0 =$
 -- | Right fuse, combining a conduit and a sink together into a new sink.
 --
 -- Since 0.2.0
-(=$) :: Resource m => Conduit a m b -> Sink b m c -> Sink a m c
-_ =$ SinkNoData res = SinkNoData res
+(=$) :: Monad m => Conduit a m b -> Sink b m c -> Sink a m c
+Conduit _ close =$ SinkNoData res = SinkLift $ do
+    () <- sourceClose close
+    return $ SinkNoData res
 conduit =$ SinkLift msink = SinkLift (liftM (conduit =$) msink)
-conduitOrig =$ SinkData pushI0 closeI0 = SinkData
-    { sinkPush = push pushI0 closeI0 conduitOrig
-    , sinkClose = close pushI0 closeI0 conduitOrig
+Conduit initPushO initCloseO =$ SinkData initPushI initCloseI = SinkData
+    { sinkPush = push initPushI initCloseI initPushO
+    , sinkClose = close initPushI initCloseI initCloseO
     }
   where
-    push pushI closeI conduit0 cinput = do
-        res <- conduitPush conduit0 cinput
-        case res of
-            Producing conduit' sinput -> do
-                let loop p c [] = return (Processing (push p c conduit') (close p c conduit'))
-                    loop p _ (i:is) = do
-                        mres <- p i
-                        case mres of
-                            Processing p' c' -> loop p' c' is
-                            Done _sleftover res' -> do
-                                _ <- conduitClose conduit'
-                                return $ Done Nothing res'
-                loop pushI closeI sinput
-            Finished cleftover sinput -> do
-                let loop _ c [] = c
-                    loop p _ (i:is) = do
-                        mres <- p i
-                        case mres of
-                            Processing p' c' -> loop p' c' is
-                            Done _sleftover res' -> return res'
-                res' <- loop pushI closeI sinput
-                return $ Done cleftover res'
-    close pushI closeI conduit = do
-        sinput <- conduitClose conduit
-        let loop _ c [] = c
-            loop p _ (i:is) = do
-                mres <- p i
-                case mres of
-                    Processing p' c' -> loop p' c' is
-                    Done _sleftover res' -> return res'
-        loop pushI closeI sinput
+    push :: Monad m
+         => SinkPush b m c
+         -> SinkClose m c
+         -> ConduitPush a m b
+         -> a
+         -> m (SinkResult a m c)
+    push pushI closeI pushO inputO = pushO inputO >>= goRes pushI closeI
+
+    close :: Monad m
+          => SinkPush b m c
+          -> SinkClose m c
+          -> ConduitClose m b
+          -> m c
+    close pushI closeI closeO = closeO $$ SinkData pushI closeI
+
+    goRes :: Monad m
+          => SinkPush b m c
+          -> SinkClose m c
+          -> ConduitResult a m b
+          -> m (SinkResult a m c)
+    goRes pushI closeI (Running pushO closeO) = return $ Processing
+        (push pushI closeI pushO)
+        (close pushI closeI closeO)
+    goRes _ closeI (Finished leftoverO) = do
+        outputI <- closeI
+        return $ Done leftoverO outputI
+    goRes pushI _ (HaveMore pullO closeO inputI) = pushI inputI >>= goResInner pullO closeO
+
+    goResInner :: Monad m
+               => ConduitPull a m b
+               -> m ()
+               -> SinkResult b m c
+               -> m (SinkResult a m c)
+    goResInner pullO _ (Processing pushI closeI) = pullO >>= goRes pushI closeI
+    goResInner _ closeO (Done _leftoverI outputI) = do
+        () <- closeO
+        return $ Done Nothing outputI
 
 infixr 0 =$=
 
 -- | Middle fuse, combining two conduits together into a new conduit.
 --
 -- Since 0.2.0
-(=$=) :: Resource m => Conduit a m b -> Conduit b m c -> Conduit a m c
-outerOrig =$= innerOrig = Conduit
-    (pushF outerOrig innerOrig)
-    (closeF outerOrig innerOrig)
+(=$=) :: Monad m => Conduit a m b -> Conduit b m c -> Conduit a m c
+Conduit initPushO initCloseO =$= Conduit initPushI initCloseI = Conduit
+    (push initPushO initPushI initCloseI)
+    (close initCloseO initPushI initCloseI)
   where
-    pushF outer0 inner0 inputO = do
-        res <- conduitPush outer0 inputO
-        case res of
-            Producing outer inputI -> do
-                let loop inner [] front = return $ Producing
-                        (Conduit (pushF outer inner) (closeF outer inner))
-                        (front [])
-                    loop inner (i:is) front = do
-                        resI <- conduitPush inner i
-                        case resI of
-                            Producing conduit c -> loop
-                                conduit
-                                is
-                                (front . (c ++))
-                            Finished _leftover c -> do
-                                _ <- conduitClose outer
-                                return $ Finished Nothing $ front c
-                loop inner0 inputI id
-            Finished leftoverO inputI -> do
-                c <- conduitPushClose inner0 inputI
-                return $ Finished leftoverO c
-    closeF outer inner = do
-        b <- conduitClose outer
-        c <- conduitPushClose inner b
-        return c
+    push :: Monad m
+         => ConduitPush a m b
+         -> ConduitPush b m c
+         -> ConduitClose  m c
+         -> ConduitPush a m c
+    push pushO pushI closeI inputO = pushO inputO >>= goResOuter pushI closeI
 
--- | Push some data to a conduit, then close it if necessary.
-conduitPushClose :: Monad m => Conduit a m b -> [a] -> ResourceT m [b]
-conduitPushClose c [] = conduitClose c
-conduitPushClose c (input:rest) = do
-    res <- conduitPush c input
-    case res of
-        Finished _ b -> return b
-        Producing conduit b -> do
-            b' <- conduitPushClose conduit rest
-            return $ b ++ b'
+    close :: Monad m
+          => ConduitClose  m b
+          -> ConduitPush b m c
+          -> ConduitClose  m c
+          -> ConduitClose  m c
+    close closeO pushI closeI = closeO $= Conduit pushI closeI
+
+    goResOuter :: Monad m
+               => ConduitPush b m c
+               -> ConduitClose  m c
+               -> ConduitResult a m b
+               -> m (ConduitResult a m c)
+    goResOuter pushI closeI (Running pushO closeO) = return $ Running
+        (push pushO pushI closeI)
+        (close closeO pushI closeI)
+    goResOuter _ closeI (Finished leftoverO) = do
+        sourceClose closeI
+        return $ Finished leftoverO
+    goResOuter pushI _ (HaveMore pullO closeO inputI) = pushI inputI >>= goResInner pullO closeO
+
+    goResInner :: Monad m
+               => ConduitPull a m b
+               -> m ()
+               -> ConduitResult b m c
+               -> m (ConduitResult a m c)
+    goResInner pullO _ (Running pushI closeI) = pullO >>= goResOuter pushI closeI
+    goResInner _ closeO (Finished _leftoverI) = do
+        () <- closeO
+        return $ Finished Nothing
+    goResInner pullO closeO (HaveMore pullI closeI outputI) = return $ HaveMore
+        (pullI >>= goResInner pullO closeO)
+        (do
+            () <- closeO
+            () <- closeI
+            return ())
+        outputI
 
 -- | When actually interacting with @Source@s, we sometimes want to be able to
 -- buffer the output, in case any intermediate steps return leftover data. A
@@ -312,7 +318,7 @@ conduitPushClose c (input:rest) = do
 -- handle this correctly.
 --
 -- Since 0.2.0
-data BufferedSource m a = BufferedSource (Ref (Base m) (BSState m a))
+data BufferedSource m a = BufferedSource (I.IORef (BSState m a))
 
 data BSState m a =
     ClosedEmpty
@@ -325,8 +331,8 @@ data BSState m a =
 -- longer in use.
 --
 -- Since 0.2.0
-bufferSource :: Resource m => Source m a -> ResourceT m (BufferedSource m a)
-bufferSource src = BufferedSource <$> newRef (OpenEmpty src)
+bufferSource :: MonadIO m => Source m a -> m (BufferedSource m a)
+bufferSource src = liftM BufferedSource $ liftIO $ I.newIORef $ OpenEmpty src
 
 -- | Turn a 'BufferedSource' into a 'Source'. Note that in general this will
 -- mean your original 'BufferedSource' will be closed. Additionally, all
@@ -336,7 +342,7 @@ bufferSource src = BufferedSource <$> newRef (OpenEmpty src)
 -- Note: @bufferSource@ . @unbufferSource@ is /not/ the identity function.
 --
 -- Since 0.2.0
-unbufferSource :: Resource m
+unbufferSource :: MonadIO m
                => BufferedSource m a
                -> Source m a
 unbufferSource (BufferedSource bs) = Source
@@ -345,7 +351,7 @@ unbufferSource (BufferedSource bs) = Source
     }
   where
     msrc = do
-        buf <- readRef bs
+        buf <- liftIO $ I.readIORef bs
         case buf of
             OpenEmpty src -> return src
             OpenFull src a -> return Source
@@ -364,11 +370,11 @@ unbufferSource (BufferedSource bs) = Source
                 , sourceClose = return ()
                 }
 
-bufferedConnect :: Resource m => BufferedSource m a -> Sink a m b -> ResourceT m b
+bufferedConnect :: MonadIO m => BufferedSource m a -> Sink a m b -> m b
 bufferedConnect _ (SinkNoData output) = return output
 bufferedConnect bsrc (SinkLift msink) = msink >>= bufferedConnect bsrc
 bufferedConnect (BufferedSource bs) (SinkData push0 close0) = do
-    bsState <- readRef bs
+    bsState <- liftIO $ I.readIORef bs
     case bsState of
         ClosedEmpty -> close0
         OpenEmpty src -> connect' src push0 close0
@@ -376,10 +382,10 @@ bufferedConnect (BufferedSource bs) (SinkData push0 close0) = do
             res <- push0 a
             case res of
                 Done mleftover res' -> do
-                    writeRef bs $ maybe ClosedEmpty ClosedFull mleftover
+                    liftIO $ I.writeIORef bs $ maybe ClosedEmpty ClosedFull mleftover
                     return res'
                 Processing _ close' -> do
-                    writeRef bs ClosedEmpty
+                    liftIO $ I.writeIORef bs ClosedEmpty
                     close'
         OpenFull src a -> push0 a >>= onRes src
   where
@@ -387,62 +393,47 @@ bufferedConnect (BufferedSource bs) (SinkData push0 close0) = do
         res <- sourcePull src
         case res of
             Closed -> do
-                writeRef bs ClosedEmpty
+                liftIO $ I.writeIORef bs ClosedEmpty
                 res' <- close
                 return res'
             Open src' a -> push a >>= onRes src'
     onRes src (Done mleftover res) = do
-        writeRef bs $ maybe (OpenEmpty src) (OpenFull src) mleftover
+        liftIO $ I.writeIORef bs $ maybe (OpenEmpty src) (OpenFull src) mleftover
         return res
     onRes src (Processing push close) = connect' src push close
 
 bufferedFuseLeft
-    :: Resource m
+    :: MonadIO m
     => BufferedSource m a
     -> Conduit a m b
     -> Source m b
-bufferedFuseLeft bsrc conduit0 = Source
-    { sourcePull = pullF $ FLOpen () conduit0 [] -- still open, no buffer
+bufferedFuseLeft bsrc (Conduit push0 close0) = Source
+    { sourcePull = pullF $ FLOpen () push0 close0
     , sourceClose = return ()
     }
   where
     mkSrc state = Source
         (pullF state)
         (closeF state)
+
     pullF state' =
         case state' of
-            FLClosed [] -> return Closed
-            FLClosed (x:xs) -> return $ Open
-                (mkSrc (FLClosed xs))
-                x
-            FLOpen () conduit (x:xs) -> return $ Open
-                (mkSrc (FLOpen () conduit xs))
-                x
-            FLOpen () conduit [] -> do
+            FLClosed -> return Closed
+            FLHaveMore () pull _ -> pull >>= goRes
+            FLOpen () push close -> do
                 mres <- bsourcePull bsrc
                 case mres of
-                    Nothing -> do
-                        res <- conduitClose conduit
-                        case res of
-                            [] -> return Closed
-                            x:xs -> return $ Open
-                                (mkSrc (FLClosed xs))
-                                x
-                    Just input -> do
-                        res' <- conduitPush conduit input
-                        case res' of
-                            Producing conduit' [] ->
-                                pullF (FLOpen () conduit' [])
-                            Producing conduit' (x:xs) -> return $ Open
-                                (mkSrc (FLOpen () conduit' xs))
-                                x
-                            Finished leftover output -> do
-                                bsourceUnpull bsrc leftover
-                                case output of
-                                    [] -> return Closed
-                                    x:xs -> return $ Open
-                                        (mkSrc (FLClosed xs))
-                                        x
+                    Nothing -> sourcePull close
+                    Just input -> push input >>= goRes
+
+    goRes (Finished leftover) = do
+        bsourceUnpull bsrc leftover
+        return Closed
+    goRes (HaveMore pull close' x) = return $ Open
+        (mkSrc (FLHaveMore () pull close'))
+        x
+    goRes (Running pushI closeI) = pullF (FLOpen () pushI closeI)
+
     closeF state = do
         -- Normally we don't have to worry about double closing, as the
         -- invariant of a source is that close is never called twice. However,
@@ -450,37 +441,38 @@ bufferedFuseLeft bsrc conduit0 = Source
         -- Source will return an Open while the Conduit will be Closed.
         -- Therefore, we have to do a check.
         case state of
-            FLClosed _ -> return ()
-            FLOpen () (Conduit _ close) _ -> do
-                _ignored <- close
+            FLClosed -> return ()
+            FLOpen () _ close -> do
+                _ignored <- sourceClose close
                 return ()
+            FLHaveMore () _ close -> close
 
-bsourcePull :: Resource m => BufferedSource m a -> ResourceT m (Maybe a)
+bsourcePull :: MonadIO m => BufferedSource m a -> m (Maybe a)
 bsourcePull (BufferedSource bs) = do
-    buf <- readRef bs
+    buf <- liftIO $ I.readIORef bs
     case buf of
         OpenEmpty src -> do
             res <- sourcePull src
             case res of
                 Open src' a -> do
-                    writeRef bs $ OpenEmpty src'
+                    liftIO $ I.writeIORef bs $ OpenEmpty src'
                     return $ Just a
-                Closed -> writeRef bs ClosedEmpty >> return Nothing
+                Closed -> liftIO $ I.writeIORef bs ClosedEmpty >> return Nothing
         ClosedEmpty -> return Nothing
         OpenFull src a -> do
-            writeRef bs (OpenEmpty src)
+            liftIO $ I.writeIORef bs (OpenEmpty src)
             return $ Just a
         ClosedFull a -> do
-            writeRef bs ClosedEmpty
+            liftIO $ I.writeIORef bs ClosedEmpty
             return $ Just a
 
-bsourceUnpull :: Resource m => BufferedSource m a -> Maybe a -> ResourceT m ()
+bsourceUnpull :: MonadIO m => BufferedSource m a -> Maybe a -> m ()
 bsourceUnpull _ Nothing = return ()
 bsourceUnpull (BufferedSource ref) (Just a) = do
-    buf <- readRef ref
+    buf <- liftIO $ I.readIORef ref
     case buf of
-        OpenEmpty src -> writeRef ref (OpenFull src a)
-        ClosedEmpty -> writeRef ref (ClosedFull a)
+        OpenEmpty src -> liftIO $ I.writeIORef ref (OpenFull src a)
+        ClosedEmpty -> liftIO $ I.writeIORef ref (ClosedFull a)
         _ -> error $ "Invariant violated: bsourceUnpull called on full data"
 
 -- | Close the underlying 'Source' for the given 'BufferedSource'. Note
@@ -488,9 +480,9 @@ bsourceUnpull (BufferedSource ref) (Just a) = do
 -- check if the 'Source' was previously closed.
 --
 -- Since 0.2.0
-bsourceClose :: Resource m => BufferedSource m a -> ResourceT m ()
+bsourceClose :: MonadIO m => BufferedSource m a -> m ()
 bsourceClose (BufferedSource ref) = do
-    buf <- readRef ref
+    buf <- liftIO $ I.readIORef ref
     case buf of
         OpenEmpty src -> sourceClose src
         OpenFull src _ -> sourceClose src

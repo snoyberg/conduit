@@ -10,8 +10,8 @@ main = do
     replicateM_ 10000
         $ runTCPClient (ClientSettings 4000 "localhost") doNothing
 
-echo :: Application
+echo :: Application IO
 echo src sink = src $$ sink
 
-doNothing :: Application
+doNothing :: Application IO
 doNothing _ _ = return ()

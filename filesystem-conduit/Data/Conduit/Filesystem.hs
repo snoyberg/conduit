@@ -38,7 +38,7 @@ import qualified System.Posix as Posix
 -- Note: the option of whether to follow symlinks is currently only checked
 -- on POSIX platforms, as the @Win32@ package does not support querying
 -- symlink status. On Windows, symlinks will always be followed.
-traverse :: C.ResourceIO m
+traverse :: MonadIO m
          => Bool -- ^ Follow directory symlinks (only used on POSIX platforms)
          -> FilePath -- ^ Root directory
          -> C.Source m FilePath
@@ -77,13 +77,13 @@ traverse followSymlinks root = C.Source
 #endif
 
 -- | Same as 'CB.sourceFile', but uses system-filepath\'s @FilePath@ type.
-sourceFile :: C.ResourceIO m
+sourceFile :: C.MonadResource m
            => FilePath
            -> C.Source m S.ByteString
 sourceFile = CB.sourceFile . encodeString
 
 -- | Same as 'CB.sinkFile', but uses system-filepath\'s @FilePath@ type.
-sinkFile :: C.ResourceIO m
+sinkFile :: C.MonadResource m
          => FilePath
          -> C.Sink S.ByteString m ()
 sinkFile = CB.sinkFile . encodeString

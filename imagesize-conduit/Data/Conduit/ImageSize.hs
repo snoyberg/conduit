@@ -15,7 +15,7 @@ import Control.Applicative ((<$>), (<*>))
 data Size = Size { width :: Int, height :: Int }
     deriving (Show, Eq, Ord, Read)
 
-sinkImageSize :: C.Resource m => C.Sink S.ByteString m (Maybe Size)
+sinkImageSize :: Monad m => C.Sink S.ByteString m (Maybe Size)
 sinkImageSize =
     C.SinkData (pushHeader id) close
   where
@@ -77,7 +77,7 @@ sinkImageSize =
                     Nothing -> return Nothing
             _ -> return Nothing
 
-getInt :: (C.Resource m, Integral i)
+getInt :: (Monad m, Integral i)
        => Int
        -> i
        -> C.Sink S.ByteString m (Maybe i)

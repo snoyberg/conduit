@@ -4,17 +4,20 @@ module Data.Conduit.Types.Conduit
     ( ConduitResult (..)
     , Conduit (..)
     , ConduitPush
+    , ConduitPull
     , ConduitClose
     ) where
 
-import Control.Monad.Trans.Resource (ResourceT)
 import Control.Monad (liftM)
+import Data.Conduit.Types.Source
 
 -- | The value of the @conduitPush@ record.
-type ConduitPush input m output = input -> ResourceT m (ConduitResult input m output)
+type ConduitPush input m output = input -> m (ConduitResult input m output)
+
+type ConduitPull input m output = m (ConduitResult input m output)
 
 -- | The value of the @conduitClose@ record.
-type ConduitClose m output = ResourceT m [output]
+type ConduitClose m output = Source m output
 
 -- | When data is pushed to a @Conduit@, it may either indicate that it is
 -- still producing output and provide some, or indicate that it is finished
@@ -26,12 +29,15 @@ type ConduitClose m output = ResourceT m [output]
 --
 -- Since 0.2.0
 data ConduitResult input m output =
-    Producing (Conduit input m output) [output]
-  | Finished (Maybe input) [output]
+    Running (ConduitPush input m output) (ConduitClose m output)
+  | Finished (Maybe input)
+  | HaveMore (ConduitPull input m output) (m ()) output
 
 instance Monad m => Functor (ConduitResult input m) where
-    fmap f (Producing c o) = Producing (fmap f c) (fmap f o)
-    fmap f (Finished i o) = Finished i (fmap f o)
+    fmap f (Running p c) = Running (liftM (fmap f) . p) (fmap f c)
+    fmap _ (Finished i) = Finished i
+    fmap f (HaveMore pull close output) = HaveMore
+        (liftM (fmap f) pull) close (f output)
 
 -- | A conduit has two operations: it can receive new input (a push), and can
 -- be closed.
@@ -45,5 +51,5 @@ data Conduit input m output = Conduit
 instance Monad m => Functor (Conduit input m) where
     fmap f c = c
         { conduitPush = liftM (fmap f) . conduitPush c
-        , conduitClose = liftM (fmap f) (conduitClose c)
+        , conduitClose = fmap f (conduitClose c)
         }

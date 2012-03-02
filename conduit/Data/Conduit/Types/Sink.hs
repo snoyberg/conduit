@@ -11,7 +11,6 @@ module Data.Conduit.Types.Sink
     , SinkClose
     ) where
 
-import Control.Monad.Trans.Resource
 import Control.Monad.Trans.Class (MonadTrans (lift))
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad (liftM, ap)
@@ -19,10 +18,10 @@ import Control.Applicative (Applicative (..))
 import Control.Monad.Base (MonadBase (liftBase))
 
 -- | The value of the @sinkPush@ record.
-type SinkPush input m output = input -> ResourceT m (SinkResult input m output)
+type SinkPush input m output = input -> m (SinkResult input m output)
 
 -- | The value of the @sinkClose@ record.
-type SinkClose m output = ResourceT m output
+type SinkClose m output = m output
 
 -- | A @Sink@ ultimately returns a single output value. Each time data is
 -- pushed to it, a @Sink@ may indicate that it is still processing data, or
@@ -37,7 +36,7 @@ data SinkResult input m output =
     Processing (SinkPush input m output) (SinkClose m output)
   | Done (Maybe input) output
 instance Monad m => Functor (SinkResult input m) where
-    fmap f (Processing push close) = Processing ((fmap . fmap . fmap) f push) (fmap f close)
+    fmap f (Processing push close) = Processing ((fmap . liftM . fmap) f push) (liftM f close)
     fmap f (Done input output) = Done input (f output)
 
 {-
@@ -94,7 +93,7 @@ data Sink input m output =
         }
   -- | This constructor is provided to allow us to create an efficient
   -- @MonadTrans@ instance.
-  | SinkLift (ResourceT m (Sink input m output))
+  | SinkLift (m (Sink input m output))
 
 instance Monad m => Functor (Sink input m) where
     fmap f (SinkNoData x) = SinkNoData (f x)
@@ -104,11 +103,11 @@ instance Monad m => Functor (Sink input m) where
         }
     fmap f (SinkLift msink) = SinkLift (liftM (fmap f) msink)
 
-instance Resource m => Applicative (Sink input m) where
+instance Monad m => Applicative (Sink input m) where
     pure = return
     (<*>) = ap
 
-instance Resource m => Monad (Sink input m) where
+instance Monad m => Monad (Sink input m) where
     return = SinkNoData
     SinkNoData x >>= f = f x
     SinkLift mx >>= f = SinkLift $ do
@@ -138,11 +137,11 @@ instance Resource m => Monad (Sink input m) where
         closeHelper (SinkData _ closeF) = closeF
         closeHelper (SinkLift msink) = msink >>= closeHelper
 
-instance (Resource m, Base m ~ base, Applicative base) => MonadBase base (Sink input m) where
-    liftBase = lift . resourceLiftBase
+instance MonadBase base m => MonadBase base (Sink input m) where
+    liftBase = lift . liftBase
 
 instance MonadTrans (Sink input) where
-    lift = SinkLift . liftM SinkNoData . lift
+    lift = SinkLift . liftM SinkNoData
 
-instance (Resource m, MonadIO m) => MonadIO (Sink input m) where
+instance MonadIO m => MonadIO (Sink input m) where
     liftIO = lift . liftIO

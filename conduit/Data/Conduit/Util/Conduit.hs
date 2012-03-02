@@ -5,7 +5,8 @@
 -- | Utilities for constructing and covnerting conduits. Please see
 -- "Data.Conduit.Types.Conduit" for more information on the base types.
 module Data.Conduit.Util.Conduit
-    ( conduitState
+    ( haveMore
+    , conduitState
     , ConduitStateResult (..)
     , conduitIO
     , ConduitIOResult (..)
@@ -19,9 +20,20 @@ module Data.Conduit.Util.Conduit
 
 import Prelude hiding (sequence)
 import Control.Monad.Trans.Resource
-import Control.Monad.Trans.Class
 import Data.Conduit.Types.Conduit
 import Data.Conduit.Types.Sink
+import Data.Conduit.Types.Source
+import Data.Conduit.Util.Source
+import Control.Monad (liftM)
+import Data.Monoid (mempty)
+
+haveMore :: Monad m => ConduitResult a m b -> m () -> [b] -> ConduitResult a m b
+haveMore res _ [] = res
+haveMore res close (x:xs) = HaveMore (return $ haveMore res close xs) close x
+
+haveMoreM :: Monad m => m (ConduitResult a m b) -> m () -> [b] -> m (ConduitResult a m b)
+haveMoreM res _ [] = res
+haveMoreM res close (x:xs) = return $ HaveMore (haveMoreM res close xs) close x
 
 -- | A helper type for @conduitState@, indicating the result of being pushed
 -- to.  It can either indicate that processing is done, or to continue with the
@@ -41,21 +53,31 @@ instance Functor (ConduitStateResult state input) where
 --
 -- Since 0.2.0
 conduitState
-    :: Resource m
+    :: Monad m
     => state -- ^ initial state
-    -> (state -> input -> ResourceT m (ConduitStateResult state input output)) -- ^ Push function.
-    -> (state -> ResourceT m [output]) -- ^ Close function. The state need not be returned, since it will not be used again.
+    -> (state -> input -> m (ConduitStateResult state input output)) -- ^ Push function.
+    -> (state -> m [output]) -- ^ Close function. The state need not be returned, since it will not be used again.
     -> Conduit input m output
 conduitState state0 push0 close0 =
-    Conduit (push state0) (close0 state0)
+    Conduit (push state0) (close state0)
   where
-    push state input = do
-        res <- state `seq` push0 state input
-        return $ case res of
-            StateFinished a b -> Finished a b
-            StateProducing state' output -> Producing
-                (Conduit (push state') (close0 state'))
-                output
+    push state input = liftM goRes' $ state `seq` push0 state input
+
+    close state = Source
+        { sourcePull = do
+            os <- close0 state
+            return $ fromList os
+        , sourceClose = return ()
+        }
+
+    goRes' (StateFinished leftover output) = haveMore
+        (Finished leftover)
+        (return ())
+        output
+    goRes' (StateProducing state output) = haveMore
+        (Running (push state) (close state))
+        (return ())
+        output
 
 -- | A helper type for @conduitIO@, indicating the result of being pushed to.
 -- It can either indicate that processing is done, or to continue.
@@ -72,7 +94,7 @@ instance Functor (ConduitIOResult input) where
 -- | Construct a 'Conduit'.
 --
 -- Since 0.2.0
-conduitIO :: ResourceIO m
+conduitIO :: MonadResource m
            => IO state -- ^ resource and/or state allocation
            -> (state -> IO ()) -- ^ resource and/or state cleanup
            -> (state -> input -> m (ConduitIOResult input output)) -- ^ Push function. Note that this need not explicitly perform any cleanup.
@@ -80,48 +102,69 @@ conduitIO :: ResourceIO m
            -> Conduit input m output
 conduitIO alloc cleanup push0 close0 = Conduit
     { conduitPush = \input -> do
-        (key, state) <- withIO alloc cleanup
+        (key, state) <- allocate alloc cleanup
         push key state input
-    , conduitClose = do
-        (key, state) <- withIO alloc cleanup
-        close key state
+    , conduitClose = Source
+        { sourcePull = do
+            (key, state) <- allocate alloc cleanup
+            os <- close0 state
+            release key
+            return $ fromList os
+        , sourceClose = return ()
+        }
     }
   where
     push key state input = do
-        res <- lift $ push0 state input
+        res <- push0 state input
         case res of
-            IOProducing output -> return $ Producing
-                (Conduit (push key state) (close key state))
+            IOProducing output -> return $ haveMore
+                (Running (push key state) (close key state))
+                (release key >> return ())
                 output
-            IOFinished a b -> do
+            IOFinished leftover output -> do
                 release key
-                return $ Finished a b
-    close key state = do
-        output <- lift $ close0 state
-        release key
-        return output
+                return $ haveMore
+                    (Finished leftover)
+                    (return ())
+                    output
+
+    close key state = Source
+        { sourcePull = do
+            output <- close0 state
+            release key
+            return $ fromList output
+        , sourceClose = release key
+        }
+
+fromList :: Monad m => [a] -> SourceResult m a
+fromList [] = Closed
+fromList (x:xs) = Open (Source (return $ fromList xs) (return ())) x
 
 -- | Transform the monad a 'Conduit' lives in.
 --
 -- See @transSource@ for more information.
 --
 -- Since 0.2.0
-transConduit :: (Monad m, Base m ~ Base n)
+transConduit :: Monad m
              => (forall a. m a -> n a)
              -> Conduit input m output
              -> Conduit input n output
 transConduit f c = c
-    { conduitPush = transResourceT f . fmap (transConduitPush f) . conduitPush c
-    , conduitClose = transResourceT f (conduitClose c)
+    { conduitPush = f . liftM (transConduitPush f) . conduitPush c
+    , conduitClose = transSource f (conduitClose c)
     }
 
-transConduitPush :: (Base m ~ Base n, Monad m)
-              => (forall a. m a -> n a)
-              -> ConduitResult input m output
-              -> ConduitResult input n output
-transConduitPush _ (Finished a b) = Finished a b
-transConduitPush f (Producing conduit output) = Producing
-    (transConduit f conduit)
+transConduitPush :: Monad m
+                 => (forall a. m a -> n a)
+                 -> ConduitResult input m output
+                 -> ConduitResult input n output
+transConduitPush _ (Finished a) = Finished a
+transConduitPush f (Running push close) = Running
+    (f . liftM (transConduitPush f) . push)
+    (transSource f close)
+transConduitPush f (HaveMore pull close output) = HaveMore
+    (f $ liftM (transConduitPush f) pull)
+    (f close)
     output
 
 -- | Return value from a 'SequencedSink'.
@@ -140,74 +183,54 @@ data SequencedSinkResponse state input m output =
 type SequencedSink state input m output =
     state -> Sink input m (SequencedSinkResponse state input m output)
 
-data SCState state input m output =
-    SCNewState state
-  | SCConduit (Conduit input m output)
-  | SCSink (input -> ResourceT m (SinkResult input m (SequencedSinkResponse state input m output)))
-           (ResourceT m (SequencedSinkResponse state input m output))
-
 -- | Convert a 'SequencedSink' into a 'Conduit'.
 --
 -- Since 0.2.0
 sequenceSink
-    :: Resource m
+    :: Monad m
     => state -- ^ initial state
     -> SequencedSink state input m output
     -> Conduit input m output
-sequenceSink state0 fsink = conduitState
-    (SCNewState state0)
-    (scPush id fsink)
-    scClose
+sequenceSink state0 fsink = Conduit (scPush fsink $ fsink state0) mempty
 
-goRes :: Resource m
-      => SequencedSinkResponse state input m output
-      -> Maybe input
-      -> ([output] -> [output])
-      -> SequencedSink state input m output
-      -> ResourceT m (ConduitStateResult (SCState state input m output) input output)
-goRes (Emit state output) (Just input) front fsink =
-    scPush (front . (output++)) fsink (SCNewState state) input
-goRes (Emit state output) Nothing front _ =
-    return $ StateProducing (SCNewState state) $ front output
-goRes Stop minput front _ =
-    return $ StateFinished minput $ front []
-goRes (StartConduit c) Nothing front _ =
-    return $ StateProducing (SCConduit c) $ front []
-goRes (StartConduit c) (Just input) front fsink =
-    scPush front fsink (SCConduit c) input
+scPush :: Monad m
+       => SequencedSink state input m output
+       -> Sink input m (SequencedSinkResponse state input m output)
+       -> ConduitPush input m output
+scPush fsink (SinkData pushI _) input = pushI input >>= scGoRes fsink
+scPush fsink (SinkNoData res) input = scGoRes fsink (Done (Just input) res)
+scPush fsink (SinkLift msink) input = do
+    sink <- msink
+    scPush fsink sink input
 
-scPush :: Resource m
-     => ([output] -> [output])
-     -> SequencedSink state input m output
-     -> SCState state input m output
-     -> input
-     -> ResourceT m (ConduitStateResult (SCState state input m output) input output)
-scPush front fsink (SCNewState state) input =
-    go (fsink state)
+scGoRes :: Monad m
+        => SequencedSink state input m output
+        -> SinkResult input m (SequencedSinkResponse state input m output)
+        -> m (ConduitResult input m output)
+scGoRes fsink (Done (Just leftover) (Emit state os)) = haveMoreM
+    (scPush fsink (fsink state) leftover)
+    (return ())
+    os
+scGoRes fsink (Done Nothing (Emit state os)) = return $ haveMore
+    (Running p c)
+    (return ())
+    os
   where
-    go (SinkData push' close') = scPush front fsink (SCSink push' close') input
-    go (SinkNoData res) = goRes res (Just input) front fsink
-    go (SinkLift msink) = msink >>= go
-scPush front _ (SCConduit conduit) input = do
-    res <- conduitPush conduit input
-    return $ case res of
-        Producing c x -> StateProducing (SCConduit c) $ front x
-        Finished x y -> StateFinished x $ front y
-scPush front fsink (SCSink push _) input = do
-    mres <- push input
-    case mres of
-        Done minput res -> goRes res minput front fsink
-        Processing push' close' -> return (StateProducing (SCSink push' close') $ front [])
-
-scClose :: Monad m => SCState state inptu m output -> ResourceT m [output]
-scClose (SCNewState _) = return []
-scClose (SCConduit conduit) = conduitClose conduit
-scClose (SCSink _ close) = do
-    res <- close
-    case res of
-        Emit _ os -> return os
-        Stop -> return []
-        StartConduit c -> conduitClose c
+    Conduit p c = sequenceSink state fsink
+scGoRes fsink (Processing pushI closeI) = return $ Running
+    (scPush fsink (SinkData pushI closeI))
+    Source
+        { sourcePull = do
+            res <- closeI
+            case res of
+                Emit _ os -> return $ fromList os
+                Stop -> return Closed
+                StartConduit (Conduit _ closeC) -> sourcePull closeC
+        , sourceClose = closeI >> return ()
+        }
+scGoRes _ (Done mleftover Stop) = return $ Finished mleftover
+scGoRes _ (Done Nothing (StartConduit (Conduit p c))) = return $ Running p c
+scGoRes _ (Done (Just leftover) (StartConduit (Conduit p _))) = p leftover
 
 -- | Specialised version of 'sequenceSink'
 --
@@ -216,31 +239,46 @@ scClose (SCSink _ close) = do
 -- @sequence . return@.
 --
 -- Since 0.2.1
-sequence :: Resource m => Sink input m output -> Conduit input m output
-sequence (SinkData spush sclose) = Conduit (push spush) (close sclose)
+sequence :: Monad m => Sink input m output -> Conduit input m output
+sequence (SinkData spush0 sclose0) =
+    Conduit (push spush0) (close sclose0)
   where
-    push spush' input = do
-        res <- spush' input
+    push spush input = spush input >>= goRes
+
+    goRes res =
         case res of
             Processing spush'' sclose'' ->
-                return $ Producing (Conduit (push spush'') (close sclose'')) []
-            Done Nothing output ->
-                return $ Producing (Conduit (push spush) (close sclose)) [output]
-            Done (Just input') output -> do
-                res' <- push spush input'
-                case res' of
-                    Producing conduit' output' ->
-                        return $ Producing conduit' (output:output')
-                    Finished _ _ -> error "impossible [sequence]"
-    close sclose' = fmap (:[]) sclose'
+                return $ Running (push spush'') (close sclose'')
+            Done Nothing output -> return $ HaveMore
+                (return $ Running (push spush0) (close sclose0))
+                (return ())
+                output
+            Done (Just input') output -> return $ HaveMore
+                (spush0 input' >>= goRes)
+                (return ())
+                output
+
+    close sclose = Source
+        { sourcePull = do
+            output <- sclose
+            return $ Open mempty output
+        , sourceClose = return ()
+        }
 
 sequence (SinkNoData output) = Conduit
-    { conduitPush = \input -> return $ Finished (Just input) (repeat output)
-    , conduitClose = return $ repeat output
+    { conduitPush = \_input ->
+        let x = return $ HaveMore x (return ()) output
+         in x
+    , conduitClose =
+        let src = Source
+                { sourcePull = return $ Open src output
+                , sourceClose = return ()
+                }
+         in src
     }
 sequence (SinkLift msink) = Conduit
     { conduitPush = \input -> do
         sink <- msink
         conduitPush (sequence sink) input
-    , conduitClose = return []
+    , conduitClose = mempty
     }
