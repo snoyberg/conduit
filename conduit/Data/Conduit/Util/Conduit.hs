@@ -10,9 +10,9 @@ module Data.Conduit.Util.Conduit
     , ConduitStateResult (..)
     , conduitIO
     , ConduitIOResult (..)
-    {- FIXME
     , transConduit
       -- *** Sequencing
+    {- FIXME
     , SequencedSink
     , sequenceSink
     , sequence
@@ -25,6 +25,7 @@ import Control.Monad.Trans.Resource
 import Data.Conduit.Types.Conduit
 --import Data.Conduit.Types.Sink
 import Data.Conduit.Types.Source
+import Data.Conduit.Util.Source
 import Control.Monad (liftM)
 
 haveMore :: Monad m => ConduitResult a m b -> m () -> [b] -> ConduitResult a m b
@@ -136,7 +137,6 @@ fromList :: Monad m => [a] -> SourceResult m a
 fromList [] = Closed
 fromList (x:xs) = Open (Source (return $ fromList xs) (return ())) x
 
-{-
 -- | Transform the monad a 'Conduit' lives in.
 --
 -- See @transSource@ for more information.
@@ -148,23 +148,21 @@ transConduit :: Monad m
              -> Conduit input n output
 transConduit f c = c
     { conduitPush = f . liftM (transConduitPush f) . conduitPush c
-    , conduitClose = f (conduitClose c)
+    , conduitClose = transSource f (conduitClose c)
     }
 
 transConduitPush :: Monad m
                  => (forall a. m a -> n a)
                  -> ConduitResult input m output
                  -> ConduitResult input n output
-transConduitPush _ (Finished a b) = Finished a b
-transConduitPush f (Producing push close output) = Producing
+transConduitPush _ (Finished a) = Finished a
+transConduitPush f (Running push close) = Running
     (f . liftM (transConduitPush f) . push)
-    (f close)
-    output
+    (transSource f close)
 transConduitPush f (HaveMore pull close output) = HaveMore
     (f $ liftM (transConduitPush f) pull)
     (f close)
     output
--}
 
 {- FIXME
 -- | Return value from a 'SequencedSink'.
