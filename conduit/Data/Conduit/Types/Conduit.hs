@@ -36,11 +36,11 @@ data Conduit input m output =
     Running (ConduitPush input m output) (ConduitClose m output)
   | Finished (Maybe input)
   | HaveMore (ConduitPull input m output) (m ()) output
-  | ConduitM (m (Conduit input m output))
+  | ConduitM (m (Conduit input m output)) (m ())
 
 instance Monad m => Functor (Conduit input m) where
     fmap f (Running p c) = Running (fmap f . p) (fmap f c)
     fmap _ (Finished i) = Finished i
     fmap f (HaveMore pull close output) = HaveMore
         (fmap f pull) close (f output)
-    fmap f (ConduitM mcon) = ConduitM (liftM (fmap f) mcon)
+    fmap f (ConduitM mcon c) = ConduitM (liftM (fmap f) mcon) c

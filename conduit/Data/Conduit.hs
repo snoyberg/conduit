@@ -153,9 +153,9 @@ normalFuseLeft (SourceM msrc closeS) conduit@(Running _ closeC) =
         closeS
         sourceClose closeC
 normalFuseLeft (Open src _ a) (Running push _) = normalFuseLeft src $ push a
-normalFuseLeft src (ConduitM mcon) = SourceM
+normalFuseLeft src (ConduitM mcon conclose) = SourceM
     (liftM (normalFuseLeft src) mcon)
-    (sourceClose src) -- FIXME close the conduit too?
+    (conclose >> sourceClose src)
 
 infixr 0 =$
 
@@ -164,12 +164,12 @@ infixr 0 =$
 -- Since 0.2.0
 (=$) :: Monad m => Conduit a m b -> Sink b m c -> Sink a m c
 conduit =$ SinkM msink = SinkM (liftM (conduit =$) msink)
-_conduit =$ Done _leftover output = Done Nothing output -- FIXME close the conduit?
+conduit =$ Done _leftover output = SinkM $ conduitClose conduit >> return (Done Nothing output)
 Running pushO closeO =$ sink = Processing
     (\input -> pushO input =$ sink)
     (closeO $$ sink)
 Finished mleftover =$ Processing _ close = SinkM $ liftM (Done mleftover) close
-ConduitM mcon =$ sink = SinkM $ liftM (=$ sink) mcon
+ConduitM mcon _ =$ sink = SinkM $ liftM (=$ sink) mcon
 HaveMore con _ input =$ Processing pushI _ = con =$ pushI input
 
 infixr 0 =$=
@@ -183,16 +183,16 @@ Finished mleftover =$= Running _ closeI =
   where
     go Closed = Finished mleftover
     go (Open src close x) = HaveMore (go src) close x
-    go (SourceM msrc _) = ConduitM $ liftM go msrc
+    go (SourceM msrc close) = ConduitM (liftM go msrc) close
 Finished mleftover =$= Finished _ = Finished mleftover
 conO =$= HaveMore con close x = HaveMore (conO =$= con) close x
-ConduitM mcon =$= conI = ConduitM (liftM (=$= conI) mcon)
+ConduitM mcon close =$= conI = ConduitM (liftM (=$= conI) mcon) (close >> conduitClose conI)
 Running pushO closeO =$= conI = Running
     (\input -> pushO input =$= conI)
     (closeO $= conI)
-conO =$= ConduitM mconI = ConduitM (liftM (conO =$=) mconI)
+conO =$= ConduitM mconI close = ConduitM (liftM (conO =$=) mconI) (close >> conduitClose conO)
 HaveMore conO _ inputI =$= Running pushI _ = conO =$= pushI inputI
-HaveMore _ close _ =$= Finished _ = ConduitM $ close >> return (Finished Nothing)
+HaveMore _ close _ =$= Finished _ = ConduitM (close >> return (Finished Nothing)) close
 
 -- | When actually interacting with @Source@s, we sometimes want to be able to
 -- buffer the output, in case any intermediate steps return leftover data. A
@@ -290,9 +290,9 @@ bufferedFuseLeft
     => BufferedSource m a
     -> Conduit a m b
     -> Source m b
-bufferedFuseLeft bsrc (ConduitM mcon) = SourceM
+bufferedFuseLeft bsrc (ConduitM mcon close) = SourceM
     (liftM (bufferedFuseLeft bsrc) mcon)
-    (return ())
+    close
 bufferedFuseLeft _ (Finished _) = Closed
 bufferedFuseLeft bsrc (HaveMore next close x) = Open
     (bufferedFuseLeft bsrc next)
@@ -323,7 +323,7 @@ bufferedFuseLeft bsrc (Running push0 close0) = SourceM
         let state = FLHaveMore () pull close'
          in return $ Open (mkSrc state) (closeF state) x
     goRes (Running pushI closeI) = pullF (FLOpen () pushI closeI)
-    goRes (ConduitM mcon) = mcon >>= goRes
+    goRes (ConduitM mcon _) = mcon >>= goRes
 
     closeF state = do
         -- Normally we don't have to worry about double closing, as the

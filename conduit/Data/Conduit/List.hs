@@ -44,6 +44,7 @@ import Prelude
     , (.), id, Maybe (..), Monad
     , Bool (..)
     , (>>)
+    , flip
     )
 import Data.Conduit
 import Data.Monoid (mempty)
@@ -188,7 +189,7 @@ mapM :: Monad m => (a -> m b) -> Conduit a m b
 mapM f =
     Running push close
   where
-    push = ConduitM . liftM (HaveMore (Running push close) (return ())) . f
+    push = flip ConduitM (return ()) . liftM (HaveMore (Running push close) (return ())) . f
     close = mempty
 
 -- | Apply a transformation to all values in a stream, concatenating the output
@@ -210,7 +211,7 @@ concatMapM :: Monad m => (a -> m [b]) -> Conduit a m b
 concatMapM f =
     Running push close
   where
-    push = ConduitM . liftM (haveMore (Running push close) (return ())) . f
+    push = flip ConduitM (return ()) . liftM (haveMore (Running push close) (return ())) . f
     close = mempty
 
 -- | 'concatMap' with an accumulator.

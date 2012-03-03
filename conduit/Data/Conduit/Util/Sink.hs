@@ -10,6 +10,7 @@ module Data.Conduit.Util.Sink
     , sinkIO
     , SinkIOResult (..)
     , transSink
+    , sinkClose
     ) where
 
 import Control.Monad.Trans.Resource
@@ -94,3 +95,8 @@ transSink :: Monad m
 transSink _ (Done a b) = Done a b
 transSink f (Processing push close) = Processing (transSink f . push) (f close)
 transSink f (SinkM msink) = SinkM (f (liftM (transSink f) msink))
+
+sinkClose :: Monad m => Sink input m output -> m ()
+sinkClose (SinkM msink) = msink >>= sinkClose
+sinkClose Done{} = return ()
+sinkClose (Processing _ close) = close >> return ()

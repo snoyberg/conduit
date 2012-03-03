@@ -11,6 +11,7 @@ module Data.Conduit.Util.Conduit
     , conduitIO
     , ConduitIOResult (..)
     , transConduit
+    , conduitClose
       -- *** Sequencing
     , SequencedSink
     , sequenceSink
@@ -24,6 +25,7 @@ import Data.Conduit.Types.Conduit
 import Data.Conduit.Types.Sink
 import Data.Conduit.Types.Source
 import Data.Conduit.Util.Source
+import Data.Conduit.Util.Sink
 import Control.Monad (liftM)
 import Data.Monoid (mempty)
 
@@ -57,7 +59,7 @@ conduitState
 conduitState state0 push0 close0 =
     Running (push state0) (close state0)
   where
-    push state input = ConduitM $ liftM goRes' $ state `seq` push0 state input
+    push state input = ConduitM (liftM goRes' $ state `seq` push0 state input) (return ())
 
     close state = SourceM (do
         os <- close0 state
@@ -94,7 +96,7 @@ conduitIO :: MonadResource m
            -> (state -> m [output]) -- ^ Close function. Note that this need not explicitly perform any cleanup.
            -> Conduit input m output
 conduitIO alloc cleanup push0 close0 = Running
-    (\input -> ConduitM $ do
+    (\input -> flip ConduitM (return ()) $ do
         (key, state) <- allocate alloc cleanup
         push key state input)
     (SourceM (do
@@ -107,7 +109,7 @@ conduitIO alloc cleanup push0 close0 = Running
         res <- push0 state input
         case res of
             IOProducing output -> return $ haveMore
-                (Running (ConduitM . push key state) (close key state))
+                (Running (flip ConduitM (release key) . push key state) (close key state))
                 (release key >> return ())
                 output
             IOFinished leftover output -> do
@@ -143,7 +145,7 @@ transConduit f (HaveMore pull close output) = HaveMore
     (transConduit f pull)
     (f close)
     output
-transConduit f (ConduitM mcon) = ConduitM (f (liftM (transConduit f) mcon))
+transConduit f (ConduitM mcon close) = ConduitM (f (liftM (transConduit f) mcon)) (f close)
 
 -- | Return value from a 'SequencedSink'.
 --
@@ -178,7 +180,7 @@ scPush :: Monad m
 scPush fsink (Processing pushI _) input = scGoRes fsink $ pushI input
 scPush fsink (Done Nothing res) input = scGoRes fsink (Done (Just input) res)
 scPush _ (Done Just{} _) _ = error "Invariant violated: Sink returned leftover without input"
-scPush fsink (SinkM msink) input = ConduitM $ liftM (\sink -> scPush fsink sink input) msink
+scPush fsink (SinkM msink) input = ConduitM (liftM (\sink -> scPush fsink sink input) msink) (msink >>= sinkClose)
 
 scGoRes :: Monad m
         => SequencedSink state input m output
@@ -202,7 +204,7 @@ scGoRes fsink (Processing pushI closeI) = Running
     goRes Stop = return Closed
     goRes (StartConduit (Running _ closeC)) = return closeC
     goRes (StartConduit (Finished _)) = return Closed
-    goRes (StartConduit (ConduitM mcon)) = mcon >>= goRes . StartConduit
+    goRes (StartConduit (ConduitM mcon _)) = mcon >>= goRes . StartConduit
     goRes (StartConduit HaveMore{}) = error "scGoRes:goRes: StartConduit HaveMore not supported yet"
 scGoRes _ (Done mleftover Stop) = Finished mleftover
 scGoRes _ (Done Nothing (StartConduit c)) = c
@@ -210,9 +212,9 @@ scGoRes _ (Done (Just leftover) (StartConduit (Finished Nothing))) = Finished (J
 scGoRes _ (Done Just{} (StartConduit (Finished Just{}))) = error "Invariant violated: conduit returns leftover without push"
 scGoRes _ (Done (Just leftover) (StartConduit (Running p _))) = p leftover
 scGoRes _ (Done Just{} (StartConduit HaveMore{})) = error "scGoRes: StartConduit HaveMore not supported yet"
-scGoRes fsink (Done mleftover (StartConduit (ConduitM mcon))) =
-    ConduitM $ liftM (scGoRes fsink . Done mleftover . StartConduit) mcon
-scGoRes fsink (SinkM msink) = ConduitM $ liftM (scGoRes fsink) msink
+scGoRes fsink (Done mleftover (StartConduit (ConduitM mcon close))) =
+    ConduitM (liftM (scGoRes fsink . Done mleftover . StartConduit) mcon) close
+scGoRes fsink (SinkM msink) = ConduitM (liftM (scGoRes fsink) msink) (msink >>= sinkClose)
 
 -- | Specialised version of 'sequenceSink'
 --
@@ -239,7 +241,7 @@ sequence (Processing spush0 sclose0) =
                 (goRes $ spush0 input')
                 (return ())
                 output
-            SinkM msink -> ConduitM $ liftM goRes msink
+            SinkM msink -> ConduitM (liftM goRes msink) (msink >>= sinkClose)
 
     close sclose = SourceM (do
         output <- sclose
@@ -252,4 +254,10 @@ sequence (Done Nothing output) = Running
     (   let src = Open src (return ()) output
          in src)
 sequence (Done Just{} _) = error "Invariant violated: sink returns leftover without push"
-sequence (SinkM msink) = ConduitM $ liftM sequence msink
+sequence (SinkM msink) = ConduitM (liftM sequence msink) (msink >>= sinkClose)
+
+conduitClose :: Monad m => Conduit input m output -> m ()
+conduitClose (Running _ c) = sourceClose c
+conduitClose Finished{} = return ()
+conduitClose (HaveMore _ c _) = c
+conduitClose (ConduitM _ c) = c
