@@ -12,6 +12,7 @@ module Data.Conduit.Util.Source
     , sourceIO
     , SourceIOResult (..)
     , transSource
+    , sourceClose
     ) where
 
 import Control.Monad.Trans.Resource
@@ -36,15 +37,13 @@ sourceState
 sourceState state0 pull0 =
     src state0
   where
-    src state = Source (pull state) close
+    src state = SourceM (pull state) (return ())
 
     pull state = do
         res <- pull0 state
         return $ case res of
-            StateOpen state' val -> Open (src state') val
+            StateOpen state' val -> Open (src state') (return ()) val
             StateClosed -> Closed
-
-    close = return ()
 
 -- | The return value when pulling in the @sourceIO@ function. Either indicates
 -- no more data, or the next value.
@@ -59,14 +58,11 @@ sourceIO :: MonadResource m
           -> (state -> m (SourceIOResult output)) -- ^ Pull function. Note that this need not explicitly perform any cleanup.
           -> Source m output
 sourceIO alloc cleanup pull0 =
-    Source
-        { sourcePull = do
-            (key, state) <- allocate alloc cleanup
-            pull key state
-        , sourceClose = return ()
-        }
+    SourceM (do
+        (key, state) <- allocate alloc cleanup
+        pull key state) (return ())
   where
-    src key state = Source (pull key state) (release key)
+    src key state = SourceM (pull key state) (release key)
 
     pull key state = do
         res <- pull0 state
@@ -74,7 +70,7 @@ sourceIO alloc cleanup pull0 =
             IOClosed -> do
                 release key
                 return Closed
-            IOOpen val -> return $ Open (src key state) val
+            IOOpen val -> return $ Open (src key state) (release key) val
 
 -- | A combination of 'sourceIO' and 'sourceState'.
 --
@@ -85,14 +81,11 @@ sourceStateIO :: MonadResource m
               -> (state -> m (SourceStateResult state output)) -- ^ Pull function. Note that this need not explicitly perform any cleanup.
               -> Source m output
 sourceStateIO alloc cleanup pull0 =
-    Source
-        { sourcePull = do
-            (key, state) <- allocate alloc cleanup
-            pull key state
-        , sourceClose = return ()
-        }
+    SourceM (do
+        (key, state) <- allocate alloc cleanup
+        pull key state) (return ())
   where
-    src key state = Source (pull key state) (release key)
+    src key state = SourceM (pull key state) (release key)
 
     pull key state = do
         res <- pull0 state
@@ -100,7 +93,7 @@ sourceStateIO alloc cleanup pull0 =
             StateClosed -> do
                 release key
                 return Closed
-            StateOpen state' val -> return $ Open (src key state') val
+            StateOpen state' val -> return $ Open (src key state') (release key) val
 
 -- | Transform the monad a 'Source' lives in.
 --
@@ -113,10 +106,11 @@ transSource :: Monad m
             => (forall a. m a -> n a)
             -> Source m output
             -> Source n output
-transSource f c = c
-    { sourcePull = f (liftM go2 $ sourcePull c)
-    , sourceClose = f (sourceClose c)
-    }
-  where
-    go2 (Open p a) = Open (transSource f p) a
-    go2 Closed = Closed
+transSource f (Open next close output) = Open (transSource f next) (f close) output
+transSource _ Closed = Closed
+transSource f (SourceM msrc close) = SourceM (f (liftM (transSource f) msrc)) (f close)
+
+sourceClose :: Monad m => Source m a -> m ()
+sourceClose Closed = return ()
+sourceClose (Open _ close _) = close
+sourceClose (SourceM _ close) = close

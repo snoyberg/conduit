@@ -47,7 +47,7 @@ import Prelude
     )
 import Data.Conduit
 import Data.Monoid (mempty)
-import Control.Monad (liftM)
+import Control.Monad (liftM, liftM2)
 
 -- | A strict left fold.
 --
@@ -324,14 +324,12 @@ sourceNull = mempty
 --
 -- Since 0.2.2
 zip :: Monad m => Source m a -> Source m b -> Source m (a, b)
-zip sa sb = Source pull close
-    where
-        pull = do ra <- sourcePull sa
-                  case ra of
-                    Closed -> return Closed
-                    Open ra' a -> do rb <- sourcePull sb
-                                     case rb of
-                                        Closed -> return Closed
-                                        Open rb' b -> return $ Open (zip ra' rb') (a, b)
-        close = sourceClose sa >> sourceClose sb
-
+zip Closed Closed = Closed
+zip Closed (Open _ close _) = SourceM (close >> return Closed) close
+zip (Open _ close _) Closed = SourceM (close >> return Closed) close
+zip Closed (SourceM _ close) = SourceM (close >> return Closed) close
+zip (SourceM _ close) Closed = SourceM (close >> return Closed) close
+zip (SourceM mx closex) (SourceM my closey) = SourceM (liftM2 zip mx my) (closex >> closey)
+zip (SourceM mx closex) y@(Open _ closey _) = SourceM (liftM (\x -> zip x y) mx) (closex >> closey)
+zip x@(Open _ closex _) (SourceM my closey) = SourceM (liftM (\y -> zip x y) my) (closex >> closey)
+zip (Open srcx closex x) (Open srcy closey y) = Open (zip srcx srcy) (closex >> closey) (x, y)

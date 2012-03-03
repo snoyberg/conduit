@@ -63,12 +63,9 @@ conduitState state0 push0 close0 =
   where
     push state input = liftM goRes' $ state `seq` push0 state input
 
-    close state = Source
-        { sourcePull = do
-            os <- close0 state
-            return $ fromList os
-        , sourceClose = return ()
-        }
+    close state = SourceM (do
+        os <- close0 state
+        return $ fromList os) (return ())
 
     goRes' (StateFinished leftover output) = haveMore
         (Finished leftover)
@@ -104,14 +101,11 @@ conduitIO alloc cleanup push0 close0 = Conduit
     { conduitPush = \input -> do
         (key, state) <- allocate alloc cleanup
         push key state input
-    , conduitClose = Source
-        { sourcePull = do
-            (key, state) <- allocate alloc cleanup
-            os <- close0 state
-            release key
-            return $ fromList os
-        , sourceClose = return ()
-        }
+    , conduitClose = SourceM (do
+        (key, state) <- allocate alloc cleanup
+        os <- close0 state
+        release key
+        return $ fromList os) (return ())
     }
   where
     push key state input = do
@@ -128,17 +122,14 @@ conduitIO alloc cleanup push0 close0 = Conduit
                     (return ())
                     output
 
-    close key state = Source
-        { sourcePull = do
-            output <- close0 state
-            release key
-            return $ fromList output
-        , sourceClose = release key
-        }
+    close key state = SourceM (do
+        output <- close0 state
+        release key
+        return $ fromList output) (release key)
 
-fromList :: Monad m => [a] -> SourceResult m a
+fromList :: Monad m => [a] -> Source m a
 fromList [] = Closed
-fromList (x:xs) = Open (Source (return $ fromList xs) (return ())) x
+fromList (x:xs) = Open (fromList xs) (return ()) x
 
 -- | Transform the monad a 'Conduit' lives in.
 --
@@ -219,15 +210,13 @@ scGoRes fsink (Done Nothing (Emit state os)) = return $ haveMore
     Conduit p c = sequenceSink state fsink
 scGoRes fsink (Processing pushI closeI) = return $ Running
     (scPush fsink (SinkData pushI closeI))
-    Source
-        { sourcePull = do
-            res <- closeI
-            case res of
-                Emit _ os -> return $ fromList os
-                Stop -> return Closed
-                StartConduit (Conduit _ closeC) -> sourcePull closeC
-        , sourceClose = closeI >> return ()
-        }
+    (SourceM (do
+        res <- closeI
+        case res of
+            Emit _ os -> return $ fromList os
+            Stop -> return Closed
+            StartConduit (Conduit _ closeC) -> return closeC)
+        (closeI >> return ()))
 scGoRes _ (Done mleftover Stop) = return $ Finished mleftover
 scGoRes _ (Done Nothing (StartConduit (Conduit p c))) = return $ Running p c
 scGoRes _ (Done (Just leftover) (StartConduit (Conduit p _))) = p leftover
@@ -258,22 +247,16 @@ sequence (SinkData spush0 sclose0) =
                 (return ())
                 output
 
-    close sclose = Source
-        { sourcePull = do
-            output <- sclose
-            return $ Open mempty output
-        , sourceClose = return ()
-        }
+    close sclose = SourceM (do
+        output <- sclose
+        return $ Open Closed (return ()) output) (return ())
 
 sequence (SinkNoData output) = Conduit
     { conduitPush = \_input ->
         let x = return $ HaveMore x (return ()) output
          in x
     , conduitClose =
-        let src = Source
-                { sourcePull = return $ Open src output
-                , sourceClose = return ()
-                }
+        let src = Open src (return ()) output
          in src
     }
 sequence (SinkLift msink) = Conduit

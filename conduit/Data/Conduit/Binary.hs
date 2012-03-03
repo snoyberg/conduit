@@ -76,13 +76,13 @@ sourceHandle :: MonadResource m
 sourceHandle h =
     src
   where
-    src = Source pull close
+    src = SourceM pull close
 
     pull = do
         bs <- liftIO (S.hGetSome h 4096)
         if S.null bs
             then return Closed
-            else return $ Open src bs
+            else return $ Open src close bs
 
     close = return ()
 
@@ -137,17 +137,16 @@ sourceFileRange :: MonadResource m
                 -> Maybe Integer -- ^ Offset
                 -> Maybe Integer -- ^ Maximum count
                 -> Source m S.ByteString
-sourceFileRange fp offset count = Source
-    { sourcePull = do
+sourceFileRange fp offset count = SourceM
+    (do
         (key, handle) <- allocate (IO.openBinaryFile fp IO.ReadMode) IO.hClose
         case offset of
             Nothing -> return ()
             Just off -> liftIO $ IO.hSeek handle IO.AbsoluteSeek off
         case count of
             Nothing -> pullUnlimited handle key
-            Just c -> pullLimited c handle key
-    , sourceClose = return ()
-    }
+            Just c -> pullLimited c handle key)
+    (return ())
   where
     pullUnlimited handle key = do
         bs <- liftIO $ S.hGetSome handle 4096
@@ -156,11 +155,10 @@ sourceFileRange fp offset count = Source
                 release key
                 return Closed
             else do
-                let src = Source
-                        { sourcePull = pullUnlimited handle key
-                        , sourceClose = release key
-                        }
-                return $ Open src bs
+                let src = SourceM
+                        (pullUnlimited handle key)
+                        (release key)
+                return $ Open src (release key) bs
 
     pullLimited c0 handle key = do
         let c = fromInteger c0
@@ -172,11 +170,10 @@ sourceFileRange fp offset count = Source
                     release key
                     return Closed
                 else do
-                    let src = Source
-                            { sourcePull = pullLimited (toInteger c') handle key
-                            , sourceClose = release key
-                            }
-                    return $ Open src bs
+                    let src = SourceM
+                            (pullLimited (toInteger c') handle key)
+                            (release key)
+                    return $ Open src (release key) bs
 
 -- | Stream all incoming data to the given file.
 --

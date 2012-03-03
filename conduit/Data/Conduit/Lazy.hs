@@ -16,18 +16,12 @@ import Control.Monad.Trans.Resource (resourceActive)
 --
 -- Since 0.2.0
 lazyConsume :: (MonadBaseControl IO m, MonadIO m) => Source (ResourceT m) a -> ResourceT m [a] -- FIXME provide an alternative that doesn't live in ResourceT?
-lazyConsume src0 = do
-    go src0
-  where
-
-    go src = liftBaseOp_ unsafeInterleaveIO $ do
-        ra <- resourceActive
-        if ra
-            then do
-                res <- sourcePull src
-                case res of
-                    Closed -> return []
-                    Open src' x -> do
-                        y <- go src'
-                        return $ x : y
-            else return []
+lazyConsume Closed = return []
+lazyConsume (Open src _ x) = do
+    xs <- lazyConsume src
+    return $ x : xs
+lazyConsume (SourceM msrc _) = liftBaseOp_ unsafeInterleaveIO $ do
+    ra <- resourceActive
+    if ra
+        then msrc >>= lazyConsume
+        else return []
