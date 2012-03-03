@@ -110,9 +110,9 @@ sinkHandle :: MonadResource m
            => IO.Handle
            -> Sink S.ByteString m ()
 sinkHandle h =
-    SinkData push close
+    Processing push close
   where
-    push input = liftIO (S.hPut h input) >> return (Processing push close)
+    push input = SinkM $ liftIO (S.hPut h input) >> return (Processing push close)
     close = return ()
 
 -- | An alternative to 'sinkHandle'.
@@ -226,14 +226,14 @@ isolate count0 = conduitState
 -- Since 0.2.0
 head :: Monad m => Sink S.ByteString m (Maybe Word8)
 head =
-    SinkData push close
+    Processing push close
   where
     push bs =
         case S.uncons bs of
-            Nothing -> return $ Processing push close
-            Just (w, bs') -> do
+            Nothing -> Processing push close
+            Just (w, bs') ->
                 let lo = if S.null bs' then Nothing else Just bs'
-                return $ Done lo (Just w)
+                 in Done lo (Just w)
     close = return Nothing
 
 -- | Return all bytes while the predicate returns @True@.
@@ -263,14 +263,13 @@ takeWhile p =
 -- Since 0.2.0
 dropWhile :: Monad m => (Word8 -> Bool) -> Sink S.ByteString m ()
 dropWhile p =
-    SinkData push close
+    Processing push close
   where
-    push bs = do
-        let bs' = S.dropWhile p bs
-        return $
-            if S.null bs'
-                then Processing push close
-                else Done (Just bs') ()
+    push bs
+        | S.null bs' = Processing push close
+        | otherwise  = Done (Just bs') ()
+      where
+        bs' = S.dropWhile p bs
     close = return ()
 
 -- | Take the given number of bytes, if available.

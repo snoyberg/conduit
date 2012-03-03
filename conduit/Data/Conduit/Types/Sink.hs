@@ -5,8 +5,7 @@
 {-# LANGUAGE UndecidableInstances #-}
 -- | Defines the types for a sink, which is a consumer of data.
 module Data.Conduit.Types.Sink
-    ( SinkResult (..)
-    , Sink (..)
+    ( Sink (..)
     , SinkPush
     , SinkClose
     ) where
@@ -18,26 +17,10 @@ import Control.Applicative (Applicative (..))
 import Control.Monad.Base (MonadBase (liftBase))
 
 -- | The value of the @sinkPush@ record.
-type SinkPush input m output = input -> m (SinkResult input m output)
+type SinkPush input m output = input -> Sink input m output
 
 -- | The value of the @sinkClose@ record.
 type SinkClose m output = m output
-
--- | A @Sink@ ultimately returns a single output value. Each time data is
--- pushed to it, a @Sink@ may indicate that it is still processing data, or
--- that it is done, in which case it returns some optional leftover input and
--- an output value.
---
--- The @Processing@ constructors provides updated push and close functions to
--- be used in place of the original @Sink@.
---
--- Since 0.2.0
-data SinkResult input m output =
-    Processing (SinkPush input m output) (SinkClose m output)
-  | Done (Maybe input) output
-instance Monad m => Functor (SinkResult input m) where
-    fmap f (Processing push close) = Processing ((fmap . liftM . fmap) f push) (liftM f close)
-    fmap f (Done input output) = Done input (f output)
 
 {-
 Note to my future self, and anyone else who reads my code: It's tempting to
@@ -86,62 +69,44 @@ it enforce the invariants much better.
 --
 -- Since 0.2.0
 data Sink input m output =
-    SinkNoData output
-  | SinkData
-        { sinkPush :: SinkPush input m output
-        , sinkClose :: SinkClose m output
-        }
-  -- | This constructor is provided to allow us to create an efficient
-  -- @MonadTrans@ instance.
-  | SinkLift (m (Sink input m output))
+    Processing (SinkPush input m output) (SinkClose m output)
+  | Done (Maybe input) output
+  | SinkM (m (Sink input m output))
 
 instance Monad m => Functor (Sink input m) where
-    fmap f (SinkNoData x) = SinkNoData (f x)
-    fmap f (SinkData p c) = SinkData
-        { sinkPush = liftM (fmap f) . p
-        , sinkClose = liftM f c
-        }
-    fmap f (SinkLift msink) = SinkLift (liftM (fmap f) msink)
+    fmap f (Processing push close) = Processing (fmap f . push) (liftM f close)
+    fmap f (Done minput output) = Done minput (f output)
+    fmap f (SinkM msink) = SinkM (liftM (fmap f) msink)
 
 instance Monad m => Applicative (Sink input m) where
     pure = return
     (<*>) = ap
 
 instance Monad m => Monad (Sink input m) where
-    return = SinkNoData
-    SinkNoData x >>= f = f x
-    SinkLift mx >>= f = SinkLift $ do
-        x <- mx
-        return $ x >>= f
-    SinkData push0 close0 >>= f =
-        SinkData (push push0) (close close0)
+    return = Done Nothing
+    Done Nothing x >>= f = f x
+    Done (Just leftover) x >>= f =
+        sinkPush (f x)
       where
-        push push' input = do
-            res <- push' input
-            case res of
-                Done lo output -> pushHelper lo (f output)
-                Processing push'' close'' ->
-                    return $ Processing (push push'') (close close'')
+        sinkPush (Processing push _) = push leftover
+        sinkPush (Done Nothing output) = Done (Just leftover) output
+        sinkPush (Done Just{} _) = error $ "Sink invariant violated: leftover input returned without any push"
+        sinkPush (SinkM msink) = SinkM (liftM sinkPush msink)
+    SinkM msink >>= f = SinkM (liftM (>>= f) msink)
+    Processing push close >>= f = Processing
+        (\input -> push input >>= f)
+        (close >>= sinkClose . f)
 
-        pushHelper lo (SinkNoData y) = return $ Done lo y
-        pushHelper (Just l) (SinkData pushF _) = pushF l
-        pushHelper Nothing (SinkData pushF closeF) =
-            return (Processing pushF closeF)
-        pushHelper lo (SinkLift msink) = msink >>= pushHelper lo
-
-        close close' = do
-            output <- close'
-            closeHelper (f output)
-
-        closeHelper (SinkNoData y) = return y
-        closeHelper (SinkData _ closeF) = closeF
-        closeHelper (SinkLift msink) = msink >>= closeHelper
+sinkClose :: Monad m => Sink input m output -> m output
+sinkClose (Done _ output) = return output
+sinkClose (Processing _ close) = close
+sinkClose (SinkM msink) = msink >>= sinkClose
 
 instance MonadBase base m => MonadBase base (Sink input m) where
     liftBase = lift . liftBase
 
 instance MonadTrans (Sink input) where
-    lift = SinkLift . liftM SinkNoData
+    lift = SinkM . liftM return
 
 instance MonadIO m => MonadIO (Sink input m) where
     liftIO = lift . liftIO

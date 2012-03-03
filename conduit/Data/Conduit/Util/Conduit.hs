@@ -188,15 +188,14 @@ scPush :: Monad m
        => SequencedSink state input m output
        -> Sink input m (SequencedSinkResponse state input m output)
        -> ConduitPush input m output
-scPush fsink (SinkData pushI _) input = pushI input >>= scGoRes fsink
-scPush fsink (SinkNoData res) input = scGoRes fsink (Done (Just input) res)
-scPush fsink (SinkLift msink) input = do
-    sink <- msink
-    scPush fsink sink input
+scPush fsink (Processing pushI _) input = scGoRes fsink $ pushI input
+scPush fsink (Done Nothing res) input = scGoRes fsink (Done (Just input) res)
+scPush _ (Done Just{} _) _ = error "Invariant violated: Sink returned leftover without input"
+scPush fsink (SinkM msink) input = msink >>= \sink -> scPush fsink sink input
 
 scGoRes :: Monad m
         => SequencedSink state input m output
-        -> SinkResult input m (SequencedSinkResponse state input m output)
+        -> Sink input m (SequencedSinkResponse state input m output)
         -> m (ConduitResult input m output)
 scGoRes fsink (Done (Just leftover) (Emit state os)) = haveMoreM
     (scPush fsink (fsink state) leftover)
@@ -209,7 +208,7 @@ scGoRes fsink (Done Nothing (Emit state os)) = return $ haveMore
   where
     Conduit p c = sequenceSink state fsink
 scGoRes fsink (Processing pushI closeI) = return $ Running
-    (scPush fsink (SinkData pushI closeI))
+    (scPush fsink (Processing pushI closeI))
     (SourceM (do
         res <- closeI
         case res of
@@ -220,6 +219,7 @@ scGoRes fsink (Processing pushI closeI) = return $ Running
 scGoRes _ (Done mleftover Stop) = return $ Finished mleftover
 scGoRes _ (Done Nothing (StartConduit (Conduit p c))) = return $ Running p c
 scGoRes _ (Done (Just leftover) (StartConduit (Conduit p _))) = p leftover
+scGoRes fsink (SinkM msink) = msink >>= scGoRes fsink
 
 -- | Specialised version of 'sequenceSink'
 --
@@ -229,10 +229,10 @@ scGoRes _ (Done (Just leftover) (StartConduit (Conduit p _))) = p leftover
 --
 -- Since 0.2.1
 sequence :: Monad m => Sink input m output -> Conduit input m output
-sequence (SinkData spush0 sclose0) =
+sequence (Processing spush0 sclose0) =
     Conduit (push spush0) (close sclose0)
   where
-    push spush input = spush input >>= goRes
+    push spush input = goRes $ spush input
 
     goRes res =
         case res of
@@ -243,15 +243,16 @@ sequence (SinkData spush0 sclose0) =
                 (return ())
                 output
             Done (Just input') output -> return $ HaveMore
-                (spush0 input' >>= goRes)
+                (goRes $ spush0 input')
                 (return ())
                 output
+            SinkM msink -> msink >>= goRes
 
     close sclose = SourceM (do
         output <- sclose
         return $ Open Closed (return ()) output) (return ())
 
-sequence (SinkNoData output) = Conduit
+sequence (Done Nothing output) = Conduit
     { conduitPush = \_input ->
         let x = return $ HaveMore x (return ()) output
          in x
@@ -259,7 +260,8 @@ sequence (SinkNoData output) = Conduit
         let src = Open src (return ()) output
          in src
     }
-sequence (SinkLift msink) = Conduit
+sequence (Done Just{} _) = error "Invariant violated: sink returns leftover without push"
+sequence (SinkM msink) = Conduit
     { conduitPush = \input -> do
         sink <- msink
         conduitPush (sequence sink) input

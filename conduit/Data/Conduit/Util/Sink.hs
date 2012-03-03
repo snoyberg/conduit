@@ -36,9 +36,9 @@ sinkState
     -> (state -> m output) -- ^ Close. Note that the state is not returned, as it is not needed.
     -> Sink input m output
 sinkState state0 push0 close0 =
-    SinkData (push state0) (close0 state0)
+    Processing (push state0) (close0 state0)
   where
-    push state input = do
+    push state input = SinkM $ do
         res <- state `seq` push0 state input
         case res of
             StateProcessing state' -> return $ Processing (push state') (close0 state')
@@ -60,14 +60,13 @@ sinkIO :: MonadResource m
        -> (state -> input -> m (SinkIOResult input output)) -- ^ push
        -> (state -> m output) -- ^ close
        -> Sink input m output
-sinkIO alloc cleanup push0 close0 = SinkData
-    { sinkPush = \input -> do
+sinkIO alloc cleanup push0 close0 = Processing
+    (\input -> SinkM $ do
         (key, state) <- allocate alloc cleanup
-        push key state input
-    , sinkClose = do
+        push key state input)
+    (do
         (key, state) <- allocate alloc cleanup
-        close key state
-    }
+        close key state)
   where
     push key state input = do
         res <- push0 state input
@@ -76,7 +75,7 @@ sinkIO alloc cleanup push0 close0 = SinkData
                 release key
                 return $ Done a b
             IOProcessing -> return $ Processing
-                (push key state)
+                (SinkM . push key state)
                 (close key state)
     close key state = do
         res <- close0 state
@@ -92,17 +91,6 @@ transSink :: Monad m
           => (forall a. m a -> n a)
           -> Sink input m output
           -> Sink input n output
-transSink _ (SinkNoData x) = SinkNoData x
-transSink f (SinkLift msink) = SinkLift (f (liftM (transSink f) msink))
-transSink f (SinkData push close) = SinkData
-    (f . liftM (transSinkPush f) . push)
-    (f close)
-
-transSinkPush :: Monad m
-              => (forall a. m a -> n a)
-              -> SinkResult input m output
-              -> SinkResult input n output
-transSinkPush _ (Done a b) = Done a b
-transSinkPush f (Processing push close) = Processing
-    (f . liftM (transSinkPush f) . push)
-    (f close)
+transSink _ (Done a b) = Done a b
+transSink f (Processing push close) = Processing (transSink f . push) (f close)
+transSink f (SinkM msink) = SinkM (f (liftM (transSink f) msink))

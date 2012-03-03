@@ -83,9 +83,9 @@ mapM_ :: Monad m
       => (a -> m ())
       -> Sink a m ()
 mapM_ f =
-    SinkData push close
+    Processing push close
   where
-    push input = f input >> return (Processing push close)
+    push input = SinkM $ f input >> return (Processing push close)
     close = return ()
 
 -- | Convert a list into a source.
@@ -152,9 +152,9 @@ take count0 = sinkState
 -- Since 0.2.0
 head :: Monad m => Sink a m (Maybe a)
 head =
-    SinkData push close
+    Processing push close
   where
-    push x = return $ Done Nothing (Just x)
+    push x = Done Nothing (Just x)
     close = return Nothing
 
 -- | Look at the next value in the stream, if available. This function will not
@@ -163,9 +163,9 @@ head =
 -- Since 0.2.0
 peek :: Monad m => Sink a m (Maybe a)
 peek =
-    SinkData push close
+    Processing push close
   where
-    push x = return $ Done (Just x) (Just x)
+    push x = Done (Just x) (Just x)
     close = return Nothing
 
 -- | Apply a transformation to all values in a stream.
@@ -307,9 +307,9 @@ filter f =
 -- Since 0.2.0
 sinkNull :: Monad m => Sink a m ()
 sinkNull =
-    SinkData push close
+    Processing push close
   where
-    push _ = return $ Processing push close
+    push _ = sinkNull
     close = return ()
 
 -- | A source that returns nothing. Note that this is just a type-restricted

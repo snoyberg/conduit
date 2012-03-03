@@ -112,18 +112,11 @@ instance MonadIO m => IsSource BufferedSource m where
     {-# INLINE fuseLeft #-}
 
 normalConnect :: Monad m => Source m a -> Sink a m b -> m b
-normalConnect src (SinkNoData output) = sourceClose src >> return output
-normalConnect src0 (SinkLift msink) = msink >>= normalConnect src0
-normalConnect src0 (SinkData push0 close0) =
-    connect' src0 push0 close0
-  where
-    connect' (SourceM msrc _) push close = msrc >>= \src -> connect' src push close
-    connect' Closed _ close = close
-    connect' (Open src closeSource a) push _ = do
-        res <- push a
-        case res of
-            Done _leftover res' -> closeSource >> return res'
-            Processing push' close' -> connect' src push' close'
+normalConnect src (Done _leftover output) = sourceClose src >> return output
+normalConnect src (SinkM msink) = msink >>= normalConnect src
+normalConnect (SourceM msrc _) sink = msrc >>= \src -> normalConnect src sink
+normalConnect Closed (Processing _ close) = close
+normalConnect (Open src _ a) (Processing push _) = normalConnect src $ push a
 
 data FuseLeftState srcState input m output =
     FLClosed
@@ -169,21 +162,20 @@ infixr 0 =$
 --
 -- Since 0.2.0
 (=$) :: Monad m => Conduit a m b -> Sink b m c -> Sink a m c
-Conduit _ close =$ SinkNoData res = SinkLift $ do
+Conduit _ close =$ Done _mleftover res = SinkM $ do
     () <- sourceClose close
-    return $ SinkNoData res
-conduit =$ SinkLift msink = SinkLift (liftM (conduit =$) msink)
-Conduit initPushO initCloseO =$ SinkData initPushI initCloseI = SinkData
-    { sinkPush = push initPushI initCloseI initPushO
-    , sinkClose = close initPushI initCloseI initCloseO
-    }
+    return $ Done Nothing res
+conduit =$ SinkM msink = SinkM (liftM (conduit =$) msink)
+Conduit initPushO initCloseO =$ Processing initPushI initCloseI = Processing
+    (SinkM . push initPushI initCloseI initPushO)
+    (close initPushI initCloseI initCloseO)
   where
     push :: Monad m
          => SinkPush b m c
          -> SinkClose m c
          -> ConduitPush a m b
          -> a
-         -> m (SinkResult a m c)
+         -> m (Sink a m c)
     push pushI closeI pushO inputO = pushO inputO >>= goRes pushI closeI
 
     close :: Monad m
@@ -191,30 +183,31 @@ Conduit initPushO initCloseO =$ SinkData initPushI initCloseI = SinkData
           -> SinkClose m c
           -> ConduitClose m b
           -> m c
-    close pushI closeI closeO = closeO $$ SinkData pushI closeI
+    close pushI closeI closeO = closeO $$ Processing pushI closeI
 
     goRes :: Monad m
           => SinkPush b m c
           -> SinkClose m c
           -> ConduitResult a m b
-          -> m (SinkResult a m c)
+          -> m (Sink a m c)
     goRes pushI closeI (Running pushO closeO) = return $ Processing
-        (push pushI closeI pushO)
+        (SinkM . push pushI closeI pushO)
         (close pushI closeI closeO)
     goRes _ closeI (Finished leftoverO) = do
         outputI <- closeI
         return $ Done leftoverO outputI
-    goRes pushI _ (HaveMore pullO closeO inputI) = pushI inputI >>= goResInner pullO closeO
+    goRes pushI _ (HaveMore pullO closeO inputI) = goResInner pullO closeO $ pushI inputI
 
     goResInner :: Monad m
                => ConduitPull a m b
                -> m ()
-               -> SinkResult b m c
-               -> m (SinkResult a m c)
+               -> Sink b m c
+               -> m (Sink a m c)
     goResInner pullO _ (Processing pushI closeI) = pullO >>= goRes pushI closeI
     goResInner _ closeO (Done _leftoverI outputI) = do
         () <- closeO
         return $ Done Nothing outputI
+    goResInner pullO closeO (SinkM msink) = msink >>= goResInner pullO closeO
 
 infixr 0 =$=
 
@@ -329,34 +322,37 @@ unbufferSource (BufferedSource bs) =
             ClosedFull a -> return $ Open Closed (return ()) a
 
 bufferedConnect :: MonadIO m => BufferedSource m a -> Sink a m b -> m b
-bufferedConnect _ (SinkNoData output) = return output
-bufferedConnect bsrc (SinkLift msink) = msink >>= bufferedConnect bsrc
-bufferedConnect (BufferedSource bs) (SinkData push0 close0) = do
+bufferedConnect _ (Done Nothing output) = return output
+bufferedConnect _ (Done Just{} _) = error "Invariant violated: sink returned leftover without input"
+bufferedConnect bsrc (SinkM msink) = msink >>= bufferedConnect bsrc
+bufferedConnect (BufferedSource bs) (Processing push0 close0) = do
     bsState <- liftIO $ I.readIORef bs
     case bsState of
         ClosedEmpty -> close0
         OpenEmpty src -> connect' src push0 close0
-        ClosedFull a -> do
-            res <- push0 a
-            case res of
-                Done mleftover res' -> do
-                    liftIO $ I.writeIORef bs $ maybe ClosedEmpty ClosedFull mleftover
-                    return res'
-                Processing _ close' -> do
-                    liftIO $ I.writeIORef bs ClosedEmpty
-                    close'
-        OpenFull src a -> push0 a >>= onRes src
+        ClosedFull a -> onRes Nothing $ push0 a
+        OpenFull src a -> onRes (Just src) $ push0 a
   where
     connect' Closed _ close = do
         liftIO $ I.writeIORef bs ClosedEmpty
         close
-    connect' (Open src _ x) push _ = push x >>= onRes src
+    connect' (Open src _ x) push _ = onRes (Just src) $ push x
     connect' (SourceM msrc _) push close = msrc >>= \src -> connect' src push close
 
-    onRes src (Done mleftover res) = do
-        liftIO $ I.writeIORef bs $ maybe (OpenEmpty src) (OpenFull src) mleftover
+    onRes msrc (Done mleftover res) = do
+        let state =
+                case (msrc, mleftover) of
+                    (Nothing, Nothing) -> ClosedEmpty
+                    (Just src, Nothing) -> OpenEmpty src
+                    (Nothing, Just leftover) -> ClosedFull leftover
+                    (Just src, Just leftover) -> OpenFull src leftover
+        liftIO $ I.writeIORef bs state
         return res
-    onRes src (Processing push close) = connect' src push close
+    onRes Nothing (Processing _ close) = do
+        liftIO $ I.writeIORef bs ClosedEmpty
+        close
+    onRes (Just src) (Processing push close) = connect' src push close
+    onRes msrc (SinkM msink) = msink >>= onRes msrc
 
 bufferedFuseLeft
     :: MonadIO m
