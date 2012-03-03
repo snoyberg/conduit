@@ -45,6 +45,8 @@ import Prelude
     , Bool (..)
     , (>>)
     , flip
+    , seq
+    , otherwise
     )
 import Data.Conduit
 import Data.Monoid (mempty)
@@ -57,10 +59,14 @@ fold :: Monad m
      => (b -> a -> b)
      -> b
      -> Sink a m b
-fold f accum0 = sinkState
-    accum0
-    (\accum input -> return (StateProcessing $ f accum input))
-    return
+fold f accum0 =
+    go accum0
+  where
+    go accum = Processing (push accum) (return accum)
+
+    push accum input =
+        let accum' = f accum input
+         in accum' `seq` go accum'
 
 -- | A monadic strict left fold.
 --
@@ -93,11 +99,8 @@ mapM_ f =
 --
 -- Since 0.2.0
 sourceList :: Monad m => [a] -> Source m a
-sourceList l0 =
-    sourceState l0 go
-  where
-    go [] = return StateClosed
-    go (x:xs) = return $ StateOpen xs x
+sourceList [] = Closed
+sourceList (x:xs) = Open (sourceList xs) (return ()) x
 
 -- | Ignore a certain number of values in the stream. This function is
 -- semantically equivalent to:
@@ -111,18 +114,14 @@ sourceList l0 =
 drop :: Monad m
      => Int
      -> Sink a m ()
-drop count0 = sinkState
-    count0
-    push
-    close
+drop 0 = Processing (flip Done () . Just) (return ())
+drop count =
+    Processing push (return ())
   where
-    push 0 x = return $ StateDone (Just x) ()
-    push count _ = do
-        let count' = count - 1
-        return $ if count' == 0
-            then StateDone Nothing ()
-            else StateProcessing count'
-    close _ = return ()
+    count' = count - 1
+    push _
+        | count' == 0 = Done Nothing ()
+        | otherwise   = drop count'
 
 -- | Take some values from the stream and return as a list. If you want to
 -- instead create a conduit that pipes data to another sink, see 'isolate'.
@@ -134,19 +133,18 @@ drop count0 = sinkState
 take :: Monad m
      => Int
      -> Sink a m [a]
-take count0 = sinkState
-    (count0, id)
-    push
-    close
+take count0 =
+    go count0 id
   where
-    push (0, front) x = return (StateDone (Just x) (front []))
-    push (count, front) x = do
-        let count' = count - 1
-            front' = front . (x:)
-        return $ if count' == 0
-                    then StateDone Nothing (front' [])
-                    else StateProcessing (count', front')
-    close (_, front) = return $ front []
+    go count front = Processing (push count front) (return $ front [])
+
+    push 0 front x = Done (Just x) (front [])
+    push count front x
+        | count' == 0 = Done Nothing (front [x])
+        | otherwise   = Processing (push count' front') (return $ front' [])
+      where
+        count' = count - 1
+        front' = front . (x:)
 
 -- | Take a single value from the stream, if available.
 --
@@ -240,10 +238,11 @@ concatMapAccumM f accum = conduitState accum push close
 --
 -- Since 0.2.0
 consume :: Monad m => Sink a m [a]
-consume = sinkState
-    id
-    (\front input -> return (StateProcessing $ front . (input :)))
-    (\front -> return $ front [])
+consume =
+    go id
+  where
+    go front = Processing (push front) (return $ front [])
+    push front x = go (front . (x:))
 
 -- | Grouping input according to an equality function.
 --
