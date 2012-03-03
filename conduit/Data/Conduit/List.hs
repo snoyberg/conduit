@@ -173,9 +173,9 @@ peek =
 -- Since 0.2.0
 map :: Monad m => (a -> b) -> Conduit a m b
 map f =
-    Conduit push close
+    Running push close
   where
-    push i = return $ HaveMore (return $ Running push close) (return ()) (f i)
+    push i = HaveMore (Running push close) (return ()) (f i)
     close = mempty
 
 -- | Apply a monadic transformation to all values in a stream.
@@ -186,9 +186,9 @@ map f =
 -- Since 0.2.0
 mapM :: Monad m => (a -> m b) -> Conduit a m b
 mapM f =
-    Conduit push close
+    Running push close
   where
-    push i = liftM (HaveMore (return $ Running push close) (return ())) $ f i
+    push = ConduitM . liftM (HaveMore (Running push close) (return ())) . f
     close = mempty
 
 -- | Apply a transformation to all values in a stream, concatenating the output
@@ -197,9 +197,9 @@ mapM f =
 -- Since 0.2.0
 concatMap :: Monad m => (a -> [b]) -> Conduit a m b
 concatMap f =
-    Conduit push close
+    Running push close
   where
-    push = return . haveMore (Running push close) (return ()) . f
+    push = haveMore (Running push close) (return ()) . f
     close = mempty
 
 -- | Apply a monadic transformation to all values in a stream, concatenating
@@ -208,9 +208,9 @@ concatMap f =
 -- Since 0.2.0
 concatMapM :: Monad m => (a -> m [b]) -> Conduit a m b
 concatMapM f =
-    Conduit push close
+    Running push close
   where
-    push = liftM (haveMore (Running push close) (return ())) . f
+    push = ConduitM . liftM (haveMore (Running push close) (return ())) . f
     close = mempty
 
 -- | 'concatMap' with an accumulator.
@@ -295,10 +295,10 @@ isolate count0 = conduitState
 -- Since 0.2.0
 filter :: Monad m => (a -> Bool) -> Conduit a m a
 filter f =
-    Conduit push close
+    Running push close
   where
-    push i | f i = return $ HaveMore (return $ Running push close) (return ()) i
-    push _       = return $ Running push close
+    push i | f i = HaveMore (Running push close) (return ()) i
+    push _       = Running push close
     close = mempty
 
 -- | Ignore the remainder of values in the source. Particularly useful when

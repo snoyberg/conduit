@@ -1,8 +1,7 @@
 -- | Defines the types for a conduit, which is a transformer of data. A conduit
 -- is almost always connected either left (to a source) or right (to a sink).
 module Data.Conduit.Types.Conduit
-    ( ConduitResult (..)
-    , Conduit (..)
+    ( Conduit (..)
     , ConduitPush
     , ConduitPull
     , ConduitClose
@@ -12,9 +11,9 @@ import Control.Monad (liftM)
 import Data.Conduit.Types.Source
 
 -- | The value of the @conduitPush@ record.
-type ConduitPush input m output = input -> m (ConduitResult input m output)
+type ConduitPush input m output = input -> Conduit input m output
 
-type ConduitPull input m output = m (ConduitResult input m output)
+type ConduitPull input m output = Conduit input m output
 
 -- | The value of the @conduitClose@ record.
 type ConduitClose m output = Source m output
@@ -28,28 +27,20 @@ type ConduitClose m output = Source m output
 -- the previous one.
 --
 -- Since 0.2.0
-data ConduitResult input m output =
-    Running (ConduitPush input m output) (ConduitClose m output)
-  | Finished (Maybe input)
-  | HaveMore (ConduitPull input m output) (m ()) output
-
-instance Monad m => Functor (ConduitResult input m) where
-    fmap f (Running p c) = Running (liftM (fmap f) . p) (fmap f c)
-    fmap _ (Finished i) = Finished i
-    fmap f (HaveMore pull close output) = HaveMore
-        (liftM (fmap f) pull) close (f output)
 
 -- | A conduit has two operations: it can receive new input (a push), and can
 -- be closed.
 --
 -- Since 0.2.0
-data Conduit input m output = Conduit
-    { conduitPush :: ConduitPush input m output
-    , conduitClose :: ConduitClose m output
-    }
+data Conduit input m output =
+    Running (ConduitPush input m output) (ConduitClose m output)
+  | Finished (Maybe input)
+  | HaveMore (ConduitPull input m output) (m ()) output
+  | ConduitM (m (Conduit input m output))
 
 instance Monad m => Functor (Conduit input m) where
-    fmap f c = c
-        { conduitPush = liftM (fmap f) . conduitPush c
-        , conduitClose = fmap f (conduitClose c)
-        }
+    fmap f (Running p c) = Running (fmap f . p) (fmap f c)
+    fmap _ (Finished i) = Finished i
+    fmap f (HaveMore pull close output) = HaveMore
+        (fmap f pull) close (f output)
+    fmap f (ConduitM mcon) = ConduitM (liftM (fmap f) mcon)
