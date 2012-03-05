@@ -9,7 +9,6 @@ module Data.Conduit.Lazy
 import Data.Conduit
 import System.IO.Unsafe (unsafeInterleaveIO)
 import Control.Monad.Trans.Control (MonadBaseControl, liftBaseOp_)
-import Control.Monad.IO.Class
 import Control.Monad.Trans.Resource (MonadActive (monadActive))
 
 -- | Use lazy I\/O to consume all elements from a @Source@.
