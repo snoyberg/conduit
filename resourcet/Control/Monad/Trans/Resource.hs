@@ -30,9 +30,9 @@ module Control.Monad.Trans.Resource
     , MonadResource (..)
     , MonadUnsafeIO (..)
     , MonadThrow (..)
+    , MonadActive (..)
       -- ** Low-level
     , InvalidAccess (..)
-    , resourceActive
       -- * Re-exports
     , MonadBaseControl
     ) where
@@ -74,6 +74,7 @@ import Control.Concurrent (ThreadId, forkIO)
 
 import Control.Monad.ST (ST, unsafeIOToST)
 import qualified Control.Monad.ST.Lazy as Lazy
+import Data.Functor.Identity (Identity)
 
 -- | A lookup key for a specific release action. This value is returned by
 -- 'register', 'with' and 'withIO', and is passed to 'release'.
@@ -390,16 +391,6 @@ resourceForkIO (ResourceT f) = ResourceT $ \r -> L.mask $ \restore ->
             (stateCleanup r)
             (restore $ f r))
 
--- | Determine if the current @ResourceT@ is still active. This is necessary
--- for such cases as lazy I\/O, where an unevaluated thunk may still refer to a
--- closed @ResourceT@.
-resourceActive :: MonadIO m => ResourceT m Bool
-resourceActive = ResourceT $ \rmMap -> do
-    rm <- liftIO $ I.readIORef rmMap
-    case rm of
-        ReleaseMapClosed -> return False
-        _ -> return True
-
 -- | A 'Resource' based on some monad which allows running of some 'IO'
 -- actions, via unsafe calls. This applies to 'IO' and 'ST', for instance.
 class Monad m => MonadUnsafeIO m where
@@ -416,3 +407,47 @@ instance MonadUnsafeIO (Lazy.ST s) where
 
 instance (MonadTrans t, MonadUnsafeIO m, Monad (t m)) => MonadUnsafeIO (t m) where
     unsafeLiftIO = lift . unsafeLiftIO
+
+-- | Determine if some monad is still active. This is intended to prevent usage
+-- of a monadic state after it has been closed.  This is necessary for such
+-- cases as lazy I\/O, where an unevaluated thunk may still refer to a
+-- closed @ResourceT@.
+--
+-- Since 0.3.0
+class Monad m => MonadActive m where
+    monadActive :: m Bool
+
+instance (MonadIO m, MonadActive m) => MonadActive (ResourceT m) where
+    monadActive = ResourceT $ \rmMap -> do
+        rm <- liftIO $ I.readIORef rmMap
+        case rm of
+            ReleaseMapClosed -> return False
+            _ -> monadActive -- recurse
+
+instance MonadActive Identity where
+    monadActive = return True
+
+instance MonadActive IO where
+    monadActive = return True
+
+instance MonadActive (ST s) where
+    monadActive = return True
+
+instance MonadActive (Lazy.ST s) where
+    monadActive = return True
+
+#define GO(T) instance MonadActive m => MonadActive (T m) where monadActive = lift monadActive
+#define GOX(X, T) instance (X, MonadActive m) => MonadActive (T m) where monadActive = lift monadActive
+GO(IdentityT)
+GO(ListT)
+GO(MaybeT)
+GOX(Error e, ErrorT e)
+GO(ReaderT r)
+GO(StateT s)
+GOX(Monoid w, WriterT w)
+GOX(Monoid w, RWST r w s)
+GOX(Monoid w, Strict.RWST r w s)
+GO(Strict.StateT s)
+GOX(Monoid w, Strict.WriterT w)
+#undef GO
+#undef GOX
