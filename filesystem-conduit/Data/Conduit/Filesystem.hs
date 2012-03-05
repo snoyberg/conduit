@@ -42,20 +42,17 @@ traverse :: MonadIO m
          => Bool -- ^ Follow directory symlinks (only used on POSIX platforms)
          -> FilePath -- ^ Root directory
          -> C.Source m FilePath
-traverse followSymlinks root = C.Source
-    { C.sourcePull = do
-        seq0 <- liftIO $ listDirectory root
-        pull seq0
-    , C.sourceClose = return ()
-    }
+traverse followSymlinks root = C.SourceM
+    (liftIO (listDirectory root) >>= pull)
+    (return ())
   where
-    mkSrc ps = C.Source (pull ps) (return ())
+    mkSrc ps = C.SourceM (pull ps) (return ())
 
     pull [] = return C.Closed
     pull (p:ps) = do
         isFile' <- liftIO $ isFile p
         if isFile'
-            then return $ C.Open (mkSrc ps) p
+            then return $ C.Open (mkSrc ps) (return ()) p
             else do
                 follow' <- liftIO $ follow p
                 if follow'

@@ -33,44 +33,58 @@ decompress
     :: MonadUnsafeIO m
     => WindowBits -- ^ Zlib parameter (see the zlib-bindings package as well as the zlib C library)
     -> Conduit ByteString m ByteString
-decompress config = Conduit
-    { conduitPush = \input -> do
+decompress config = Running
+    (\input -> ConduitM (do
         inf <- unsafeLiftIO $ initInflate config
-        push inf input
-    , conduitClose = return []
-    }
+        push inf input) (return ()))
+    Closed
   where
+    push' inf x = ConduitM (push inf x) (return ())
+
     push inf x = do
         popper <- unsafeLiftIO $ feedInflate inf x
-        goPopper (push inf) (close inf) id [] popper
+        goPopper (push' inf) (close inf) id [] popper
 
-    close inf = do
+    close inf = flip SourceM (return ()) $ do
         chunk <- unsafeLiftIO $ finishInflate inf
-        return $ if S.null chunk then [] else [chunk]
+        return $
+            if S.null chunk
+                then Closed
+                else Open Closed (return ()) chunk
 
 -- | Same as 'decompress', but allows you to explicitly flush the stream.
 decompressFlush
     :: MonadUnsafeIO m
     => WindowBits -- ^ Zlib parameter (see the zlib-bindings package as well as the zlib C library)
     -> Conduit (Flush ByteString) m (Flush ByteString)
-decompressFlush config = Conduit
-    { conduitPush = \input -> do
+decompressFlush config = Running
+    (\input -> flip ConduitM (return ()) $ do
         inf <- unsafeLiftIO $ initInflate config
-        push inf input
-    , conduitClose = return []
-    }
+        push inf input)
+    Closed
   where
+    push' inf x = ConduitM (push inf x) (return ())
+
     push inf (Chunk x) = do
         popper <- unsafeLiftIO $ feedInflate inf x
-        goPopper (push inf) (close inf) Chunk [] popper
+        goPopper (push' inf) (close inf) Chunk [] popper
     push inf Flush = do
         chunk <- unsafeLiftIO $ flushInflate inf
-        let chunk' = if S.null chunk then id else (Chunk chunk:)
-        return $ Producing (push inf) (close inf) $ chunk' [Flush]
+        let next = HaveMore
+                (Running (push' inf) (close inf))
+                (return ())
+                Flush
+        return $
+            if S.null chunk
+                then next
+                else HaveMore next (return ()) (Chunk chunk)
 
-    close inf = do
+    close inf = flip SourceM (return ()) $ do
         chunk <- unsafeLiftIO $ finishInflate inf
-        return $ if S.null chunk then [] else [Chunk chunk]
+        return $
+            if S.null chunk
+                then Closed
+                else Open Closed (return ()) $ Chunk chunk
 
 -- |
 -- Compress (deflate) a stream of 'ByteString's. The 'WindowBits' also control
@@ -81,33 +95,17 @@ compress
     => Int         -- ^ Compression level
     -> WindowBits  -- ^ Zlib parameter (see the zlib-bindings package as well as the zlib C library)
     -> Conduit ByteString m ByteString
-compress level config = Conduit
-    { conduitPush = \input -> do
+compress level config = Running
+    (\input -> flip ConduitM (return ()) $ do
         def <- unsafeLiftIO $ initDeflate level config
-        push def input
-    , conduitClose = return []
-    }
+        push def input) Closed
   where
+    push' def input = ConduitM (push def input) (return ())
     push def x = do
         popper <- unsafeLiftIO $ feedDeflate def x
-        goPopper (push def) (close def) id [] popper
+        goPopper (push' def) (close def) id [] popper
 
-    close def = do
-        chunks <- unsafeLiftIO $ slurp $ finishDeflate def
-        return chunks
-
-goPopper :: MonadUnsafeIO m
-         => ConduitPush input m output
-         -> ConduitClose m output
-         -> (S.ByteString -> output)
-         -> [output]
-         -> IO (Maybe S.ByteString)
-         -> m (ConduitResult input m output)
-goPopper push close wrap final popper = do
-    mbs <- unsafeLiftIO popper
-    return $ case mbs of
-        Nothing -> Producing push close final
-        Just bs -> HaveMore (goPopper push close wrap final popper) (return ()) [wrap bs]
+    close def = slurp $ unsafeLiftIO $ finishDeflate def
 
 -- | Same as 'compress', but allows you to explicitly flush the stream.
 compressFlush
@@ -115,26 +113,43 @@ compressFlush
     => Int         -- ^ Compression level
     -> WindowBits  -- ^ Zlib parameter (see the zlib-bindings package as well as the zlib C library)
     -> Conduit (Flush ByteString) m (Flush ByteString)
-compressFlush level config = Conduit
-    { conduitPush = \input -> do
+compressFlush level config = Running
+    (\input -> flip ConduitM (return ()) $ do
         def <- unsafeLiftIO $ initDeflate level config
-        push def input
-    , conduitClose = return []
-    }
+        push def input) Closed
   where
+    push' def input = ConduitM (push def input) (return ())
+
     push def (Chunk x) = do
         popper <- unsafeLiftIO $ feedDeflate def x
-        goPopper (push def) (close def) Chunk [] popper
-    push def Flush = goPopper (push def) (close def) Chunk [Flush] $ flushDeflate def
+        goPopper (push' def) (close def) Chunk [] popper
+    push def Flush = goPopper (push' def) (close def) Chunk [Flush] $ flushDeflate def
 
-    close def = do
+    close def = flip SourceM (return ()) $ do
         mchunk <- unsafeLiftIO $ finishDeflate def
-        return $ maybe [] (return . Chunk) mchunk
+        return $ case mchunk of
+            Nothing -> Closed
+            Just chunk -> Open Closed (return ()) (Chunk chunk)
 
-slurp :: Monad m => m (Maybe a) -> m [a]
-slurp pop = go id where
-    go front = do
-       x <- pop
-       case x of
-           Nothing -> return $ front []
-           Just y -> go (front . (:) y)
+goPopper :: MonadUnsafeIO m
+         => ConduitPush input m output
+         -> ConduitClose m output
+         -> (S.ByteString -> output)
+         -> [output]
+         -> Popper
+         -> m (Conduit input m output)
+goPopper push close wrap final popper = do
+    mbs <- unsafeLiftIO popper
+    return $ case mbs of
+        Nothing ->
+            let go [] = Running push close
+                go (x:xs) = HaveMore (go xs) (return ()) x
+             in go final
+        Just bs -> HaveMore (ConduitM (goPopper push close wrap final popper) (return ())) (return ()) (wrap bs)
+
+slurp :: Monad m => m (Maybe a) -> Source m a
+slurp pop = flip SourceM (return ()) $ do
+    x <- pop
+    return $ case x of
+        Nothing -> Closed
+        Just y -> Open (slurp pop) (return ()) y

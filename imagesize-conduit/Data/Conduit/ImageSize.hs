@@ -17,21 +17,19 @@ data Size = Size { width :: Int, height :: Int }
 
 sinkImageSize :: Monad m => C.Sink S.ByteString m (Maybe Size)
 sinkImageSize =
-    C.SinkData (pushHeader id) close
+    C.Processing (pushHeader id) close
   where
     close = return Nothing
     pushHeader front bs'
         | S.length bs >= 11 && S.take 5 (S.drop 6 bs) ==
             S.pack [0x4A, 0x46, 0x49, 0x46, 0x00] =
-                C.sinkPush jpg $ S.drop 4 bs
+                sinkPush jpg $ S.drop 4 bs
         | S.length bs >= 6 && S.take 6 bs `elem` gifs =
-            C.sinkPush gif $ S.drop 6 bs
+            sinkPush gif $ S.drop 6 bs
         | S.length bs >= 8 && S.take 8 bs == S.pack [137, 80, 78, 71, 13, 10, 26, 10] =
-            C.sinkPush png $ S.drop 8 bs
-        | S.length bs < 11 = do
-            return $ C.Processing (pushHeader $ S.append bs) close
-        | otherwise = do
-            return $ C.Done (Just bs) Nothing
+            sinkPush png $ S.drop 8 bs
+        | S.length bs < 11 = C.Processing (pushHeader $ S.append bs) close
+        | otherwise = C.Done (Just bs) Nothing
       where
         bs = front bs'
 
@@ -53,6 +51,8 @@ sinkImageSize =
                 return $ Size <$> mw <*> mh
             else return Nothing
 
+    sinkPush (C.Processing push _) x = push x
+    sinkPush _ _ = error "Data.Conduit.ImageSize.sinkPush"
 
     jpg = do
         mi <- getInt 2 0

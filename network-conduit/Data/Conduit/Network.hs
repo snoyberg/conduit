@@ -7,7 +7,6 @@ module Data.Conduit.Network
     , sinkSocket
       -- * Simple TCP server/client interface.
     , Application
-    , ApplicationM
       -- ** Server
     , ServerSettings (..)
     , runTCPServer
@@ -40,11 +39,11 @@ sourceSocket :: MonadIO m => Socket -> Source m ByteString
 sourceSocket socket =
     src
   where
-    src = Source pull close
+    src = SourceM pull close
 
     pull = do
         bs <- liftIO (recv socket 4096)
-        return $ if S.null bs then Closed else Open src bs
+        return $ if S.null bs then Closed else Open src close bs
     close = return ()
 
 -- | Stream data to the socket.
@@ -54,9 +53,9 @@ sourceSocket socket =
 -- Since 0.0.0
 sinkSocket :: MonadIO m => Socket -> Sink ByteString m ()
 sinkSocket socket =
-    SinkData push close
+    Processing push close
   where
-    push bs = do
+    push bs = SinkM $ do
         liftIO (sendAll socket bs)
         return (Processing push close)
     close = return ()
@@ -73,7 +72,7 @@ type Application m = Source m ByteString
 -- hostname to bind to.
 --
 -- Since 0.2.1
-data ServerSettings = ServerSettings
+data ServerSettings = ServerSettings -- FIXME copy the new port stuff from Warp
     { serverPort :: Int
     , serverHost :: Maybe String -- ^ 'Nothing' indicates no preference
     }
