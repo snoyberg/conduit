@@ -2,7 +2,7 @@ Name:                resourcet
 Version:             0.3.0
 Synopsis:            Deterministic allocation and freeing of scarce resources.
 Description:
-	This package was originally included with the conduit package, and has since been split off.
+	This package was originally included with the conduit package, and has since been split off. For more information, please see <http://www.yesodweb.com/book/conduits>.
 License:             BSD3
 License-file:        LICENSE
 Author:              Michael Snoyman

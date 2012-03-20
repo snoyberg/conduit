@@ -8,9 +8,9 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 -- | Allocate resources which are guaranteed to be released.
 --
--- For more information, see <http://www.yesodweb.com/blog/2011/12/resourcet>.
+-- For more information, see <http://www.yesodweb.com/book/conduits>.
 --
--- One point to note: all register cleanup actions live in the base monad, not
+-- One point to note: all register cleanup actions live in the @IO@ monad, not
 -- the main monad. This allows both more efficient code, and for monads to be
 -- transformed.
 module Control.Monad.Trans.Resource
@@ -61,6 +61,7 @@ import Control.Monad.Trans.List     ( ListT    )
 import Control.Monad.Trans.Maybe    ( MaybeT   )
 import Control.Monad.Trans.Error    ( ErrorT, Error)
 import Control.Monad.Trans.Reader   ( ReaderT  )
+import Control.Monad.Trans.Cont     ( ContT  )
 import Control.Monad.Trans.State    ( StateT   )
 import Control.Monad.Trans.Writer   ( WriterT  )
 import Control.Monad.Trans.RWS      ( RWST     )
@@ -77,7 +78,9 @@ import qualified Control.Monad.ST.Lazy as Lazy
 import Data.Functor.Identity (Identity)
 
 -- | A lookup key for a specific release action. This value is returned by
--- 'register', 'with' and 'withIO', and is passed to 'release'.
+-- 'register' and 'allocate', and is passed to 'release'.
+--
+-- Since 0.3.0
 newtype ReleaseKey = ReleaseKey Int
     deriving Typeable
 
@@ -91,12 +94,14 @@ data ReleaseMap =
 -- | The Resource transformer. This transformer keeps track of all registered
 -- actions, and calls them upon exit (via 'runResourceT'). Actions may be
 -- registered via 'register', or resources may be allocated atomically via
--- 'with' or 'withIO'. The with functions correspond closely to @bracket@.
+-- 'allocate'. @allocate@ corresponds closely to @bracket@.
 --
 -- Releasing may be performed before exit via the 'release' function. This is a
 -- highly recommended optimization, as it will ensure that scarce resources are
 -- freed early. Note that calling @release@ will deregister the action, so that
 -- a release action will only ever be called once.
+--
+-- Since 0.3.0
 newtype ResourceT m a = ResourceT (I.IORef ReleaseMap -> m a)
 
 instance Typeable1 m => Typeable1 (ResourceT m) where
@@ -109,13 +114,28 @@ instance Typeable1 m => Typeable1 (ResourceT m) where
                 [ typeOf1 m
                 ]
 
+-- | A @Monad@ which allows for safe resource allocation. In theory, any monad
+-- transformer stack included a @ResourceT@ can be an instance of
+-- @MonadResource@.
+--
+-- Note: @runResourceT@ has a requirement for a @MonadBaseControl IO m@ monad,
+-- which allows control operations to be lifted. A @MonadResource@ does not
+-- have this requirement. This means that transformers such as @ContT@ can be
+-- an instance of @MonadResource@. However, the @ContT@ wrapper will need to be
+-- unwrapped before calling @runResourceT@.
+--
+-- Since 0.3.0
 class (MonadThrow m, MonadUnsafeIO m, MonadIO m) => MonadResource m where
     -- | Register some action that will be called precisely once, either when
     -- 'runResourceT' is called, or when the 'ReleaseKey' is passed to 'release'.
+    --
+    -- Since 0.3.0
     register :: IO () -> m ReleaseKey
 
     -- | Call a release action early, and deregister it from the list of cleanup
     -- actions to be performed.
+    --
+    -- Since 0.3.0
     release :: ReleaseKey -> m ()
 
     -- | Perform some allocation, and automatically register a cleanup action.
@@ -123,6 +143,8 @@ class (MonadThrow m, MonadUnsafeIO m, MonadIO m) => MonadResource m where
     -- This is almost identical to calling the allocation and then
     -- @register@ing the release action, but this properly handles masking of
     -- asynchronous exceptions.
+    --
+    -- Since 0.3.0
     allocate :: IO a -- ^ allocate
              -> (a -> IO ()) -- ^ free resource
              -> m (ReleaseKey, a)
@@ -131,6 +153,8 @@ class (MonadThrow m, MonadUnsafeIO m, MonadIO m) => MonadResource m where
     --
     -- This is more general then @Control.Exception.mask@, yet more efficient
     -- than @Control.Exception.Lifted.mask@.
+    --
+    -- Since 0.3.0
     resourceMask :: ((forall a. ResourceT IO a -> ResourceT IO a) -> ResourceT IO b) -> m b
 
 instance (MonadThrow m, MonadUnsafeIO m, MonadIO m) => MonadResource (ResourceT m) where
@@ -157,6 +181,7 @@ GO(ListT)
 GO(MaybeT)
 GOX(Error e, ErrorT e)
 GO(ReaderT r)
+GO(ContT r)
 GO(StateT s)
 GOX(Monoid w, WriterT w)
 GOX(Monoid w, RWST r w s)
@@ -177,6 +202,10 @@ register' istate rel = I.atomicModifyIORef istate $ \rm ->
             )
         ReleaseMapClosed -> throw $ InvalidAccess "register'"
 
+-- | Indicates either an error in the library, or misuse of it (e.g., a
+-- @ResourceT@'s state is accessed after being released).
+--
+-- Since 0.3.0
 data InvalidAccess = InvalidAccess { functionName :: String }
     deriving Typeable
 
@@ -236,6 +265,8 @@ stateCleanup istate = E.mask_ $ do
 -- Note that there is some reference counting involved due to 'resourceForkIO'.
 -- If multiple threads are sharing the same collection of resources, only the
 -- last call to @runResourceT@ will deallocate the resources.
+--
+-- Since 0.3.0
 runResourceT :: MonadBaseControl IO m => ResourceT m a -> m a
 runResourceT (ResourceT r) = do
     istate <- liftBase $ I.newIORef
@@ -250,8 +281,9 @@ bracket_ alloc cleanup inside =
     control $ \run -> E.bracket_ alloc cleanup (run inside)
 
 -- | Transform the monad a @ResourceT@ lives in. This is most often used to
--- strip or add new transformers to a stack, e.g. to run a @ReaderT@. Note that
--- the original and new monad must both have the same 'Base' monad.
+-- strip or add new transformers to a stack, e.g. to run a @ReaderT@.
+--
+-- Since 0.3.0
 transResourceT :: (m a -> n b)
                -> ResourceT m a
                -> ResourceT n b
@@ -299,11 +331,15 @@ instance Monad m => MonadThrow (ExceptionT m) where
     monadThrow = ExceptionT . return . Left . E.toException
 
 
--- | The express purpose of this transformer is to allow the 'ST' monad to
--- catch exceptions via the 'MonadThrow' typeclass.
+-- | The express purpose of this transformer is to allow non-@IO@-based monad
+-- stacks to catch exceptions via the 'MonadThrow' typeclass.
+--
+-- Since 0.3.0
 newtype ExceptionT m a = ExceptionT { runExceptionT :: m (Either SomeException a) }
 
 -- | Same as 'runExceptionT', but immediately 'E.throw' any exception returned.
+--
+-- Since 0.3.0
 runExceptionT_ :: Monad m => ExceptionT m a -> m a
 runExceptionT_ = liftM (either E.throw id) . runExceptionT
 
@@ -340,9 +376,11 @@ instance MonadBaseControl b m => MonadBaseControl b (ExceptionT m) where
     liftBaseWith = defaultLiftBaseWith StE
     restoreM = defaultRestoreM unStE
 
--- | A 'Resource' which can throw exceptions. Note that this does not work in a
--- vanilla @ST@ monad. Instead, you should use the 'ExceptionT' transformer on
--- top of @ST@.
+-- | A @Monad@ which can throw exceptions. Note that this does not work in a
+-- vanilla @ST@ or @Identity@ monad. Instead, you should use the 'ExceptionT'
+-- transformer in your stack if you are dealing with a non-@IO@ base monad.
+--
+-- Since 0.3.0
 class Monad m => MonadThrow m where
     monadThrow :: E.Exception e => e -> m a
 
@@ -356,6 +394,7 @@ GO(ListT)
 GO(MaybeT)
 GOX(Error e, ErrorT e)
 GO(ReaderT r)
+GO(ContT r)
 GO(ResourceT)
 GO(StateT s)
 GOX(Monoid w, WriterT w)
@@ -377,6 +416,8 @@ GOX(Monoid w, Strict.WriterT w)
 -- If you are allocating a resource that should be shared by multiple threads,
 -- and will be held for a long time, you should allocate it at the beginning of
 -- a new @ResourceT@ block and then call @resourceForkIO@ from there.
+--
+-- Since 0.3.0
 resourceForkIO :: MonadBaseControl IO m => ResourceT m () -> ResourceT m ThreadId
 resourceForkIO (ResourceT f) = ResourceT $ \r -> L.mask $ \restore ->
     -- We need to make sure the counter is incremented before this call
@@ -391,8 +432,10 @@ resourceForkIO (ResourceT f) = ResourceT $ \r -> L.mask $ \restore ->
             (stateCleanup r)
             (restore $ f r))
 
--- | A 'Resource' based on some monad which allows running of some 'IO'
--- actions, via unsafe calls. This applies to 'IO' and 'ST', for instance.
+-- | A @Monad@ based on some monad which allows running of some 'IO' actions,
+-- via unsafe calls. This applies to 'IO' and 'ST', for instance.
+--
+-- Since 0.3.0
 class Monad m => MonadUnsafeIO m where
     unsafeLiftIO :: IO a -> m a
 
