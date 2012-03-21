@@ -72,21 +72,18 @@ import Data.Conduit.Util.Conduit
 infixr 0 $$
 
 -- | The connect operator, which pulls data from a source and pushes to a sink.
--- There are three ways this process can terminate:
+-- There are two ways this process can terminate:
 --
--- 1. In the case of a @SinkNoData@ constructor, the source is not opened at
--- all, and the output value is returned immediately.
+-- 1. If the @Sink@ is a @Done@ constructor, the @Source@ is closed.
 --
--- 2. The sink returns @Done@. If the input was a @BufferedSource@, any
--- leftover input is put in the buffer. For a normal @Source@, the leftover
--- value is discarded, and the source is closed.
+-- 2. If the @Source@ is a @Closed@ constructor, the @Sink@ is closed.
 --
--- 3. The source return @Closed@, in which case the sink is closed.
+-- This function will automatically close any @Source@s, but will not close any
+-- @BufferedSource@s, allowing them to be reused. Also, leftover data will be
+-- discarded when connecting a @Source@, but will be buffered when using a
+-- @BufferedSource@.
 --
--- Note that this function will automatically close any @Source@s, but will not
--- close any @BufferedSource@s, allowing them to be reused.
---
--- Since 0.2.0
+-- Since 0.3.0
 ($$) :: IsSource src m => src m a -> Sink a m b -> m b
 ($$) = connect
 {-# INLINE ($$) #-}
@@ -94,7 +91,7 @@ infixr 0 $$
 -- | A typeclass allowing us to unify operators for 'Source' and
 -- 'BufferedSource'.
 --
--- Since 0.2.0
+-- Since 0.3.0
 class IsSource src m where
     connect :: src m a -> Sink a m b -> m b
     fuseLeft :: src m a -> Conduit a m b -> Source m b
@@ -112,10 +109,21 @@ instance MonadIO m => IsSource BufferedSource m where
     {-# INLINE fuseLeft #-}
 
 normalConnect :: Monad m => Source m a -> Sink a m b -> m b
+
+-- @Sink@ cannot handle any more input, close the @Source@ (regardless of its
+-- state) and discard leftovers.
 normalConnect src (Done _leftover output) = sourceClose src >> return output
+
+-- Run the @Sink@'s monadic action and try again.
 normalConnect src (SinkM msink) = msink >>= normalConnect src
-normalConnect (SourceM msrc _) sink = msrc >>= \src -> normalConnect src sink
+
+-- Run the @Source@'s monadic action and try again.
+normalConnect (SourceM msrc _) sink@Processing{} = msrc >>= flip normalConnect sink
+
+-- No more input available from @Source@, close the @Sink@.
 normalConnect Closed (Processing _ close) = close
+
+-- More input available, and the @Sink@ wants it: plug it in and keep going.
 normalConnect (Open src _ a) (Processing push _) = normalConnect src $ push a
 
 data FuseLeftState srcState input m output =
@@ -127,10 +135,11 @@ infixl 1 $=
 
 -- | Left fuse, combining a source and a conduit together into a new source.
 --
--- Note that any @Source@ passed in will be automatically closed, while a
--- @BufferedSource@ will be left open.
+-- Any @Source@ passed in will be automatically closed, while a
+-- @BufferedSource@ will be left open. Leftover input will be discarded for a
+-- @Source@, and buffered for a @BufferedSource@.
 --
--- Since 0.2.0
+-- Since 0.3.0
 ($=) :: IsSource src m
      => src m a
      -> Conduit a m b
@@ -139,59 +148,110 @@ infixl 1 $=
 {-# INLINE ($=) #-}
 
 normalFuseLeft :: Monad m => Source m a -> Conduit a m b -> Source m b
+
+-- No more input, close the @Conduit@.
 normalFuseLeft Closed (NeedInput _ close) = close
 normalFuseLeft Closed (Finished _) = Closed
+
+-- @Conduit@ is done, discard leftovers and close the @Source@.
 normalFuseLeft src (Finished _) = SourceM
     (sourceClose src >> return Closed)
     (sourceClose src)
+
+-- @Conduit@ has some output, return it and keep going.
 normalFuseLeft src (HaveOutput p c x) = Open
     (normalFuseLeft src p)
     (sourceClose src >> c)
     x
+
+-- @Source@ provided input, and @Conduit@ wants it. Pipe it through and keep going.
+normalFuseLeft (Open src _ a) (NeedInput push _) = normalFuseLeft src $ push a
+
+-- Need to perform a monadic action to get the next @Conduit@.
+normalFuseLeft src (ConduitM mcon conclose) = SourceM
+    (liftM (normalFuseLeft src) mcon)
+    (conclose >> sourceClose src)
+
+-- Need to perform a monadic action to get the next @Source@.
 normalFuseLeft (SourceM msrc closeS) conduit@(NeedInput _ closeC) =
     SourceM (liftM (flip normalFuseLeft conduit) msrc) $ do
         closeS
         sourceClose closeC
-normalFuseLeft (Open src _ a) (NeedInput push _) = normalFuseLeft src $ push a
-normalFuseLeft src (ConduitM mcon conclose) = SourceM
-    (liftM (normalFuseLeft src) mcon)
-    (conclose >> sourceClose src)
 
 infixr 0 =$
 
 -- | Right fuse, combining a conduit and a sink together into a new sink.
 --
--- Since 0.2.0
+-- Any leftover data returns from the @Sink@ will be discarded.
+--
+-- Since 0.3.0
 (=$) :: Monad m => Conduit a m b -> Sink b m c -> Sink a m c
-conduit =$ SinkM msink = SinkM (liftM (conduit =$) msink)
+
+-- @Sink@ is complete, discard leftovers, close the @Conduit@ and return the
+-- output.
 conduit =$ Done _leftover output = SinkM $ conduitClose conduit >> return (Done Nothing output)
+
+-- Need to perform a monadic action to get the next @Sink@.
+conduit =$ SinkM msink = SinkM (liftM (conduit =$) msink)
+
+-- Need more input for the @Conduit@, so ask for it.
 NeedInput pushO closeO =$ sink = Processing
     (\input -> pushO input =$ sink)
     (closeO $$ sink)
+
+-- @Conduit@ can provide no more input to @Sink@. Close the @Sink@ and return
+-- the leftovers from the @Conduit@.
 Finished mleftover =$ Processing _ close = SinkM $ liftM (Done mleftover) close
-ConduitM mcon _ =$ sink = SinkM $ liftM (=$ sink) mcon
+
+-- Perform a monadic action to get the next @Conduit@.
+ConduitM mcon _ =$ sink@Processing{} = SinkM $ liftM (=$ sink) mcon
+
+-- @Conduit@ is providing input for the @Sink@, so use it and keep going.
 HaveOutput con _ input =$ Processing pushI _ = con =$ pushI input
 
 infixr 0 =$=
 
 -- | Middle fuse, combining two conduits together into a new conduit.
 --
--- Since 0.2.0
+-- Any leftovers provided by the inner @Conduit@ will be discarded.
+--
+-- Since 0.3.0
 (=$=) :: Monad m => Conduit a m b -> Conduit b m c -> Conduit a m c
+
+-- No more input from outer conduit, and inner wants more input. Close the
+-- inner conduit and convert its source into a conduit.
 Finished mleftover =$= NeedInput _ closeI =
     go closeI
   where
     go Closed = Finished mleftover
     go (Open src close x) = HaveOutput (go src) close x
     go (SourceM msrc close) = ConduitM (liftM go msrc) close
+
+-- No more input from outer conduit, and inner wants no more input anyway.
+-- Discard the leftovers from the inner.
 Finished mleftover =$= Finished _ = Finished mleftover
+
+-- Provide more output from the inner conduit.
 conO =$= HaveOutput con close x = HaveOutput (conO =$= con) close x
+
+-- Perform a monadic action to get the next outer conduit.
 ConduitM mcon close =$= conI = ConduitM (liftM (=$= conI) mcon) (close >> conduitClose conI)
+
+-- Ask for more data for the outer conduit. Note that this clause comes before
+-- the inner conduit ConduitM clause, so that we only run that action as
+-- necessary.
 NeedInput pushO closeO =$= conI = NeedInput
     (\input -> pushO input =$= conI)
     (closeO $= conI)
+
+-- Perform a monadic action to get the next inner conduit.
 conO =$= ConduitM mconI close = ConduitM (liftM (conO =$=) mconI) (close >> conduitClose conO)
+
+-- Pipe output from outer conduit to inner conduit and keep going.
 HaveOutput conO _ inputI =$= NeedInput pushI _ = conO =$= pushI inputI
+
+-- Discard output from outer conduit, and discard leftovers from inner conduit.
+-- Close the outer conduit.
 HaveOutput _ close _ =$= Finished _ = ConduitM (close >> return (Finished Nothing)) close
 
 -- | When actually interacting with @Source@s, we sometimes want to be able to
@@ -213,7 +273,7 @@ HaveOutput _ close _ =$= Finished _ = ConduitM (close >> return (Finished Nothin
 -- multiple threads, there is no guarantee that all @BufferedSource@s will
 -- handle this correctly.
 --
--- Since 0.2.0
+-- Since 0.3.0
 data BufferedSource m a = BufferedSource (I.IORef (BSState m a))
 
 data BSState m a =
@@ -226,7 +286,7 @@ data BSState m a =
 -- you should manually call 'bsourceClose' when the 'BufferedSource' is no
 -- longer in use.
 --
--- Since 0.2.0
+-- Since 0.3.0
 bufferSource :: MonadIO m => Source m a -> m (BufferedSource m a)
 bufferSource src = liftM BufferedSource $ liftIO $ I.newIORef $ OpenEmpty src
 
@@ -237,7 +297,7 @@ bufferSource src = liftM BufferedSource $ liftIO $ I.newIORef $ OpenEmpty src
 --
 -- Note: @bufferSource@ . @unbufferSource@ is /not/ the identity function.
 --
--- Since 0.2.0
+-- Since 0.3.0
 unbufferSource :: MonadIO m
                => BufferedSource m a
                -> Source m a
@@ -368,7 +428,7 @@ bsourceUnpull (BufferedSource ref) (Just a) = do
 -- that this function can safely be called multiple times, as it will first
 -- check if the 'Source' was previously closed.
 --
--- Since 0.2.0
+-- Since 0.3.0
 bsourceClose :: MonadIO m => BufferedSource m a -> m ()
 bsourceClose (BufferedSource ref) = do
     buf <- liftIO $ I.readIORef ref
@@ -377,13 +437,14 @@ bsourceClose (BufferedSource ref) = do
         OpenFull src _ -> sourceClose src
         ClosedEmpty -> return ()
         ClosedFull _ -> return ()
+
 -- | Provide for a stream of data that can be flushed.
 --
 -- A number of @Conduit@s (e.g., zlib compression) need the ability to flush
 -- the stream at some point. This provides a single wrapper datatype to be used
 -- in all such circumstances.
 --
--- Since 0.2.0
+-- Since 0.3.0
 data Flush a = Chunk a | Flush
     deriving (Show, Eq, Ord)
 instance Functor Flush where

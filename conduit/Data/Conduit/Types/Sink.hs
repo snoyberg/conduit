@@ -17,9 +17,13 @@ import Control.Applicative (Applicative (..))
 import Control.Monad.Base (MonadBase (liftBase))
 
 -- | Push a value into a @Sink@ and get a new @Sink@ as a result.
+--
+-- Since 0.3.0
 type SinkPush input m output = input -> Sink input m output
 
 -- | Closing a @Sink@ returns the final output.
+--
+-- Since 0.3.0
 type SinkClose m output = m output
 
 -- | In general, a sink will consume data and eventually produce an output when
