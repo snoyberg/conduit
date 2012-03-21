@@ -43,7 +43,7 @@ import qualified System.PosixFile as F
 -- While you are not required to call @hClose@ on the resulting handle, you
 -- should do so as early as possible to free scarce resources.
 --
--- Since 0.2.0
+-- Since 0.3.0
 openFile :: MonadResource m
          => FilePath
          -> IO.IOMode
@@ -52,7 +52,7 @@ openFile fp mode = liftM snd $ allocate (IO.openBinaryFile fp mode) IO.hClose
 
 -- | Stream the contents of a file as binary data.
 --
--- Since 0.2.0
+-- Since 0.3.0
 sourceFile :: MonadResource m
            => FilePath
            -> Source m S.ByteString
@@ -69,7 +69,7 @@ sourceFile fp =
 -- function will /not/ automatically close the @Handle@ when processing
 -- completes, since it did not acquire the @Handle@ in the first place.
 --
--- Since 0.2.0
+-- Since 0.3.0
 sourceHandle :: MonadResource m
              => IO.Handle
              -> Source m S.ByteString
@@ -91,7 +91,7 @@ sourceHandle h =
 -- a 'IO.Handle' (in read mode), so that it can open it only when needed
 -- and close it as soon as possible.
 --
--- Since 0.2.0
+-- Since 0.3.0
 sourceIOHandle :: MonadResource m
                => IO IO.Handle
                -> Source m S.ByteString
@@ -105,7 +105,7 @@ sourceIOHandle alloc = sourceIO alloc IO.hClose
 -- | Stream all incoming data to the given 'IO.Handle'. Note that this function
 -- will /not/ automatically close the @Handle@ when processing completes.
 --
--- Since 0.2.0
+-- Since 0.3.0
 sinkHandle :: MonadResource m
            => IO.Handle
            -> Sink S.ByteString m ()
@@ -120,7 +120,7 @@ sinkHandle h =
 -- a 'IO.Handle' (in write mode), so that it can open it only when needed
 -- and close it as soon as possible.
 --
--- Since 0.2.0
+-- Since 0.3.0
 sinkIOHandle :: MonadResource m
              => IO IO.Handle
              -> Sink S.ByteString m ()
@@ -131,7 +131,7 @@ sinkIOHandle alloc = sinkIO alloc IO.hClose
 -- | Stream the contents of a file as binary data, starting from a certain
 -- offset and only consuming up to a certain number of bytes.
 --
--- Since 0.2.0
+-- Since 0.3.0
 sourceFileRange :: MonadResource m
                 => FilePath
                 -> Maybe Integer -- ^ Offset
@@ -177,7 +177,7 @@ sourceFileRange fp offset count = SourceM
 
 -- | Stream all incoming data to the given file.
 --
--- Since 0.2.0
+-- Since 0.3.0
 sinkFile :: MonadResource m
          => FilePath
          -> Sink S.ByteString m ()
@@ -186,7 +186,7 @@ sinkFile fp = sinkIOHandle (IO.openBinaryFile fp IO.WriteMode)
 -- | Stream the contents of the input to a file, and also send it along the
 -- pipeline. Similar in concept to the Unix command @tee@.
 --
--- Since 0.2.0
+-- Since 0.3.0
 conduitFile :: MonadResource m
             => FilePath
             -> Conduit S.ByteString m S.ByteString
@@ -202,7 +202,7 @@ conduitFile fp = conduitIO
 -- sink. Note that this does /not/ ensure that all of those bytes are in fact
 -- consumed.
 --
--- Since 0.2.0
+-- Since 0.3.0
 isolate :: Monad m
         => Int
         -> Conduit S.ByteString m S.ByteString
@@ -223,7 +223,7 @@ isolate count0 = conduitState
 
 -- | Return the next byte from the stream, if available.
 --
--- Since 0.2.0
+-- Since 0.3.0
 head :: Monad m => Sink S.ByteString m (Maybe Word8)
 head =
     Processing push close
@@ -238,7 +238,7 @@ head =
 
 -- | Return all bytes while the predicate returns @True@.
 --
--- Since 0.2.0
+-- Since 0.3.0
 takeWhile :: Monad m => (Word8 -> Bool) -> Conduit S.ByteString m S.ByteString
 takeWhile p =
     Running push close
@@ -260,7 +260,7 @@ takeWhile p =
 
 -- | Ignore all bytes while the predicate returns @True@.
 --
--- Since 0.2.0
+-- Since 0.3.0
 dropWhile :: Monad m => (Word8 -> Bool) -> Sink S.ByteString m ()
 dropWhile p =
     Processing push close
@@ -274,14 +274,14 @@ dropWhile p =
 
 -- | Take the given number of bytes, if available.
 --
--- Since 0.2.0
+-- Since 0.3.0
 take :: Monad m => Int -> Sink S.ByteString m L.ByteString
 take n = L.fromChunks `liftM` (isolate n =$ CL.consume)
 
 -- | Split the input bytes into lines. In other words, split on the LF byte
 -- (10), and strip it from the output.
 --
--- Since 0.2.0
+-- Since 0.3.0
 lines :: Monad m => Conduit S.ByteString m S.ByteString
 lines =
     conduitState id push close

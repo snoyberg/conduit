@@ -22,13 +22,13 @@ import Control.Monad (liftM)
 -- | The return value when pulling in the @sourceState@ function. Either
 -- indicates no more data, or the next value and an updated state.
 --
--- Since 0.2.0
+-- Since 0.3.0
 data SourceStateResult state output = StateOpen state output | StateClosed
 
 -- | Construct a 'Source' with some stateful functions. This function addresses
 -- threading the state value for you.
 --
--- Since 0.2.0
+-- Since 0.3.0
 sourceState
     :: Monad m
     => state -- ^ Initial state
@@ -47,15 +47,17 @@ sourceState state0 pull0 =
 
 -- | The return value when pulling in the @sourceIO@ function. Either indicates
 -- no more data, or the next value.
+--
+-- Since 0.3.0
 data SourceIOResult output = IOOpen output | IOClosed
 
 -- | Construct a 'Source' based on some IO actions for alloc/release.
 --
--- Since 0.2.0
+-- Since 0.3.0
 sourceIO :: MonadResource m
           => IO state -- ^ resource and/or state allocation
           -> (state -> IO ()) -- ^ resource and/or state cleanup
-          -> (state -> m (SourceIOResult output)) -- ^ Pull function. Note that this need not explicitly perform any cleanup.
+          -> (state -> m (SourceIOResult output)) -- ^ Pull function. Note that this should not perform any cleanup.
           -> Source m output
 sourceIO alloc cleanup pull0 =
     SourceM (do
@@ -74,7 +76,7 @@ sourceIO alloc cleanup pull0 =
 
 -- | A combination of 'sourceIO' and 'sourceState'.
 --
--- Since 0.2.1
+-- Since 0.3.0
 sourceStateIO :: MonadResource m
               => IO state -- ^ resource and/or state allocation
               -> (state -> IO ()) -- ^ resource and/or state cleanup
@@ -101,7 +103,7 @@ sourceStateIO alloc cleanup pull0 =
 -- side effects will be lost. This function is most useful for transformers
 -- only providing context and not producing side-effects, such as @ReaderT@.
 --
--- Since 0.2.0
+-- Since 0.3.0
 transSource :: Monad m
             => (forall a. m a -> n a)
             -> Source m output
@@ -110,6 +112,9 @@ transSource f (Open next close output) = Open (transSource f next) (f close) out
 transSource _ Closed = Closed
 transSource f (SourceM msrc close) = SourceM (f (liftM (transSource f) msrc)) (f close)
 
+-- | Close a @Source@, regardless of its current state.
+--
+-- Since 0.3.0
 sourceClose :: Monad m => Source m a -> m ()
 sourceClose Closed = return ()
 sourceClose (Open _ close _) = close

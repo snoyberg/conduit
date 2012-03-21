@@ -3,39 +3,26 @@
 module Data.Conduit.Types.Conduit
     ( Conduit (..)
     , ConduitPush
-    , ConduitPull
     , ConduitClose
     ) where
 
 import Control.Monad (liftM)
 import Data.Conduit.Types.Source
 
--- | The value of the @conduitPush@ record.
+-- | Pushing new data to a @Conduit@ produces a new @Conduit@.
 type ConduitPush input m output = input -> Conduit input m output
-
-type ConduitPull input m output = Conduit input m output
 
 -- | The value of the @conduitClose@ record.
 type ConduitClose m output = Source m output
 
--- | When data is pushed to a @Conduit@, it may either indicate that it is
--- still producing output and provide some, or indicate that it is finished
--- producing output, in which case it returns optional leftover input and some
--- final output.
---
--- The @Producing@ constructor provides a new @Conduit@ to be used in place of
--- the previous one.
---
--- Since 0.2.0
-
 -- | A conduit has two operations: it can receive new input (a push), and can
 -- be closed.
 --
--- Since 0.2.0
+-- Since 0.3.0
 data Conduit input m output =
     Running (ConduitPush input m output) (ConduitClose m output)
   | Finished (Maybe input)
-  | HaveMore (ConduitPull input m output) (m ()) output
+  | HaveMore (Conduit input m output) (m ()) output
   | ConduitM (m (Conduit input m output)) (m ())
 
 instance Monad m => Functor (Conduit input m) where

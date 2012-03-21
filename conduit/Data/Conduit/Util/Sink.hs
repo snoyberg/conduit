@@ -21,7 +21,7 @@ import Control.Monad (liftM)
 -- It can either indicate that processing is done, or to continue with the
 -- updated state.
 --
--- Since 0.2.0
+-- Since 0.3.0
 data SinkStateResult state input output =
     StateDone (Maybe input) output
   | StateProcessing state
@@ -29,7 +29,7 @@ data SinkStateResult state input output =
 -- | Construct a 'Sink' with some stateful functions. This function addresses
 -- threading the state value for you.
 --
--- Since 0.2.0
+-- Since 0.3.0
 sinkState
     :: Monad m
     => state -- ^ initial state
@@ -48,13 +48,13 @@ sinkState state0 push0 close0 =
 -- | A helper type for @sinkIO@, indicating the result of being pushed to. It
 -- can either indicate that processing is done, or to continue.
 --
--- Since 0.2.0
+-- Since 0.3.0
 data SinkIOResult input output = IODone (Maybe input) output | IOProcessing
 
 -- | Construct a 'Sink'. Note that your push and close functions need not
 -- explicitly perform any cleanup.
 --
--- Since 0.2.0
+-- Since 0.3.0
 sinkIO :: MonadResource m
        => IO state -- ^ resource and/or state allocation
        -> (state -> IO ()) -- ^ resource and/or state cleanup
@@ -87,7 +87,7 @@ sinkIO alloc cleanup push0 close0 = Processing
 --
 -- See @transSource@ for more information.
 --
--- Since 0.2.0
+-- Since 0.3.0
 transSink :: Monad m
           => (forall a. m a -> n a)
           -> Sink input m output
@@ -96,6 +96,9 @@ transSink _ (Done a b) = Done a b
 transSink f (Processing push close) = Processing (transSink f . push) (f close)
 transSink f (SinkM msink) = SinkM (f (liftM (transSink f) msink))
 
+-- | Close a @Sink@ if it is still open, discarding any output it produces.
+--
+-- Since 0.3.0
 sinkClose :: Monad m => Sink input m output -> m ()
 sinkClose (SinkM msink) = msink >>= sinkClose
 sinkClose Done{} = return ()

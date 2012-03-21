@@ -8,19 +8,15 @@ import Data.Monoid (Monoid (..))
 import Control.Monad (liftM)
 
 -- | A @Source@ has two operations on it: pull some data, and close the
--- @Source@. Since @Source@ is built on top of 'ResourceT', all acquired
--- resources should be automatically released anyway. Closing a @Source@ early
--- is merely an optimization to free scarce resources as soon as possible.
+-- @Source@. A @Source@ should free any resources it allocated when either it
+-- returns @Closed@ or when it is explicitly closed (the second record on
+-- either the @Open@ or @SourceM@ constructors).
 --
--- A @Source@ is should free any resources it allocated when either
--- @sourceClose@ is called or a @Closed@ is returned. However, based on the
--- usage of @ResourceT@, this is simply an optimization.
---
--- Since 0.2.0
+-- Since 0.3.0
 data Source m a =
-    Open (Source m a) (m ()) a
-  | Closed
-  | SourceM (m (Source m a)) (m ())
+    Open (Source m a) (m ()) a -- ^ A @Source@ providing more data. Provides records for the next @Source@ in the stream, a close action, and the data provided.
+  | Closed -- ^ A @Source@ which has no more data available.
+  | SourceM (m (Source m a)) (m ()) -- ^ Requires a monadic action to retrieve the next @Source@ in the stream. Second record allows you to close the @Source@.
 
 instance Monad m => Functor (Source m) where
     fmap f (Open next close a) = Open (fmap f next) close (f a)

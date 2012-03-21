@@ -54,7 +54,7 @@ import Control.Monad (liftM, liftM2)
 
 -- | A strict left fold.
 --
--- Since 0.2.0
+-- Since 0.3.0
 fold :: Monad m
      => (b -> a -> b)
      -> b
@@ -70,7 +70,7 @@ fold f accum0 =
 
 -- | A monadic strict left fold.
 --
--- Since 0.2.0
+-- Since 0.3.0
 foldM :: Monad m
       => (b -> a -> m b)
       -> b
@@ -85,7 +85,7 @@ foldM f accum0 = sinkState
 
 -- | Apply the action to all values in the stream.
 --
--- Since 0.2.0
+-- Since 0.3.0
 mapM_ :: Monad m
       => (a -> m ())
       -> Sink a m ()
@@ -97,7 +97,7 @@ mapM_ f =
 
 -- | Convert a list into a source.
 --
--- Since 0.2.0
+-- Since 0.3.0
 sourceList :: Monad m => [a] -> Source m a
 sourceList [] = Closed
 sourceList (x:xs) = Open (sourceList xs) (return ()) x
@@ -110,7 +110,7 @@ sourceList (x:xs) = Open (sourceList xs) (return ()) x
 -- However, @drop@ is more efficient as it does not need to hold values in
 -- memory.
 --
--- Since 0.2.0
+-- Since 0.3.0
 drop :: Monad m
      => Int
      -> Sink a m ()
@@ -129,7 +129,7 @@ drop count =
 --
 -- > take i = isolate i =$ consume
 --
--- Since 0.2.0
+-- Since 0.3.0
 take :: Monad m
      => Int
      -> Sink a m [a]
@@ -148,7 +148,7 @@ take count0 =
 
 -- | Take a single value from the stream, if available.
 --
--- Since 0.2.0
+-- Since 0.3.0
 head :: Monad m => Sink a m (Maybe a)
 head =
     Processing push close
@@ -159,7 +159,7 @@ head =
 -- | Look at the next value in the stream, if available. This function will not
 -- change the state of the stream.
 --
--- Since 0.2.0
+-- Since 0.3.0
 peek :: Monad m => Sink a m (Maybe a)
 peek =
     Processing push close
@@ -169,7 +169,7 @@ peek =
 
 -- | Apply a transformation to all values in a stream.
 --
--- Since 0.2.0
+-- Since 0.3.0
 map :: Monad m => (a -> b) -> Conduit a m b
 map f =
     Running push close
@@ -182,7 +182,7 @@ map f =
 -- If you do not need the transformed values, and instead just want the monadic
 -- side-effects of running the action, see 'mapM_'.
 --
--- Since 0.2.0
+-- Since 0.3.0
 mapM :: Monad m => (a -> m b) -> Conduit a m b
 mapM f =
     Running push close
@@ -193,7 +193,7 @@ mapM f =
 -- | Apply a transformation to all values in a stream, concatenating the output
 -- values.
 --
--- Since 0.2.0
+-- Since 0.3.0
 concatMap :: Monad m => (a -> [b]) -> Conduit a m b
 concatMap f =
     Running push close
@@ -204,7 +204,7 @@ concatMap f =
 -- | Apply a monadic transformation to all values in a stream, concatenating
 -- the output values.
 --
--- Since 0.2.0
+-- Since 0.3.0
 concatMapM :: Monad m => (a -> m [b]) -> Conduit a m b
 concatMapM f =
     Running push close
@@ -214,7 +214,7 @@ concatMapM f =
 
 -- | 'concatMap' with an accumulator.
 --
--- Since 0.2.0
+-- Since 0.3.0
 concatMapAccum :: Monad m => (a -> accum -> (accum, [b])) -> accum -> Conduit a m b
 concatMapAccum f accum = conduitState accum push close
   where
@@ -224,7 +224,7 @@ concatMapAccum f accum = conduitState accum push close
 
 -- | 'concatMapM' with an accumulator.
 --
--- Since 0.2.0
+-- Since 0.3.0
 concatMapAccumM :: Monad m => (a -> accum -> m (accum, [b])) -> accum -> Conduit a m b
 concatMapAccumM f accum = conduitState accum push close
   where
@@ -236,7 +236,7 @@ concatMapAccumM f accum = conduitState accum push close
 -- will pull all values into memory. For a lazy variant, see
 -- "Data.Conduit.Lazy".
 --
--- Since 0.2.0
+-- Since 0.3.0
 consume :: Monad m => Sink a m [a]
 consume =
     go id
@@ -246,7 +246,7 @@ consume =
 
 -- | Grouping input according to an equality function.
 --
--- Since 0.2.0
+-- Since 0.3.0
 groupBy :: Monad m => (a -> a -> Bool) -> Conduit a m [a]
 groupBy f = conduitState
     []
@@ -273,7 +273,7 @@ groupBy f = conduitState
 -- >     someOtherSink
 -- >     ...
 --
--- Since 0.2.0
+-- Since 0.3.0
 isolate :: Monad m => Int -> Conduit a m a
 isolate count0 = conduitState
     count0
@@ -292,7 +292,7 @@ isolate count0 = conduitState
 
 -- | Keep only values in the stream passing a given predicate.
 --
--- Since 0.2.0
+-- Since 0.3.0
 filter :: Monad m => (a -> Bool) -> Conduit a m a
 filter f =
     Running push close
@@ -304,7 +304,7 @@ filter f =
 -- | Ignore the remainder of values in the source. Particularly useful when
 -- combined with 'isolate'.
 --
--- Since 0.2.0
+-- Since 0.3.0
 sinkNull :: Monad m => Sink a m ()
 sinkNull =
     Processing push close
@@ -315,14 +315,14 @@ sinkNull =
 -- | A source that returns nothing. Note that this is just a type-restricted
 -- synonym for 'mempty'.
 --
--- Since 0.2.0
+-- Since 0.3.0
 sourceNull :: Monad m => Source m a
 sourceNull = mempty
 
 -- | Combines two sources. The new source will stop producing once either
 --   source has been exhausted.
 --
--- Since 0.2.2
+-- Since 0.3.0
 zip :: Monad m => Source m a -> Source m b -> Source m (a, b)
 zip Closed Closed = Closed
 zip Closed (Open _ close _) = SourceM (close >> return Closed) close

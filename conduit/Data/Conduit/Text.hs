@@ -46,7 +46,7 @@ import Control.Monad.Trans.Resource (MonadThrow (..))
 
 -- | A specific character encoding.
 --
--- Since 0.2.0
+-- Since 0.3.0
 data Codec = Codec
     { codecName :: T.Text
     , codecEncode
@@ -66,7 +66,7 @@ instance Show Codec where
 -- | Convert text into bytes, using the provided codec. If the codec is
 -- not capable of representing an input character, an exception will be thrown.
 --
--- Since 0.2.0
+-- Since 0.3.0
 encode :: MonadThrow m => Codec -> C.Conduit T.Text m B.ByteString
 encode codec = CL.mapM $ \t -> do
     let (bs, mexc) = codecEncode codec t
@@ -76,7 +76,7 @@ encode codec = CL.mapM $ \t -> do
 -- | Convert bytes into text, using the provided codec. If the codec is
 -- not capable of decoding an input byte sequence, an exception will be thrown.
 --
--- Since 0.2.0
+-- Since 0.3.0
 decode :: MonadThrow m => Codec -> C.Conduit B.ByteString m T.Text
 decode codec = C.conduitState
     Nothing
@@ -114,7 +114,7 @@ decode codec = C.conduitState
         front' = front . (text:)
 
 -- |
--- Since 0.2.0
+-- Since 0.3.0
 data TextException = DecodeException Codec Word8
                    | EncodeException Codec Char
     deriving (Show, Typeable)
@@ -147,7 +147,7 @@ splitSlowly dec bytes = valid where
             Right _ -> Right B.empty)
 
 -- |
--- Since 0.2.0
+-- Since 0.3.0
 utf8 :: Codec
 utf8 = Codec name enc dec where
     name = T.pack "UTF-8"
@@ -180,7 +180,7 @@ utf8 = Codec name enc dec where
                     else decodeMore
 
 -- |
--- Since 0.2.0
+-- Since 0.3.0
 utf16_le :: Codec
 utf16_le = Codec name enc dec where
     name = T.pack "UTF-16-LE"
@@ -207,7 +207,7 @@ utf16_le = Codec name enc dec where
         decodeAll = (TE.decodeUtf16LE bytes, B.empty)
 
 -- |
--- Since 0.2.0
+-- Since 0.3.0
 utf16_be :: Codec
 utf16_be = Codec name enc dec where
     name = T.pack "UTF-16-BE"
@@ -242,7 +242,7 @@ utf16Required x0 x1 = required where
     x = (fromIntegral x1 `shiftL` 8) .|. fromIntegral x0
 
 -- |
--- Since 0.2.0
+-- Since 0.3.0
 utf32_le :: Codec
 utf32_le = Codec name enc dec where
     name = T.pack "UTF-32-LE"
@@ -252,7 +252,7 @@ utf32_le = Codec name enc dec where
         Nothing -> splitSlowly TE.decodeUtf32LE bs
 
 -- |
--- Since 0.2.0
+-- Since 0.3.0
 utf32_be :: Codec
 utf32_be = Codec name enc dec where
     name = T.pack "UTF-32-BE"
@@ -275,7 +275,7 @@ utf32SplitBytes dec bytes = split where
         else B.splitAt lenToDecode bytes
 
 -- |
--- Since 0.2.0
+-- Since 0.3.0
 ascii :: Codec
 ascii = Codec name enc dec where
     name = T.pack "ASCII"
@@ -294,7 +294,7 @@ ascii = Codec name enc dec where
             else Left (DecodeException ascii (B.head unsafe), unsafe)
 
 -- |
--- Since 0.2.0
+-- Since 0.3.0
 iso8859_1 :: Codec
 iso8859_1 = Codec name enc dec where
     name = T.pack "ISO-8859-1"

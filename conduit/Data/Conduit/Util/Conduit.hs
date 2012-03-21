@@ -29,7 +29,13 @@ import Data.Conduit.Util.Sink
 import Control.Monad (liftM)
 import Data.Monoid (mempty)
 
-haveMore :: Monad m => Conduit a m b -> m () -> [b] -> Conduit a m b
+-- | A helper function for returning a list of values from a @Conduit@.
+--
+-- Since 0.3.0
+haveMore :: Conduit a m b -- ^ The next @Conduit@ to return after the list has been exhausted.
+         -> m () -- ^ A close action for early termination.
+         -> [b] -- ^ The values to send down the stream.
+         -> Conduit a m b
 haveMore res _ [] = res
 haveMore res close (x:xs) = HaveMore (haveMore res close xs) close x
 
@@ -37,7 +43,7 @@ haveMore res close (x:xs) = HaveMore (haveMore res close xs) close x
 -- to.  It can either indicate that processing is done, or to continue with the
 -- updated state.
 --
--- Since 0.2.0
+-- Since 0.3.0
 data ConduitStateResult state input output =
     StateFinished (Maybe input) [output]
   | StateProducing state [output]
@@ -49,7 +55,7 @@ instance Functor (ConduitStateResult state input) where
 -- | Construct a 'Conduit' with some stateful functions. This function addresses
 -- threading the state value for you.
 --
--- Since 0.2.0
+-- Since 0.3.0
 conduitState
     :: Monad m
     => state -- ^ initial state
@@ -77,7 +83,7 @@ conduitState state0 push0 close0 =
 -- | A helper type for @conduitIO@, indicating the result of being pushed to.
 -- It can either indicate that processing is done, or to continue.
 --
--- Since 0.2.0
+-- Since 0.3.0
 data ConduitIOResult input output =
     IOFinished (Maybe input) [output]
   | IOProducing [output]
@@ -88,7 +94,7 @@ instance Functor (ConduitIOResult input) where
 
 -- | Construct a 'Conduit'.
 --
--- Since 0.2.0
+-- Since 0.3.0
 conduitIO :: MonadResource m
            => IO state -- ^ resource and/or state allocation
            -> (state -> IO ()) -- ^ resource and/or state cleanup
@@ -132,7 +138,7 @@ fromList (x:xs) = Open (fromList xs) (return ()) x
 --
 -- See @transSource@ for more information.
 --
--- Since 0.2.0
+-- Since 0.3.0
 transConduit :: Monad m
              => (forall a. m a -> n a)
              -> Conduit input m output
@@ -149,7 +155,7 @@ transConduit f (ConduitM mcon close) = ConduitM (f (liftM (transConduit f) mcon)
 
 -- | Return value from a 'SequencedSink'.
 --
--- Since 0.2.0
+-- Since 0.3.0
 data SequencedSinkResponse state input m output =
     Emit state [output] -- ^ Set a new state, and emit some new output.
   | Stop -- ^ End the conduit.
@@ -159,13 +165,13 @@ data SequencedSinkResponse state input m output =
 -- to write higher-level code that takes advantage of existing conduits and
 -- sinks, and leverages a sink's monadic interface.
 --
--- Since 0.2.0
+-- Since 0.3.0
 type SequencedSink state input m output =
     state -> Sink input m (SequencedSinkResponse state input m output)
 
 -- | Convert a 'SequencedSink' into a 'Conduit'.
 --
--- Since 0.2.0
+-- Since 0.3.0
 sequenceSink
     :: Monad m
     => state -- ^ initial state
@@ -222,7 +228,7 @@ scGoRes fsink (SinkM msink) = ConduitM (liftM (scGoRes fsink) msink) (msink >>= 
 -- @SinkNoData@ constructor. In other words, you probably don\'t want to do
 -- @sequence . return@.
 --
--- Since 0.2.1
+-- Since 0.3.0
 sequence :: Monad m => Sink input m output -> Conduit input m output
 sequence (Processing spush0 sclose0) =
     Running (push spush0) (close sclose0)
@@ -256,6 +262,9 @@ sequence (Done Nothing output) = Running
 sequence (Done Just{} _) = error "Invariant violated: sink returns leftover without push"
 sequence (SinkM msink) = ConduitM (liftM sequence msink) (msink >>= sinkClose)
 
+-- | Close a @Conduit@ early, discarding any output.
+--
+-- Since 0.3.0
 conduitClose :: Monad m => Conduit input m output -> m ()
 conduitClose (Running _ c) = sourceClose c
 conduitClose Finished{} = return ()

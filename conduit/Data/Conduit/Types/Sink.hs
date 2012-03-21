@@ -16,37 +16,11 @@ import Control.Monad (liftM, ap)
 import Control.Applicative (Applicative (..))
 import Control.Monad.Base (MonadBase (liftBase))
 
--- | The value of the @sinkPush@ record.
+-- | Push a value into a @Sink@ and get a new @Sink@ as a result.
 type SinkPush input m output = input -> Sink input m output
 
--- | The value of the @sinkClose@ record.
+-- | Closing a @Sink@ returns the final output.
 type SinkClose m output = m output
-
-{-
-Note to my future self, and anyone else who reads my code: It's tempting to
-change `Sink` to look like:
-
-    newtype Sink input m output = Sink { runSink :: ResourceT m (SinkResult input m output) }
-
-If you start implementing this, eventually you'll realize that you will have to
-enforce an invariant to make it all work: a `SinkResult` can't return leftovers
-unless data was pushed to it.
-
-The idea is that, with the actual definition of `Sink`, it's impossible to get
-a `SinkResult` without first pushing in some input. Therefore, it's always
-valid at the type level to return leftovers. In this simplified `Sink`, it
-would be possible to have code that looks like:
-
-    sink1 = Sink $ return $ Done (Just "foo") ()
-    fsink2 () = Sink $ return $ Done (Just "bar") ()
-    sink1 >>= fsink2
-
-Now we'd have to coalesce "foo" and "bar" together (e.g., require `Monoid`),
-throw away data, or throw an exception.
-
-So the current three-constructor approach to `Sink` may not be as pretty, but
-it enforce the invariants much better.
--}
 
 -- | In general, a sink will consume data and eventually produce an output when
 -- it has consumed \"enough\" data. There are two caveats to that statement:
@@ -57,21 +31,22 @@ it enforce the invariants much better.
 -- * Some sinks will consume all available data and only produce a result at
 -- the \"end\" of a data stream (e.g., @sum@).
 --
--- To allow for the first caveat, we have the 'SinkNoData' constructor. For the
--- second, the 'SinkData' constructor has two records: one for receiving more
--- input, and the other to indicate the end of a stream. Note that, at the end
--- of a stream, some output is required. If a specific 'Sink' implementation
--- cannot always produce output, this should be indicated in its return value,
--- using something like a 'Maybe' or 'Either'.
+-- Note that you can indicate any leftover data from processing via the @Maybe
+-- input@ field of the @Done@ constructor. However, it is a violation of the
+-- @Sink@ invariants to return leftover data when no input has been consumed.
+-- Concrete, that means that a function like yield is invalid:
+--
+-- > yield :: input -> Sink input m ()
+-- > yield input = Done (Just input) ()
 --
 -- A @Sink@ should clean up any resources it has allocated when it returns a
--- value, whether that be via @sinkPush@ or @sinkClose@.
+-- value.
 --
--- Since 0.2.0
+-- Since 0.3.0
 data Sink input m output =
-    Processing (SinkPush input m output) (SinkClose m output)
-  | Done (Maybe input) output
-  | SinkM (m (Sink input m output))
+    Processing (SinkPush input m output) (SinkClose m output) -- ^ Awaiting more input.
+  | Done (Maybe input) output -- ^ Processing complete.
+  | SinkM (m (Sink input m output)) -- ^ Perform some monadic action to continue.
 
 instance Monad m => Functor (Sink input m) where
     fmap f (Processing push close) = Processing (fmap f . push) (liftM f close)
