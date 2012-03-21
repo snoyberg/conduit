@@ -172,9 +172,9 @@ peek =
 -- Since 0.3.0
 map :: Monad m => (a -> b) -> Conduit a m b
 map f =
-    Running push close
+    NeedInput push close
   where
-    push i = HaveMore (Running push close) (return ()) (f i)
+    push i = HaveOutput (NeedInput push close) (return ()) (f i)
     close = mempty
 
 -- | Apply a monadic transformation to all values in a stream.
@@ -185,9 +185,9 @@ map f =
 -- Since 0.3.0
 mapM :: Monad m => (a -> m b) -> Conduit a m b
 mapM f =
-    Running push close
+    NeedInput push close
   where
-    push = flip ConduitM (return ()) . liftM (HaveMore (Running push close) (return ())) . f
+    push = flip ConduitM (return ()) . liftM (HaveOutput (NeedInput push close) (return ())) . f
     close = mempty
 
 -- | Apply a transformation to all values in a stream, concatenating the output
@@ -196,9 +196,9 @@ mapM f =
 -- Since 0.3.0
 concatMap :: Monad m => (a -> [b]) -> Conduit a m b
 concatMap f =
-    Running push close
+    NeedInput push close
   where
-    push = haveMore (Running push close) (return ()) . f
+    push = haveMore (NeedInput push close) (return ()) . f
     close = mempty
 
 -- | Apply a monadic transformation to all values in a stream, concatenating
@@ -207,9 +207,9 @@ concatMap f =
 -- Since 0.3.0
 concatMapM :: Monad m => (a -> m [b]) -> Conduit a m b
 concatMapM f =
-    Running push close
+    NeedInput push close
   where
-    push = flip ConduitM (return ()) . liftM (haveMore (Running push close) (return ())) . f
+    push = flip ConduitM (return ()) . liftM (haveMore (NeedInput push close) (return ())) . f
     close = mempty
 
 -- | 'concatMap' with an accumulator.
@@ -295,10 +295,10 @@ isolate count0 = conduitState
 -- Since 0.3.0
 filter :: Monad m => (a -> Bool) -> Conduit a m a
 filter f =
-    Running push close
+    NeedInput push close
   where
-    push i | f i = HaveMore (Running push close) (return ()) i
-    push _       = Running push close
+    push i | f i = HaveOutput (NeedInput push close) (return ()) i
+    push _       = NeedInput push close
     close = mempty
 
 -- | Ignore the remainder of values in the source. Particularly useful when

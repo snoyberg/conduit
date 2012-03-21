@@ -10,24 +10,55 @@ import Control.Monad (liftM)
 import Data.Conduit.Types.Source
 
 -- | Pushing new data to a @Conduit@ produces a new @Conduit@.
+--
+-- Since 0.3.0
 type ConduitPush input m output = input -> Conduit input m output
 
--- | The value of the @conduitClose@ record.
+-- | When closing a @Conduit@, it can produce a final stream of values.
+--
+-- Since 0.3.0
 type ConduitClose m output = Source m output
 
--- | A conduit has two operations: it can receive new input (a push), and can
--- be closed.
+-- | A @Conduit@ allows data to be pushed to it, and for each new input, can
+-- produce a stream of output values (possibly an empty stream). It can be
+-- considered a hybrid of a @Sink@ and a @Source@.
+--
+-- A @Conduit@ has four constructors, corresponding to four distinct states of
+-- operation:
+--
+-- * @NeedInput@ indicates that the @Conduit@ needs more input in order to
+-- produce output. It also provides an action to close the @Conduit@ early, for
+-- cases when there is no more input available, or when no more output is
+-- requested. Closing at this point returns a @Source@ to allow for either
+-- consuming or ignoring the new stream.
+--
+-- * @HaveOutput@ indicates that the @Conduit@ has more output available. It
+-- has three records: the next @Conduit@ to continue the stream, a close action
+-- for early termination, and the output currently available. Note that, unlike
+-- @NeedInput@, the close action here returns @()@ instead of @Source@. The
+-- reasoning is that @HaveOutput@ will only be closed early if no more output
+-- is requested, since no input is required.
+--
+-- * @Finished@ indicates that no more output is available, and no more input
+-- may be sent. It provides an optional leftover input record. Note: It is a
+-- violation of @Conduit@'s invariants to return leftover output that was never
+-- consumed, similar to the invariants of a @Sink@.
+--
+-- * @ConduitM@ indicates that a monadic action must be taken to determine the
+-- next @Conduit@. It also provides an early close action. Like @HaveOutput@,
+-- this action returns @()@, since it should only be used when no more output
+-- is requested.
 --
 -- Since 0.3.0
 data Conduit input m output =
-    Running (ConduitPush input m output) (ConduitClose m output)
+    NeedInput (ConduitPush input m output) (ConduitClose m output)
+  | HaveOutput (Conduit input m output) (m ()) output
   | Finished (Maybe input)
-  | HaveMore (Conduit input m output) (m ()) output
   | ConduitM (m (Conduit input m output)) (m ())
 
 instance Monad m => Functor (Conduit input m) where
-    fmap f (Running p c) = Running (fmap f . p) (fmap f c)
+    fmap f (NeedInput p c) = NeedInput (fmap f . p) (fmap f c)
     fmap _ (Finished i) = Finished i
-    fmap f (HaveMore pull close output) = HaveMore
+    fmap f (HaveOutput pull close output) = HaveOutput
         (fmap f pull) close (f output)
     fmap f (ConduitM mcon c) = ConduitM (liftM (fmap f) mcon) c

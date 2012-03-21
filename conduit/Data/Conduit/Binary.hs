@@ -241,19 +241,19 @@ head =
 -- Since 0.3.0
 takeWhile :: Monad m => (Word8 -> Bool) -> Conduit S.ByteString m S.ByteString
 takeWhile p =
-    Running push close
+    NeedInput push close
   where
     push bs
         | S.null y =
-            let r = Running push close
+            let r = NeedInput push close
              in if S.null x
                     then r
-                    else HaveMore r (return ()) x
+                    else HaveOutput r (return ()) x
         | otherwise =
             let f = Finished $ Just y
              in if S.null x
                     then f
-                    else HaveMore f (return ()) x
+                    else HaveOutput f (return ()) x
       where
         (x, y) = S.span p bs
     close = mempty

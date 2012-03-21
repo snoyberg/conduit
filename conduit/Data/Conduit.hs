@@ -121,7 +121,7 @@ normalConnect (Open src _ a) (Processing push _) = normalConnect src $ push a
 data FuseLeftState srcState input m output =
     FLClosed
   | FLOpen srcState (ConduitPush input m output) (ConduitClose m output)
-  | FLHaveMore srcState (ConduitPull input m output) (m ())
+  | FLHaveOutput srcState (Conduit input m output) (m ())
 
 infixl 1 $=
 
@@ -139,20 +139,20 @@ infixl 1 $=
 {-# INLINE ($=) #-}
 
 normalFuseLeft :: Monad m => Source m a -> Conduit a m b -> Source m b
-normalFuseLeft Closed (Running _ close) = close
+normalFuseLeft Closed (NeedInput _ close) = close
 normalFuseLeft Closed (Finished _) = Closed
 normalFuseLeft src (Finished _) = SourceM
     (sourceClose src >> return Closed)
     (sourceClose src)
-normalFuseLeft src (HaveMore p c x) = Open
+normalFuseLeft src (HaveOutput p c x) = Open
     (normalFuseLeft src p)
     (sourceClose src >> c)
     x
-normalFuseLeft (SourceM msrc closeS) conduit@(Running _ closeC) =
+normalFuseLeft (SourceM msrc closeS) conduit@(NeedInput _ closeC) =
     SourceM (liftM (flip normalFuseLeft conduit) msrc) $ do
         closeS
         sourceClose closeC
-normalFuseLeft (Open src _ a) (Running push _) = normalFuseLeft src $ push a
+normalFuseLeft (Open src _ a) (NeedInput push _) = normalFuseLeft src $ push a
 normalFuseLeft src (ConduitM mcon conclose) = SourceM
     (liftM (normalFuseLeft src) mcon)
     (conclose >> sourceClose src)
@@ -165,12 +165,12 @@ infixr 0 =$
 (=$) :: Monad m => Conduit a m b -> Sink b m c -> Sink a m c
 conduit =$ SinkM msink = SinkM (liftM (conduit =$) msink)
 conduit =$ Done _leftover output = SinkM $ conduitClose conduit >> return (Done Nothing output)
-Running pushO closeO =$ sink = Processing
+NeedInput pushO closeO =$ sink = Processing
     (\input -> pushO input =$ sink)
     (closeO $$ sink)
 Finished mleftover =$ Processing _ close = SinkM $ liftM (Done mleftover) close
 ConduitM mcon _ =$ sink = SinkM $ liftM (=$ sink) mcon
-HaveMore con _ input =$ Processing pushI _ = con =$ pushI input
+HaveOutput con _ input =$ Processing pushI _ = con =$ pushI input
 
 infixr 0 =$=
 
@@ -178,21 +178,21 @@ infixr 0 =$=
 --
 -- Since 0.2.0
 (=$=) :: Monad m => Conduit a m b -> Conduit b m c -> Conduit a m c
-Finished mleftover =$= Running _ closeI =
+Finished mleftover =$= NeedInput _ closeI =
     go closeI
   where
     go Closed = Finished mleftover
-    go (Open src close x) = HaveMore (go src) close x
+    go (Open src close x) = HaveOutput (go src) close x
     go (SourceM msrc close) = ConduitM (liftM go msrc) close
 Finished mleftover =$= Finished _ = Finished mleftover
-conO =$= HaveMore con close x = HaveMore (conO =$= con) close x
+conO =$= HaveOutput con close x = HaveOutput (conO =$= con) close x
 ConduitM mcon close =$= conI = ConduitM (liftM (=$= conI) mcon) (close >> conduitClose conI)
-Running pushO closeO =$= conI = Running
+NeedInput pushO closeO =$= conI = NeedInput
     (\input -> pushO input =$= conI)
     (closeO $= conI)
 conO =$= ConduitM mconI close = ConduitM (liftM (conO =$=) mconI) (close >> conduitClose conO)
-HaveMore conO _ inputI =$= Running pushI _ = conO =$= pushI inputI
-HaveMore _ close _ =$= Finished _ = ConduitM (close >> return (Finished Nothing)) close
+HaveOutput conO _ inputI =$= NeedInput pushI _ = conO =$= pushI inputI
+HaveOutput _ close _ =$= Finished _ = ConduitM (close >> return (Finished Nothing)) close
 
 -- | When actually interacting with @Source@s, we sometimes want to be able to
 -- buffer the output, in case any intermediate steps return leftover data. A
@@ -294,11 +294,11 @@ bufferedFuseLeft bsrc (ConduitM mcon close) = SourceM
     (liftM (bufferedFuseLeft bsrc) mcon)
     close
 bufferedFuseLeft _ (Finished _) = Closed
-bufferedFuseLeft bsrc (HaveMore next close x) = Open
+bufferedFuseLeft bsrc (HaveOutput next close x) = Open
     (bufferedFuseLeft bsrc next)
     close
     x
-bufferedFuseLeft bsrc (Running push0 close0) = SourceM
+bufferedFuseLeft bsrc (NeedInput push0 close0) = SourceM
     (pullF $ FLOpen () push0 close0)
     (sourceClose close0)
   where
@@ -309,7 +309,7 @@ bufferedFuseLeft bsrc (Running push0 close0) = SourceM
     pullF state' =
         case state' of
             FLClosed -> return Closed
-            FLHaveMore () pull _ -> goRes pull
+            FLHaveOutput () pull _ -> goRes pull
             FLOpen () push close -> do
                 mres <- bsourcePull bsrc
                 case mres of
@@ -319,10 +319,10 @@ bufferedFuseLeft bsrc (Running push0 close0) = SourceM
     goRes (Finished leftover) = do
         bsourceUnpull bsrc leftover
         return Closed
-    goRes (HaveMore pull close' x) =
-        let state = FLHaveMore () pull close'
+    goRes (HaveOutput pull close' x) =
+        let state = FLHaveOutput () pull close'
          in return $ Open (mkSrc state) (closeF state) x
-    goRes (Running pushI closeI) = pullF (FLOpen () pushI closeI)
+    goRes (NeedInput pushI closeI) = pullF (FLOpen () pushI closeI)
     goRes (ConduitM mcon _) = mcon >>= goRes
 
     closeF state = do
@@ -336,7 +336,7 @@ bufferedFuseLeft bsrc (Running push0 close0) = SourceM
             FLOpen () _ close -> do
                 () <- sourceClose close
                 return ()
-            FLHaveMore () _ close -> close
+            FLHaveOutput () _ close -> close
 
 bsourcePull :: MonadIO m => BufferedSource m a -> m (Maybe a)
 bsourcePull (BufferedSource bs) =
