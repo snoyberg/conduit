@@ -33,7 +33,7 @@ decompress
     :: MonadUnsafeIO m
     => WindowBits -- ^ Zlib parameter (see the zlib-bindings package as well as the zlib C library)
     -> Conduit ByteString m ByteString
-decompress config = Running
+decompress config = NeedInput
     (\input -> ConduitM (do
         inf <- unsafeLiftIO $ initInflate config
         push inf input) (return ()))
@@ -57,7 +57,7 @@ decompressFlush
     :: MonadUnsafeIO m
     => WindowBits -- ^ Zlib parameter (see the zlib-bindings package as well as the zlib C library)
     -> Conduit (Flush ByteString) m (Flush ByteString)
-decompressFlush config = Running
+decompressFlush config = NeedInput
     (\input -> flip ConduitM (return ()) $ do
         inf <- unsafeLiftIO $ initInflate config
         push inf input)
@@ -70,14 +70,14 @@ decompressFlush config = Running
         goPopper (push' inf) (close inf) Chunk [] popper
     push inf Flush = do
         chunk <- unsafeLiftIO $ flushInflate inf
-        let next = HaveMore
-                (Running (push' inf) (close inf))
+        let next = HaveOutput
+                (NeedInput (push' inf) (close inf))
                 (return ())
                 Flush
         return $
             if S.null chunk
                 then next
-                else HaveMore next (return ()) (Chunk chunk)
+                else HaveOutput next (return ()) (Chunk chunk)
 
     close inf = flip SourceM (return ()) $ do
         chunk <- unsafeLiftIO $ finishInflate inf
@@ -95,7 +95,7 @@ compress
     => Int         -- ^ Compression level
     -> WindowBits  -- ^ Zlib parameter (see the zlib-bindings package as well as the zlib C library)
     -> Conduit ByteString m ByteString
-compress level config = Running
+compress level config = NeedInput
     (\input -> flip ConduitM (return ()) $ do
         def <- unsafeLiftIO $ initDeflate level config
         push def input) Closed
@@ -113,7 +113,7 @@ compressFlush
     => Int         -- ^ Compression level
     -> WindowBits  -- ^ Zlib parameter (see the zlib-bindings package as well as the zlib C library)
     -> Conduit (Flush ByteString) m (Flush ByteString)
-compressFlush level config = Running
+compressFlush level config = NeedInput
     (\input -> flip ConduitM (return ()) $ do
         def <- unsafeLiftIO $ initDeflate level config
         push def input) Closed
@@ -142,10 +142,10 @@ goPopper push close wrap final popper = do
     mbs <- unsafeLiftIO popper
     return $ case mbs of
         Nothing ->
-            let go [] = Running push close
-                go (x:xs) = HaveMore (go xs) (return ()) x
+            let go [] = NeedInput push close
+                go (x:xs) = HaveOutput (go xs) (return ()) x
              in go final
-        Just bs -> HaveMore (ConduitM (goPopper push close wrap final popper) (return ())) (return ()) (wrap bs)
+        Just bs -> HaveOutput (ConduitM (goPopper push close wrap final popper) (return ())) (return ()) (wrap bs)
 
 slurp :: Monad m => m (Maybe a) -> Source m a
 slurp pop = flip SourceM (return ()) $ do
