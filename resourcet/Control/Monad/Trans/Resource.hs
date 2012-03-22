@@ -125,7 +125,7 @@ instance Typeable1 m => Typeable1 (ResourceT m) where
 -- unwrapped before calling @runResourceT@.
 --
 -- Since 0.3.0
-class (MonadThrow m, MonadUnsafeIO m, MonadIO m) => MonadResource m where
+class (MonadThrow m, MonadUnsafeIO m, MonadIO m, Applicative m) => MonadResource m where
     -- | Register some action that will be called precisely once, either when
     -- 'runResourceT' is called, or when the 'ReleaseKey' is passed to 'release'.
     --
@@ -157,7 +157,7 @@ class (MonadThrow m, MonadUnsafeIO m, MonadIO m) => MonadResource m where
     -- Since 0.3.0
     resourceMask :: ((forall a. ResourceT IO a -> ResourceT IO a) -> ResourceT IO b) -> m b
 
-instance (MonadThrow m, MonadUnsafeIO m, MonadIO m) => MonadResource (ResourceT m) where
+instance (MonadThrow m, MonadUnsafeIO m, MonadIO m, Applicative m) => MonadResource (ResourceT m) where
     allocate acquire rel = ResourceT $ \istate -> liftIO $ E.mask $ \restore -> do
         a <- restore acquire
         key <- register' istate $ rel a
