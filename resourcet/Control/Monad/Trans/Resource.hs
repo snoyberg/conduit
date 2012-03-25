@@ -31,6 +31,7 @@ module Control.Monad.Trans.Resource
     , MonadUnsafeIO (..)
     , MonadThrow (..)
     , MonadActive (..)
+    , MonadResourceBase
       -- ** Low-level
     , InvalidAccess (..)
       -- * Re-exports
@@ -494,3 +495,26 @@ GO(Strict.StateT s)
 GOX(Monoid w, Strict.WriterT w)
 #undef GO
 #undef GOX
+
+-- | A @Monad@ which can be used as a base for a @ResourceT@.
+--
+-- A @ResourceT@ has some restrictions on its base monad:
+--
+-- * @runResourceT@ requires an instance of @MonadBaseControl IO@.
+-- * @MonadResource@ requires an instance of @MonadThrow@, @MonadUnsafeIO@, @MonadIO@, and @Applicative@.
+--
+-- While any instance of @MonadBaseControl IO@ should be an instance of the
+-- other classes, this is not guaranteed by the type system (e.g., you may have
+-- a transformer in your stack with does not implement @MonadThrow@). Ideally,
+-- we would like to simply create an alias for the five type classes listed,
+-- but this is not possible with GHC currently.
+--
+-- Instead, this typeclass acts as a proxy for the other five. Its only purpose
+-- is to make your type signatures shorter.
+--
+-- Note that earlier versions of @conduit@ had a typeclass @ResourceIO@. This
+-- fulfills much the same role.
+--
+-- Since 0.3.2
+class (MonadBaseControl IO m, MonadThrow m, MonadUnsafeIO m, MonadIO m, Applicative m) => MonadResourceBase m
+instance (MonadBaseControl IO m, MonadThrow m, MonadUnsafeIO m, MonadIO m, Applicative m) => MonadResourceBase m
