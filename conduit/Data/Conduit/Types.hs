@@ -27,10 +27,13 @@ data Pipe i o m r =
   | PipeM (m (Pipe i o m r)) (m r)
 
 pipeClose :: Applicative m => Pipe i o m r -> m r
-pipeClose (HaveOutput _ c _) = c
-pipeClose (NeedInput _ p)= pipeClose p
-pipeClose (Done _ r) = pure r
-pipeClose (PipeM _ c) = c
+pipeClose = fmap snd . pipeCloseL
+
+pipeCloseL :: Applicative m => Pipe i o m r -> m (Maybe i, r)
+pipeCloseL (HaveOutput _ c _) = ((,) Nothing) <$> c
+pipeCloseL (NeedInput _ p)= ((,) Nothing) <$> pipeClose p
+pipeCloseL (Done l r) = pure (l, r)
+pipeCloseL (PipeM _ c) = ((,) Nothing) <$> c
 
 noInput :: Functor m => Pipe i o m r -> Pipe () o m r
 noInput (HaveOutput p r o) = HaveOutput (noInput p) r o
@@ -100,43 +103,46 @@ instance (Applicative m, MonadIO m) => MonadIO (Pipe i o m) where
     liftIO = lift . liftIO
 
 pipe :: (Applicative m, Monad m) => Pipe a b m () -> Pipe b c m r -> Pipe a c m r
+pipe l r = snd <$> pipeL l r
+
+pipeL :: (Applicative m, Monad m) => Pipe a b m () -> Pipe b c m r -> Pipe a c m (Maybe b, r)
 
 -- Simplest case: both pipes are done. Discard the right pipe's leftovers.
-pipe (Done l ()) (Done _discard r) = Done l r
+pipeL (Done leftoverl ()) (Done leftoverr r) = Done leftoverl (leftoverr, r)
 
 -- Left pipe needs to run a monadic action.
-pipe (PipeM mp c) right = PipeM
-    ((`pipe` right) <$> mp)
-    (c >> pipeClose right)
+pipeL (PipeM mp c) right = PipeM
+    ((`pipeL` right) <$> mp)
+    (c >> pipeCloseL right)
 
 -- Left pipe needs more input, ask for it.
-pipe (NeedInput p c) right = NeedInput
-    (\a -> pipe (p a) right)
-    (pipe c right)
+pipeL (NeedInput p c) right = NeedInput
+    (\a -> pipeL (p a) right)
+    (pipeL c right)
 
 -- Left pipe has output, right pipe wants it.
-pipe (HaveOutput lp _ a) (NeedInput rp _) = pipe lp (rp a)
+pipeL (HaveOutput lp _ a) (NeedInput rp _) = pipeL lp (rp a)
 
 -- Right pipe needs to run a monadic action.
-pipe left (PipeM mp c) = PipeM
-    (pipe left <$> mp)
-    (pipeClose left >> c)
+pipeL left (PipeM mp c) = PipeM
+    (pipeL left <$> mp)
+    (pipeClose left >> ((,) Nothing) <$> c)
 
 -- Right pipe has some output, provide it downstream and continue.
-pipe left (HaveOutput p c o) = HaveOutput
-    (pipe left p)
-    (pipeClose left >> c)
+pipeL left (HaveOutput p c o) = HaveOutput
+    (pipeL left p)
+    (pipeClose left >> ((,) Nothing) <$> c)
     o
 
 -- Left pipe is done, right pipe needs input. In such a case, tell the right
 -- pipe there is no more input, and eventually replace its leftovers with the
 -- left pipe's leftover.
-pipe (Done l ()) (NeedInput _ c) = replaceLeftover l c
+pipeL (Done l ()) (NeedInput _ c) = ((,) Nothing) <$> replaceLeftover l c
 
 -- Left pipe has more output, but right pipe doesn't want it.
-pipe (HaveOutput _ c _) (Done _discard r) = PipeM
-    (c >> return (Done Nothing r))
-    (c >> return r)
+pipeL (HaveOutput _ c _) (Done leftoverr r) = PipeM
+    (c >> return (Done Nothing (leftoverr, r)))
+    (c >> return (leftoverr, r))
 
 replaceLeftover :: Functor m => Maybe i -> Pipe () o m r -> Pipe i o m r
 replaceLeftover l (Done _ r) = Done l r
