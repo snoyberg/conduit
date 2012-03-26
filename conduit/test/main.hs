@@ -143,11 +143,10 @@ main = hspecX $ do
     describe "resumable sources" $ do
         it "simple" $ do
             (x, y, z) <- runResourceT $ do
-                bs <- C.bufferSource $ CL.sourceList [1..10 :: Int]
-                x <- bs C.$$ CL.take 5
-                y <- bs C.$$ CL.fold (+) 0
-                z <- bs C.$$ CL.consume
-                C.bsourceClose bs
+                let src1 = CL.sourceList [1..10 :: Int]
+                (src2, x) <- src1 C.$$& CL.take 5
+                (src3, y) <- src2 C.$$& CL.fold (+) 0
+                z <- src3 C.$$ CL.consume
                 return (x, y, z)
             x @?= [1..5] :: IO ()
             y @?= sum [6..10]
@@ -198,12 +197,12 @@ main = hspecX $ do
     describe "isolate" $ do
         it "bound to resumable source" $ do
             (x, y) <- runResourceT $ do
-                bsrc <- C.bufferSource $ CL.sourceList [1..10 :: Int]
-                x <- bsrc C.$= CL.isolate 5 C.$$ CL.consume
-                y <- bsrc C.$$ CL.consume
+                let src1 = CL.sourceList [1..10 :: Int]
+                (src2, x) <- src1 C.$= CL.isolate 5 C.$$& CL.consume
+                y <- src2 C.$$ CL.consume
                 return (x, y)
             x @?= [1..5]
-            y @?= [6..10]
+            y @?= []
 
         it "bound to sink, non-resumable" $ do
             (x, y) <- runResourceT $ do
@@ -216,9 +215,9 @@ main = hspecX $ do
 
         it "bound to sink, resumable" $ do
             (x, y) <- runResourceT $ do
-                bsrc <- C.bufferSource $ CL.sourceList [1..10 :: Int]
-                x <- bsrc C.$$ CL.isolate 5 C.=$ CL.consume
-                y <- bsrc C.$$ CL.consume
+                let src1 = CL.sourceList [1..10 :: Int]
+                (src2, x) <- src1 C.$$& CL.isolate 5 C.=$ CL.consume
+                y <- src2 C.$$ CL.consume
                 return (x, y)
             x @?= [1..5]
             y @?= [6..10]
@@ -354,10 +353,9 @@ main = hspecX $ do
     describe "unbuffering" $ do
         it "works" $ do
             x <- runResourceT $ do
-                bsrc <- C.bufferSource $ CL.sourceList [1..10 :: Int]
-                bsrc C.$$ CL.drop 5
-                let src = C.unbufferSource bsrc
-                src C.$$ CL.fold (+) 0
+                let src1 = CL.sourceList [1..10 :: Int]
+                (src2, ()) <- src1 C.$$& CL.drop 5
+                src2 C.$$ CL.fold (+) 0
             x @?= sum [6..10]
 
     describe "properly using binary file reading" $ do
@@ -430,13 +428,6 @@ main = hspecX $ do
             x <- runResourceT $ do
                 let src = CL.sourceList ["foobarbazbin"]
                 src C.$= CB.isolate 10 C.$$ CL.head
-            x @?= Just "foobarbazb"
-
-    describe "bufferedFuseLeft" $ do
-        it "does not double close conduit" $ do
-            x <- runResourceT $ do
-                bsrc <- C.bufferSource $ CL.sourceList ["foobarbazbin"]
-                bsrc C.$= CB.isolate 10 C.$$ CL.head
             x @?= Just "foobarbazb"
 
     describe "binary" $ do

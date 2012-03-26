@@ -10,6 +10,7 @@ module Data.Conduit.Types
     , Pipe (..)
     , pipeClose
     , pipe
+    , pipeL
     , runPipe
     ) where
 
