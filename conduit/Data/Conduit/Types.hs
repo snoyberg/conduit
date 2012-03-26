@@ -108,22 +108,39 @@ instance Monad m => Monoid (Pipe i o m ()) where
     mappend = (>>)
 
 pipe :: Monad m => Pipe a b m () -> Pipe b c m r -> Pipe a c m r
-pipe l r = snd `liftM` pipeL l r
+pipe l r = pipeL l r >>= \(l', res) -> lift (pipeClose l') >> return res
 
-pipeL :: Monad m => Pipe a b m () -> Pipe b c m r -> Pipe a c m (Maybe b, r)
+-- | Returns a tuple: a left @Pipe@ to continue with, an optional close action
+-- for the left, and the result.
+pipeL :: Monad m => Pipe a b m () -> Pipe b c m r -> Pipe a c m (Pipe a b m (), r)
 
--- Simplest case: both pipes are done. Discard the right pipe's leftovers.
-pipeL (Done leftoverl ()) (Done leftoverr r) = Done leftoverl (leftoverr, r)
+-- Note: we're biased towards checking the right side first to avoid pulling
+-- extra data which is not needed. Doing so could cause data loss.
 
--- Left pipe needs to run a monadic action.
-pipeL (PipeM mp c) right = PipeM
-    ((`pipeL` right) `liftM` mp)
-    (c >> pipeCloseL right)
+pipeL (Done leftoverl ()) (Done leftoverr r) =
+    Done leftoverl (left, r)
+  where
+    left =
+        case leftoverr of
+            Nothing -> mempty
+            Just i -> HaveOutput (Done Nothing ()) (return ()) i
+
+pipeL left (Done leftoverr r) =
+    Done Nothing (left', r)
+  where
+    left' =
+        case leftoverr of
+            Nothing -> left
+            Just i -> HaveOutput left (pipeClose left) i
 
 -- Left pipe needs more input, ask for it.
 pipeL (NeedInput p c) right = NeedInput
     (\a -> pipeL (p a) right)
-    (pipeL c right)
+    (do
+        (left, res) <- pipeL c right
+        lift $ pipeClose left
+        return (mempty, res)
+        )
 
 -- Left pipe has output, right pipe wants it.
 pipeL (HaveOutput lp _ a) (NeedInput rp _) = pipeL lp (rp a)
@@ -131,23 +148,24 @@ pipeL (HaveOutput lp _ a) (NeedInput rp _) = pipeL lp (rp a)
 -- Right pipe needs to run a monadic action.
 pipeL left (PipeM mp c) = PipeM
     (pipeL left `liftM` mp)
-    (pipeClose left >> ((,) Nothing) `liftM` c)
+    (((,) left) `liftM` c)
 
 -- Right pipe has some output, provide it downstream and continue.
 pipeL left (HaveOutput p c o) = HaveOutput
     (pipeL left p)
-    (pipeClose left >> ((,) Nothing) `liftM` c)
+    (((,) left) `liftM` c)
     o
 
 -- Left pipe is done, right pipe needs input. In such a case, tell the right
 -- pipe there is no more input, and eventually replace its leftovers with the
 -- left pipe's leftover.
-pipeL (Done l ()) (NeedInput _ c) = ((,) Nothing) `liftM` replaceLeftover l c
+pipeL (Done l ()) (NeedInput _ c) = ((,) mempty) `liftM` replaceLeftover l c
 
--- Left pipe has more output, but right pipe doesn't want it.
-pipeL (HaveOutput _ c _) (Done leftoverr r) = PipeM
-    (c >> return (Done Nothing (leftoverr, r)))
-    (c >> return (leftoverr, r))
+
+-- Left pipe needs to run a monadic action.
+pipeL (PipeM mp c) right = PipeM
+    ((`pipeL` right) `liftM` mp)
+    (c >> pipeCloseL right >>= \(_, res) -> return (mempty, res))
 
 replaceLeftover :: Monad m => Maybe i -> Pipe () o m r -> Pipe i o m r
 replaceLeftover l (Done _ r) = Done l r
