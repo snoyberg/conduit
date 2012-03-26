@@ -11,13 +11,10 @@ module Data.Conduit.Util.Source
     , SourceStateResult (..)
     , sourceIO
     , SourceIOResult (..)
-    , transSource
-    , sourceClose
     ) where
 
 import Control.Monad.Trans.Resource
-import Data.Conduit.Types.Source
-import Control.Monad (liftM)
+import Data.Conduit.Types
 
 -- | The return value when pulling in the @sourceState@ function. Either
 -- indicates no more data, or the next value and an updated state.
@@ -37,13 +34,13 @@ sourceState
 sourceState state0 pull0 =
     src state0
   where
-    src state = SourceM (pull state) (return ())
+    src state = PipeM (pull state) (return ())
 
     pull state = do
         res <- pull0 state
         return $ case res of
-            StateOpen state' val -> Open (src state') (return ()) val
-            StateClosed -> Closed
+            StateOpen state' val -> HaveOutput (src state') (return ()) val
+            StateClosed -> Done Nothing ()
 
 -- | The return value when pulling in the @sourceIO@ function. Either indicates
 -- no more data, or the next value.
@@ -60,19 +57,19 @@ sourceIO :: MonadResource m
           -> (state -> m (SourceIOResult output)) -- ^ Pull function. Note that this should not perform any cleanup.
           -> Source m output
 sourceIO alloc cleanup pull0 =
-    SourceM (do
+    PipeM (do
         (key, state) <- allocate alloc cleanup
         pull key state) (return ())
   where
-    src key state = SourceM (pull key state) (release key)
+    src key state = PipeM (pull key state) (release key)
 
     pull key state = do
         res <- pull0 state
         case res of
             IOClosed -> do
                 release key
-                return Closed
-            IOOpen val -> return $ Open (src key state) (release key) val
+                return $ Done Nothing ()
+            IOOpen val -> return $ HaveOutput (src key state) (release key) val
 
 -- | A combination of 'sourceIO' and 'sourceState'.
 --
@@ -83,39 +80,18 @@ sourceStateIO :: MonadResource m
               -> (state -> m (SourceStateResult state output)) -- ^ Pull function. Note that this need not explicitly perform any cleanup.
               -> Source m output
 sourceStateIO alloc cleanup pull0 =
-    SourceM (do
+    PipeM (do
         (key, state) <- allocate alloc cleanup
         pull key state) (return ())
   where
-    src key state = SourceM (pull key state) (release key)
+    src key state = PipeM (pull key state) (release key)
 
     pull key state = do
         res <- pull0 state
         case res of
             StateClosed -> do
                 release key
-                return Closed
-            StateOpen state' val -> return $ Open (src key state') (release key) val
+                return $ Done Nothing ()
+            StateOpen state' val -> return $ HaveOutput (src key state') (release key) val
 
--- | Transform the monad a 'Source' lives in.
---
--- Note that this will /not/ thread the individual monads together, meaning
--- side effects will be lost. This function is most useful for transformers
--- only providing context and not producing side-effects, such as @ReaderT@.
---
--- Since 0.3.0
-transSource :: Monad m
-            => (forall a. m a -> n a)
-            -> Source m output
-            -> Source n output
-transSource f (Open next close output) = Open (transSource f next) (f close) output
-transSource _ Closed = Closed
-transSource f (SourceM msrc close) = SourceM (f (liftM (transSource f) msrc)) (f close)
-
--- | Close a @Source@, regardless of its current state.
---
--- Since 0.3.0
-sourceClose :: Monad m => Source m a -> m ()
-sourceClose Closed = return ()
-sourceClose (Open _ close _) = close
-sourceClose (SourceM _ close) = close
+-- FIXME transPipe

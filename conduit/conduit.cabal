@@ -1,5 +1,5 @@
 Name:                conduit
-Version:             0.3.0
+Version:             0.4.0
 Synopsis:            Streaming data processing library.
 Description:
 	Conduits are an approach to the streaming data problem. It is meant as an alternative to enumerators\/iterators, hoping to address the same issues with different trade-offs based on real-world experience with enumerators. For more information, see <http://www.yesodweb.com/book/conduit>.
@@ -42,9 +42,7 @@ Library
                        Data.Conduit.Text
                        Data.Conduit.List
                        Data.Conduit.Lazy
-  Other-modules:       Data.Conduit.Types.Source
-                       Data.Conduit.Types.Sink
-                       Data.Conduit.Types.Conduit
+  Other-modules:       Data.Conduit.Types
                        Data.Conduit.Util.Source
                        Data.Conduit.Util.Sink
                        Data.Conduit.Util.Conduit
@@ -57,6 +55,7 @@ Library
                      , transformers             >= 0.2.2        && < 0.3
                      , bytestring               >= 0.9
                      , text                     >= 0.11
+                     , void                     >= 0.5.5        && < 0.6
   ghc-options:     -Wall
   if flag(debug)
     cpp-options: -DDEBUG
