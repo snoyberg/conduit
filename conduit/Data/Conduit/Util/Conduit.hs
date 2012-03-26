@@ -19,7 +19,7 @@ module Data.Conduit.Util.Conduit
 
 import Prelude hiding (sequence)
 import Control.Monad.Trans.Resource
-import Data.Conduit.Types
+import Data.Conduit.Internal
 import Control.Monad (liftM)
 import Data.Void (absurd)
 import Data.Monoid (mempty)

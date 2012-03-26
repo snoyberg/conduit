@@ -6,6 +6,8 @@ Description:
 	.
 	Release history:
     .
+    [0.4] Inspired by the design of the pipes package: we now have a single unified type underlying @Source@, @Sink@, and @Conduit@. This type is named @Pipe@. There are type synonyms provided for the other three types. Additionally, @BufferedSource@ is no longer provided. Instead, the connect-and-resume operator, @$$&@, can be used for the same purpose.
+    .
     [0.3] ResourceT has been greatly simplified, specialized for IO, and moved into a separate package. Instead of hard-coding ResourceT into the conduit datatypes, they can now live around any monad. The Conduit datatype has been enhanced to better allow generation of streaming output. The SourceResult, SinkResult, and ConduitResult datatypes have been removed entirely.
 	.
     [0.2] Instead of storing state in mutable variables, we now use CPS. A @Source@ returns the next @Source@, and likewise for @Sink@s and @Conduit@s. Not only does this take better advantage of GHC\'s optimizations (about a 20% speedup), but it allows some operations to have a reduction in algorithmic complexity from exponential to linear. This also allowed us to remove the @Prepared@ set of types. Also, the @State@ functions (e.g., @sinkState@) use better constructors for return types, avoiding the need for a dummy state on completion.
@@ -42,8 +44,8 @@ Library
                        Data.Conduit.Text
                        Data.Conduit.List
                        Data.Conduit.Lazy
-  Other-modules:       Data.Conduit.Types
-                       Data.Conduit.Util.Source
+                       Data.Conduit.Internal
+  Other-modules:       Data.Conduit.Util.Source
                        Data.Conduit.Util.Sink
                        Data.Conduit.Util.Conduit
   Build-depends:       base                     >= 4.3          && < 5

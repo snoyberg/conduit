@@ -13,7 +13,7 @@ module Data.Conduit.Util.Sink
 
 import Control.Monad.Trans.Resource
 import Control.Monad.Trans.Class (lift)
-import Data.Conduit.Types
+import Data.Conduit.Internal
 
 -- | A helper type for @sinkState@, indicating the result of being pushed to.
 -- It can either indicate that processing is done, or to continue with the

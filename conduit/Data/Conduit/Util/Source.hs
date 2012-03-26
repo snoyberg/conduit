@@ -14,7 +14,7 @@ module Data.Conduit.Util.Source
     ) where
 
 import Control.Monad.Trans.Resource
-import Data.Conduit.Types
+import Data.Conduit.Internal
 
 -- | The return value when pulling in the @sourceState@ function. Either
 -- indicates no more data, or the next value and an updated state.
