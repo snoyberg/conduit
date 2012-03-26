@@ -44,7 +44,7 @@ noInput (PipeM mp c) = PipeM (noInput `liftM` mp) c
 
 pipePush :: Monad m => i -> Pipe i o m r -> Pipe i o m r
 pipePush i (HaveOutput p c o) = HaveOutput (pipePush i p) c o
-pipePush i (NeedInput p c) = NeedInput (pipePush i . p) c
+pipePush i (NeedInput p _) = p i
 pipePush i (Done _ r) = Done (Just i) r
 pipePush i (PipeM mp c) = PipeM (pipePush i `liftM` mp) c
 
