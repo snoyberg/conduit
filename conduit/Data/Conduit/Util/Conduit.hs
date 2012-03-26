@@ -21,6 +21,7 @@ import Prelude hiding (sequence)
 import Control.Monad.Trans.Resource
 import Data.Conduit.Types
 import Control.Monad (liftM)
+import Data.Void (absurd)
 
 -- | A helper function for returning a list of values from a @Conduit@.
 --
@@ -207,16 +208,14 @@ scGoRes fsink (PipeM msink) = PipeM (liftM (scGoRes fsink) msink) (msink >>= sin
 --
 -- Since 0.3.0
 sequence :: Monad m => Sink input m output -> Conduit input m output
-sequence = error "sequence"
-{-
-sequence (Processing spush0 sclose0) =
+sequence (NeedInput spush0 sclose0) =
     NeedInput (push spush0) (close sclose0)
   where
     push spush input = goRes $ spush input
 
     goRes res =
         case res of
-            Processing spush'' sclose'' ->
+            NeedInput spush'' sclose'' ->
                 NeedInput (push spush'') (close sclose'')
             Done Nothing output -> HaveOutput
                 (NeedInput (push spush0) (close sclose0))
@@ -226,18 +225,21 @@ sequence (Processing spush0 sclose0) =
                 (goRes $ spush0 input')
                 (return ())
                 output
-            PipeM msink -> PipeM (liftM goRes msink) (msink >>= sinkClose)
+            HaveOutput _ _ o -> absurd o
+            PipeM msink close' -> PipeM (liftM goRes msink) (close' >> return ())
 
     close sclose = PipeM (do
-        output <- sclose
-        return $ Open Closed (return ()) output) (return ())
+        output <- pipeClose sclose
+        return $ HaveOutput (Done Nothing ()) (return ()) output)
+        (return ()) -- FIXME close?
+
+sequence (HaveOutput _ _ o) = absurd o
 
 sequence (Done Nothing output) = NeedInput
     (\_input ->
         let x = HaveOutput x (return ()) output
          in x)
-    (   let src = Open src (return ()) output
+    (   let src = HaveOutput src (return ()) output
          in src)
 sequence (Done Just{} _) = error "Invariant violated: sink returns leftover without push"
-sequence (PipeM msink) = PipeM (liftM sequence msink) (msink >>= sinkClose)
--}
+sequence (PipeM msink close) = PipeM (liftM sequence msink) (close >> return ())
