@@ -41,11 +41,11 @@ sourceSocket :: MonadIO m => Socket -> Source m ByteString
 sourceSocket socket =
     src
   where
-    src = SourceM pull close
+    src = PipeM pull close
 
     pull = do
         bs <- liftIO (recv socket 4096)
-        return $ if S.null bs then Closed else Open src close bs
+        return $ if S.null bs then Done Nothing () else HaveOutput src close bs
     close = return ()
 
 -- | Stream data to the socket.
@@ -55,12 +55,13 @@ sourceSocket socket =
 -- Since 0.0.0
 sinkSocket :: MonadIO m => Socket -> Sink ByteString m ()
 sinkSocket socket =
-    Processing push close
+    sink
   where
-    push bs = SinkM $ do
+    sink = NeedInput push (Done Nothing ())
+
+    push bs = PipeM (do
         liftIO (sendAll socket bs)
-        return (Processing push close)
-    close = return ()
+        return sink) (return ())
 
 -- | A simple TCP application. It takes two arguments: the @Source@ to read
 -- input data from, and the @Sink@ to send output data to.

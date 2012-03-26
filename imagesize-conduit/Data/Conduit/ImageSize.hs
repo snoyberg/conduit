@@ -31,7 +31,7 @@ sinkImageSize = fmap (fmap fst) sinkImageInfo
 -- since it looks only at a small part of the header.
 sinkImageInfo :: Monad m => C.Sink S.ByteString m (Maybe (Size, FileFormat))
 sinkImageInfo =
-    C.Processing (pushHeader id) close
+    C.NeedInput (pushHeader id) close
   where
     close = return Nothing
     pushHeader front bs'
@@ -42,7 +42,7 @@ sinkImageInfo =
             sinkPush gif $ S.drop 6 bs
         | S.length bs >= 8 && S.take 8 bs == S.pack [137, 80, 78, 71, 13, 10, 26, 10] =
             sinkPush png $ S.drop 8 bs
-        | S.length bs < 11 = C.Processing (pushHeader $ S.append bs) close
+        | S.length bs < 11 = C.NeedInput (pushHeader $ S.append bs) close
         | otherwise = C.Done (Just bs) Nothing
       where
         bs = front bs'
@@ -65,7 +65,7 @@ sinkImageInfo =
                 return $ (\w h -> (Size w h, PNG)) <$> mw <*> mh
             else return Nothing
 
-    sinkPush (C.Processing push _) x = push x
+    sinkPush (C.NeedInput push _) x = push x
     sinkPush _ _ = error "Data.Conduit.ImageSize.sinkPush"
 
     jpg = do

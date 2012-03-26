@@ -41,7 +41,7 @@ module Data.Conduit.Blaze
   , builderToByteStringWithFlush
     ) where
 
-import Data.Conduit hiding (Sink (Done))
+import Data.Conduit hiding (Pipe (Done))
 import Control.Monad (liftM)
 
 import qualified Data.ByteString                   as S
