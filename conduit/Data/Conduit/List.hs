@@ -62,7 +62,7 @@ fold :: Monad m
 fold f accum0 =
     go accum0
   where
-    go accum = Processing (push accum) (return accum)
+    go accum = NeedInput (push accum) (return accum)
 
     push accum input =
         let accum' = f accum input
@@ -90,17 +90,17 @@ mapM_ :: Monad m
       => (a -> m ())
       -> Sink a m ()
 mapM_ f =
-    Processing push close
+    NeedInput push close
   where
-    push input = SinkM $ f input >> return (Processing push close)
+    push input = PipeM (f input >> return (NeedInput push close)) (return ())
     close = return ()
 
 -- | Convert a list into a source.
 --
 -- Since 0.3.0
 sourceList :: Monad m => [a] -> Source m a
-sourceList [] = Closed
-sourceList (x:xs) = Open (sourceList xs) (return ()) x
+sourceList [] = Done Nothing ()
+sourceList (x:xs) = HaveOutput (sourceList xs) (return ()) x
 
 -- | Ignore a certain number of values in the stream. This function is
 -- semantically equivalent to:
@@ -114,9 +114,9 @@ sourceList (x:xs) = Open (sourceList xs) (return ()) x
 drop :: Monad m
      => Int
      -> Sink a m ()
-drop 0 = Processing (flip Done () . Just) (return ())
+drop 0 = NeedInput (flip Done () . Just) (return ())
 drop count =
-    Processing push (return ())
+    NeedInput push (return ())
   where
     count' = count - 1
     push _
@@ -136,12 +136,12 @@ take :: Monad m
 take count0 =
     go count0 id
   where
-    go count front = Processing (push count front) (return $ front [])
+    go count front = NeedInput (push count front) (return $ front [])
 
     push 0 front x = Done (Just x) (front [])
     push count front x
         | count' == 0 = Done Nothing (front [x])
-        | otherwise   = Processing (push count' front') (return $ front' [])
+        | otherwise   = NeedInput (push count' front') (return $ front' [])
       where
         count' = count - 1
         front' = front . (x:)
@@ -151,7 +151,7 @@ take count0 =
 -- Since 0.3.0
 head :: Monad m => Sink a m (Maybe a)
 head =
-    Processing push close
+    NeedInput push close
   where
     push x = Done Nothing (Just x)
     close = return Nothing
@@ -162,7 +162,7 @@ head =
 -- Since 0.3.0
 peek :: Monad m => Sink a m (Maybe a)
 peek =
-    Processing push close
+    NeedInput push close
   where
     push x = Done (Just x) (Just x)
     close = return Nothing
@@ -187,7 +187,7 @@ mapM :: Monad m => (a -> m b) -> Conduit a m b
 mapM f =
     NeedInput push close
   where
-    push = flip ConduitM (return ()) . liftM (HaveOutput (NeedInput push close) (return ())) . f
+    push = flip PipeM (return ()) . liftM (HaveOutput (NeedInput push close) (return ())) . f
     close = mempty
 
 -- | Apply a transformation to all values in a stream, concatenating the output
@@ -209,7 +209,7 @@ concatMapM :: Monad m => (a -> m [b]) -> Conduit a m b
 concatMapM f =
     NeedInput push close
   where
-    push = flip ConduitM (return ()) . liftM (haveMore (NeedInput push close) (return ())) . f
+    push = flip PipeM (return ()) . liftM (haveMore (NeedInput push close) (return ())) . f
     close = mempty
 
 -- | 'concatMap' with an accumulator.
@@ -241,7 +241,7 @@ consume :: Monad m => Sink a m [a]
 consume =
     go id
   where
-    go front = Processing (push front) (return $ front [])
+    go front = NeedInput (push front) (return $ front [])
     push front x = go (front . (x:))
 
 -- | Grouping input according to an equality function.
@@ -307,7 +307,7 @@ filter f =
 -- Since 0.3.0
 sinkNull :: Monad m => Sink a m ()
 sinkNull =
-    Processing push close
+    NeedInput push close
   where
     push _ = sinkNull
     close = return ()
@@ -324,12 +324,14 @@ sourceNull = mempty
 --
 -- Since 0.3.0
 zip :: Monad m => Source m a -> Source m b -> Source m (a, b)
-zip Closed Closed = Closed
-zip Closed (Open _ close _) = SourceM (close >> return Closed) close
-zip (Open _ close _) Closed = SourceM (close >> return Closed) close
-zip Closed (SourceM _ close) = SourceM (close >> return Closed) close
-zip (SourceM _ close) Closed = SourceM (close >> return Closed) close
-zip (SourceM mx closex) (SourceM my closey) = SourceM (liftM2 zip mx my) (closex >> closey)
-zip (SourceM mx closex) y@(Open _ closey _) = SourceM (liftM (\x -> zip x y) mx) (closex >> closey)
-zip x@(Open _ closex _) (SourceM my closey) = SourceM (liftM (\y -> zip x y) my) (closex >> closey)
-zip (Open srcx closex x) (Open srcy closey y) = Open (zip srcx srcy) (closex >> closey) (x, y)
+zip (Done _ ()) (Done _ ()) = Done Nothing ()
+zip (Done _ ()) (HaveOutput _ close _) = PipeM (close >> return (Done Nothing ())) close
+zip (HaveOutput _ close _) (Done _ ()) = PipeM (close >> return (Done Nothing ())) close
+zip (Done _ ()) (PipeM _ close) = PipeM (close >> return (Done Nothing ())) close
+zip (PipeM _ close) (Done _ ()) = PipeM (close >> return (Done Nothing ())) close
+zip (PipeM mx closex) (PipeM my closey) = PipeM (liftM2 zip mx my) (closex >> closey)
+zip (PipeM mx closex) y@(HaveOutput _ closey _) = PipeM (liftM (\x -> zip x y) mx) (closex >> closey)
+zip x@(HaveOutput _ closex _) (PipeM my closey) = PipeM (liftM (\y -> zip x y) my) (closex >> closey)
+zip (HaveOutput srcx closex x) (HaveOutput srcy closey y) = HaveOutput (zip srcx srcy) (closex >> closey) (x, y)
+zip (NeedInput p _) right = zip (p ()) right
+zip left (NeedInput p _) = zip left (p ())

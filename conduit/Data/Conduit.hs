@@ -60,7 +60,6 @@ import Data.Conduit.Types
 import Data.Conduit.Util.Source
 import Data.Conduit.Util.Sink
 import Data.Conduit.Util.Conduit
-import Control.Applicative (Applicative)
 import Data.Void (absurd)
 
 -- $typeOverview
@@ -92,13 +91,13 @@ class IsSource src m a | src -> m, src -> a where
     connect :: src -> Sink a m b -> m b
     fuseLeft :: src -> Conduit a m b -> Source m b
 
-instance (Applicative m, Monad m) => IsSource (Pipe () o m ()) m o where
+instance Monad m => IsSource (Pipe () o m ()) m o where
     connect src sink = runPipe $ pipe src sink
     {-# INLINE connect #-}
     fuseLeft src conduit = pipe src conduit
     {-# INLINE fuseLeft #-}
 
-instance (Applicative m, MonadIO m) => IsSource (BufferedSource m a) m a where
+instance MonadIO m => IsSource (BufferedSource m a) m a where
     connect = bufferedConnect
     {-# INLINE connect #-}
     fuseLeft = bufferedFuseLeft
@@ -130,7 +129,7 @@ infixl 1 $=
 -- Any leftover data returns from the @Sink@ will be discarded.
 --
 -- Since 0.3.0
-(=$) :: (Applicative m, Monad m) => Conduit a m b -> Sink b m c -> Sink a m c
+(=$) :: Monad m => Conduit a m b -> Sink b m c -> Sink a m c
 (=$) = pipe
 
 infixr 0 =$=
@@ -140,7 +139,7 @@ infixr 0 =$=
 -- Any leftovers provided by the inner @Conduit@ will be discarded.
 --
 -- Since 0.3.0
-(=$=) :: (Applicative m, Monad m) => Conduit a m b -> Conduit b m c -> Conduit a m c
+(=$=) :: Monad m => Conduit a m b -> Conduit b m c -> Conduit a m c
 (=$=) = pipe
 
 -- | When actually interacting with @Source@s, we sometimes want to be able to
@@ -187,7 +186,7 @@ bufferSource src = liftM BufferedSource $ liftIO $ I.newIORef $ OpenEmpty src
 -- Note: @bufferSource@ . @unbufferSource@ is /not/ the identity function.
 --
 -- Since 0.3.0
-unbufferSource :: (Applicative m, MonadIO m)
+unbufferSource :: MonadIO m
                => BufferedSource m a
                -> Source m a
 unbufferSource (BufferedSource bs) =
@@ -201,7 +200,7 @@ unbufferSource (BufferedSource bs) =
             ClosedEmpty -> return $ Done Nothing ()
             ClosedFull a -> return $ HaveOutput (Done Nothing ()) (return ()) a
 
-bufferedConnect :: (Applicative m, MonadIO m) => BufferedSource m a -> Sink a m b -> m b
+bufferedConnect :: MonadIO m => BufferedSource m a -> Sink a m b -> m b
 bufferedConnect _ (Done Nothing output) = return output
 bufferedConnect _ (Done Just{} _) = error "Invariant violated: sink returned leftover without input"
 bufferedConnect bsrc (PipeM msink _) = msink >>= bufferedConnect bsrc
@@ -238,7 +237,7 @@ bufferedConnect (BufferedSource bs) (NeedInput push0 close0) = do
     onRes _ (HaveOutput _ _ o) = absurd o
 
 bufferedFuseLeft
-    :: (Applicative m, MonadIO m)
+    :: MonadIO m
     => BufferedSource m a
     -> Conduit a m b
     -> Source m b
@@ -322,7 +321,7 @@ bsourceUnpull (BufferedSource ref) (Just a) = do
 -- check if the 'Source' was previously closed.
 --
 -- Since 0.3.0
-bsourceClose :: (Applicative m, MonadIO m) => BufferedSource m a -> m ()
+bsourceClose :: MonadIO m => BufferedSource m a -> m ()
 bsourceClose (BufferedSource ref) = do
     buf <- liftIO $ I.readIORef ref
     case buf of

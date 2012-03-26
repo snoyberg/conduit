@@ -76,13 +76,13 @@ sourceHandle :: MonadResource m
 sourceHandle h =
     src
   where
-    src = SourceM pull close
+    src = PipeM pull close
 
     pull = do
         bs <- liftIO (S.hGetSome h 4096)
         if S.null bs
-            then return Closed
-            else return $ Open src close bs
+            then return $ Done Nothing ()
+            else return $ HaveOutput src close bs
 
     close = return ()
 
@@ -110,9 +110,11 @@ sinkHandle :: MonadResource m
            => IO.Handle
            -> Sink S.ByteString m ()
 sinkHandle h =
-    Processing push close
+    NeedInput push close
   where
-    push input = SinkM $ liftIO (S.hPut h input) >> return (Processing push close)
+    push input = PipeM
+        (liftIO (S.hPut h input) >> return (NeedInput push close))
+        (return ())
     close = return ()
 
 -- | An alternative to 'sinkHandle'.
@@ -137,7 +139,7 @@ sourceFileRange :: MonadResource m
                 -> Maybe Integer -- ^ Offset
                 -> Maybe Integer -- ^ Maximum count
                 -> Source m S.ByteString
-sourceFileRange fp offset count = SourceM
+sourceFileRange fp offset count = PipeM
     (do
         (key, handle) <- allocate (IO.openBinaryFile fp IO.ReadMode) IO.hClose
         case offset of
@@ -153,12 +155,12 @@ sourceFileRange fp offset count = SourceM
         if S.null bs
             then do
                 release key
-                return Closed
+                return $ Done Nothing ()
             else do
-                let src = SourceM
+                let src = PipeM
                         (pullUnlimited handle key)
                         (release key)
-                return $ Open src (release key) bs
+                return $ HaveOutput src (release key) bs
 
     pullLimited c0 handle key = do
         let c = fromInteger c0
@@ -168,12 +170,12 @@ sourceFileRange fp offset count = SourceM
             if S.null bs
                 then do
                     release key
-                    return Closed
+                    return $ Done Nothing ()
                 else do
-                    let src = SourceM
+                    let src = PipeM
                             (pullLimited (toInteger c') handle key)
                             (release key)
-                    return $ Open src (release key) bs
+                    return $ HaveOutput src (release key) bs
 
 -- | Stream all incoming data to the given file.
 --
@@ -226,11 +228,11 @@ isolate count0 = conduitState
 -- Since 0.3.0
 head :: Monad m => Sink S.ByteString m (Maybe Word8)
 head =
-    Processing push close
+    NeedInput push close
   where
     push bs =
         case S.uncons bs of
-            Nothing -> Processing push close
+            Nothing -> NeedInput push close
             Just (w, bs') ->
                 let lo = if S.null bs' then Nothing else Just bs'
                  in Done lo (Just w)
@@ -250,7 +252,7 @@ takeWhile p =
                     then r
                     else HaveOutput r (return ()) x
         | otherwise =
-            let f = Finished $ Just y
+            let f = Done (Just y) ()
              in if S.null x
                     then f
                     else HaveOutput f (return ()) x
@@ -263,10 +265,10 @@ takeWhile p =
 -- Since 0.3.0
 dropWhile :: Monad m => (Word8 -> Bool) -> Sink S.ByteString m ()
 dropWhile p =
-    Processing push close
+    NeedInput push close
   where
     push bs
-        | S.null bs' = Processing push close
+        | S.null bs' = NeedInput push close
         | otherwise  = Done (Just bs') ()
       where
         bs' = S.dropWhile p bs
