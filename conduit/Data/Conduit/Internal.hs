@@ -21,7 +21,7 @@ module Data.Conduit.Internal
     , transPipe
     ) where
 
-import Control.Applicative (Applicative (..), (<|>), (<$>))
+import Control.Applicative (Applicative (..), (<$>))
 import Control.Monad ((>=>), liftM, ap)
 import Control.Monad.Trans.Class (MonadTrans (lift))
 import Control.Monad.IO.Class (MonadIO (liftIO))
@@ -130,29 +130,11 @@ instance Monad m => Functor (Pipe i o m) where
 instance Monad m => Applicative (Pipe i o m) where
     pure = Done Nothing
 
-    Done il f <*> Done ir x = Done (il <|> ir) (f x)
-
-    PipeM mp mr <*> right = PipeM
-        ((<*> right) `liftM` mp)
-        (mr `ap` pipeClose right)
-    HaveOutput p c o <*> right = HaveOutput
-        (p <*> right)
-        (c `ap` pipeClose right)
-        o
-    NeedInput p c <*> right = NeedInput
-        (\i -> p i <*> right)
-        (c `ap` noInput right)
-
-    left@(Done _ f) <*> PipeM mp mr = PipeM
-        ((left <*>) `liftM` mp)
-        (f `liftM` mr)
-    left@(Done _ f) <*> HaveOutput p c o = HaveOutput
-        (left <*> p)
-        (f `liftM` c)
-        o
-    left@(Done _ f) <*> NeedInput p c = NeedInput
-        (\i -> left <*> p i)
-        (liftM f c)
+    Done Nothing f <*> px = f <$> px
+    Done (Just i) f <*> px = pipePush i $ f <$> px
+    HaveOutput p c o <*> px = HaveOutput (p <*> px) (c `ap` pipeClose px) o
+    NeedInput p c <*> px = NeedInput (\i -> p i <*> px) (c <*> noInput px)
+    PipeM mp c <*> px = PipeM ((<*> px) `liftM` mp) (c `ap` pipeClose px)
 
 instance Monad m => Monad (Pipe i o m) where
     return = Done Nothing
