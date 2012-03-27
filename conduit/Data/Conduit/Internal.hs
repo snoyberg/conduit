@@ -43,7 +43,7 @@ import Data.Monoid (Monoid (mappend, mempty))
 -- stream of values this @Pipe@ will produce and send downstream. /r/ is the
 -- final output of this @Pipe@.
 --
--- @Pipe@s can be composed via the @pipe@ function. To do so, the output type
+-- @Pipe@s can be composed via the 'pipe' function. To do so, the output type
 -- of the left pipe much match the input type of the left pipe, and the result
 -- type of the left pipe must be unit @()@. This is due to the fact that any
 -- result produced by the left pipe must be discarded in favor of the result of
