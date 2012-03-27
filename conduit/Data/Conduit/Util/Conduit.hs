@@ -22,7 +22,6 @@ import Control.Monad.Trans.Resource
 import Data.Conduit.Internal
 import Control.Monad (liftM)
 import Data.Void (absurd)
-import Data.Monoid (mempty)
 
 -- | A helper function for returning a list of values from a @Conduit@.
 --
@@ -153,52 +152,18 @@ sequenceSink
     => state -- ^ initial state
     -> SequencedSink state input m output
     -> Conduit input m output
-sequenceSink state0 fsink = NeedInput (scPush fsink $ fsink state0) mempty -- FIXME investigate if we can bypass getting input
-
-scPush :: Monad m
-       => SequencedSink state input m output
-       -> Sink input m (SequencedSinkResponse state input m output)
-       -> input -> Conduit input m output
-scPush fsink (NeedInput pushI _) input = scGoRes fsink $ pushI input
-scPush fsink (Done Nothing res) input = scGoRes fsink (Done (Just input) res)
-scPush _ (Done Just{} _) _ = error "Invariant violated: Sink returned leftover without input"
-scPush fsink (PipeM msink close) input = PipeM (liftM (\sink -> scPush fsink sink input) msink) (close >> return ())
-scPush _ (HaveOutput _ _ o) _ = absurd o
-
-scGoRes :: Monad m
-        => SequencedSink state input m output
-        -> Sink input m (SequencedSinkResponse state input m output)
-        -> Conduit input m output
-scGoRes fsink (Done (Just leftover) (Emit state os)) = haveMore
-    (scPush fsink (fsink state) leftover)
-    (return ())
-    os
-scGoRes fsink (Done Nothing (Emit state os)) = haveMore
-    (NeedInput p c)
-    (return ())
-    os
-  where
-    NeedInput p c = sequenceSink state fsink -- FIXME
-scGoRes fsink (NeedInput pushI closeI) = NeedInput
-    (scPush fsink (NeedInput pushI closeI))
-    (PipeM (pipeClose closeI >>= goRes) (pipeClose closeI >> return ()))
-  where
-    goRes (Emit _ os) = return $ fromList os
-    goRes Stop = return $ Done Nothing ()
-    goRes (StartConduit (NeedInput _ closeC)) = return closeC
-    goRes (StartConduit (Done _ ())) = return $ Done Nothing ()
-    goRes (StartConduit (PipeM mcon _)) = mcon >>= goRes . StartConduit
-    goRes (StartConduit HaveOutput{}) = error "scGoRes:goRes: StartConduit HaveOutput not supported yet"
-scGoRes _ (Done mleftover Stop) = Done mleftover ()
-scGoRes _ (Done Nothing (StartConduit c)) = c
-scGoRes _ (Done (Just leftover) (StartConduit (Done Nothing ()))) = Done (Just leftover) ()
-scGoRes _ (Done Just{} (StartConduit (Done Just{} ()))) = error "Invariant violated: conduit returns leftover without push"
-scGoRes _ (Done (Just leftover) (StartConduit (NeedInput p _))) = p leftover
-scGoRes _ (Done Just{} (StartConduit HaveOutput{})) = error "scGoRes: StartConduit HaveOutput not supported yet"
-scGoRes fsink (Done mleftover (StartConduit (PipeM mcon close))) =
-    PipeM (liftM (scGoRes fsink . Done mleftover . StartConduit) mcon) close
-scGoRes fsink (PipeM msink close) = PipeM (liftM (scGoRes fsink) msink) (close >> return ())
-scGoRes _ (HaveOutput _ _ o) = absurd o
+sequenceSink state0 fsink = do
+    x <- isEmpty
+    if x
+        then return ()
+        else do
+            res <- sinkToPipe $ fsink state0
+            case res of
+                Emit state os -> do
+                    mapM_ emit os
+                    sequenceSink state fsink
+                Stop -> return ()
+                StartConduit c -> c
 
 -- | Specialised version of 'sequenceSink'
 --
@@ -215,9 +180,12 @@ sequence sink = do
         else do
             sinkToPipe sink >>= emit
             sequence sink
-  where
-    isEmpty = NeedInput (\i -> Done (Just i) False) (Done Nothing True)
-    emit = HaveOutput (Done Nothing ()) (return ())
+
+emit :: Monad m => o -> Pipe i o m ()
+emit = HaveOutput (Done Nothing ()) (return ())
+
+isEmpty :: Pipe i o m Bool
+isEmpty = NeedInput (\i -> Done (Just i) False) (Done Nothing True)
 
 sinkToPipe :: Monad m => Sink i m r -> Pipe i o m r
 sinkToPipe (HaveOutput _ _ o) = absurd o
