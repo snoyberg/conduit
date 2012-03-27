@@ -31,6 +31,7 @@ import Control.Monad (forever)
 import Control.Monad.Trans.Control (MonadBaseControl, control)
 import Control.Concurrent (forkIO)
 import Data.String (IsString (fromString))
+import qualified Control.Exception as E
 
 -- | Stream data from the socket.
 --
@@ -198,7 +199,7 @@ bindPort p s = do
                 _ -> addrs
 
         tryAddrs (addr1:rest@(_:_)) =
-                                      catch
+                                      E.catch
                                       (theBody addr1)
                                       (\(_ :: IOException) -> tryAddrs rest)
         tryAddrs (addr1:[])         = theBody addr1

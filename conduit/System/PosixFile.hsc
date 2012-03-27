@@ -8,7 +8,7 @@ module System.PosixFile
 
 import Foreign.C.String (CString, withCString)
 import Foreign.Marshal.Alloc (mallocBytes, free)
-import Foreign.C.Types (CInt)
+import Foreign.C.Types (CInt (..))
 import Foreign.C.Error (throwErrno)
 import Foreign.Ptr (Ptr)
 import Data.Bits (Bits)
