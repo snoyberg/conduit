@@ -208,38 +208,19 @@ scGoRes _ (HaveOutput _ _ o) = absurd o
 --
 -- Since 0.3.0
 sequence :: Monad m => Sink input m output -> Conduit input m output
-sequence (NeedInput spush0 sclose0) =
-    NeedInput (push spush0) (close sclose0)
+sequence sink = do
+    x <- isEmpty
+    if x
+        then return ()
+        else do
+            sinkToPipe sink >>= emit
+            sequence sink
   where
-    push spush input = goRes $ spush input
+    isEmpty = NeedInput (\i -> Done (Just i) False) (Done Nothing True)
+    emit = HaveOutput (Done Nothing ()) (return ())
 
-    goRes res =
-        case res of
-            NeedInput spush'' sclose'' ->
-                NeedInput (push spush'') (close sclose'')
-            Done Nothing output -> HaveOutput
-                (NeedInput (push spush0) (close sclose0))
-                (return ())
-                output
-            Done (Just input') output -> HaveOutput
-                (goRes $ spush0 input')
-                (return ())
-                output
-            HaveOutput _ _ o -> absurd o
-            PipeM msink close' -> PipeM (liftM goRes msink) (close' >> return ())
-
-    close sclose = PipeM (do
-        output <- pipeClose sclose
-        return $ HaveOutput (Done Nothing ()) (return ()) output)
-        (return ()) -- FIXME close?
-
-sequence (HaveOutput _ _ o) = absurd o
-
-sequence (Done Nothing output) = NeedInput
-    (\_input ->
-        let x = HaveOutput x (return ()) output
-         in x)
-    (   let src = HaveOutput src (return ()) output
-         in src)
-sequence (Done Just{} _) = error "Invariant violated: sink returns leftover without push"
-sequence (PipeM msink close) = PipeM (liftM sequence msink) (close >> return ())
+sinkToPipe :: Monad m => Sink i m r -> Pipe i o m r
+sinkToPipe (HaveOutput _ _ o) = absurd o
+sinkToPipe (NeedInput p c) = NeedInput (sinkToPipe . p) (sinkToPipe c)
+sinkToPipe (Done i r) = Done i r
+sinkToPipe (PipeM mp c) = PipeM (liftM sinkToPipe mp) c

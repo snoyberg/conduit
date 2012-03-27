@@ -2,6 +2,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE RankNTypes #-}
 module Data.Conduit.Internal
     ( -- * Types
       Pipe (..)
@@ -82,7 +83,7 @@ type Source m a = Pipe () a m ()
 -- constructor for a @Sink@.
 --
 -- Since 0.4.0
-type Sink i m o = Pipe i Void m o
+type Sink i m r = Pipe i Void m r
 
 -- | A @Pipe@ which consumes a stream of input values and produces a stream of
 -- output values. It does not produce a result value, and thus the result
@@ -182,11 +183,11 @@ pipe l r = pipeResume l r >>= \(l', res) -> lift (pipeClose l') >> return res
 -- the right pipe. The two components are combined together into a single pipe
 -- and returned, together with the result of the right pipe.
 --
--- Since 0.4.0
-pipeResume :: Monad m => Pipe a b m () -> Pipe b c m r -> Pipe a c m (Pipe a b m (), r)
-
 -- Note: we're biased towards checking the right side first to avoid pulling
 -- extra data which is not needed. Doing so could cause data loss.
+--
+-- Since 0.4.0
+pipeResume :: Monad m => Pipe a b m () -> Pipe b c m r -> Pipe a c m (Pipe a b m (), r)
 
 pipeResume (Done leftoverl ()) (Done leftoverr r) =
     Done leftoverl (left, r)
