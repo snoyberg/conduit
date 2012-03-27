@@ -35,6 +35,10 @@ module Data.Conduit
     , (=$)
     , (=$=)
       -- * Utility functions
+      -- ** General
+    , await
+    , yield
+    , hasInput
       -- ** Source
     , module Data.Conduit.Util.Source
       -- ** Sink

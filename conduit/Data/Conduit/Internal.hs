@@ -9,11 +9,15 @@ module Data.Conduit.Internal
     , Source
     , Sink
     , Conduit
-      -- * Low-level utilities
+      -- * Functions
     , pipeClose
     , pipe
     , pipeResume
     , runPipe
+    , sinkToPipe
+    , await
+    , yield
+    , hasInput
     ) where
 
 import Control.Applicative (Applicative (..), (<|>), (<$>))
@@ -259,3 +263,35 @@ runPipe (NeedInput p _) = runPipe (p ())
 runPipe (Done Nothing r) = return r
 runPipe (Done (Just ()) r) = return r
 runPipe (PipeM mp _) = mp >>= runPipe
+
+-- | Send a single output value downstream.
+--
+-- Since 0.4.0
+yield :: Monad m => o -> Pipe i o m ()
+yield = HaveOutput (Done Nothing ()) (return ())
+
+-- | Wait for a single input value from upstream, and remove it from the
+-- stream. Returns @Nothing@ if no more data is available.
+--
+-- Since 0.4.0
+await :: Pipe i o m (Maybe i)
+await = NeedInput (Done Nothing . Just) (Done Nothing Nothing)
+
+-- | Check if input is available from upstream. Will not remove the data from
+-- the stream.
+--
+-- Since 0.4.0
+hasInput :: Pipe i o m Bool
+hasInput = NeedInput (\i -> Done (Just i) False) (Done Nothing True)
+
+-- | A @Sink@ has a @Void@ type parameter for the output, which makes it
+-- difficult to compose with @Source@s and @Conduit@s. This function replaces
+-- that parameter with a free variable. This function is essentially @id@; it
+-- only modifies the types, not the actions performed.
+--
+-- Since 0.4.0
+sinkToPipe :: Monad m => Sink i m r -> Pipe i o m r
+sinkToPipe (HaveOutput _ _ o) = absurd o
+sinkToPipe (NeedInput p c) = NeedInput (sinkToPipe . p) (sinkToPipe c)
+sinkToPipe (Done i r) = Done i r
+sinkToPipe (PipeM mp c) = PipeM (liftM sinkToPipe mp) c

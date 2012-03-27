@@ -21,7 +21,6 @@ import Prelude hiding (sequence)
 import Control.Monad.Trans.Resource
 import Data.Conduit.Internal
 import Control.Monad (liftM)
-import Data.Void (absurd)
 
 -- | A helper function for returning a list of values from a @Conduit@.
 --
@@ -124,7 +123,7 @@ conduitIO alloc cleanup push0 close0 = NeedInput
         release key
         return $ fromList output) (release key)
 
-fromList :: Monad m => [a] -> Source m a
+fromList :: Monad m => [a] -> Pipe i a m ()
 fromList [] = Done Nothing ()
 fromList (x:xs) = HaveOutput (fromList xs) (return ()) x
 
@@ -153,14 +152,14 @@ sequenceSink
     -> SequencedSink state input m output
     -> Conduit input m output
 sequenceSink state0 fsink = do
-    x <- isEmpty
+    x <- hasInput
     if x
         then return ()
         else do
             res <- sinkToPipe $ fsink state0
             case res of
                 Emit state os -> do
-                    mapM_ emit os
+                    fromList os
                     sequenceSink state fsink
                 Stop -> return ()
                 StartConduit c -> c
@@ -174,21 +173,9 @@ sequenceSink state0 fsink = do
 -- Since 0.3.0
 sequence :: Monad m => Sink input m output -> Conduit input m output
 sequence sink = do
-    x <- isEmpty
+    x <- hasInput
     if x
         then return ()
         else do
-            sinkToPipe sink >>= emit
+            sinkToPipe sink >>= yield
             sequence sink
-
-emit :: Monad m => o -> Pipe i o m ()
-emit = HaveOutput (Done Nothing ()) (return ())
-
-isEmpty :: Pipe i o m Bool
-isEmpty = NeedInput (\i -> Done (Just i) False) (Done Nothing True)
-
-sinkToPipe :: Monad m => Sink i m r -> Pipe i o m r
-sinkToPipe (HaveOutput _ _ o) = absurd o
-sinkToPipe (NeedInput p c) = NeedInput (sinkToPipe . p) (sinkToPipe c)
-sinkToPipe (Done i r) = Done i r
-sinkToPipe (PipeM mp c) = PipeM (liftM sinkToPipe mp) c
