@@ -25,7 +25,7 @@ import Control.Monad ((>=>), liftM, ap)
 import Control.Monad.Trans.Class (MonadTrans (lift))
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Base (MonadBase (liftBase))
-import Data.Void (Void, absurd)
+import Data.Void (Void)
 import Data.Monoid (Monoid (mappend, mempty))
 
 -- | The underlying datatype for all the types in this package.  In has four
@@ -60,7 +60,7 @@ data Pipe i o m r =
     -- gives a new @Pipe@ which takes no input from upstream. This allows a
     -- @Pipe@ to provide a final stream of output values after no more input is
     -- available from upstream.
-  | NeedInput (i -> Pipe i o m r) (Pipe () o m r)
+  | NeedInput (i -> Pipe i o m r) (Pipe Void o m r)
     -- | Processing with this @Pipe@ is complete. Provides an optional leftover
     -- input value and and result.
   | Done (Maybe i) r
@@ -79,7 +79,7 @@ data Pipe i o m r =
 -- parameter is set to @()@ as well.
 --
 -- Since 0.4.0
-type Source m a = Pipe () a m ()
+type Source m a = Pipe Void a m ()
 
 -- | A @Pipe@ which consumes a stream of input values and produces a final
 -- result. It cannot produce any output values, and thus the output parameter
@@ -108,7 +108,7 @@ pipeCloseL (NeedInput _ p)= ((,) Nothing) `liftM` pipeClose p
 pipeCloseL (Done l r) = return (l, r)
 pipeCloseL (PipeM _ c) = ((,) Nothing) `liftM` c
 
-noInput :: Monad m => Pipe i o m r -> Pipe () o m r
+noInput :: Monad m => Pipe i o m r -> Pipe Void o m r
 noInput (HaveOutput p r o) = HaveOutput (noInput p) r o
 noInput (NeedInput _ c) = c
 noInput (Done _ r) = Done Nothing r
@@ -243,7 +243,7 @@ pipeResume (PipeM mp c) right = PipeM
     ((`pipeResume` right) `liftM` mp)
     (c >> pipeCloseL right >>= \(_, res) -> return (mempty, res))
 
-replaceLeftover :: Monad m => Maybe i -> Pipe () o m r -> Pipe i o m r
+replaceLeftover :: Monad m => Maybe i -> Pipe Void o m r -> Pipe i o m r
 replaceLeftover l (Done _ r) = Done l r
 replaceLeftover l (HaveOutput p c o) = HaveOutput (replaceLeftover l p) c o
 
@@ -253,15 +253,13 @@ replaceLeftover l (NeedInput _ c) = replaceLeftover l c
 
 replaceLeftover l (PipeM mp c) = PipeM (replaceLeftover l `liftM` mp) c
 
--- | Run a complete pipeline by feeding it an infinite stream of @()@ values
--- until processing completes.
+-- | Run a complete pipeline until processing completes.
 --
 -- Since 0.4.0
-runPipe :: Monad m => Pipe () Void m r -> m r
-runPipe (HaveOutput _ _ o) = absurd o
-runPipe (NeedInput p _) = runPipe (p ())
-runPipe (Done Nothing r) = return r
-runPipe (Done (Just ()) r) = return r
+runPipe :: Monad m => Pipe Void Void m r -> m r
+runPipe (HaveOutput _ c _) = c
+runPipe (NeedInput _ c) = runPipe c
+runPipe (Done _ r) = return r
 runPipe (PipeM mp _) = mp >>= runPipe
 
 -- | Send a single output value downstream.
@@ -291,7 +289,7 @@ hasInput = NeedInput (\i -> Done (Just i) False) (Done Nothing True)
 --
 -- Since 0.4.0
 sinkToPipe :: Monad m => Sink i m r -> Pipe i o m r
-sinkToPipe (HaveOutput _ _ o) = absurd o
+sinkToPipe (HaveOutput _ c _) = lift c
 sinkToPipe (NeedInput p c) = NeedInput (sinkToPipe . p) (sinkToPipe c)
 sinkToPipe (Done i r) = Done i r
 sinkToPipe (PipeM mp c) = PipeM (liftM sinkToPipe mp) c
