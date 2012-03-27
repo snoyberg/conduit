@@ -39,6 +39,7 @@ module Data.Conduit
     , await
     , yield
     , hasInput
+    , transPipe
       -- ** Source
     , module Data.Conduit.Util.Source
       -- ** Sink

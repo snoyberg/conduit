@@ -18,6 +18,7 @@ module Data.Conduit.Internal
     , await
     , yield
     , hasInput
+    , transPipe
     ) where
 
 import Control.Applicative (Applicative (..), (<|>), (<$>))
@@ -296,3 +297,12 @@ sinkToPipe (HaveOutput _ c _) = lift c
 sinkToPipe (NeedInput p c) = NeedInput (sinkToPipe . p) (sinkToPipe c)
 sinkToPipe (Done i r) = Done i r
 sinkToPipe (PipeM mp c) = PipeM (liftM sinkToPipe mp) c
+
+-- | Transform the monad that a @Pipe@ lives in.
+--
+-- Since 0.4.0
+transPipe :: Monad m => (forall a. m a -> n a) -> Pipe i o m r -> Pipe i o n r
+transPipe f (HaveOutput p c o) = HaveOutput (transPipe f p) (f c) o
+transPipe f (NeedInput p c) = NeedInput (transPipe f . p) (transPipe f c)
+transPipe _ (Done i r) = Done i r
+transPipe f (PipeM mp c) = PipeM (f $ liftM (transPipe f) mp) (f c)
