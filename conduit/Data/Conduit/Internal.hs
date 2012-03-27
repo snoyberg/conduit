@@ -46,8 +46,8 @@ import Data.Monoid (Monoid (mappend, mempty))
 -- @Pipe@s can be composed via the @pipe@ function. To do so, the output type
 -- of the left pipe much match the input type of the left pipe, and the result
 -- type of the left pipe must be unit @()@. This is due to the fact that any
--- result produced by the left pipe must be discarded in favor of the left
--- pipe.
+-- result produced by the left pipe must be discarded in favor of the result of
+-- the right pipe.
 --
 -- Since 0.4.0
 data Pipe i o m r =
