@@ -6,6 +6,9 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveDataTypeable #-}
+#if __GLASGOW_HASKELL__ >= 704
+{-# LANGUAGE ConstraintKinds #-}
+#endif
 -- | Allocate resources which are guaranteed to be released.
 --
 -- For more information, see <http://www.yesodweb.com/book/conduits>.
@@ -74,8 +77,21 @@ import qualified Control.Monad.Trans.State.Strict  as Strict ( StateT )
 import qualified Control.Monad.Trans.Writer.Strict as Strict ( WriterT )
 import Control.Concurrent (ThreadId, forkIO)
 
-import Control.Monad.ST (ST, unsafeIOToST)
+import Control.Monad.ST (ST)
+#if __GLASGOW_HASKELL__ >= 704
+import Control.Monad.ST.Unsafe (unsafeIOToST)
+#else
+import Control.Monad.ST (unsafeIOToST)
+#endif
+
+#if __GLASGOW_HASKELL__ >= 704
+import qualified Control.Monad.ST.Lazy.Unsafe as LazyUnsafe
+#else
+import qualified Control.Monad.ST.Lazy as LazyUnsafe
+#endif
+
 import qualified Control.Monad.ST.Lazy as Lazy
+
 import Data.Functor.Identity (Identity)
 
 -- | A lookup key for a specific release action. This value is returned by
@@ -111,7 +127,11 @@ instance Typeable1 m => Typeable1 (ResourceT m) where
         goType :: Typeable1 m => m a -> ResourceT m a -> TypeRep
         goType m _ =
             mkTyConApp
+#if __GLASGOW_HASKELL__ >= 704
+                (mkTyCon3 "resourcet" "Control.Monad.Trans.Resource" "ResourceT")
+#else
                 (mkTyCon "Control.Monad.Trans.Resource.ResourceT")
+#endif
                 [ typeOf1 m
                 ]
 
@@ -447,7 +467,7 @@ instance MonadUnsafeIO (ST s) where
     unsafeLiftIO = unsafeIOToST
 
 instance MonadUnsafeIO (Lazy.ST s) where
-    unsafeLiftIO = Lazy.unsafeIOToST
+    unsafeLiftIO = LazyUnsafe.unsafeIOToST
 
 instance (MonadTrans t, MonadUnsafeIO m, Monad (t m)) => MonadUnsafeIO (t m) where
     unsafeLiftIO = lift . unsafeLiftIO
@@ -516,5 +536,9 @@ GOX(Monoid w, Strict.WriterT w)
 -- fulfills much the same role.
 --
 -- Since 0.3.2
+#if __GLASGOW_HASKELL__ >= 704
+type MonadResourceBase m = (MonadBaseControl IO m, MonadThrow m, MonadUnsafeIO m, MonadIO m, Applicative m)
+#else
 class (MonadBaseControl IO m, MonadThrow m, MonadUnsafeIO m, MonadIO m, Applicative m) => MonadResourceBase m
 instance (MonadBaseControl IO m, MonadThrow m, MonadUnsafeIO m, MonadIO m, Applicative m) => MonadResourceBase m
+#endif
