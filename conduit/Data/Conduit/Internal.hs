@@ -179,6 +179,9 @@ instance Monad m => Monoid (Pipe i o m ()) where
 -- will be automatically closed when the right pipe finishes, and any leftovers
 -- from the right pipe will be discarded.
 --
+-- This is in fact a wrapper around 'pipeResume'. This function closes the left
+-- @Pipe@ returns by @pipeResume@ and returns only the result.
+--
 -- Since 0.4.0
 pipe :: Monad m => Pipe a b m () -> Pipe b c m r -> Pipe a c m r
 pipe l r = pipeResume l r >>= \(l', res) -> lift (pipeClose l') >> return res
