@@ -27,4 +27,4 @@ lazyConsume (PipeM msrc _) = liftBaseOp_ unsafeInterleaveIO $ do
     if a
         then msrc >>= lazyConsume
         else return []
-lazyConsume (NeedInput p _) = lazyConsume $ p ()
+lazyConsume (NeedInput _ c) = lazyConsume c

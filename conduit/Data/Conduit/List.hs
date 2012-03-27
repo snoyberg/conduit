@@ -333,5 +333,5 @@ zip (PipeM mx closex) (PipeM my closey) = PipeM (liftM2 zip mx my) (closex >> cl
 zip (PipeM mx closex) y@(HaveOutput _ closey _) = PipeM (liftM (\x -> zip x y) mx) (closex >> closey)
 zip x@(HaveOutput _ closex _) (PipeM my closey) = PipeM (liftM (\y -> zip x y) my) (closex >> closey)
 zip (HaveOutput srcx closex x) (HaveOutput srcy closey y) = HaveOutput (zip srcx srcy) (closex >> closey) (x, y)
-zip (NeedInput p _) right = zip (p ()) right
-zip left (NeedInput p _) = zip left (p ())
+zip (NeedInput _ c) right = zip c right
+zip left (NeedInput _ c) = zip left c
