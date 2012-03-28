@@ -19,7 +19,7 @@ Library
                      , transformers-base        >= 0.4.1        && < 0.5
                      , monad-control            >= 0.3.1        && < 0.4
                      , containers
-                     , transformers             >= 0.2.2        && < 0.3
+                     , transformers             >= 0.2.2        && < 0.4
   ghc-options:     -Wall
 
 source-repository head

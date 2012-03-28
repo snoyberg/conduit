@@ -18,7 +18,7 @@ Library
   Exposed-modules:     Data.Conduit.Zlib
   Build-depends:       base                     >= 4            && < 5
                      , containers
-                     , transformers             >= 0.2.2        && < 0.3
+                     , transformers             >= 0.2.2        && < 0.4
                      , bytestring               >= 0.9
                      , zlib-bindings            >= 0.1          && < 0.2
                      , conduit                  >= 0.4          && < 0.5

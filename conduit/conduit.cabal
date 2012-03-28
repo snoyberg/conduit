@@ -54,7 +54,7 @@ Library
                      , transformers-base        >= 0.4.1        && < 0.5
                      , monad-control            >= 0.3.1        && < 0.4
                      , containers
-                     , transformers             >= 0.2.2        && < 0.3
+                     , transformers             >= 0.2.2        && < 0.4
                      , bytestring               >= 0.9
                      , text                     >= 0.11
                      , void                     >= 0.5.5        && < 0.6

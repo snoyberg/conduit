@@ -15,7 +15,7 @@ extra-source-files:  test/main.hs
 Library
   Exposed-modules:     Data.Conduit.Attoparsec
   Build-depends:       base                     >= 4            && < 5
-                     , transformers             >= 0.2.2        && < 0.3
+                     , transformers             >= 0.2.2        && < 0.4
                      , bytestring               >= 0.9
                      , attoparsec               >= 0.10
                      , text                     >= 0.11
