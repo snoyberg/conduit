@@ -154,8 +154,7 @@ sequenceSink
 sequenceSink state0 fsink = do
     x <- hasInput
     if x
-        then return ()
-        else do
+        then do
             res <- sinkToPipe $ fsink state0
             case res of
                 Emit state os -> do
@@ -163,6 +162,7 @@ sequenceSink state0 fsink = do
                     sequenceSink state fsink
                 Stop -> return ()
                 StartConduit c -> c
+        else return ()
 
 -- | Specialised version of 'sequenceSink'
 --
@@ -175,7 +175,7 @@ sequence :: Monad m => Sink input m output -> Conduit input m output
 sequence sink = do
     x <- hasInput
     if x
-        then return ()
-        else do
+        then do
             sinkToPipe sink >>= yield
             sequence sink
+        else return ()

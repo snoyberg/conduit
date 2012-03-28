@@ -263,7 +263,7 @@ await = NeedInput (Done Nothing . Just) (Done Nothing Nothing)
 --
 -- Since 0.4.0
 hasInput :: Pipe i o m Bool
-hasInput = NeedInput (\i -> Done (Just i) False) (Done Nothing True)
+hasInput = NeedInput (\i -> Done (Just i) True) (Done Nothing False)
 
 -- | A @Sink@ has a @Void@ type parameter for the output, which makes it
 -- difficult to compose with @Source@s and @Conduit@s. This function replaces
