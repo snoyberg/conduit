@@ -101,13 +101,10 @@ type Conduit i m o = Pipe i o m ()
 --
 -- Since 0.4.0
 pipeClose :: Monad m => Pipe i o m r -> m r
-pipeClose = liftM snd . pipeCloseL
-
-pipeCloseL :: Monad m => Pipe i o m r -> m (Maybe i, r)
-pipeCloseL (HaveOutput _ c _) = ((,) Nothing) `liftM` c
-pipeCloseL (NeedInput _ p)= ((,) Nothing) `liftM` pipeClose p
-pipeCloseL (Done l r) = return (l, r)
-pipeCloseL (PipeM _ c) = ((,) Nothing) `liftM` c
+pipeClose (HaveOutput _ c _) = c
+pipeClose (NeedInput _ p) = pipeClose p
+pipeClose (Done _ r) = return r
+pipeClose (PipeM _ c) = c
 
 noInput :: Monad m => Pipe i o m r -> Pipe Void o m r
 noInput (HaveOutput p r o) = HaveOutput (noInput p) r o
@@ -227,7 +224,7 @@ pipeResume (Done l ()) (NeedInput _ c) = ((,) mempty) `liftM` replaceLeftover l 
 -- Left pipe needs to run a monadic action.
 pipeResume (PipeM mp c) right = PipeM
     ((`pipeResume` right) `liftM` mp)
-    (c >> pipeCloseL right >>= \(_, res) -> return (mempty, res))
+    (c >> liftM ((,) mempty) (pipeClose right))
 
 replaceLeftover :: Monad m => Maybe i -> Pipe Void o m r -> Pipe i o m r
 replaceLeftover l (Done _ r) = Done l r
