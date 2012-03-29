@@ -30,7 +30,7 @@ module Data.Conduit
     , Sink
       -- * Connect/fuse operators
     , ($$)
-    , ($$&)
+    , ($$+)
     , ($=)
     , (=$)
     , (=$=)
@@ -66,7 +66,7 @@ import Data.Conduit.Util.Conduit
 
 infixr 0 $$
 
-infixr 0 $$&
+infixr 0 $$+
 
 -- | The connect operator, which pulls data from a source and pushes to a sink.
 -- There are two ways this process can terminate:
@@ -77,7 +77,7 @@ infixr 0 $$&
 --
 -- In other words, both the @Source@ and @Sink@ will always be closed. If you
 -- would like to keep the @Source@ open to be used for another operations, use
--- the connect-and-resume operators '$$&'.
+-- the connect-and-resume operators '$$+'.
 --
 -- Since 0.4.0
 ($$) :: Monad m => Source m a -> Sink a m b -> m b
@@ -89,10 +89,12 @@ src $$ sink = runPipe $ pipe src sink
 -- in a large program, without forcing the entire program to live in the @Sink@
 -- monad.
 --
+-- Mnemonic: connect + do more.
+--
 -- Since 0.4.0
-($$&) :: Monad m => Source m a -> Sink a m b -> m (Source m a, b)
-src $$& sink = runPipe $ pipeResume src sink
-{-# INLINE ($$&) #-}
+($$+) :: Monad m => Source m a -> Sink a m b -> m (Source m a, b)
+src $$+ sink = runPipe $ pipeResume src sink
+{-# INLINE ($$+) #-}
 
 infixl 1 $=
 
@@ -122,14 +124,18 @@ infixl 1 $=
 
 infixr 0 =$=
 
--- | Middle fuse, combining two conduits together into a new conduit.
+-- | Fusion operator, combining two @Pipe@s together into a new @Pipe@.
 --
--- Both @Conduit@s will be closed when the newly-created @Conduit@ is closed.
+-- Both @Pipe@s will be closed when the newly-created @Pipe@ is closed.
 --
--- Leftover data returned from the right @Conduit@ will be discarded.
+-- Leftover data returned from the right @Pipe@ will be discarded.
 --
--- Since 0.3.0
-(=$=) :: Monad m => Conduit a m b -> Conduit b m c -> Conduit a m c
+-- Note: in previous versions, this operator would only fuse together two
+-- @Conduit@s (known as middle fusion). This operator is generalized to work on
+-- all @Pipe@s, including @Source@s and @Sink@s.
+--
+-- Since 0.4.0
+(=$=) :: Monad m => Pipe a b m () -> Pipe b c m r -> Pipe a c m r
 (=$=) = pipe
 {-# INLINE (=$=) #-}
 

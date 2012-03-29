@@ -144,8 +144,8 @@ main = hspecX $ do
         it "simple" $ do
             (x, y, z) <- runResourceT $ do
                 let src1 = CL.sourceList [1..10 :: Int]
-                (src2, x) <- src1 C.$$& CL.take 5
-                (src3, y) <- src2 C.$$& CL.fold (+) 0
+                (src2, x) <- src1 C.$$+ CL.take 5
+                (src3, y) <- src2 C.$$+ CL.fold (+) 0
                 z <- src3 C.$$ CL.consume
                 return (x, y, z)
             x @?= [1..5] :: IO ()
@@ -198,7 +198,7 @@ main = hspecX $ do
         it "bound to resumable source" $ do
             (x, y) <- runResourceT $ do
                 let src1 = CL.sourceList [1..10 :: Int]
-                (src2, x) <- src1 C.$= CL.isolate 5 C.$$& CL.consume
+                (src2, x) <- src1 C.$= CL.isolate 5 C.$$+ CL.consume
                 y <- src2 C.$$ CL.consume
                 return (x, y)
             x @?= [1..5]
@@ -216,7 +216,7 @@ main = hspecX $ do
         it "bound to sink, resumable" $ do
             (x, y) <- runResourceT $ do
                 let src1 = CL.sourceList [1..10 :: Int]
-                (src2, x) <- src1 C.$$& CL.isolate 5 C.=$ CL.consume
+                (src2, x) <- src1 C.$$+ CL.isolate 5 C.=$ CL.consume
                 y <- src2 C.$$ CL.consume
                 return (x, y)
             x @?= [1..5]
@@ -354,7 +354,7 @@ main = hspecX $ do
         it "works" $ do
             x <- runResourceT $ do
                 let src1 = CL.sourceList [1..10 :: Int]
-                (src2, ()) <- src1 C.$$& CL.drop 5
+                (src2, ()) <- src1 C.$$+ CL.drop 5
                 src2 C.$$ CL.fold (+) 0
             x @?= sum [6..10]
 

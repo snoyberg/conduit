@@ -61,7 +61,7 @@ data Pipe i o m r =
     -- gives a new @Pipe@ which takes no input from upstream. This allows a
     -- @Pipe@ to provide a final stream of output values after no more input is
     -- available from upstream.
-  | NeedInput (i -> Pipe i o m r) (Pipe Void o m r)
+  | NeedInput (i -> Pipe i o m r) (Pipe i o m r)
     -- | Processing with this @Pipe@ is complete. Provides an optional leftover
     -- input value and and result.
   | Done (Maybe i) r
@@ -106,12 +106,6 @@ pipeClose (NeedInput _ p) = pipeClose p
 pipeClose (Done _ r) = return r
 pipeClose (PipeM _ c) = c
 
-noInput :: Monad m => Pipe i o m r -> Pipe Void o m r
-noInput (HaveOutput p r o) = HaveOutput (noInput p) r o
-noInput (NeedInput _ c) = c
-noInput (Done _ r) = Done Nothing r
-noInput (PipeM mp c) = PipeM (noInput `liftM` mp) c
-
 pipePush :: Monad m => i -> Pipe i o m r -> Pipe i o m r
 pipePush i (HaveOutput p c o) = HaveOutput (pipePush i p) c o
 pipePush i (NeedInput p _) = p i
@@ -130,7 +124,7 @@ instance Monad m => Applicative (Pipe i o m) where
     Done Nothing f <*> px = f <$> px
     Done (Just i) f <*> px = pipePush i $ f <$> px
     HaveOutput p c o <*> px = HaveOutput (p <*> px) (c `ap` pipeClose px) o
-    NeedInput p c <*> px = NeedInput (\i -> p i <*> px) (c <*> noInput px)
+    NeedInput p c <*> px = NeedInput (\i -> p i <*> px) (c <*> px)
     PipeM mp c <*> px = PipeM ((<*> px) `liftM` mp) (c `ap` pipeClose px)
 
 instance Monad m => Monad (Pipe i o m) where
@@ -139,7 +133,7 @@ instance Monad m => Monad (Pipe i o m) where
     Done Nothing x >>= fp = fp x
     Done (Just i) x >>= fp = pipePush i $ fp x
     HaveOutput p c o >>= fp = HaveOutput (p >>= fp) (c >>= pipeClose . fp) o
-    NeedInput p c >>= fp = NeedInput (p >=> fp) (c >>= noInput . fp)
+    NeedInput p c >>= fp = NeedInput (p >=> fp) (c >>= fp)
     PipeM mp c >>= fp = PipeM ((>>= fp) `liftM` mp) (c >>= pipeClose . fp)
 
 instance MonadBase base m => MonadBase base (Pipe i o m) where
@@ -226,7 +220,7 @@ pipeResume (PipeM mp c) right = PipeM
     ((`pipeResume` right) `liftM` mp)
     (c >> liftM ((,) mempty) (pipeClose right))
 
-replaceLeftover :: Monad m => Maybe i -> Pipe Void o m r -> Pipe i o m r
+replaceLeftover :: Monad m => Maybe i -> Pipe i' o m r -> Pipe i o m r
 replaceLeftover l (Done _ r) = Done l r
 replaceLeftover l (HaveOutput p c o) = HaveOutput (replaceLeftover l p) c o
 
