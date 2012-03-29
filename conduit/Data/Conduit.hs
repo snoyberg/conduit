@@ -65,8 +65,11 @@ import Data.Conduit.Util.Conduit
 -- $typeOverview
 
 infixr 0 $$
-
 infixr 0 $$+
+infixl 1 $=
+infixr 2 =$
+infixr 2 =$=
+
 
 -- | The connect operator, which pulls data from a source and pushes to a sink.
 -- There are two ways this process can terminate:
@@ -96,8 +99,6 @@ src $$ sink = runPipe $ pipe src sink
 src $$+ sink = runPipe $ pipeResume src sink
 {-# INLINE ($$+) #-}
 
-infixl 1 $=
-
 -- | Left fuse, combining a source and a conduit together into a new source.
 --
 -- Both the @Source@ and @Conduit@ will be closed when the newly-created
@@ -121,8 +122,6 @@ infixl 1 $=
 (=$) :: Monad m => Conduit a m b -> Sink b m c -> Sink a m c
 (=$) = pipe
 {-# INLINE (=$) #-}
-
-infixr 0 =$=
 
 -- | Fusion operator, combining two @Pipe@s together into a new @Pipe@.
 --

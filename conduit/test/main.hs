@@ -358,6 +358,41 @@ main = hspecX $ do
                 src2 C.$$ CL.fold (+) 0
             x @?= sum [6..10]
 
+    describe "operators" $ do
+        it "only use =$=" $
+            runIdentity
+            (    CL.sourceList [1..10 :: Int]
+              C.$$ CL.map (+ 1)
+             C.=$= CL.map (subtract 1)
+             C.=$= CL.map (* 2)
+             C.=$= CL.map (`div` 2)
+             C.=$= CL.fold (+) 0
+            ) @?= sum [1..10]
+        it "only use =$" $
+            runIdentity
+            (    CL.sourceList [1..10 :: Int]
+              C.$$ CL.map (+ 1)
+              C.=$ CL.map (subtract 1)
+              C.=$ CL.map (* 2)
+              C.=$ CL.map (`div` 2)
+              C.=$ CL.fold (+) 0
+            ) @?= sum [1..10]
+        it "chain" $ do
+            x <-      CL.sourceList [1..10 :: Int]
+                C.$=  CL.map (+ 1)
+                C.=$= CL.map (+ 1)
+                C.$=  CL.map (+ 1)
+                C.=$= CL.map (subtract 3)
+                C.=$= CL.map (* 2)
+                C.$$  CL.map (`div` 2)
+                C.=$= CL.map (+ 1)
+                C.=$  CL.map (+ 1)
+                C.=$= CL.map (+ 1)
+                C.=$  CL.map (subtract 3)
+                C.=$= CL.fold (+) 0
+            x @?= sum [1..10]
+
+
     describe "properly using binary file reading" $ do
         it "sourceFile" $ do
             x <- runResourceT $ CB.sourceFile "test/random" C.$$ CL.consume
