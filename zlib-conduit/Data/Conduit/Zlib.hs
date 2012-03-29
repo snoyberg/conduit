@@ -133,7 +133,7 @@ compressFlush level config = NeedInput
 
 goPopper :: MonadUnsafeIO m
          => (input -> Conduit input m output)
-         -> Source m output
+         -> Conduit input m output
          -> (S.ByteString -> output)
          -> [output]
          -> Popper
@@ -147,7 +147,7 @@ goPopper push close wrap final popper = do
              in go final
         Just bs -> HaveOutput (PipeM (goPopper push close wrap final popper) (return ())) (return ()) (wrap bs)
 
-slurp :: Monad m => m (Maybe a) -> Source m a
+slurp :: Monad m => m (Maybe a) -> Pipe i a m ()
 slurp pop = flip PipeM (return ()) $ do
     x <- pop
     return $ case x of
