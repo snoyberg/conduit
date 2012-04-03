@@ -20,7 +20,7 @@ module Data.Conduit.Util.Conduit
 import Prelude hiding (sequence)
 import Control.Monad.Trans.Resource
 import Data.Conduit.Internal
-import Control.Monad (liftM)
+import Control.Monad (liftM, when)
 
 -- | A helper function for returning a list of values from a @Conduit@.
 --
