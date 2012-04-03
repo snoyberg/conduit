@@ -169,59 +169,73 @@ pipe l r = pipeResume l r >>= \(l', res) -> lift (pipeClose l') >> return res
 --
 -- Since 0.4.0
 pipeResume :: Monad m => Pipe a b m () -> Pipe b c m r -> Pipe a c m (Pipe a b m (), r)
+pipeResume left right =
+    -- We're using a case statement instead of pattern matching in the function
+    -- itself to make the logic explicit. We first check the right pipe, and
+    -- only if the right pipe is asking for more input do we process the left
+    -- pipe.
+    case right of
+        -- Right pipe is done, grab leftovers and the left pipe
+        Done leftoverr r ->
+            -- Get any leftovers from the left pipe, the current state of the
+            -- left pipe (sans leftovers), and a close action for the left
+            -- pipe.
+            let (leftover, left', leftClose) =
+                    case left of
+                        Done leftoverl () -> (leftoverl, Done Nothing (), return ())
+                        _ -> (Nothing, left, pipeClose left)
+            -- Combine the current state of the left pipe with any leftovers
+            -- from the right pipe.
+                left'' =
+                    case leftoverr of
+                        Just a -> HaveOutput left' leftClose a
+                        Nothing -> left'
+            -- Return the leftovers, the final left pipe state, and the result.
+             in Done leftover (left'', r)
 
-pipeResume (Done leftoverl ()) (Done leftoverr r) =
-    Done leftoverl (left, r)
-  where
-    left =
-        case leftoverr of
-            Nothing -> mempty
-            Just i -> HaveOutput (Done Nothing ()) (return ()) i
+        -- Right pipe needs to run a monadic action.
+        PipeM mp c -> PipeM
+            (pipeResume left `liftM` mp)
+            (((,) left) `liftM` c)
 
-pipeResume left (Done leftoverr r) =
-    Done Nothing (left', r)
-  where
-    left' =
-        case leftoverr of
-            Nothing -> left
-            Just i -> HaveOutput left (pipeClose left) i
+        -- Right pipe has some output, provide it downstream and continue.
+        HaveOutput p c o -> HaveOutput
+            (pipeResume left p)
+            (((,) left) `liftM` c)
+            o
 
--- Left pipe has output, right pipe wants it.
-pipeResume (HaveOutput lp _ a) (NeedInput rp _) = pipeResume lp (rp a)
+        -- Right pipe needs input, so let's get it
+        NeedInput rp rc ->
+            case left of
+                -- Left pipe has output, right pipe wants it.
+                HaveOutput lp _ a -> pipeResume lp $ rp a
 
--- Right pipe needs to run a monadic action.
-pipeResume left (PipeM mp c) = PipeM
-    (pipeResume left `liftM` mp)
-    (((,) left) `liftM` c)
+                -- Left pipe needs more input, ask for it.
+                NeedInput p c -> NeedInput
+                    (\a -> pipeResume (p a) right)
+                    (do
+                        -- There is no more input available, so connect the
+                        -- no-more-input record with the right.
+                        (left', res) <- pipeResume c right
 
--- Right pipe has some output, provide it downstream and continue.
-pipeResume left (HaveOutput p c o) = HaveOutput
-    (pipeResume left p)
-    (((,) left) `liftM` c)
-    o
+                        -- Theoretically, we could return the left' value as
+                        -- the first element in the tuple. However, it is not
+                        -- recommended to give input to a pipe after it has
+                        -- been told there is no more input. Instead, we close
+                        -- the pipe and return mempty in its place.
+                        lift $ pipeClose left'
+                        return (mempty, res)
+                        )
 
--- Now we've dealt with all right constructor except for NeedInput. Since the
--- right pipe needs more input, we can process the left pipe.
+                -- Left pipe is done, right pipe needs input. In such a case,
+                -- tell the right pipe there is no more input, and eventually
+                -- replace its leftovers with the left pipe's leftover.
+                Done l () -> ((,) mempty) `liftM` replaceLeftover l rc
 
--- Left pipe needs more input, ask for it.
-pipeResume (NeedInput p c) right@NeedInput{} = NeedInput
-    (\a -> pipeResume (p a) right)
-    (do
-        (left, res) <- pipeResume c right
-        lift $ pipeClose left
-        return (mempty, res)
-        )
-
--- Left pipe is done, right pipe needs input. In such a case, tell the right
--- pipe there is no more input, and eventually replace its leftovers with the
--- left pipe's leftover.
-pipeResume (Done l ()) (NeedInput _ c) = ((,) mempty) `liftM` replaceLeftover l c
-
-
--- Left pipe needs to run a monadic action.
-pipeResume (PipeM mp c) right@NeedInput{} = PipeM
-    ((`pipeResume` right) `liftM` mp)
-    (c >> liftM ((,) mempty) (pipeClose right))
+                -- Left pipe needs to run a monadic action.
+                PipeM mp c -> PipeM
+                    ((`pipeResume` right) `liftM` mp)
+                    (c >> liftM ((,) mempty) (pipeClose right))
 
 replaceLeftover :: Monad m => Maybe i -> Pipe i' o m r -> Pipe i o m r
 replaceLeftover l (Done _ r) = Done l r
