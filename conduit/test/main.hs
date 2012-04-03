@@ -343,6 +343,9 @@ main = hspecX $ do
         go "utf16_be" TLE.encodeUtf16BE CT.utf16_be
         go "utf32_le" TLE.encodeUtf32LE CT.utf32_le
         go "utf32_be" TLE.encodeUtf32BE CT.utf32_be
+        it "is not too eager" $ do
+            x <- CL.sourceList ["foobarbaz", error "ignore me"] C.$$ CT.decode CT.utf8 C.=$ CL.head
+            x @?= Just "foobarbaz"
 
     describe "binary isolate" $ do
         it "works" $ do
