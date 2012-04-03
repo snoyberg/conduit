@@ -53,10 +53,10 @@ import Data.Monoid (Monoid (mappend, mempty))
 -- Since 0.4.0
 data Pipe i o m r =
     -- | Provide new output to be sent downstream. This constructor has three
-    -- records: the next @Pipe@ to be used, an early-closed function, and the
+    -- fields: the next @Pipe@ to be used, an early-closed function, and the
     -- output value.
     HaveOutput (Pipe i o m r) (m r) o
-    -- | Request more input from upstream. The first record takes a new input
+    -- | Request more input from upstream. The first field takes a new input
     -- value and provides a new @Pipe@. The second is for early termination. It
     -- gives a new @Pipe@ which takes no input from upstream. This allows a
     -- @Pipe@ to provide a final stream of output values after no more input is
@@ -66,7 +66,7 @@ data Pipe i o m r =
     -- input value and and result.
   | Done (Maybe i) r
     -- | Require running of a monadic action to get the next @Pipe@. Second
-    -- record is an early cleanup function. Technically, this second record
+    -- field is an early cleanup function. Technically, this second field
     -- could be skipped, but doing so would require extra operations to be
     -- performed in some cases. For example, for a @Pipe@ pulling data from a
     -- file, it may be forced to pull an extra, unneeded chunk before closing
