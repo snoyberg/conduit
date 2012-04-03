@@ -174,8 +174,6 @@ sequenceSink state0 fsink = do
 sequence :: Monad m => Sink input m output -> Conduit input m output
 sequence sink = do
     x <- hasInput
-    if x
-        then do
-            sinkToPipe sink >>= yield
-            sequence sink
-        else return ()
+    when x $ do
+      sinkToPipe sink >>= yield
+      sequence sink
