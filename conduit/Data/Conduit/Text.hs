@@ -78,40 +78,30 @@ encode codec = CL.mapM $ \t -> do
 --
 -- Since 0.3.0
 decode :: MonadThrow m => Codec -> C.Conduit B.ByteString m T.Text
-decode codec = C.conduitState
-    Nothing
-    push
-    close
+decode codec =
+    C.NeedInput push (close B.empty)
   where
-    push mb input = do
-        (mb', ts) <- go' mb input
-        return $ C.StateProducing mb' ts
-    close mb =
-        case mb of
-            Nothing -> return []
-            Just b
-                | B.null b -> error "Data.Conduit.Text.decode: Received a null chunk"
-                | otherwise -> monadThrow $ DecodeException codec (B.head b)
-
-    go' mb input = do -- FIXME This can be simplified significantly since input is now only a single BS
-        let bss = maybe id (:) mb [input]
-        either monadThrow return $ go bss id
-
-    go [] front = Right (Nothing, front [])
-    go (x:xs) front
-        | B.null x = go xs front
-    go (x:xs) front =
+    push bs =
         case extra of
-            Left (exc, _) -> Left exc
-            Right bs
-                | B.null bs -> go xs front'
-                | otherwise ->
-                    case xs of
-                        y:ys -> go (B.append bs y:ys) front'
-                        [] -> Right (Just bs, front' [])
+            Left (exc, _) -> C.PipeM (monadThrow exc) (monadThrow exc)
+            Right bs' ->
+                let push' = if B.null bs' then push else push . B.append bs'
+                    close' = close bs'
+                 in C.HaveOutput (C.NeedInput push' close') (close2 bs') text
       where
-        (text, extra) = codecDecode codec x
-        front' = front . (text:)
+        (text, extra) = codecDecode codec bs
+
+    close bs =
+        case B.uncons bs of
+            Nothing -> C.Done Nothing ()
+            Just (w, _) ->
+                let exc = monadThrow $ DecodeException codec w
+                 in C.PipeM exc exc
+
+    close2 bs =
+        case B.uncons bs of
+            Nothing -> return ()
+            Just (w, _) -> monadThrow $ DecodeException codec w
 
 -- |
 -- Since 0.3.0
