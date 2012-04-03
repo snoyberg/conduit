@@ -60,21 +60,29 @@ instance AttoparsecInput T.Text where
 --
 -- If parsing fails, a 'ParseError' will be thrown with 'C.monadThrow'.
 sinkParser :: (AttoparsecInput a, C.MonadThrow m) => A.Parser a b -> C.Sink a m b
-sinkParser p0 = C.sinkState
-    (parseA p0)
-    push
-    close
+sinkParser =
+    sink . parseA
   where
-    push parser c | isNull c = return (C.StateProcessing parser)
-    push parser c =
-        case parser c of
-            A.Done leftover x ->
-                let lo = if isNull leftover then Nothing else Just leftover
-                 in return (C.StateDone lo x)
-            A.Fail _ contexts msg -> C.monadThrow $ ParseError contexts msg
-            A.Partial p -> return (C.StateProcessing p)
-    close parser = do
-        case feedA (parser empty) empty of
-            A.Done _leftover y -> return y
-            A.Fail _ contexts msg -> C.monadThrow $ ParseError contexts msg
-            A.Partial _ -> C.monadThrow DivergentParser
+    sink parser = C.NeedInput (push parser) (close parser)
+
+    push parser c | isNull c = sink parser
+    push parser c = go (parser c) sink
+
+    close parser = go
+        (feedA (parser empty) empty)
+        (const $ C.PipeM exc exc)
+      where
+        exc = C.monadThrow DivergentParser
+
+    go (A.Done leftover x) _ =
+        C.Done lo x
+      where
+        lo
+            | isNull leftover = Nothing
+            | otherwise = Just leftover
+    go (A.Fail _ contexts msg) _ =
+        C.PipeM exc exc
+      where
+        exc = C.monadThrow $ ParseError contexts msg
+
+    go (A.Partial parser') onPartial = onPartial parser'
