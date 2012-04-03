@@ -186,15 +186,6 @@ pipeResume left (Done leftoverr r) =
             Nothing -> left
             Just i -> HaveOutput left (pipeClose left) i
 
--- Left pipe needs more input, ask for it.
-pipeResume (NeedInput p c) right = NeedInput
-    (\a -> pipeResume (p a) right)
-    (do
-        (left, res) <- pipeResume c right
-        lift $ pipeClose left
-        return (mempty, res)
-        )
-
 -- Left pipe has output, right pipe wants it.
 pipeResume (HaveOutput lp _ a) (NeedInput rp _) = pipeResume lp (rp a)
 
@@ -209,6 +200,18 @@ pipeResume left (HaveOutput p c o) = HaveOutput
     (((,) left) `liftM` c)
     o
 
+-- Now we've dealt with all right constructor except for NeedInput. Since the
+-- right pipe needs more input, we can process the left pipe.
+
+-- Left pipe needs more input, ask for it.
+pipeResume (NeedInput p c) right@NeedInput{} = NeedInput
+    (\a -> pipeResume (p a) right)
+    (do
+        (left, res) <- pipeResume c right
+        lift $ pipeClose left
+        return (mempty, res)
+        )
+
 -- Left pipe is done, right pipe needs input. In such a case, tell the right
 -- pipe there is no more input, and eventually replace its leftovers with the
 -- left pipe's leftover.
@@ -216,7 +219,7 @@ pipeResume (Done l ()) (NeedInput _ c) = ((,) mempty) `liftM` replaceLeftover l 
 
 
 -- Left pipe needs to run a monadic action.
-pipeResume (PipeM mp c) right = PipeM
+pipeResume (PipeM mp c) right@NeedInput{} = PipeM
     ((`pipeResume` right) `liftM` mp)
     (c >> liftM ((,) mempty) (pipeClose right))
 
