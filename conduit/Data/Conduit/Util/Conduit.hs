@@ -167,7 +167,7 @@ sequenceSink state0 fsink = do
 -- | Specialised version of 'sequenceSink'
 --
 -- Note that this function will return an infinite stream if provided a
--- @SinkNoData@ constructor. In other words, you probably don\'t want to do
+-- @Sink@ which does not consume data. In other words, you probably don\'t want to do
 -- @sequence . return@.
 --
 -- Since 0.3.0
