@@ -74,10 +74,9 @@ data Pipe i o m r =
   | PipeM (m (Pipe i o m r)) (m r)
 
 -- | A @Pipe@ which provides a stream of output values, without consuming any
--- input. The input parameter is set to @()@ instead of @Void@ since there is
--- no way to statically guarantee that the @NeedInput@ constructor will not be
--- used. A @Source@ is not used to produce a final result, and thus the result
--- parameter is set to @()@ as well.
+-- input. The input parameter is set to @Void@ to indicate that this @Pipe@
+-- takes no input.  A @Source@ is not used to produce a final result, and thus
+-- the result parameter is set to @()@.
 --
 -- Since 0.4.0
 type Source m a = Pipe Void a m ()
