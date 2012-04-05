@@ -1,5 +1,5 @@
 name:            cereal-conduit
-version:         0.0.3
+version:         0.0.4
 license:         BSD3
 license-file:    LICENSE
 author:          Myles C. Maxfield <myles.maxfield@gmail.com>
@@ -14,7 +14,7 @@ homepage:        https://github.com/litherum/cereal-conduit
 
 library
     build-depends: base     >= 4       && < 5
-                 , conduit  >= 0.2.0
+                 , conduit  >= 0.4.0   && < 0.5.0
                  , cereal   >= 0.3.1.0
                  , mtl
                  , bytestring
