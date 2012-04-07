@@ -1,11 +1,11 @@
 name:            cereal-conduit
-version:         0.0.4
+version:         0.0.5
 license:         BSD3
 license-file:    LICENSE
 author:          Myles C. Maxfield <myles.maxfield@gmail.com>
 maintainer:      Myles C. Maxfield <myles.maxfield@gmail.com>
-synopsis:        Turn Data.Serialize Gets and Puts into Sources and Sinks
-description:     Turn Data.Serialize Gets and Puts into Sources and Sinks
+synopsis:        Turn Data.Serialize Gets and Puts into Sources, Sinks, and Conduits
+description:     Turn Data.Serialize Gets and Puts into Sources, Sinks, and Conduits
 category:        Conduit
 stability:       Experimental
 cabal-version:   >= 1.8
@@ -30,6 +30,7 @@ Test-Suite test-cereal-conduit
                  , mtl
                  , bytestring
                  , test-framework-hunit
+                 , HUnit
 
 source-repository head
   type:     git
