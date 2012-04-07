@@ -19,6 +19,7 @@ module Data.Conduit.List
     , drop
     , head
     , zip
+    , zipSinks
     , peek
     , consume
     , sinkNull
@@ -47,8 +48,10 @@ import Prelude
     , flip
     , seq
     , otherwise
+    , error
     )
 import Data.Conduit
+import Data.Conduit.Internal (pipeClose)
 import Data.Monoid (mempty)
 import Control.Monad (liftM, liftM2)
 
@@ -335,3 +338,27 @@ zip x@(HaveOutput _ closex _) (PipeM my closey) = PipeM (liftM (\y -> zip x y) m
 zip (HaveOutput srcx closex x) (HaveOutput srcy closey y) = HaveOutput (zip srcx srcy) (closex >> closey) (x, y)
 zip (NeedInput _ c) right = zip c right
 zip left (NeedInput _ c) = zip left c
+
+
+-- | Combines two sinks. The new sink will complete when both input sinks have completed.
+--
+-- Any left over input is discarded.
+--
+-- Since 0.4.0.2
+zipSinks :: Monad m => Sink i m r -> Sink i m r' -> Sink i m (r, r')
+
+zipSinks (PipeM mpx mx)     py                 = PipeM (liftM (`zipSinks` py) mpx) (liftM2 (,) mx (pipeClose py))
+zipSinks px                 (PipeM mpy my)     = PipeM (liftM (zipSinks px) mpy)   (liftM2 (,) (pipeClose px) my)
+
+-- discard any left over input, as we have not kept track of whether one of the sinks finished ages ago
+zipSinks (Done _ x)         (Done _ y)         = Done Nothing (x, y)
+
+zipSinks (NeedInput fpx px) (NeedInput fpy py) = NeedInput (\i -> zipSinks (fpx i) (fpy i)) (zipSinks px py)
+zipSinks (NeedInput fpx px) py                 = NeedInput (\i -> zipSinks (fpx i) py)      (zipSinks px py)
+zipSinks px                 (NeedInput fpy py) = NeedInput (\i -> zipSinks px (fpy i))      (zipSinks px py)
+
+-- these cases should be forbidden by the type system, but GHC doesn't realise that
+zipSinks (HaveOutput _ _ _) (HaveOutput _ _ _) = error "zipSink: both arguments are `HaveOutput`, but this is impossible for a Sink"
+zipSinks (HaveOutput _ _ _) _                  = error "zipSink: first argument is `HaveOutput`, but this is impossible for a Sink"
+zipSinks _                  (HaveOutput _ _ _) = error "zipSink: second argument is `HaveOutput`, but this is impossible for a Sink"
+
