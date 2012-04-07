@@ -1,45 +1,36 @@
-{-# LANGUAGE DeriveDataTypeable #-}
 -- | Turn a 'Get' into a 'Sink' and a 'Put' into a 'Source'
+
 module Data.Conduit.Cereal where
 
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
-import Data.Typeable (Typeable)
-import Control.Exception (Exception)
-import Control.Monad.Trans
-import qualified Data.Conduit as DC
-import Data.Conduit.List (sourceList)
-import Data.Serialize.Get
-import Data.Serialize.Put
-import Control.Exception (throw)
-
-data GetException = GetException String
-                  | GetDoesntConsumeInput
-  deriving (Show, Typeable)
-
-instance Exception GetException
+import qualified Data.Conduit as C
+import           Data.Conduit.List (sourceList)
+import           Data.Serialize
 
 -- | Convert a 'Get' into a 'Sink'. The 'Get' will be streamed bytes until it returns 'Done' or 'Fail'.
 --
--- If the 'Get' fails, a GetException will be thrown with 'resourceThrow'. This function itself can also throw a GetException.
-sinkGet :: DC.ResourceThrow m => Get output -> DC.Sink BS.ByteString m output
-sinkGet get = case runGetPartial get BS.empty of
-                Fail s -> throw $ GetException s
-                Partial f -> DC.SinkData { DC.sinkPush = push f
-                                         , DC.sinkClose = close f
-                                         }
-                Done _ _ -> throw GetDoesntConsumeInput
-  where push f input
-          | BS.null input = return $ DC.Processing (push f) (close f)
-          | otherwise = case f input of
-              Fail s -> lift $ DC.resourceThrow $ GetException s
-              Partial f' -> return $ DC.Processing (push f') (close f')
-              Done r rest -> return $ DC.Done (if BS.null rest
-                                                 then Nothing
-                                                 else Just rest
-                                              ) r
-        close f = let Fail s = f BS.empty in lift $ DC.resourceThrow $ GetException s
+-- If 'Get' succeed it will return the data read and unconsumed part of the input stream.
+-- If the 'Get' fails it will return message describing the error. 
+
+-- I've decieded to remove exceptions stuff, let the user decide whenever he whants exections or not.
+sinkGet :: Monad m => Get output -> C.Sink BS.ByteString m (Either String output)
+sinkGet get = C.NeedInput (consume partialReader) (close partialReader) where
+    partialReader = runGetPartial get
+    
+    consume f s = case f s of 
+                    Fail msg   -> C.Done (streamToMaybe s) (Left msg)
+                    Partial f' -> C.NeedInput (consume f') (close f')
+                    Done r s'  -> C.Done (streamToMaybe s') (Right r)
+    
+    close f = case f BS.empty of 
+                Fail msg  -> C.Done Nothing (Left msg)  -- unexcepted end of the stream - normal situation 
+                Partial _ -> error "Unexcepted result from Cereal: Partial returned for an empty byte string."
+                Done r s  -> C.Done (streamToMaybe s) (Right r) -- producing result without consumin - strange but acceptable
+                    
+    streamToMaybe s = if BS.null s then Nothing
+                                   else Just s
 
 -- | Convert a 'Put' into a 'Source'. Runs in constant memory.
-sourcePut :: DC.Resource m => Put -> DC.Source m BS.ByteString
+sourcePut :: Monad m => Put -> C.Source m BS.ByteString
 sourcePut put = sourceList $ LBS.toChunks $ runPutLazy put
