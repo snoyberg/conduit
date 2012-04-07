@@ -12,24 +12,19 @@ import           Data.Serialize
 --
 -- If 'Get' succeed it will return the data read and unconsumed part of the input stream.
 -- If the 'Get' fails it will return message describing the error. 
-
--- I've decieded to remove exceptions stuff, let the user decide whenever he whants exections or not.
 sinkGet :: Monad m => Get output -> C.Sink BS.ByteString m (Either String output)
-sinkGet get = C.NeedInput (consume partialReader) (close partialReader) where
-    partialReader = runGetPartial get
-    
-    consume f s = case f s of 
-                    Fail msg   -> C.Done (streamToMaybe s) (Left msg)
-                    Partial f' -> C.NeedInput (consume f') (close f')
-                    Done r s'  -> C.Done (streamToMaybe s') (Right r)
-    
-    close f = case f BS.empty of 
-                Fail msg  -> C.Done Nothing (Left msg)  -- unexcepted end of the stream - normal situation 
-                Partial _ -> error "Unexcepted result from Cereal: Partial returned for an empty byte string."
-                Done r s  -> C.Done (streamToMaybe s) (Right r) -- producing result without consumin - strange but acceptable
-                    
-    streamToMaybe s = if BS.null s then Nothing
-                                   else Just s
+sinkGet get = consume (runGetPartial get) BS.empty
+  where push f input
+          | BS.null input = C.NeedInput (push f) (close f)
+          | otherwise = consume f input
+        consume f s = case f s of
+          Fail msg   -> C.Done (streamToMaybe s) (Left msg)
+          Partial f' -> C.NeedInput (push f') (close f')
+          Done r s'  -> C.Done (streamToMaybe s') (Right r)
+        close f = let Fail r = f BS.empty in C.Done Nothing (Left r)
+        streamToMaybe s = if BS.null s
+                            then Nothing
+                            else Just s
 
 -- | Convert a 'Put' into a 'Source'. Runs in constant memory.
 sourcePut :: Monad m => Put -> C.Source m BS.ByteString
