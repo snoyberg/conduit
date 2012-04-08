@@ -44,6 +44,7 @@ import Prelude
     ( ($), return, (==), (-), Int
     , (.), id, Maybe (..), Monad
     , Bool (..)
+    , Ordering (..)
     , (>>)
     , flip
     , seq
@@ -340,23 +341,33 @@ zip (NeedInput _ c) right = zip c right
 zip left (NeedInput _ c) = zip left c
 
 
--- | Combines two sinks. The new sink will complete when both input sinks have completed.
+-- | Combines two sinks. The new sink will complete when both input sinks have
+--   completed.
 --
--- Any left over input is discarded.
+-- If both sinks finish on the same chunk, and both report leftover input,
+-- arbitrarily yield the left sink's leftover input.
 --
 -- Since 0.4.0.2
 zipSinks :: Monad m => Sink i m r -> Sink i m r' -> Sink i m (r, r')
+zipSinks = zipSinks' EQ
 
-zipSinks (PipeM mpx mx)     py                 = PipeM (liftM (`zipSinks` py) mpx) (liftM2 (,) mx (pipeClose py))
-zipSinks px                 (PipeM mpy my)     = PipeM (liftM (zipSinks px) mpy)   (liftM2 (,) (pipeClose px) my)
+zipSinks' :: Monad m => Ordering -> Sink i m r -> Sink i m r' -> Sink i m (r, r')
+zipSinks' byInputUsed = (><)
+  where
+    PipeM mpx mx     >< py               = PipeM (liftM (>< py) mpx) (liftM2 (,) mx (pipeClose py))
+    px               >< PipeM mpy my     = PipeM (liftM (px ><) mpy) (liftM2 (,) (pipeClose px) my)
 
--- discard any left over input, as we have not kept track of whether one of the sinks finished ages ago
-zipSinks (Done _ x)         (Done _ y)         = Done Nothing (x, y)
+    Done ix x        >< Done iy y        = Done i (x, y)
+      where
+        i = case byInputUsed of
+                 EQ -> iy >> ix
+                 GT -> ix
+                 LT -> iy
 
-zipSinks (NeedInput fpx px) (NeedInput fpy py) = NeedInput (\i -> zipSinks (fpx i) (fpy i)) (zipSinks px py)
-zipSinks (NeedInput fpx px) py                 = NeedInput (\i -> zipSinks (fpx i) py)      (zipSinks px py)
-zipSinks px                 (NeedInput fpy py) = NeedInput (\i -> zipSinks px (fpy i))      (zipSinks px py)
+    NeedInput fpx px >< NeedInput fpy py = NeedInput (\i -> zipSinks' EQ (fpx i) (fpy i)) (px >< py)
+    NeedInput fpx px >< py               = NeedInput (\i -> zipSinks' GT (fpx i) py)      (px >< py)
+    px               >< NeedInput fpy py = NeedInput (\i -> zipSinks' LT px (fpy i))      (px >< py)
 
-zipSinks (HaveOutput _ _ o) _                  = absurd o
-zipSinks _                  (HaveOutput _ _ o) = absurd o
+    HaveOutput _ _ o >< _                = absurd o
+    _                >< HaveOutput _ _ o = absurd o
 
