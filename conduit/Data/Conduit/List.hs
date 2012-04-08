@@ -347,7 +347,7 @@ zip left (NeedInput _ c) = zip left c
 -- If both sinks finish on the same chunk, and both report leftover input,
 -- arbitrarily yield the left sink's leftover input.
 --
--- Since 0.4.0.2
+-- Since 0.4.1
 zipSinks :: Monad m => Sink i m r -> Sink i m r' -> Sink i m (r, r')
 zipSinks = zipSinks' EQ
 
