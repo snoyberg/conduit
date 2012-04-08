@@ -31,7 +31,7 @@ module Data.Conduit.Blaze
   , allNewBuffersStrategy
   , reuseBufferStrategy
 
-  -- * Enumeratees from builders to bytestrings
+  -- * Conduits from builders to bytestrings
   , builderToByteString
   , unsafeBuilderToByteString
   , builderToByteStringWith
