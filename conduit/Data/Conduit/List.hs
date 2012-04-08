@@ -48,11 +48,11 @@ import Prelude
     , flip
     , seq
     , otherwise
-    , error
     )
 import Data.Conduit
 import Data.Conduit.Internal (pipeClose)
 import Data.Monoid (mempty)
+import Data.Void (absurd)
 import Control.Monad (liftM, liftM2)
 
 -- | A strict left fold.
@@ -357,8 +357,6 @@ zipSinks (NeedInput fpx px) (NeedInput fpy py) = NeedInput (\i -> zipSinks (fpx 
 zipSinks (NeedInput fpx px) py                 = NeedInput (\i -> zipSinks (fpx i) py)      (zipSinks px py)
 zipSinks px                 (NeedInput fpy py) = NeedInput (\i -> zipSinks px (fpy i))      (zipSinks px py)
 
--- these cases should be forbidden by the type system, but GHC doesn't realise that
-zipSinks (HaveOutput _ _ _) (HaveOutput _ _ _) = error "zipSink: both arguments are `HaveOutput`, but this is impossible for a Sink"
-zipSinks (HaveOutput _ _ _) _                  = error "zipSink: first argument is `HaveOutput`, but this is impossible for a Sink"
-zipSinks _                  (HaveOutput _ _ _) = error "zipSink: second argument is `HaveOutput`, but this is impossible for a Sink"
+zipSinks (HaveOutput _ _ o) _                  = absurd o
+zipSinks _                  (HaveOutput _ _ o) = absurd o
 
