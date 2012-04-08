@@ -1,5 +1,5 @@
 Name:                blaze-builder-conduit
-Version:             0.4.0
+Version:             0.4.0.1
 Synopsis:            Convert streams of builders to streams of bytestrings.
 Description:         Convert streams of builders to streams of bytestrings.
 License:             BSD3
