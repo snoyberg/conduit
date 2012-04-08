@@ -127,6 +127,17 @@ main = hspecX $ do
             res <- runResourceT $ CL.zip (CL.sourceList [1..10]) (CL.sourceList [11..12]) C.$$ CL.consume
             res @=? zip [1..10 :: Int] [11..12 :: Int]
 
+    describe "zipping sinks" $ do
+        it "take all" $ do
+            res <- runResourceT $ CL.sourceList [1..10] C.$$ CL.zipSinks CL.consume CL.consume
+            res @=? ([1..10 :: Int], [1..10 :: Int])
+        it "take fewer on left" $ do
+            res <- runResourceT $ CL.sourceList [1..10] C.$$ CL.zipSinks (CL.take 4) CL.consume
+            res @=? ([1..4 :: Int], [1..10 :: Int])
+        it "take fewer on right" $ do
+            res <- runResourceT $ CL.sourceList [1..10] C.$$ CL.zipSinks CL.consume (CL.take 4)
+            res @=? ([1..10 :: Int], [1..4 :: Int])
+
     describe "Monad instance for Sink" $ do
         it "binding" $ do
             x <- runResourceT $ CL.sourceList [1..10] C.$$ do

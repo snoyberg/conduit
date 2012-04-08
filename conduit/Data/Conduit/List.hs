@@ -19,6 +19,7 @@ module Data.Conduit.List
     , drop
     , head
     , zip
+    , zipSinks
     , peek
     , consume
     , sinkNull
@@ -43,13 +44,16 @@ import Prelude
     ( ($), return, (==), (-), Int
     , (.), id, Maybe (..), Monad
     , Bool (..)
+    , Ordering (..)
     , (>>)
     , flip
     , seq
     , otherwise
     )
 import Data.Conduit
+import Data.Conduit.Internal (pipeClose)
 import Data.Monoid (mempty)
+import Data.Void (absurd)
 import Control.Monad (liftM, liftM2)
 
 -- | A strict left fold.
@@ -335,3 +339,35 @@ zip x@(HaveOutput _ closex _) (PipeM my closey) = PipeM (liftM (\y -> zip x y) m
 zip (HaveOutput srcx closex x) (HaveOutput srcy closey y) = HaveOutput (zip srcx srcy) (closex >> closey) (x, y)
 zip (NeedInput _ c) right = zip c right
 zip left (NeedInput _ c) = zip left c
+
+
+-- | Combines two sinks. The new sink will complete when both input sinks have
+--   completed.
+--
+-- If both sinks finish on the same chunk, and both report leftover input,
+-- arbitrarily yield the left sink's leftover input.
+--
+-- Since 0.4.0.2
+zipSinks :: Monad m => Sink i m r -> Sink i m r' -> Sink i m (r, r')
+zipSinks = zipSinks' EQ
+
+zipSinks' :: Monad m => Ordering -> Sink i m r -> Sink i m r' -> Sink i m (r, r')
+zipSinks' byInputUsed = (><)
+  where
+    PipeM mpx mx     >< py               = PipeM (liftM (>< py) mpx) (liftM2 (,) mx (pipeClose py))
+    px               >< PipeM mpy my     = PipeM (liftM (px ><) mpy) (liftM2 (,) (pipeClose px) my)
+
+    Done ix x        >< Done iy y        = Done i (x, y)
+      where
+        i = case byInputUsed of
+                 EQ -> iy >> ix
+                 GT -> ix
+                 LT -> iy
+
+    NeedInput fpx px >< NeedInput fpy py = NeedInput (\i -> zipSinks' EQ (fpx i) (fpy i)) (px >< py)
+    NeedInput fpx px >< py               = NeedInput (\i -> zipSinks' GT (fpx i) py)      (px >< py)
+    px               >< NeedInput fpy py = NeedInput (\i -> zipSinks' LT px (fpy i))      (px >< py)
+
+    HaveOutput _ _ o >< _                = absurd o
+    _                >< HaveOutput _ _ o = absurd o
+
