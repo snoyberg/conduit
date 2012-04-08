@@ -10,6 +10,7 @@ import Data.Monoid
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Lazy as L
 import Data.ByteString.Lazy.Char8 ()
+import Control.Monad.Trans.Resource (runExceptionT_)
 
 main :: IO ()
 main = hspecX $ do
@@ -18,13 +19,14 @@ main = hspecX $ do
             let bss = map S.pack bss'
                 lbs = L.fromChunks bss
                 src = mconcat $ map (CL.sourceList . return) bss
-            outBss <- src C.$= CZ.gzip C.$= CZ.ungzip C.$$ CL.consume
+            outBss <- runExceptionT_ $ src C.$= CZ.gzip C.$= CZ.ungzip C.$$ CL.consume
             return $ lbs == L.fromChunks outBss
         prop "flush" $ \bss' -> runST $ do
             let bss = map S.pack $ filter (not . null) bss'
                 bssC = concatMap (\bs -> [C.Chunk bs, C.Flush]) bss
                 src = mconcat $ map (CL.sourceList . return) bssC
-            outBssC <- src C.$= CZ.compressFlush 5 (CZ.WindowBits 31)
+            outBssC <- runExceptionT_
+                     $ src C.$= CZ.compressFlush 5 (CZ.WindowBits 31)
                            C.$= CZ.decompressFlush (CZ.WindowBits 31)
                            C.$$ CL.consume
             return $ bssC == outBssC

@@ -12,17 +12,27 @@ module Data.Conduit.Zlib (
 ) where
 
 import Codec.Zlib
-import Data.Conduit
+import Data.Conduit hiding (unsafeLiftIO)
+import qualified Data.Conduit as C
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as S
+import Control.Exception (try)
+import Control.Monad ((<=<))
 
 -- | Gzip compression with default parameters.
-gzip :: MonadUnsafeIO m => Conduit ByteString m ByteString
+gzip :: (MonadThrow m, MonadUnsafeIO m) => Conduit ByteString m ByteString
 gzip = compress 1 (WindowBits 31)
 
 -- | Gzip decompression with default parameters.
-ungzip :: MonadUnsafeIO m => Conduit ByteString m ByteString
+ungzip :: (MonadUnsafeIO m, MonadThrow m) => Conduit ByteString m ByteString
 ungzip = decompress (WindowBits 31)
+
+unsafeLiftIO :: (MonadUnsafeIO m, MonadThrow m) => IO a -> m a
+unsafeLiftIO =
+    either rethrow return <=< C.unsafeLiftIO . try
+  where
+    rethrow :: MonadThrow m => ZlibException -> m a
+    rethrow = monadThrow
 
 -- |
 -- Decompress (inflate) a stream of 'ByteString's. For example:
@@ -30,7 +40,7 @@ ungzip = decompress (WindowBits 31)
 -- >    sourceFile "test.z" $= decompress defaultWindowBits $$ sinkFile "test"
 
 decompress
-    :: MonadUnsafeIO m
+    :: (MonadUnsafeIO m, MonadThrow m)
     => WindowBits -- ^ Zlib parameter (see the zlib-bindings package as well as the zlib C library)
     -> Conduit ByteString m ByteString
 decompress config = NeedInput
@@ -54,7 +64,7 @@ decompress config = NeedInput
 
 -- | Same as 'decompress', but allows you to explicitly flush the stream.
 decompressFlush
-    :: MonadUnsafeIO m
+    :: (MonadUnsafeIO m, MonadThrow m)
     => WindowBits -- ^ Zlib parameter (see the zlib-bindings package as well as the zlib C library)
     -> Conduit (Flush ByteString) m (Flush ByteString)
 decompressFlush config = NeedInput
@@ -91,7 +101,7 @@ decompressFlush config = NeedInput
 -- the format (zlib vs. gzip).
 
 compress
-    :: MonadUnsafeIO m
+    :: (MonadUnsafeIO m, MonadThrow m)
     => Int         -- ^ Compression level
     -> WindowBits  -- ^ Zlib parameter (see the zlib-bindings package as well as the zlib C library)
     -> Conduit ByteString m ByteString
@@ -109,7 +119,7 @@ compress level config = NeedInput
 
 -- | Same as 'compress', but allows you to explicitly flush the stream.
 compressFlush
-    :: MonadUnsafeIO m
+    :: (MonadUnsafeIO m, MonadThrow m)
     => Int         -- ^ Compression level
     -> WindowBits  -- ^ Zlib parameter (see the zlib-bindings package as well as the zlib C library)
     -> Conduit (Flush ByteString) m (Flush ByteString)
@@ -131,7 +141,7 @@ compressFlush level config = NeedInput
             Nothing -> Done Nothing ()
             Just chunk -> HaveOutput (Done Nothing ()) (return ()) (Chunk chunk)
 
-goPopper :: MonadUnsafeIO m
+goPopper :: (MonadUnsafeIO m, MonadThrow m)
          => (input -> Conduit input m output)
          -> Conduit input m output
          -> (S.ByteString -> output)

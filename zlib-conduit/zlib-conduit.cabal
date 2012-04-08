@@ -1,5 +1,5 @@
 Name:                zlib-conduit
-Version:             0.4.0
+Version:             0.4.0.1
 Synopsis:            Streaming compression/decompression via conduits.
 Description:         Streaming compression/decompression via conduits.
 License:             BSD3
@@ -37,6 +37,7 @@ test-suite test
                    , bytestring
                    , transformers
                    , zlib-conduit
+                   , resourcet
     ghc-options:     -Wall
 
 source-repository head
