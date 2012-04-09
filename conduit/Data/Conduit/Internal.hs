@@ -19,6 +19,7 @@ module Data.Conduit.Internal
     , yield
     , hasInput
     , transPipe
+    , mapOutput
     ) where
 
 import Control.Applicative (Applicative (..), (<$>))
@@ -295,3 +296,15 @@ transPipe f (HaveOutput p c o) = HaveOutput (transPipe f p) (f c) o
 transPipe f (NeedInput p c) = NeedInput (transPipe f . p) (transPipe f c)
 transPipe _ (Done i r) = Done i r
 transPipe f (PipeM mp c) = PipeM (f $ liftM (transPipe f) mp) (f c)
+
+-- | Apply a function to all the output values of a `Pipe`.
+--
+-- This mimics the behavior of `fmap` for a `Source` and `Conduit` in pre-0.4
+-- days.
+--
+-- Since 0.4.1
+mapOutput :: Monad m => (o1 -> o2) -> Pipe i o1 m r -> Pipe i o2 m r
+mapOutput f (HaveOutput p c o) = HaveOutput (mapOutput f p) c (f o)
+mapOutput f (NeedInput p c) = NeedInput (mapOutput f . p) (mapOutput f c)
+mapOutput _ (Done i r) = Done i r
+mapOutput f (PipeM mp c) = PipeM (liftM (mapOutput f) mp) c

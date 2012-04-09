@@ -40,6 +40,7 @@ module Data.Conduit
     , yield
     , hasInput
     , transPipe
+    , mapOutput
       -- ** Source
     , module Data.Conduit.Util.Source
       -- ** Sink
