@@ -354,6 +354,18 @@ main = hspecX $ do
         go "utf16_be" TLE.encodeUtf16BE CT.utf16_be
         go "utf32_le" TLE.encodeUtf32LE CT.utf32_le
         go "utf32_be" TLE.encodeUtf32BE CT.utf32_be
+        it "linesConduit works across split lines" $
+            (CL.sourceList [T.pack "abc", T.pack "d\nef"] C.$= CT.linesConduit C.$$ CL.consume) ==
+                [[T.pack "abcd"]]
+        it "linesConduit works with multiple lines in an item" $
+            (CL.sourceList [T.pack "ab\ncd\ne"] C.$= CT.linesConduit C.$$ CL.consume) ==
+                [[T.pack "ab", T.pack "cd"]]
+        it "linesConduit works with ending on a newline" $
+            (CL.sourceList [T.pack "ab\n"] C.$= CT.linesConduit C.$$ CL.consume) ==
+                [[T.pack "ab"]]
+        it "linesConduit works with ending a middle item on a newline" $
+            (CL.sourceList [T.pack "ab\n", T.pack "cd\ne"] C.$= CT.linesConduit C.$$ CL.consume) ==
+                [[T.pack "ab", T.pack "cd"]]
         it "is not too eager" $ do
             x <- CL.sourceList ["foobarbaz", error "ignore me"] C.$$ CT.decode CT.utf8 C.=$ CL.head
             x @?= Just "foobarbaz"
