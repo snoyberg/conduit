@@ -21,6 +21,7 @@ module Data.Conduit.Text
     , utf32_be
     , ascii
     , iso8859_1
+    , lines
 
     ) where
 
@@ -62,6 +63,31 @@ data Codec = Codec
 instance Show Codec where
     showsPrec d c = showParen (d > 10) $
         showString "Codec " . shows (codecName c)
+
+-- | Emit each line separately
+--
+-- Since 0.4.2
+lines :: Monad m => C.Conduit T.Text m T.Text
+lines =
+    C.conduitState id push close
+  where
+    push front bs' = return $ C.StateProducing leftover ls
+      where
+        bs = front bs'
+        (leftover, ls) = getLines id bs
+
+    getLines front bs
+        | T.null bs = (id, front [])
+        | T.null y = (T.append x, front [])
+        | otherwise = getLines (front . (x:)) (T.drop 1 y)
+      where
+        (x, y) = T.break (== '\n') bs
+
+    close front
+        | T.null bs = return []
+        | otherwise = return [bs]
+      where
+        bs = front T.empty
 
 -- | Convert text into bytes, using the provided codec. If the codec is
 -- not capable of representing an input character, an exception will be thrown.
