@@ -21,8 +21,7 @@ module Data.Conduit.Text
     , utf32_be
     , ascii
     , iso8859_1
-    , linesConduit
-    , textToStringConduit
+    , lines
 
     ) where
 
@@ -41,7 +40,6 @@ import qualified Data.Text.Encoding as TE
 import           Data.Word (Word8, Word16)
 import           System.IO.Unsafe (unsafePerformIO)
 import           Data.Typeable (Typeable)
-import qualified Data.List as L
 
 import qualified Data.Conduit as C
 import qualified Data.Conduit.List as CL
@@ -69,23 +67,27 @@ instance Show Codec where
 -- | Emit each line separately
 --
 -- Since 0.4.2
-linesConduit :: Monad m => C.Conduit T.Text m T.Text
-linesConduit = C.NeedInput (f T.empty) (close T.empty)
-  where f x s = g $ (T.append x $ L.head l) : (L.tail l)
-          where l
-                  | T.unlines s' /= s = s'
-                  | otherwise = s' ++ [T.empty]  -- Item ended with a newline, but 'lines' pretends there is none
-                  where s' = T.lines s
-        g [] = undefined -- T.lines should always return at least one element
-        g [x] = C.NeedInput (f x) (close x)
-        g (x : xs) = C.HaveOutput (g xs) (return ()) x
-        close x = C.Done (if T.null x then Nothing else Just x) ()
+lines :: Monad m => C.Conduit T.Text m T.Text
+lines =
+    C.conduitState id push close
+  where
+    push front bs' = return $ C.StateProducing leftover ls
+      where
+        bs = front bs'
+        (leftover, ls) = getLines id bs
 
--- | Convert to a String
---
--- Since 0.4.2
-textToStringConduit :: Monad m => C.Conduit T.Text m String
-textToStringConduit = C.NeedInput (\ x -> C.HaveOutput textToStringConduit (return ()) $ T.unpack x) (C.Done Nothing ())
+    getLines front bs
+        | T.null bs = (id, front [])
+        | T.null y = (T.append x, front [])
+        | otherwise = getLines (front . (x:)) (T.drop 1 y)
+      where
+        (x, y) = T.break (== '\n') bs
+
+    close front
+        | T.null bs = return []
+        | otherwise = return [bs]
+      where
+        bs = front T.empty
 
 -- | Convert text into bytes, using the provided codec. If the codec is
 -- not capable of representing an input character, an exception will be thrown.
