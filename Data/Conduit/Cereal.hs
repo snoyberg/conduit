@@ -1,6 +1,6 @@
 -- | Turn a 'Get' into a 'Sink' and a 'Put' into a 'Source'
 
-module Data.Conduit.Cereal where
+module Data.Conduit.Cereal (sinkGet, conduitGet, sourcePut) where
 
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
@@ -15,25 +15,41 @@ import           Data.Serialize
 
 -- I've decieded to remove exceptions stuff, let the user decide whenever he whants exections or not.
 sinkGet :: Monad m => Get output -> C.Sink BS.ByteString m (Either String output)
-sinkGet get = C.NeedInput (consume partialReader) (earlyClose partialReader) where
+sinkGet get = C.NeedInput (consume partialReader) (closeEarly partialReader) where
     partialReader = runGetPartial get
     
-    consume f s = case f s of 
-                    Fail msg   -> C.Done (streamToMaybe s) (Left msg)
-                    Partial f' -> C.NeedInput (consume f') (lateClose f')
-                    Done r s'  -> C.Done (streamToMaybe s') (Right r)
+    consume f s | BS.null s = C.NeedInput (consume f) (closeLate f)
+                | otherwise = case f s of 
+                      Fail msg   -> C.Done (streamToMaybe s) (Left msg)
+                      Partial f' -> C.NeedInput (consume f') (closeLate f')
+                      Done r s'  -> C.Done (streamToMaybe s') (Right r)
     
-    earlyClose = close lateClose
+    closeEarly = close closeLate
 
-    lateClose  = close (const $ error "Unexcepted result from Cereal: Partial returned for an empty byte string.")
+    closeLate  = close (const $ error "Unexcepted result from Cereal: Partial returned for an empty byte string.")
 
     close p f = case f BS.empty of 
                 Fail msg   -> C.Done Nothing (Left msg)  -- unexcepted end of the stream - normal situation 
                 Partial f' -> p f'
                 Done r s   -> C.Done (streamToMaybe s) (Right r) -- producing result without consumin - strange but acceptable
 
-    streamToMaybe s = if BS.null s then Nothing
-                                   else Just s
+conduitGet :: Monad m => Get output -> C.Conduit BS.ByteString m (Either String output)
+conduitGet get = needInput where
+    needInput = C.NeedInput consumeNew close
+
+    consumeNew = consume $ runGetPartial get
+
+    consume f s | BS.null s = C.NeedInput (consume f) close
+                | otherwise = case f s of 
+                      Fail msg   -> C.HaveOutput needInput (return ()) (Left msg)
+                      Partial f' -> C.NeedInput  (consume f') close
+                      Done r s'  -> C.HaveOutput (consumeNew s') (return ()) (Right r)
+
+    close = C.Done Nothing ()
+
+streamToMaybe :: BS.ByteString -> Maybe BS.ByteString
+streamToMaybe s = if BS.null s then Nothing
+                               else Just s
 
 -- | Convert a 'Put' into a 'Source'. Runs in constant memory.
 sourcePut :: Monad m => Put -> C.Source m BS.ByteString
