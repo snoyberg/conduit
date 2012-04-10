@@ -15,19 +15,23 @@ import           Data.Serialize
 
 -- I've decieded to remove exceptions stuff, let the user decide whenever he whants exections or not.
 sinkGet :: Monad m => Get output -> C.Sink BS.ByteString m (Either String output)
-sinkGet get = C.NeedInput (consume partialReader) (close partialReader) where
+sinkGet get = C.NeedInput (consume partialReader) (earlyClose partialReader) where
     partialReader = runGetPartial get
     
     consume f s = case f s of 
                     Fail msg   -> C.Done (streamToMaybe s) (Left msg)
-                    Partial f' -> C.NeedInput (consume f') (close f')
+                    Partial f' -> C.NeedInput (consume f') (lateClose f')
                     Done r s'  -> C.Done (streamToMaybe s') (Right r)
     
-    close f = case f BS.empty of 
-                Fail msg  -> C.Done Nothing (Left msg)  -- unexcepted end of the stream - normal situation 
-                Partial _ -> error "Unexcepted result from Cereal: Partial returned for an empty byte string."
-                Done r s  -> C.Done (streamToMaybe s) (Right r) -- producing result without consumin - strange but acceptable
-                    
+    earlyClose = close lateClose
+
+    lateClose  = close (const $ error "Unexcepted result from Cereal: Partial returned for an empty byte string.")
+
+    close p f = case f BS.empty of 
+                Fail msg   -> C.Done Nothing (Left msg)  -- unexcepted end of the stream - normal situation 
+                Partial f' -> p f'
+                Done r s   -> C.Done (streamToMaybe s) (Right r) -- producing result without consumin - strange but acceptable
+
     streamToMaybe s = if BS.null s then Nothing
                                    else Just s
 
