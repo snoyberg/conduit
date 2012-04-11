@@ -278,7 +278,20 @@ dropWhile p =
 --
 -- Since 0.3.0
 take :: Monad m => Int -> Sink S.ByteString m L.ByteString
-take n = L.fromChunks `liftM` (isolate n =$ CL.consume)
+take n0 =
+    go n0 id
+  where
+    go n front =
+        NeedInput push close
+      where
+        push bs =
+            case S.length bs `compare` n of
+                LT -> go (n - S.length bs) (front . (bs:))
+                EQ -> Done Nothing $ L.fromChunks $ front [bs]
+                GT ->
+                    let (x, y) = S.splitAt n bs
+                     in Done (Just y) $ L.fromChunks $ front [x]
+        close = return $ L.fromChunks $ front []
 
 -- | Split the input bytes into lines. In other words, split on the LF byte
 -- (10), and strip it from the output.
