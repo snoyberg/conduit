@@ -23,6 +23,7 @@ module Data.Conduit.Internal
     , transPipe
     , mapOutput
     , runFinalize
+    , addCleanup
     ) where
 
 import Control.Applicative (Applicative (..), (<$>))
@@ -359,3 +360,24 @@ mapOutput f (HaveOutput p c o) = HaveOutput (mapOutput f p) c (f o)
 mapOutput f (NeedInput p c) = NeedInput (mapOutput f . p) (mapOutput f c)
 mapOutput _ (Done i r) = Done i r
 mapOutput f (PipeM mp c) = PipeM (liftM (mapOutput f) mp) c
+
+-- | Add some code to be run when the given @Pipe@ cleans up.
+--
+-- Since 0.4.1
+addCleanup :: Monad m
+           => (Bool -> m ()) -- ^ @True@ if @Pipe@ ran to completion, @False@ for early termination.
+           -> Pipe i o m r
+           -> Pipe i o m r
+addCleanup cleanup (Done leftover r) = PipeM
+    (cleanup True >> return (Done leftover r))
+    (lift (cleanup True) >> return r)
+addCleanup cleanup (HaveOutput src close x) = HaveOutput
+    (addCleanup cleanup src)
+    (lift (cleanup False) >> close)
+    x
+addCleanup cleanup (PipeM msrc close) = PipeM
+    (liftM (addCleanup cleanup) msrc)
+    (lift (cleanup False) >> close)
+addCleanup cleanup (NeedInput p c) = NeedInput
+    (addCleanup cleanup . p)
+    (addCleanup cleanup c)
