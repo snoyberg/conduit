@@ -66,7 +66,7 @@ instance Show Codec where
 
 -- | Emit each line separately
 --
--- Since 0.4.2
+-- Since 0.4.1
 lines :: Monad m => C.Conduit T.Text m T.Text
 lines =
     C.conduitState id push close

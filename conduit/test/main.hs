@@ -354,16 +354,18 @@ main = hspecX $ do
         go "utf16_be" TLE.encodeUtf16BE CT.utf16_be
         go "utf32_le" TLE.encodeUtf32LE CT.utf32_le
         go "utf32_be" TLE.encodeUtf32BE CT.utf32_be
-        it "lines works across split lines" $
+
+    describe "text lines" $ do
+        it "works across split lines" $
             (CL.sourceList [T.pack "abc", T.pack "d\nef"] C.$= CT.lines C.$$ CL.consume) ==
                 [[T.pack "abcd", T.pack "ef"]]
-        it "lines works with multiple lines in an item" $
+        it "works with multiple lines in an item" $
             (CL.sourceList [T.pack "ab\ncd\ne"] C.$= CT.lines C.$$ CL.consume) ==
                 [[T.pack "ab", T.pack "cd", T.pack "e"]]
-        it "lines works with ending on a newline" $
+        it "works with ending on a newline" $
             (CL.sourceList [T.pack "ab\n"] C.$= CT.lines C.$$ CL.consume) ==
                 [[T.pack "ab"]]
-        it "lines works with ending a middle item on a newline" $
+        it "works with ending a middle item on a newline" $
             (CL.sourceList [T.pack "ab\n", T.pack "cd\ne"] C.$= CT.lines C.$$ CL.consume) ==
                 [[T.pack "ab", T.pack "cd", T.pack "e"]]
         it "is not too eager" $ do
