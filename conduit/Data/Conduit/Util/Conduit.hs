@@ -30,7 +30,7 @@ haveMore :: Conduit a m b -- ^ The next @Conduit@ to return after the list has b
          -> [b] -- ^ The values to send down the stream.
          -> Conduit a m b
 haveMore res _ [] = res
-haveMore res close (x:xs) = HaveOutput (haveMore res close xs) close x
+haveMore res close (x:xs) = HaveOutput (haveMore res close xs) (FinalizeM close) x
 
 -- | A helper type for @conduitState@, indicating the result of being pushed
 -- to.  It can either indicate that processing is done, or to continue with the
@@ -108,7 +108,7 @@ conduitIO alloc cleanup push0 close0 = NeedInput
         res <- push0 state input
         case res of
             IOProducing output -> return $ haveMore
-                (NeedInput (flip PipeM (release key) . push key state) (close key state))
+                (NeedInput (flip PipeM (FinalizeM $ release key) . push key state) (close key state))
                 (release key >> return ())
                 output
             IOFinished leftover output -> do
@@ -121,7 +121,7 @@ conduitIO alloc cleanup push0 close0 = NeedInput
     close key state = PipeM (do
         output <- close0 state
         release key
-        return $ fromList output) (release key)
+        return $ fromList output) (FinalizeM $ release key)
 
 fromList :: Monad m => [a] -> Pipe i a m ()
 fromList [] = Done Nothing ()

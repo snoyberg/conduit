@@ -44,6 +44,7 @@ import           Data.Typeable (Typeable)
 import qualified Data.Conduit as C
 import qualified Data.Conduit.List as CL
 import Control.Monad.Trans.Resource (MonadThrow (..))
+import Control.Monad.Trans.Class (lift)
 
 -- | A specific character encoding.
 --
@@ -122,7 +123,7 @@ decode codec =
             Nothing -> C.Done Nothing ()
             Just (w, _) ->
                 let exc = monadThrow $ DecodeException codec w
-                 in C.PipeM exc exc
+                 in C.PipeM exc (lift exc)
 
     close2 bs =
         case B.uncons bs of

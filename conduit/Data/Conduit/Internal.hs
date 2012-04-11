@@ -10,6 +10,7 @@ module Data.Conduit.Internal
     , Source
     , Sink
     , Conduit
+    , Finalize (..)
       -- * Functions
     , pipeClose
     , pipe
@@ -21,6 +22,7 @@ module Data.Conduit.Internal
     , hasInput
     , transPipe
     , mapOutput
+    , runFinalize
     ) where
 
 import Control.Applicative (Applicative (..), (<$>))
@@ -28,8 +30,43 @@ import Control.Monad ((>=>), liftM, ap)
 import Control.Monad.Trans.Class (MonadTrans (lift))
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Base (MonadBase (liftBase))
-import Data.Void (Void)
+import Data.Void (Void, absurd)
 import Data.Monoid (Monoid (mappend, mempty))
+import Control.Monad.Trans.Resource
+
+data Finalize m r = FinalizePure !r
+                  | FinalizeM !(m r)
+
+instance Monad m => Functor (Finalize m) where
+    fmap f (FinalizePure r) = FinalizePure (f r)
+    fmap f (FinalizeM mr) = FinalizeM (liftM f mr)
+
+instance Monad m => Applicative (Finalize m) where
+    pure = FinalizePure
+    (<*>) = ap
+
+instance Monad m => Monad (Finalize m) where
+    return = FinalizePure
+    FinalizePure x >>= f = f x
+    FinalizeM mx >>= f = FinalizeM $ mx >>= \x ->
+        case f x of
+            FinalizePure y -> return y
+            FinalizeM my -> my
+
+instance MonadTrans Finalize where
+    lift = FinalizeM
+
+instance MonadThrow m => MonadThrow (Finalize m) where
+    monadThrow = lift . monadThrow
+
+instance MonadIO m => MonadIO (Finalize m) where
+    liftIO = lift . liftIO
+
+instance MonadResource m => MonadResource (Finalize m) where
+    allocate a = lift . allocate a
+    register = lift . register
+    release = lift . release
+    resourceMask = lift . resourceMask
 
 -- | The underlying datatype for all the types in this package.  In has four
 -- type parameters:
@@ -57,23 +94,23 @@ data Pipe i o m r =
     -- | Provide new output to be sent downstream. This constructor has three
     -- fields: the next @Pipe@ to be used, an early-closed function, and the
     -- output value.
-    HaveOutput (Pipe i o m r) (m r) o
+    HaveOutput (Pipe i o m r) !(Finalize m r) !o
     -- | Request more input from upstream. The first field takes a new input
     -- value and provides a new @Pipe@. The second is for early termination. It
     -- gives a new @Pipe@ which takes no input from upstream. This allows a
     -- @Pipe@ to provide a final stream of output values after no more input is
     -- available from upstream.
-  | NeedInput (i -> Pipe i o m r) (Pipe i o m r)
+  | NeedInput !(i -> Pipe i o m r) (Pipe i o m r)
     -- | Processing with this @Pipe@ is complete. Provides an optional leftover
     -- input value and and result.
-  | Done (Maybe i) r
+  | Done (Maybe i) !r
     -- | Require running of a monadic action to get the next @Pipe@. Second
     -- field is an early cleanup function. Technically, this second field
     -- could be skipped, but doing so would require extra operations to be
     -- performed in some cases. For example, for a @Pipe@ pulling data from a
     -- file, it may be forced to pull an extra, unneeded chunk before closing
     -- the @Handle@.
-  | PipeM (m (Pipe i o m r)) (m r)
+  | PipeM !(m (Pipe i o m r)) !(Finalize m r)
 
 -- | A @Pipe@ which provides a stream of output values, without consuming any
 -- input. The input parameter is set to @Void@ to indicate that this @Pipe@
@@ -101,10 +138,10 @@ type Conduit i m o = Pipe i o m ()
 -- | Perform any close actions available for the given @Pipe@.
 --
 -- Since 0.4.0
-pipeClose :: Monad m => Pipe i o m r -> m r
+pipeClose :: Monad m => Pipe i o m r -> Finalize m r
 pipeClose (HaveOutput _ c _) = c
 pipeClose (NeedInput _ p) = pipeClose p
-pipeClose (Done _ r) = return r
+pipeClose (Done _ r) = FinalizePure r
 pipeClose (PipeM _ c) = c
 
 pipePush :: Monad m => i -> Pipe i o m r -> Pipe i o m r
@@ -141,7 +178,7 @@ instance MonadBase base m => MonadBase base (Pipe i o m) where
     liftBase = lift . liftBase
 
 instance MonadTrans (Pipe i o) where
-    lift mr = PipeM (Done Nothing `liftM` mr) mr
+    lift mr = PipeM (Done Nothing `liftM` mr) (FinalizeM mr)
 
 instance MonadIO m => MonadIO (Pipe i o m) where
     liftIO = lift . liftIO
@@ -159,7 +196,7 @@ instance Monad m => Monoid (Pipe i o m ()) where
 --
 -- Since 0.4.0
 pipe :: Monad m => Pipe a b m () -> Pipe b c m r -> Pipe a c m r
-pipe l r = pipeResume l r >>= \(l', res) -> lift (pipeClose l') >> return res
+pipe l r = pipeResume l r >>= \(l', res) -> lift (runFinalize $ pipeClose l') >> return res
 
 -- | Same as 'pipe', but retain both the new left pipe and the leftovers from
 -- the right pipe. The two components are combined together into a single pipe
@@ -183,7 +220,7 @@ pipeResume left right =
             -- pipe.
             let (leftover, left', leftClose) =
                     case left of
-                        Done leftoverl () -> (leftoverl, Done Nothing (), return ())
+                        Done leftoverl () -> (leftoverl, Done Nothing (), FinalizePure ())
                         _ -> (Nothing, left, pipeClose left)
             -- Combine the current state of the left pipe with any leftovers
             -- from the right pipe.
@@ -197,12 +234,12 @@ pipeResume left right =
         -- Right pipe needs to run a monadic action.
         PipeM mp c -> PipeM
             (pipeResume left `liftM` mp)
-            (((,) left) `liftM` c)
+            (((,) left) `fmap` c)
 
         -- Right pipe has some output, provide it downstream and continue.
         HaveOutput p c o -> HaveOutput
             (pipeResume left p)
-            (((,) left) `liftM` c)
+            (((,) left) `fmap` c)
             o
 
         -- Right pipe needs input, so let's get it
@@ -224,7 +261,7 @@ pipeResume left right =
                         -- recommended to give input to a pipe after it has
                         -- been told there is no more input. Instead, we close
                         -- the pipe and return mempty in its place.
-                        lift $ pipeClose left'
+                        lift $ runFinalize $ pipeClose left'
                         return (mempty, res)
                         )
 
@@ -236,7 +273,12 @@ pipeResume left right =
                 -- Left pipe needs to run a monadic action.
                 PipeM mp c -> PipeM
                     ((`pipeResume` right) `liftM` mp)
-                    (c >> liftM ((,) mempty) (pipeClose right))
+                    (fmap ((,) mempty) $ combineFinalize c $ pipeClose right)
+
+combineFinalize :: Monad m => Finalize m () -> Finalize m r -> Finalize m r
+combineFinalize (FinalizePure ()) f = f
+combineFinalize (FinalizeM x) (FinalizeM y) = FinalizeM $ x >> y
+combineFinalize (FinalizeM x) (FinalizePure y) = FinalizeM $ x >> return y
 
 replaceLeftover :: Monad m => Maybe i -> Pipe i' o m r -> Pipe i o m r
 replaceLeftover l (Done _ r) = Done l r
@@ -252,16 +294,20 @@ replaceLeftover l (PipeM mp c) = PipeM (replaceLeftover l `liftM` mp) c
 --
 -- Since 0.4.0
 runPipe :: Monad m => Pipe Void Void m r -> m r
-runPipe (HaveOutput _ c _) = c
+runPipe (HaveOutput _ c _) = runFinalize c
 runPipe (NeedInput _ c) = runPipe c
 runPipe (Done _ r) = return r
 runPipe (PipeM mp _) = mp >>= runPipe
+
+runFinalize :: Monad m => Finalize m r -> m r
+runFinalize (FinalizePure r) = return r
+runFinalize (FinalizeM mr) = mr
 
 -- | Send a single output value downstream.
 --
 -- Since 0.4.0
 yield :: Monad m => o -> Pipe i o m ()
-yield = HaveOutput (Done Nothing ()) (return ())
+yield = HaveOutput (Done Nothing ()) (FinalizePure ())
 
 -- | Wait for a single input value from upstream, and remove it from the
 -- stream. Returns @Nothing@ if no more data is available.
@@ -284,7 +330,7 @@ hasInput = NeedInput (\i -> Done (Just i) True) (Done Nothing False)
 --
 -- Since 0.4.0
 sinkToPipe :: Monad m => Sink i m r -> Pipe i o m r
-sinkToPipe (HaveOutput _ c _) = lift c
+sinkToPipe (HaveOutput _ _ o) = absurd o
 sinkToPipe (NeedInput p c) = NeedInput (sinkToPipe . p) (sinkToPipe c)
 sinkToPipe (Done i r) = Done i r
 sinkToPipe (PipeM mp c) = PipeM (liftM sinkToPipe mp) c
@@ -293,10 +339,14 @@ sinkToPipe (PipeM mp c) = PipeM (liftM sinkToPipe mp) c
 --
 -- Since 0.4.0
 transPipe :: Monad m => (forall a. m a -> n a) -> Pipe i o m r -> Pipe i o n r
-transPipe f (HaveOutput p c o) = HaveOutput (transPipe f p) (f c) o
+transPipe f (HaveOutput p c o) = HaveOutput (transPipe f p) (transFinalize f c) o
 transPipe f (NeedInput p c) = NeedInput (transPipe f . p) (transPipe f c)
 transPipe _ (Done i r) = Done i r
-transPipe f (PipeM mp c) = PipeM (f $ liftM (transPipe f) mp) (f c)
+transPipe f (PipeM mp c) = PipeM (f $ liftM (transPipe f) mp) (transFinalize f c)
+
+transFinalize :: (forall a. m a -> n a) -> Finalize m r -> Finalize n r
+transFinalize _ (FinalizePure r) = FinalizePure r
+transFinalize f (FinalizeM mr) = FinalizeM $ f mr
 
 -- | Apply a function to all the output values of a `Pipe`.
 --

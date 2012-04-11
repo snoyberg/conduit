@@ -51,7 +51,7 @@ import Prelude
     , otherwise
     )
 import Data.Conduit
-import Data.Conduit.Internal (pipeClose)
+import Data.Conduit.Internal (pipeClose, runFinalize)
 import Data.Monoid (mempty)
 import Data.Void (absurd)
 import Control.Monad (liftM, liftM2)
@@ -329,10 +329,10 @@ sourceNull = mempty
 -- Since 0.3.0
 zip :: Monad m => Source m a -> Source m b -> Source m (a, b)
 zip (Done _ ()) (Done _ ()) = Done Nothing ()
-zip (Done _ ()) (HaveOutput _ close _) = PipeM (close >> return (Done Nothing ())) close
-zip (HaveOutput _ close _) (Done _ ()) = PipeM (close >> return (Done Nothing ())) close
-zip (Done _ ()) (PipeM _ close) = PipeM (close >> return (Done Nothing ())) close
-zip (PipeM _ close) (Done _ ()) = PipeM (close >> return (Done Nothing ())) close
+zip (Done _ ()) (HaveOutput _ close _) = PipeM (runFinalize close >> return (Done Nothing ())) close
+zip (HaveOutput _ close _) (Done _ ()) = PipeM (runFinalize close >> return (Done Nothing ())) close
+zip (Done _ ()) (PipeM _ close) = PipeM (runFinalize close >> return (Done Nothing ())) close
+zip (PipeM _ close) (Done _ ()) = PipeM (runFinalize close >> return (Done Nothing ())) close
 zip (PipeM mx closex) (PipeM my closey) = PipeM (liftM2 zip mx my) (closex >> closey)
 zip (PipeM mx closex) y@(HaveOutput _ closey _) = PipeM (liftM (\x -> zip x y) mx) (closex >> closey)
 zip x@(HaveOutput _ closex _) (PipeM my closey) = PipeM (liftM (\y -> zip x y) my) (closex >> closey)

@@ -43,7 +43,7 @@ sinkState state0 push0 close0 =
             case res of
                 StateProcessing state' -> return $ NeedInput (push state') (close state')
                 StateDone mleftover output -> return $ Done mleftover output)
-        (close0 state)
+        (FinalizeM $ close0 state)
 
     close = lift . close0
 
@@ -66,7 +66,7 @@ sinkIO :: MonadResource m
 sinkIO alloc cleanup push0 close0 = NeedInput
     (\input -> PipeM (do
         (key, state) <- allocate alloc cleanup
-        push key state input) (do
+        push key state input) (FinalizeM $ do
             (key, state) <- allocate alloc cleanup
             close key state))
     (do
@@ -82,7 +82,7 @@ sinkIO alloc cleanup push0 close0 = NeedInput
             IOProcessing -> return $ NeedInput
                 (\i ->
                     let mpipe = push key state i
-                     in PipeM mpipe (mpipe >>= pipeClose))
+                     in PipeM mpipe (lift mpipe >>= pipeClose))
                 (lift $ close key state)
     close key state = do
         res <- close0 state
