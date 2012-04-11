@@ -35,6 +35,15 @@ import Data.Void (Void, absurd)
 import Data.Monoid (Monoid (mappend, mempty))
 import Control.Monad.Trans.Resource
 
+-- | A cleanup action to be performed.
+--
+-- Previously, we just had a plain action. However, most @Pipe@s simply have
+-- empty cleanup actions, and storing a large set of them wastes memory. But
+-- having strict fields and distinguishing between pure and impure actions, we
+-- can keep memory usage constant, and only allocate memory for the actual
+-- actions we have to track.
+--
+-- Since 0.4.1
 data Finalize m r = FinalizePure !r
                   | FinalizeM !(m r)
 
@@ -276,6 +285,10 @@ pipeResume left right =
                     ((`pipeResume` right) `liftM` mp)
                     (fmap ((,) mempty) $ combineFinalize c $ pipeClose right)
 
+-- | A minor optimization on @>>@ which does not cause any allocations for the
+-- common case of missing left actions.
+--
+-- Since 0.4.1
 combineFinalize :: Monad m => Finalize m () -> Finalize m r -> Finalize m r
 combineFinalize (FinalizePure ()) f = f
 combineFinalize (FinalizeM x) (FinalizeM y) = FinalizeM $ x >> y
@@ -300,6 +313,9 @@ runPipe (NeedInput _ c) = runPipe c
 runPipe (Done _ r) = return r
 runPipe (PipeM mp _) = mp >>= runPipe
 
+-- | Perform any necessary finalization actions.
+--
+-- Since 0.4.1
 runFinalize :: Monad m => Finalize m r -> m r
 runFinalize (FinalizePure r) = return r
 runFinalize (FinalizeM mr) = mr
