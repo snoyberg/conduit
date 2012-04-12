@@ -172,8 +172,10 @@ sequenceSink state0 fsink = do
 --
 -- Since 0.3.0
 sequence :: Monad m => Sink input m output -> Conduit input m output
-sequence sink = do
-    x <- hasInput
-    when x $ do
-      sinkToPipe sink >>= yield
-      sequence sink
+sequence sink = self
+  where
+    self = do
+        x <- hasInput
+        when x $ do
+          sinkToPipe sink >>= yield
+          self
