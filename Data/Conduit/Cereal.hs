@@ -13,6 +13,20 @@ import           Data.Serialize
 -- If 'Get' succeed it will return the data read and unconsumed part of the input stream.
 -- If the 'Get' fails it will return message describing the error. 
 
+data GetState a = GetState { getPartial :: BS.ByteString -> Result a 
+                           , getConsumed   :: [BS.ByteString]
+                           }
+
+initialState :: Get a -> GetState a
+initialState get = GetState { getPartial  = runGetPartial get
+                            , getConsumed = [] 
+                            }
+
+sinkGetWithErrorHandler :: Monad m => (String -> m (Maybe output)) -> Get output ->  C.Sink BS.ByteString m (Maybe output)
+sinkGetWithErrorHandler errorHandler get = sinkState (initialState get) push close where
+    
+    
+
 -- I've decieded to remove exceptions stuff, let the user decide whenever he whants exections or not.
 sinkGet :: Monad m => Get output -> C.Sink BS.ByteString m (Either String output)
 sinkGet get = C.NeedInput (consume partialReader) (closeEarly partialReader) where
