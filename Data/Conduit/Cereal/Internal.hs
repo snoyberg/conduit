@@ -1,7 +1,6 @@
 module Data.Conduit.Cereal.Internal 
     ( DeserializationErrorHandler
-    , EarlyTerminationSinkHandler
-    , EarlyTerminationConduitHandler
+    , EarlyTerminationHandler
 
     , mkConduitGet
     , mkSinkGet
@@ -14,9 +13,7 @@ import           Data.Void
 
 type DeserializationErrorHandler i o m r = String -> Maybe BS.ByteString -> C.Pipe i o m r
 
-type EarlyTerminationConduitHandler i o m r = (BS.ByteString -> Result o) -> Maybe BS.ByteString -> C.Pipe i o m r
-
-type EarlyTerminationSinkHandler i o m r = (BS.ByteString -> Result r) -> Maybe BS.ByteString -> C.Pipe i o m r
+type EarlyTerminationHandler i o m r = (BS.ByteString -> Result r) -> Maybe BS.ByteString -> C.Pipe i o m r
 
 mkConduitGet 
     :: Monad m 
@@ -42,7 +39,7 @@ mkConduitGet deserializarionError get = consume True (runGetPartial get) [] BS.e
 mkSinkGet 
     :: Monad m 
     => DeserializationErrorHandler BS.ByteString Void m r
-    -> EarlyTerminationSinkHandler BS.ByteString Void m r 
+    -> EarlyTerminationHandler BS.ByteString Void m r 
     -> Get r
     -> C.Sink BS.ByteString m r
 mkSinkGet deserializarionError earlyTermination get = consume (runGetPartial get) [] BS.empty where
