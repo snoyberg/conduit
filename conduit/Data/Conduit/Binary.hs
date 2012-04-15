@@ -23,10 +23,9 @@ import Prelude hiding (head, take, takeWhile, dropWhile)
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Lazy as L
 import Data.Conduit
-import qualified Data.Conduit.List as CL
 import Control.Exception (assert)
 import Control.Monad (liftM)
-import Control.Monad.IO.Class (liftIO)
+import Control.Monad.IO.Class (liftIO, MonadIO)
 import qualified System.IO as IO
 import Control.Monad.Trans.Resource (allocate, release)
 import Data.Word (Word8)
@@ -70,7 +69,7 @@ sourceFile fp =
 -- completes, since it did not acquire the @Handle@ in the first place.
 --
 -- Since 0.3.0
-sourceHandle :: MonadResource m
+sourceHandle :: MonadIO m
              => IO.Handle
              -> Source m S.ByteString
 sourceHandle h =
@@ -106,7 +105,7 @@ sourceIOHandle alloc = sourceIO alloc IO.hClose
 -- will /not/ automatically close the @Handle@ when processing completes.
 --
 -- Since 0.3.0
-sinkHandle :: MonadResource m
+sinkHandle :: MonadIO m
            => IO.Handle
            -> Sink S.ByteString m ()
 sinkHandle h =
