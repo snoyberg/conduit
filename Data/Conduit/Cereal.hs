@@ -2,6 +2,9 @@
 {-# LANGUAGE FlexibleContexts #-}
 
 -- | Turn a 'Get' into a 'Sink' and a 'Put' into a 'Source'
+--
+-- If you want to run a get on each item of input (disregarding overlap),
+-- use Data.Conduit.mapOutput with Data.Serialize.runGet*
 
 module Data.Conduit.Cereal (GetError, sinkGet, conduitGet, sourcePut) where
 
