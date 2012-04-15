@@ -1,4 +1,5 @@
 {-# OPTIONS_HADDOCK not-home #-}
+{-# OPTIONS_GHC -O2 #-} -- necessary to avoid some space leaks
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -44,8 +45,8 @@ import Control.Monad.Trans.Resource
 -- actions we have to track.
 --
 -- Since 0.4.1
-data Finalize m r = FinalizePure !r
-                  | FinalizeM !(m r)
+data Finalize m r = FinalizePure r
+                  | FinalizeM (m r)
 
 instance Monad m => Functor (Finalize m) where
     fmap f (FinalizePure r) = FinalizePure (f r)
@@ -104,23 +105,23 @@ data Pipe i o m r =
     -- | Provide new output to be sent downstream. This constructor has three
     -- fields: the next @Pipe@ to be used, an early-closed function, and the
     -- output value.
-    HaveOutput (Pipe i o m r) !(Finalize m r) !o
+    HaveOutput (Pipe i o m r) (Finalize m r) o
     -- | Request more input from upstream. The first field takes a new input
     -- value and provides a new @Pipe@. The second is for early termination. It
     -- gives a new @Pipe@ which takes no input from upstream. This allows a
     -- @Pipe@ to provide a final stream of output values after no more input is
     -- available from upstream.
-  | NeedInput !(i -> Pipe i o m r) (Pipe i o m r)
+  | NeedInput (i -> Pipe i o m r) (Pipe i o m r)
     -- | Processing with this @Pipe@ is complete. Provides an optional leftover
     -- input value and and result.
-  | Done (Maybe i) !r
+  | Done (Maybe i) r
     -- | Require running of a monadic action to get the next @Pipe@. Second
     -- field is an early cleanup function. Technically, this second field
     -- could be skipped, but doing so would require extra operations to be
     -- performed in some cases. For example, for a @Pipe@ pulling data from a
     -- file, it may be forced to pull an extra, unneeded chunk before closing
     -- the @Handle@.
-  | PipeM !(m (Pipe i o m r)) !(Finalize m r)
+  | PipeM (m (Pipe i o m r)) (Finalize m r)
 
 -- | A @Pipe@ which provides a stream of output values, without consuming any
 -- input. The input parameter is set to @Void@ to indicate that this @Pipe@
