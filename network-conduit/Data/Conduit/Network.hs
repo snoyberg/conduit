@@ -80,6 +80,7 @@ data ServerSettings = ServerSettings
     { serverPort :: Int
     , serverHost :: HostPreference
     }
+      deriving (Eq, Show, Read)
 
 -- | Run an @Application@ with the given settings. This function will create a
 -- new listening socket, accept connections on it, and spawn a new thread for
@@ -107,6 +108,7 @@ data ClientSettings = ClientSettings
     { clientPort :: Int
     , clientHost :: String
     }
+      deriving (Eq, Show, Read)
 
 -- | Run an @Application@ by connecting to the specified server.
 --
@@ -151,7 +153,7 @@ data HostPreference =
   | HostIPv4
   | HostIPv6
   | Host String
-    deriving (Show, Eq, Ord)
+    deriving (Eq, Ord, Show, Read)
 
 instance IsString HostPreference where
     -- The funny code coming up is to get around some irritating warnings from
