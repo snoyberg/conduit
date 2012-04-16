@@ -83,6 +83,15 @@ main = hspecX $ do
             (runST $ CL.sourceList list C.$$ CL.fold (+) (0 :: Int))
             == sum list
 
+    describe "unfold" $ do
+        it "works" $ do
+            let f 0 = Nothing
+                f i = Just (show i, i - 1)
+                seed = 10 :: Int
+            x <- CL.unfold f seed C.$$ CL.consume
+            let y = DL.unfoldr f seed
+            x @?= y
+
     describe "Monoid instance for Source" $ do
         it "mappend" $ do
             x <- runResourceT $ (CL.sourceList [1..5 :: Int] `mappend` CL.sourceList [6..10]) C.$$ CL.fold (+) 0

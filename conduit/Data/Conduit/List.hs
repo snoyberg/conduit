@@ -12,6 +12,7 @@ module Data.Conduit.List
     ( -- * Sources
       sourceList
     , sourceNull
+    , unfold
       -- * Sinks
       -- ** Pure
     , fold
@@ -55,6 +56,21 @@ import Data.Conduit.Internal (pipeClose, runFinalize)
 import Data.Monoid (mempty)
 import Data.Void (absurd)
 import Control.Monad (liftM, liftM2)
+
+-- | Generate a source from a seed value.
+--
+-- Since 0.4.2
+unfold :: Monad m
+       => (b -> Maybe (a, b))
+       -> b
+       -> Source m a
+unfold f =
+    go
+  where
+    go seed =
+        case f seed of
+            Just (a, seed') -> HaveOutput (go seed') (return ()) a
+            Nothing -> Done Nothing ()
 
 -- | A strict left fold.
 --
@@ -370,4 +386,3 @@ zipSinks' byInputUsed = (><)
 
     HaveOutput _ _ o >< _                = absurd o
     _                >< HaveOutput _ _ o = absurd o
-
