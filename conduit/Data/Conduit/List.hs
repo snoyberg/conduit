@@ -13,6 +13,7 @@ module Data.Conduit.List
       sourceList
     , sourceNull
     , unfold
+    , enumFromTo
       -- * Sinks
       -- ** Pure
     , fold
@@ -50,6 +51,7 @@ import Prelude
     , flip
     , seq
     , otherwise
+    , Enum (succ), Eq
     )
 import Data.Conduit
 import Data.Conduit.Internal (pipeClose, runFinalize)
@@ -71,6 +73,24 @@ unfold f =
         case f seed of
             Just (a, seed') -> HaveOutput (go seed') (return ()) a
             Nothing -> Done Nothing ()
+
+-- | Enumerate from a value to a final value, inclusive, via 'succ'.
+--
+-- This is generally more efficient than using @Prelude@\'s @enumFromTo@ and
+-- combining with @sourceList@ since this avoids any intermediate data
+-- structures.
+--
+-- Since 0.4.2
+enumFromTo :: (Enum a, Eq a, Monad m)
+           => a
+           -> a
+           -> Source m a
+enumFromTo start stop =
+    go start
+  where
+    go i
+        | i == stop = HaveOutput (Done Nothing ()) (return ()) i
+        | otherwise = HaveOutput (go (succ i)) (return ()) i
 
 -- | A strict left fold.
 --
