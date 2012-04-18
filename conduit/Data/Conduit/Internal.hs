@@ -44,6 +44,7 @@ import Control.Monad.Base (MonadBase (liftBase))
 import Data.Void (Void, absurd)
 import Data.Monoid (Monoid (mappend, mempty))
 import Control.Monad.Trans.Resource
+import qualified GHC.Exts
 
 -- | The underlying datatype for all the types in this package.  In has four
 -- type parameters:
@@ -295,6 +296,11 @@ yieldOr :: Monad m
         -> Pipe i o u m ()
 yieldOr o f = HaveOutput (Done ()) f o
 
+{-# RULES
+    "yield o >> p" forall o (p :: Pipe i o u m r). yield o >> p = HaveOutput p  (return ()) o
+  ; "mapM_ yield" mapM_ yield = sourceList
+  #-}
+
 -- | Provide a single piece of leftover input to be consumed by the next pipe
 -- in the current monadic binding.
 --
@@ -304,6 +310,8 @@ yieldOr o f = HaveOutput (Done ()) f o
 -- Since 0.5.0
 leftover :: i -> Pipe i o u m ()
 leftover = Leftover (Done ())
+{-# INLINE [1] leftover #-}
+{-# RULES "leftover i >> p" forall i (p :: Pipe i o u m r). leftover i >> p = Leftover p i #-}
 
 -- | Check if input is available from upstream. Will not remove the data from
 -- the stream.
@@ -384,8 +392,12 @@ addCleanup cleanup (Leftover p i) = Leftover (addCleanup cleanup p) i
 --
 -- Since 0.3.0
 sourceList :: Monad m => [a] -> Pipe i a u m ()
-sourceList [] = Done ()
-sourceList (x:xs) = HaveOutput (sourceList xs) (return ()) x
+sourceList =
+    go
+  where
+    go [] = Done ()
+    go (o:os) = HaveOutput (go os) (return ()) o
+{-# INLINE [1] sourceList #-}
 
 -- | Wait for a single input value from upstream, terminating immediately if no
 -- data is available.
@@ -421,3 +433,13 @@ bracketP alloc free inside =
     start = do
         (key, seed) <- allocate alloc free
         return $ addCleanup (const $ release key) (inside seed)
+
+-- | The equivalent of @GHC.Exts.build@ for @Pipe@.
+--
+-- Since 0.4.2
+build :: Monad m => (forall b. (o -> b -> b) -> b -> b) -> Pipe i o u m ()
+build g = g (\o p -> HaveOutput p (return ()) o) (return ())
+
+{-# RULES
+    "sourceList/build" forall (f :: (forall b. (a -> b -> b) -> b -> b)). sourceList (GHC.Exts.build f) = build f
+  #-}
