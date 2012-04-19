@@ -218,7 +218,7 @@ register' :: I.IORef ReleaseMap
 register' istate rel = I.atomicModifyIORef istate $ \rm ->
     case rm of
         ReleaseMap key rf m ->
-            ( ReleaseMap (key + 1) rf (IntMap.insert key rel m)
+            ( ReleaseMap (key - 1) rf (IntMap.insert key rel m)
             , ReleaseKey key
             )
         ReleaseMapClosed -> throw $ InvalidAccess "register'"
@@ -291,7 +291,7 @@ stateCleanup istate = E.mask_ $ do
 runResourceT :: MonadBaseControl IO m => ResourceT m a -> m a
 runResourceT (ResourceT r) = do
     istate <- liftBase $ I.newIORef
-        $ ReleaseMap minBound minBound IntMap.empty
+        $ ReleaseMap maxBound minBound IntMap.empty
     bracket_
         (stateAlloc istate)
         (stateCleanup istate)
