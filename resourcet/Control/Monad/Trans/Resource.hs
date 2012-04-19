@@ -22,8 +22,10 @@ module Control.Monad.Trans.Resource
     , ReleaseKey
       -- * Unwrap
     , runResourceT
+    , runResourceTReverse
       -- * Special actions
     , resourceForkIO
+    , resourceForkIOReverse
       -- * Monad transformation
     , transResourceT
       -- * A specific Exception transformer
@@ -263,8 +265,10 @@ stateAlloc istate = do
                 (ReleaseMap nk (rf + 1) m, ())
             ReleaseMapClosed -> throw $ InvalidAccess "stateAlloc"
 
-stateCleanup :: I.IORef ReleaseMap -> IO ()
-stateCleanup istate = E.mask_ $ do
+stateCleanup :: Bool -- ^ reverse
+             -> I.IORef ReleaseMap
+             -> IO ()
+stateCleanup toReverse istate = E.mask_ $ do
     mm <- I.atomicModifyIORef istate $ \rm ->
         case rm of
             ReleaseMap nk rf m ->
@@ -275,7 +279,7 @@ stateCleanup istate = E.mask_ $ do
             ReleaseMapClosed -> throw $ InvalidAccess "stateCleanup"
     case mm of
         Just m ->
-            mapM_ (\x -> try x >> return ()) $ IntMap.elems m
+            mapM_ (\x -> try x >> return ()) $ (if toReverse then reverse else id) $ IntMap.elems $ m
         Nothing -> return ()
   where
     try :: IO a -> IO (Either SomeException a)
@@ -289,12 +293,25 @@ stateCleanup istate = E.mask_ $ do
 --
 -- Since 0.3.0
 runResourceT :: MonadBaseControl IO m => ResourceT m a -> m a
-runResourceT (ResourceT r) = do
+runResourceT = runResourceT' False
+
+-- | Same as @runResourceT@, but will execute the cleanup actions in reverse
+-- (LIFO) order.
+--
+-- This is slightly slower than @runResourceT@, but may be the required
+-- semantics in some use cases.
+--
+-- Since 0.3.3
+runResourceTReverse :: MonadBaseControl IO m => ResourceT m a -> m a
+runResourceTReverse = runResourceT' True
+
+runResourceT' :: MonadBaseControl IO m => Bool -> ResourceT m a -> m a
+runResourceT' toReverse (ResourceT r) = do
     istate <- liftBase $ I.newIORef
         $ ReleaseMap minBound minBound IntMap.empty
     bracket_
         (stateAlloc istate)
-        (stateCleanup istate)
+        (stateCleanup toReverse istate)
         (r istate)
 
 bracket_ :: MonadBaseControl IO m => IO () -> IO () -> m a -> m a
@@ -440,7 +457,20 @@ GOX(Monoid w, Strict.WriterT w)
 --
 -- Since 0.3.0
 resourceForkIO :: MonadBaseControl IO m => ResourceT m () -> ResourceT m ThreadId
-resourceForkIO (ResourceT f) = ResourceT $ \r -> L.mask $ \restore ->
+resourceForkIO = resourceForkIO' False
+
+-- | Same as @resourceForkIO@, but will execute the cleanup actions in reverse
+-- (LIFO) order.
+--
+-- This is slightly slower than @resourceForkIO@, but may be the required
+-- semantics in some use cases.
+--
+-- Since 0.3.3
+resourceForkIOReverse :: MonadBaseControl IO m => ResourceT m () -> ResourceT m ThreadId
+resourceForkIOReverse = resourceForkIO' True
+
+resourceForkIO' :: MonadBaseControl IO m => Bool -> ResourceT m () -> ResourceT m ThreadId
+resourceForkIO' toReverse (ResourceT f) = ResourceT $ \r -> L.mask $ \restore ->
     -- We need to make sure the counter is incremented before this call
     -- returns. Otherwise, the parent thread may call runResourceT before
     -- the child thread increments, and all resources will be freed
@@ -450,7 +480,7 @@ resourceForkIO (ResourceT f) = ResourceT $ \r -> L.mask $ \restore ->
         (return ())
         (liftBaseDiscard forkIO $ bracket_
             (return ())
-            (stateCleanup r)
+            (stateCleanup toReverse r)
             (restore $ f r))
 
 -- | A @Monad@ based on some monad which allows running of some 'IO' actions,
