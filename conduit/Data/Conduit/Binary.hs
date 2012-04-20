@@ -308,5 +308,5 @@ lines = NeedInput (push S.empty) (close S.empty)
                         NeedInput (push rest) (close rest)
     close rest
         | S.null rest = Done Nothing ()
-        | otherwise   = Done (Just rest) ()
+        | otherwise   = HaveOutput (Done Nothing ()) (return ()) rest
 
