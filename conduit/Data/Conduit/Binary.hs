@@ -297,23 +297,16 @@ take n0 =
 --
 -- Since 0.3.0
 lines :: Monad m => Conduit S.ByteString m S.ByteString
-lines =
-    conduitState id push close
+lines = NeedInput (push S.empty) (close S.empty)
   where
-    push front bs' = return $ StateProducing leftover ls
-      where
-        bs = front bs'
-        (leftover, ls) = getLines id bs
+    push :: Monad m => S.ByteString -> S.ByteString -> Conduit S.ByteString m S.ByteString
+    push sofar more
+        | otherwise = case S.elemIndex 10 more of
+            Just p -> let (first,second) = S.splitAt p more in
+                        HaveOutput (push S.empty (S.tail second)) (return ()) (S.concat [sofar,first])
+            Nothing -> let rest = S.concat [sofar, more] in
+                        NeedInput (push rest) (close rest)
+    close rest
+        | S.null rest = Done Nothing ()
+        | otherwise   = HaveOutput (Done Nothing ()) (return ()) rest
 
-    getLines front bs
-        | S.null bs = (id, front [])
-        | S.null y = (S.append x, front [])
-        | otherwise = getLines (front . (x:)) (S.drop 1 y)
-      where
-        (x, y) = S.breakByte 10 bs
-
-    close front
-        | S.null bs = return []
-        | otherwise = return [bs]
-      where
-        bs = front S.empty
