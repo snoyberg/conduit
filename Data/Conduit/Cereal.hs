@@ -21,21 +21,21 @@ instance Error GetError where
 
 -- | Run a 'Get' repeatedly on the input stream, producing an output stream of whatever the 'Get' outputs.
 conduitGet :: MonadError GetError m => Get output -> C.Conduit BS.ByteString m output
-conduitGet = mkConduitGet deserializarionError where
-    deserializarionError msg _ = pipeError $ strMsg msg 
+conduitGet = mkConduitGet id errorHandler 
+  where errorHandler msg _ = pipeError $ strMsg msg 
 
 -- | Convert a 'Get' into a 'Sink'. The 'Get' will be streamed bytes until it returns 'Done' or 'Fail'.
 --
 -- If 'Get' succeed it will return the data read and unconsumed part of the input stream.
 -- If the 'Get' fails due to deserialization error or early termination of the input stream it raise an error.
 sinkGet :: MonadError GetError m => Get r -> C.Sink BS.ByteString m r
-sinkGet = mkSinkGet deserializarionError earlyTermination where
-    deserializarionError msg _ = pipeError $ strMsg msg 
-    earlyTermination f _ = let Fail msg = f BS.empty in pipeError $ strMsg msg 
+sinkGet = mkSinkGet id errorHandler terminationHandler 
+  where errorHandler msg _ = pipeError $ strMsg msg 
+        terminationHandler f _ = let Fail msg = f BS.empty in pipeError $ strMsg msg 
 
 pipeError :: MonadError e m => e -> C.Pipe i o m r
-pipeError e = C.PipeM trow (lift trow) where
-    trow = throwError e
+pipeError e = C.PipeM throw (lift throw) 
+  where throw = throwError e
 
 -- | Convert a 'Put' into a 'Source'. Runs in constant memory.
 sourcePut :: Monad m => Put -> C.Source m BS.ByteString
