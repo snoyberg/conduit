@@ -18,6 +18,7 @@ import           Control.Exception (Exception)
 import           Data.Typeable (Typeable)
 import qualified Data.ByteString as B
 import qualified Data.Text as T
+import Control.Monad.Trans.Class (lift)
 
 import qualified Data.Attoparsec.ByteString
 import qualified Data.Attoparsec.Text
@@ -70,7 +71,7 @@ sinkParser =
 
     close parser = go
         (feedA (parser empty) empty)
-        (const $ C.PipeM exc exc)
+        (const $ C.PipeM exc $ lift exc)
       where
         exc = C.monadThrow DivergentParser
 
@@ -81,7 +82,7 @@ sinkParser =
             | isNull leftover = Nothing
             | otherwise = Just leftover
     go (A.Fail _ contexts msg) _ =
-        C.PipeM exc exc
+        C.PipeM exc $ lift exc
       where
         exc = C.monadThrow $ ParseError contexts msg
 
