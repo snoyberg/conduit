@@ -70,25 +70,20 @@ instance Show Codec where
 -- Since 0.4.1
 lines :: Monad m => C.Conduit T.Text m T.Text
 lines =
-    C.conduitState id push close
+    C.NeedInput (push id) (close T.empty)
   where
-    push front bs' = return $ C.StateProducing leftover ls
+    push sofar more =
+        case T.uncons second of
+            Just (_, second') -> C.HaveOutput (push id second') (return ()) (sofar first')
+            Nothing ->
+                let rest = sofar more
+                 in C.NeedInput (push $ T.append rest) (close rest)
       where
-        bs = front bs'
-        (leftover, ls) = getLines id bs
+        (first', second) = T.break (== '\n') more
 
-    getLines front bs
-        | T.null bs = (id, front [])
-        | T.null y = (T.append x, front [])
-        | otherwise = getLines (front . (x:)) (T.drop 1 y)
-      where
-        (x, y) = T.break (== '\n') bs
-
-    close front
-        | T.null bs = return []
-        | otherwise = return [bs]
-      where
-        bs = front T.empty
+    close rest
+        | T.null rest = C.Done Nothing ()
+        | otherwise   = C.HaveOutput (C.Done Nothing ()) (return ()) rest
 
 -- | Convert text into bytes, using the provided codec. If the codec is
 -- not capable of representing an input character, an exception will be thrown.
