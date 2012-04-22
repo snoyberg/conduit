@@ -297,15 +297,20 @@ take n0 =
 --
 -- Since 0.3.0
 lines :: Monad m => Conduit S.ByteString m S.ByteString
-lines = NeedInput (push S.empty) (close S.empty)
+lines = NeedInput (push id) (close S.empty)
   where
-    push :: Monad m => S.ByteString -> S.ByteString -> Conduit S.ByteString m S.ByteString
-    push sofar more
-        | otherwise = case S.elemIndex 10 more of
-            Just p -> let (first,second) = S.splitAt p more in
-                        HaveOutput (push S.empty (S.tail second)) (return ()) (S.concat [sofar,first])
-            Nothing -> let rest = S.concat [sofar, more] in
-                        NeedInput (push rest) (close rest)
+    push :: Monad m => (S.ByteString -> S.ByteString)
+                    -> S.ByteString
+                    -> Conduit S.ByteString m S.ByteString
+    push sofar more =
+        case S.uncons second of
+            Just (_, second') -> HaveOutput (push id second') (return ()) (sofar first)
+            Nothing ->
+                let rest = sofar more
+                 in NeedInput (push $ S.append rest) (close rest)
+      where
+        (first, second) = S.breakByte 10 more
+
     close rest
         | S.null rest = Done Nothing ()
         | otherwise   = HaveOutput (Done Nothing ()) (return ()) rest
