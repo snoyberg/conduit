@@ -64,7 +64,7 @@ sinktest6 = TestCase (assertEqual "Leftover input works"
 -- One may need non-terminating version like one defined below to get access to Leftovers
 
 sinkGetMaybe :: Monad m => Get output -> C.Sink BS.ByteString m (Maybe output)
-sinkGetMaybe = mkSinkGet Just errorHandler terminationHandler 
+sinkGetMaybe = mkSinkGet errorHandler terminationHandler . fmap Just
   where errorHandler     msg s = C.Done s Nothing
         terminationHandler f s = C.Done s Nothing
 
