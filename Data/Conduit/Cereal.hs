@@ -1,6 +1,10 @@
 {-# LANGUAGE FlexibleContexts #-}
 
 -- | Turn a 'Get' into a 'Sink' and a 'Put' into a 'Source'
+-- These functions are built upno the Data.Conduit.Cereal.Internal functions with default
+-- implementations of 'ErrorHandler' and 'TerminationHandler'
+--
+-- The default 'ErrorHandler' and 'TerminationHandler' both throw a 'GetError' with 'throwError'.
 
 module Data.Conduit.Cereal (GetError, sinkGet, conduitGet, sourcePut) where
 

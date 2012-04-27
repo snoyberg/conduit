@@ -11,10 +11,13 @@ import qualified Data.Conduit as C
 import           Data.Serialize hiding (get, put)
 import           Data.Void 
 
+-- | What should we do if the Get fails?
 type ErrorHandler i o m r = String -> Maybe BS.ByteString -> C.Pipe i o m r
 
+-- | What should we do if the stream is done before the Get is done?
 type TerminationHandler i o m r = (BS.ByteString -> Result r) -> Maybe BS.ByteString -> C.Pipe i o m r
 
+-- | Construct a conduitGet with the specified 'ErrorHandler'
 mkConduitGet :: Monad m 
              => ErrorHandler BS.ByteString o m ()
              -> Get o
@@ -33,6 +36,7 @@ mkConduitGet errorHandler get = consume True (runGetPartial get) [] BS.empty
                 -- infinteSequence only works because the Get will either _always_ consume no input, or _never_ consume no input.
         close b = C.Done (chunkedStreamToMaybe b) ()
 
+-- | Construct a sinkGet with the specified 'ErrorHandler' and 'TerminationHandler'
 mkSinkGet :: Monad m 
           => ErrorHandler BS.ByteString Void m r
           -> TerminationHandler BS.ByteString Void m r 
