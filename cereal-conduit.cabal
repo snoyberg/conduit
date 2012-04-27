@@ -18,6 +18,7 @@ library
                  , cereal   >= 0.3.1.0
                  , mtl
                  , bytestring
+                 , void
     exposed-modules: Data.Conduit.Cereal
     ghc-options:     -Wall
 

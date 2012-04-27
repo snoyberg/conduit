@@ -1,3 +1,5 @@
+{-# LANGUAGE FlexibleContexts, RankNTypes #-}
+
 module Test.CerealConduit where
 
 import Control.Monad.Identity
@@ -5,6 +7,7 @@ import Control.Monad.Error
 import Test.HUnit
 import qualified Data.Conduit as C
 import Data.Conduit.Cereal
+import Data.Conduit.Cereal.Internal 
 import Data.Conduit.List as CL
 import Data.Serialize
 import qualified Data.ByteString as BS
@@ -23,48 +26,56 @@ twoItemGet = do
 sinktest1 :: Test
 sinktest1 = TestCase (assertEqual "Handles starting with empty bytestring"
   (Right 1)
-  (runIdentity $ (sourceList [BS.pack [], BS.pack [1]]) C.$$ (sinkGet getWord8)))
+  ((sourceList [BS.pack [], BS.pack [1]]) C.$$ (sinkGet getWord8)))
 
 sinktest2 :: Test
 sinktest2 = TestCase (assertEqual "Handles empty bytestring in middle"
   (Right [1, 3])
-  (runIdentity $ (sourceList [BS.pack [1], BS.pack [], BS.pack [3]]) C.$$ (sinkGet (do
+  ((sourceList [BS.pack [1], BS.pack [], BS.pack [3]]) C.$$ (sinkGet (do
     x <- getWord8
     y <- getWord8
     return [x, y]))))
 
 sinktest3 :: Test
 sinktest3 = TestCase (assertBool "Handles no data"
-  (case (runIdentity $ (sourceList []) C.$$ (sinkGet getWord8)) of
+  (case (sourceList []) C.$$ (sinkGet getWord8) of
     Right _ -> False
     Left _ -> True))
 
 sinktest4 :: Test
 sinktest4 = TestCase (assertEqual "Consumes no data"
   (Right ())
-  (runIdentity $ (sourceList [BS.pack [1]]) C.$$ (sinkGet $ return ())))
+  ((sourceList [BS.pack [1]]) C.$$ (sinkGet $ return ())))
 
 sinktest5 :: Test
 sinktest5 = TestCase (assertEqual "Empty list"
   (Right ())
-  (runIdentity $ (sourceList []) C.$$ (sinkGet $ return ())))
+  ((sourceList []) C.$$ (sinkGet $ return ())))
 
 sinktest6 :: Test
 sinktest6 = TestCase (assertEqual "Leftover input works"
-  (Right 1, BS.pack [2, 3, 4, 5])
-  (runIdentity $ (sourceList [BS.pack [1, 2, 3], BS.pack [4, 5]]) C.$$ (do
+  (Right (1, BS.pack [2, 3, 4, 5]))
+  ((sourceList [BS.pack [1, 2, 3], BS.pack [4, 5]]) C.$$ (do
     output <- sinkGet getWord8
     output' <- CL.consume
     return (output, BS.concat output'))))
+
+-- Current sink implementation will terminate the pipe in case of error. 
+-- One may need non-terminating version like one defined below to get access to Leftovers
+
+sinkGetMaybe :: Monad m => Get output -> C.Sink BS.ByteString m (Maybe output)
+sinkGetMaybe = mkSinkGet errorHandler terminationHandler . fmap Just
+  where errorHandler     msg s = C.Done s Nothing
+        terminationHandler f s = C.Done s Nothing
 
 sinktest7 :: Test
 sinktest7 = TestCase (assertBool "Leftover input with failure works"
   (case runIdentity $ do
      (sourceList [BS.pack [1, 2]]) C.$$ (do
-       output <- sinkGet (getWord8 >> fail "" :: Get Word8)
+       output <- sinkGetMaybe (getWord8 >> fail "" :: Get Word8)
        output' <- CL.consume
        return (output, BS.concat output')) of
-     (Left _, bs) -> bs == BS.pack [1, 2]
+     (Nothing, bs) -> bs == BS.pack [1, 2]
      otherwise -> False))
 
 conduittest1 :: Test
