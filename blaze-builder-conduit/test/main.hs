@@ -12,7 +12,7 @@ import Data.Conduit.Blaze (builderToByteString, builderToByteStringFlush)
 import Control.Monad.ST (runST)
 import Data.Monoid
 import qualified Data.ByteString as S
-import Blaze.ByteString.Builder (fromByteString, toLazyByteString, insertLazyByteString)
+import Blaze.ByteString.Builder (fromByteString, toLazyByteString, insertLazyByteString, flush)
 import qualified Data.ByteString.Lazy as L
 import Data.ByteString.Lazy.Char8 ()
 
@@ -40,6 +40,12 @@ main = hspecX $ do
             let src = mconcat $ map (CL.sourceList . return) builders
             outBss <- src C.$= builderToByteString C.$$ CL.consume
             lbs @=? L.fromChunks outBss
+
+        it "flush shouldn't bring in empty strings." $ do
+            let dat = ["hello", "world"]
+                src = CL.sourceList dat C.$= CL.map ((`mappend` flush) . fromByteString)
+            out <- src C.$= builderToByteString C.$$ CL.consume
+            dat @=? out
 
         prop "flushing" $ \bss' -> runST $ do
             let bss = concatMap (\bs -> [C.Chunk $ S.pack bs, C.Flush]) $ filter (not . null) bss'
