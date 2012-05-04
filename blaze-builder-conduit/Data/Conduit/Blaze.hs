@@ -152,6 +152,7 @@ push nextBuf ioBuf0 x = unsafeLiftIO $ do
             InsertByteString op' bs bStep' -> do
                 let buf' = updateEndOfSlice buf op'
                     bsk  = maybe id (:) $ unsafeFreezeNonEmptyBuffer buf'
-                    front' = front . bsk . (bs:)
+                    bsk' = if S.null bs then id else (bs:)
+                    front' = front . bsk . bsk'
                 ioBuf' <- nextBuf 1 buf'
                 go bStep' ioBuf' front'
