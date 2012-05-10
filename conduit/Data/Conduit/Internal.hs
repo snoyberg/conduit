@@ -95,7 +95,7 @@ instance MonadResource m => MonadResource (Finalize m) where
 -- final output of this @Pipe@.
 --
 -- @Pipe@s can be composed via the 'pipe' function. To do so, the output type
--- of the left pipe much match the input type of the left pipe, and the result
+-- of the left pipe much match the input type of the right pipe, and the result
 -- type of the left pipe must be unit @()@. This is due to the fact that any
 -- result produced by the left pipe must be discarded in favor of the result of
 -- the right pipe.
