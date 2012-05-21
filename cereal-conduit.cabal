@@ -19,6 +19,7 @@ library
                  , mtl
                  , bytestring
                  , void
+                 , exception-transformers
     exposed-modules: Data.Conduit.Cereal
     ghc-options:     -Wall
 
@@ -32,6 +33,7 @@ Test-Suite test-cereal-conduit
                  , bytestring
                  , test-framework-hunit
                  , HUnit
+                 , transformers
 
 source-repository head
   type:     git
