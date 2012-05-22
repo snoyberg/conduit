@@ -7,15 +7,21 @@
 --
 -- The default 'ErrorHandler' and 'TerminationHandler' both throw a 'GetException'.
 
-module Data.Conduit.Cereal (GetException, sinkGet, conduitGet, sourcePut) where
+module Data.Conduit.Cereal ( GetException
+                           , sinkGet
+                           , conduitGet
+                           , sourcePut
+                           , conduitPut
+                           ) where
 
 import           Control.Monad.Exception
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.Conduit as C
 import           Data.Conduit.Cereal.Internal
-import           Data.Conduit.List (sourceList)
+import qualified Data.Conduit.List as CL
 import           Data.Serialize hiding (get, put)
+import           Data.Serialize.Put (Putter)
 import           Data.Typeable
 
 data GetException = GetException String
@@ -42,4 +48,8 @@ pipeError e = C.PipeM (throw e) undefined
 
 -- | Convert a 'Put' into a 'Source'. Runs in constant memory.
 sourcePut :: Monad m => Put -> C.Source m BS.ByteString
-sourcePut put = sourceList $ LBS.toChunks $ runPutLazy put
+sourcePut put = CL.sourceList $ LBS.toChunks $ runPutLazy put
+
+-- | Run a 'Putter' repeatedly on the input stream, producing a concatenated 'ByteString' stream.
+conduitPut :: Monad m => Putter input -> C.Conduit input m BS.ByteString
+conduitPut p = CL.map $ runPut . p

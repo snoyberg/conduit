@@ -29,6 +29,10 @@ twoItemGet = do
   y <- getWord8
   return $ x + y
 
+putter :: Putter Char
+putter c = put x >> put (x + 1)
+  where x = (fromIntegral $ (fromEnum c) - (fromEnum 'a') :: Word8)
+
 sinktest1 :: Test
 sinktest1 = TestCase (assertEqual "Handles starting with empty bytestring"
   (Right 1)
@@ -166,6 +170,21 @@ conduittest14 = TestCase (assertEqual "Leftover failure conduit input works"
     output' <- CL.consume
     return (output, BS.concat output'))))
 
+puttest1 :: Test
+puttest1 = TestCase (assertEqual "conduitPut works"
+  [BS.pack [0, 1]]
+  (runIdentity $ (sourceList ['a']) C.$= (conduitPut putter) C.$$ CL.consume))
+
+puttest2 :: Test
+puttest2 = TestCase (assertEqual "multiple input conduitPut works"
+  [BS.pack [0, 1], BS.pack [1, 2], BS.pack [2, 3]]
+  (runIdentity $ (sourceList ['a', 'b', 'c']) C.$= (conduitPut putter) C.$$ CL.consume))
+
+puttest3 :: Test
+puttest3 = TestCase (assertEqual "empty input conduitPut works"
+  []
+  (runIdentity $ (sourceList []) C.$= (conduitPut putter) C.$$ CL.consume))
+
 sinktests = TestList [ sinktest1
                      , sinktest2
                      , sinktest3
@@ -191,7 +210,12 @@ conduittests = TestList [ conduittest1
                         , conduittest14
                         ]
 
-hunittests = TestList [sinktests, conduittests]
+puttests = TestList [ puttest1
+                    , puttest2
+                    , puttest3
+                    ]
+
+hunittests = TestList [sinktests, conduittests, puttests]
 
 --tests = hUnitTestToTests hunittests
 
