@@ -28,6 +28,7 @@ module Data.Conduit.Internal
     , runFinalize
     , addCleanup
     , noInput
+    , sourceList
     ) where
 
 import Control.Applicative (Applicative (..), (<$>))
@@ -421,3 +422,10 @@ addCleanup cleanup (NeedInput p c) = NeedInput
     (addCleanup cleanup . p)
     (addCleanup cleanup c)
 addCleanup cleanup (Leftover p i) = Leftover (addCleanup cleanup p) i
+
+-- | Convert a list into a source.
+--
+-- Since 0.3.0
+sourceList :: Monad m => [a] -> Pipe i a m ()
+sourceList [] = Done ()
+sourceList (x:xs) = HaveOutput (sourceList xs) (return ()) x

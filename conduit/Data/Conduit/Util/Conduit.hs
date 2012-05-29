@@ -62,7 +62,7 @@ conduitState state0 push0 close0 =
 
     close state = PipeM (do
         os <- close0 state
-        return $ fromList os) (return ())
+        return $ sourceList os) (return ())
 
     goRes' (StateFinished leftover output) = maybe id pipePush leftover $ haveMore
         (Done ())
@@ -102,7 +102,7 @@ conduitIO alloc cleanup push0 close0 = NeedInput
         (key, state) <- allocate alloc cleanup
         os <- close0 state
         release key
-        return $ fromList os) (return ()))
+        return $ sourceList os) (return ()))
   where
     push key state input = do
         res <- push0 state input
@@ -121,11 +121,7 @@ conduitIO alloc cleanup push0 close0 = NeedInput
     close key state = PipeM (do
         output <- close0 state
         release key
-        return $ fromList output) (FinalizeM $ release key)
-
-fromList :: Monad m => [a] -> Pipe i a m ()
-fromList [] = Done ()
-fromList (x:xs) = HaveOutput (fromList xs) (return ()) x
+        return $ sourceList output) (FinalizeM $ release key)
 
 -- | Return value from a 'SequencedSink'.
 --
@@ -158,7 +154,7 @@ sequenceSink state0 fsink = do
             res <- sinkToPipe $ fsink state0
             case res of
                 Emit state os -> do
-                    fromList os
+                    sourceList os
                     sequenceSink state fsink
                 Stop -> return ()
                 StartConduit c -> c

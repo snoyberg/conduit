@@ -54,7 +54,10 @@ import Prelude
     , Enum (succ), Eq
     )
 import Data.Conduit
-import Data.Conduit.Internal (pipeClose, runFinalize, pipePushStrip, noInput, Finalize (FinalizeM))
+import Data.Conduit.Internal
+    ( pipeClose, runFinalize, pipePushStrip, noInput, Finalize (FinalizeM)
+    , sourceList
+    )
 import Data.Monoid (mempty)
 import Data.Void (absurd)
 import Control.Monad (liftM, liftM2)
@@ -137,13 +140,6 @@ mapM_ f =
   where
     push input = PipeM (f input >> return (NeedInput push close)) (return ())
     close = return ()
-
--- | Convert a list into a source.
---
--- Since 0.3.0
-sourceList :: Monad m => [a] -> Pipe i a m ()
-sourceList [] = Done ()
-sourceList (x:xs) = HaveOutput (sourceList xs) (return ()) x
 
 -- | Ignore a certain number of values in the stream. This function is
 -- semantically equivalent to:
