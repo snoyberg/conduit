@@ -1,5 +1,5 @@
 Name:                network-conduit
-Version:             0.4.0.1
+Version:             0.5.0
 Synopsis:            Stream socket data using conduits.
 Description:         Stream socket data using conduits.
 License:             BSD3
@@ -20,7 +20,7 @@ Library
   Build-depends:       base                     >= 4            && < 5
                      , transformers             >= 0.2.2        && < 0.4
                      , bytestring               >= 0.9
-                     , conduit                  >= 0.4          && < 0.5
+                     , conduit                  >= 0.5          && < 0.6
                      , lifted-base              >= 0.1          && < 0.2
                      , monad-control            >= 0.3          && < 0.4
   if flag(network-bytestring)

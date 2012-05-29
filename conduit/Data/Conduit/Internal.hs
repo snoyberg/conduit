@@ -303,7 +303,7 @@ pipeResume left right =
                 -- Left pipe is done, right pipe needs input. In such a case,
                 -- tell the right pipe there is no more input, and eventually
                 -- replace its leftovers with the left pipe's leftover.
-                Done () -> ((,) mempty) `liftM` noInput rc
+                Done () -> ((,) $ Done ()) `liftM` noInput rc
 
                 -- Left pipe needs to run a monadic action.
                 PipeM mp c -> PipeM

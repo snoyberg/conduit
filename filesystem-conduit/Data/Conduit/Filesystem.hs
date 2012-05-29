@@ -48,7 +48,7 @@ traverse followSymlinks root = C.PipeM
   where
     mkSrc ps = C.PipeM (pull ps) (return ())
 
-    pull [] = return $ C.Done Nothing ()
+    pull [] = return $ C.Done ()
     pull (p:ps) = do
         isFile' <- liftIO $ isFile p
         if isFile'

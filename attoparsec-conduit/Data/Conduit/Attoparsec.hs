@@ -24,6 +24,7 @@ import qualified Data.Attoparsec.ByteString
 import qualified Data.Attoparsec.Text
 import qualified Data.Attoparsec.Types as A
 import qualified Data.Conduit as C
+import           Data.Conduit.Internal (noInput)
 
 -- | The context and message from a 'A.Fail' value.
 data ParseError = ParseError
@@ -60,11 +61,11 @@ instance AttoparsecInput T.Text where
 -- be streamed bytes until it returns 'A.Done' or 'A.Fail'.
 --
 -- If parsing fails, a 'ParseError' will be thrown with 'C.monadThrow'.
-sinkParser :: (AttoparsecInput a, C.MonadThrow m) => A.Parser a b -> C.Sink a m b
+sinkParser :: (AttoparsecInput a, C.MonadThrow m) => A.Parser a b -> C.Pipe a o m b
 sinkParser =
     sink . parseA
   where
-    sink parser = C.NeedInput (push parser) (close parser)
+    sink parser = C.NeedInput (push parser) (noInput $ close parser)
 
     push parser c | isNull c = sink parser
     push parser c = go (parser c) sink
@@ -76,11 +77,11 @@ sinkParser =
         exc = C.monadThrow DivergentParser
 
     go (A.Done leftover x) _ =
-        C.Done lo x
+        lo $ C.Done x
       where
         lo
-            | isNull leftover = Nothing
-            | otherwise = Just leftover
+            | isNull leftover = id
+            | otherwise = flip C.Leftover leftover
     go (A.Fail _ contexts msg) _ =
         C.PipeM exc $ lift exc
       where

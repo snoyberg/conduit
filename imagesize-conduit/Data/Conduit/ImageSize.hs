@@ -43,7 +43,7 @@ sinkImageInfo =
         | S.length bs >= 8 && S.take 8 bs == S.pack [137, 80, 78, 71, 13, 10, 26, 10] =
             sinkPush png $ S.drop 8 bs
         | S.length bs < 11 = C.NeedInput (pushHeader $ S.append bs) close
-        | otherwise = C.Done (Just bs) Nothing
+        | otherwise = C.Leftover (C.Done Nothing) bs
       where
         bs = front bs'
 

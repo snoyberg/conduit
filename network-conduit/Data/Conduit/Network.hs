@@ -46,7 +46,7 @@ sourceSocket socket =
 
     pull = do
         bs <- liftIO (recv socket 4096)
-        return $ if S.null bs then Done Nothing () else HaveOutput src close bs
+        return $ if S.null bs then Done () else HaveOutput src close bs
     close = return ()
 
 -- | Stream data to the socket.
@@ -58,7 +58,7 @@ sinkSocket :: MonadIO m => Socket -> Sink ByteString m ()
 sinkSocket socket =
     sink
   where
-    sink = NeedInput push (Done Nothing ())
+    sink = NeedInput push (Done ())
 
     push bs = PipeM (do
         liftIO (sendAll socket bs)

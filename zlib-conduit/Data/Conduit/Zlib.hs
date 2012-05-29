@@ -18,6 +18,7 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString as S
 import Control.Exception (try)
 import Control.Monad ((<=<))
+import Data.Void (Void)
 
 -- | Gzip compression with default parameters.
 gzip :: (MonadThrow m, MonadUnsafeIO m) => Conduit ByteString m ByteString
@@ -47,7 +48,7 @@ decompress config = NeedInput
     (\input -> PipeM (do
         inf <- unsafeLiftIO $ initInflate config
         push inf input) (return ()))
-    (Done Nothing ())
+    (Done ())
   where
     push' inf x = PipeM (push inf x) (return ())
 
@@ -59,8 +60,8 @@ decompress config = NeedInput
         chunk <- unsafeLiftIO $ finishInflate inf
         return $
             if S.null chunk
-                then Done Nothing ()
-                else HaveOutput (Done Nothing ()) (return ()) chunk
+                then Done ()
+                else HaveOutput (Done ()) (return ()) chunk
 
 -- | Same as 'decompress', but allows you to explicitly flush the stream.
 decompressFlush
@@ -71,7 +72,7 @@ decompressFlush config = NeedInput
     (\input -> flip PipeM (return ()) $ do
         inf <- unsafeLiftIO $ initInflate config
         push inf input)
-    (Done Nothing ())
+    (Done ())
   where
     push' inf x = PipeM (push inf x) (return ())
 
@@ -93,8 +94,8 @@ decompressFlush config = NeedInput
         chunk <- unsafeLiftIO $ finishInflate inf
         return $
             if S.null chunk
-                then Done Nothing ()
-                else HaveOutput (Done Nothing ()) (return ()) $ Chunk chunk
+                then Done ()
+                else HaveOutput (Done ()) (return ()) $ Chunk chunk
 
 -- |
 -- Compress (deflate) a stream of 'ByteString's. The 'WindowBits' also control
@@ -108,7 +109,7 @@ compress
 compress level config = NeedInput
     (\input -> flip PipeM (return ()) $ do
         def <- unsafeLiftIO $ initDeflate level config
-        push def input) (Done Nothing ())
+        push def input) (Done ())
   where
     push' def input = PipeM (push def input) (return ())
     push def x = do
@@ -126,7 +127,7 @@ compressFlush
 compressFlush level config = NeedInput
     (\input -> flip PipeM (return ()) $ do
         def <- unsafeLiftIO $ initDeflate level config
-        push def input) (Done Nothing ())
+        push def input) (Done ())
   where
     push' def input = PipeM (push def input) (return ())
 
@@ -138,12 +139,12 @@ compressFlush level config = NeedInput
     close def = flip PipeM (return ()) $ do
         mchunk <- unsafeLiftIO $ finishDeflate def
         return $ case mchunk of
-            Nothing -> Done Nothing ()
-            Just chunk -> HaveOutput (Done Nothing ()) (return ()) (Chunk chunk)
+            Nothing -> Done ()
+            Just chunk -> HaveOutput (Done ()) (return ()) (Chunk chunk)
 
 goPopper :: (MonadUnsafeIO m, MonadThrow m)
          => (input -> Conduit input m output)
-         -> Conduit input m output
+         -> Conduit Void m output
          -> (S.ByteString -> output)
          -> [output]
          -> Popper
@@ -161,5 +162,5 @@ slurp :: Monad m => m (Maybe a) -> Pipe i a m ()
 slurp pop = flip PipeM (return ()) $ do
     x <- pop
     return $ case x of
-        Nothing -> Done Nothing ()
+        Nothing -> Done ()
         Just y -> HaveOutput (slurp pop) (return ()) y
