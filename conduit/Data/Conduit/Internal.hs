@@ -69,10 +69,7 @@ instance Monad m => Applicative (Finalize m) where
 instance Monad m => Monad (Finalize m) where
     return = FinalizePure
     FinalizePure x >>= f = f x
-    FinalizeM mx >>= f = FinalizeM $ mx >>= \x ->
-        case f x of
-            FinalizePure y -> return y
-            FinalizeM my -> my
+    FinalizeM mx >>= f = FinalizeM $ mx >>= runFinalize . f
 
     FinalizePure _ >> f = f
     FinalizeM x >> FinalizeM y = FinalizeM (x >> y)
