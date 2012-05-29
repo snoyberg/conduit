@@ -173,5 +173,5 @@ sequence sink = self
     self = do
         x <- hasInput
         when x $ do
-          sinkToPipe sink >>= yield
+          sinkToPipe sink >>= yield'
           self

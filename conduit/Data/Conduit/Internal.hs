@@ -15,8 +15,9 @@ module Data.Conduit.Internal
       -- * Simple pipes
     , SPipe
     , toPipe
-    , sawait
-    , syield
+    , await
+    , yield
+    , bracketSPipe
       -- * Functions
     , pipeClose
     , pipe
@@ -32,8 +33,8 @@ module Data.Conduit.Internal
     , addCleanup
     , noInput
     , sourceList
-    , await
-    , yield
+    , await'
+    , yield'
     ) where
 
 import Control.Applicative (Applicative (..), (<$>))
@@ -344,15 +345,15 @@ runFinalize (FinalizeM mr) = mr
 -- | Send a single output value downstream.
 --
 -- Since 0.4.0
-yield :: Monad m => o -> Pipe i o m ()
-yield = HaveOutput (Done ()) (FinalizePure ())
+yield' :: Monad m => o -> Pipe i o m ()
+yield' = HaveOutput (Done ()) (FinalizePure ())
 
 -- | Wait for a single input value from upstream, and remove it from the
 -- stream. Returns @Nothing@ if no more data is available.
 --
 -- Since 0.4.0
-await :: Pipe i o m (Maybe i)
-await = NeedInput (Done . Just) (Done Nothing)
+await' :: Pipe i o m (Maybe i)
+await' = NeedInput (Done . Just) (Done Nothing)
 
 -- | Check if input is available from upstream. Will not remove the data from
 -- the stream.
@@ -437,16 +438,42 @@ data SPipe i o m r =
   | SPipeM (m (SPipe i o m r))
 
 toPipe :: Monad m => SPipe i o m () -> Pipe i o m ()
-toPipe (SHaveOutput p o) = HaveOutput (toPipe p) (FinalizePure ()) o
-toPipe (SNeedInput p) = NeedInput (toPipe . p) (Done ())
-toPipe (SDone r) = Done r
-toPipe (SPipeM mp) = PipeM (liftM toPipe mp) (FinalizePure ())
+toPipe = toPipeFinalize (FinalizePure ())
 
-sawait :: SPipe i o m i
-sawait = SNeedInput SDone
+toPipeFinalize :: Monad m
+               => Finalize m ()
+               -> SPipe i o m ()
+               -> Pipe i o m ()
+toPipeFinalize final =
+    go
+  where
+    go (SHaveOutput p o) = HaveOutput (go p) final o
+    go (SNeedInput p) = NeedInput (go . p) done
+    go (SDone ()) = done
+    go (SPipeM mp) = PipeM (liftM go mp) final
 
-syield :: o -> SPipe i o m ()
-syield = SHaveOutput (SDone ())
+    done =
+        case final of
+            FinalizeM f -> PipeM (liftM Done f) final
+            FinalizePure () -> Done ()
+
+await :: SPipe i o m i
+await = SNeedInput SDone
+
+yield :: o -> SPipe i o m ()
+yield = SHaveOutput (SDone ())
+
+bracketSPipe :: MonadResource m
+             => IO a
+             -> (a -> IO ())
+             -> (a -> SPipe i o m ())
+             -> Pipe i o m ()
+bracketSPipe alloc free inside =
+    PipeM start (FinalizePure ())
+  where
+    start = do
+        (key, seed) <- allocate alloc free
+        return $ toPipeFinalize (FinalizeM (release key)) (inside seed)
 
 instance Monad m => Functor (SPipe i o m) where
     fmap = liftM
