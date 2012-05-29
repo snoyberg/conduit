@@ -54,7 +54,7 @@ import Prelude
     , Enum (succ), Eq
     )
 import Data.Conduit
-import Data.Conduit.Internal (pipeClose, runFinalize, pipePushStrip, noInput)
+import Data.Conduit.Internal (pipeClose, runFinalize, pipePushStrip, noInput, Finalize (FinalizeM))
 import Data.Monoid (mempty)
 import Data.Void (absurd)
 import Control.Monad (liftM, liftM2)
@@ -65,7 +65,7 @@ import Control.Monad (liftM, liftM2)
 unfold :: Monad m
        => (b -> Maybe (a, b))
        -> b
-       -> Source m a
+       -> Pipe i a m ()
 unfold f =
     go
   where
@@ -84,7 +84,7 @@ unfold f =
 enumFromTo :: (Enum a, Eq a, Monad m)
            => a
            -> a
-           -> Source m a
+           -> Pipe i a m ()
 enumFromTo start stop =
     go start
   where
@@ -98,7 +98,7 @@ enumFromTo start stop =
 fold :: Monad m
      => (b -> a -> b)
      -> b
-     -> Sink a m b
+     -> Pipe a o m b
 fold f accum0 =
     go accum0
   where
@@ -114,21 +114,24 @@ fold f accum0 =
 foldM :: Monad m
       => (b -> a -> m b)
       -> b
-      -> Sink a m b
-foldM f accum0 = sinkState
-    accum0
-    (\accum input -> do
-        accum' <- f accum input
-        return $ StateProcessing accum'
-    )
-    return
+      -> Pipe a o m b
+foldM f accum0 =
+    sink accum0
+  where
+    sink accum = NeedInput (\a -> PipeM (push accum a) (final accum a)) (return accum)
+
+    push accum a = do
+        accum' <- f accum a
+        accum' `seq` return (sink accum')
+
+    final accum a = FinalizeM $ f accum a
 
 -- | Apply the action to all values in the stream.
 --
 -- Since 0.3.0
 mapM_ :: Monad m
       => (a -> m ())
-      -> Sink a m ()
+      -> Pipe a o m ()
 mapM_ f =
     NeedInput push close
   where
@@ -138,7 +141,7 @@ mapM_ f =
 -- | Convert a list into a source.
 --
 -- Since 0.3.0
-sourceList :: Monad m => [a] -> Source m a
+sourceList :: Monad m => [a] -> Pipe i a m ()
 sourceList [] = Done ()
 sourceList (x:xs) = HaveOutput (sourceList xs) (return ()) x
 
@@ -153,7 +156,7 @@ sourceList (x:xs) = HaveOutput (sourceList xs) (return ()) x
 -- Since 0.3.0
 drop :: Monad m
      => Int
-     -> Sink a m ()
+     -> Pipe a o m ()
 drop 0 = NeedInput (Leftover (Done ())) (return ())
 drop count =
     NeedInput push (return ())
@@ -172,7 +175,7 @@ drop count =
 -- Since 0.3.0
 take :: Monad m
      => Int
-     -> Sink a m [a]
+     -> Pipe a o m [a]
 take count0 =
     go count0 id
   where
@@ -189,7 +192,7 @@ take count0 =
 -- | Take a single value from the stream, if available.
 --
 -- Since 0.3.0
-head :: Monad m => Sink a m (Maybe a)
+head :: Monad m => Pipe a o m (Maybe a)
 head =
     NeedInput push close
   where
@@ -200,7 +203,7 @@ head =
 -- change the state of the stream.
 --
 -- Since 0.3.0
-peek :: Monad m => Sink a m (Maybe a)
+peek :: Monad m => Pipe a o m (Maybe a)
 peek =
     NeedInput push close
   where
@@ -277,7 +280,7 @@ concatMapAccumM f accum = conduitState accum push close
 -- "Data.Conduit.Lazy".
 --
 -- Since 0.3.0
-consume :: Monad m => Sink a m [a]
+consume :: Monad m => Pipe a o m [a]
 consume =
     go id
   where
@@ -345,7 +348,7 @@ filter f =
 -- combined with 'isolate'.
 --
 -- Since 0.3.0
-sinkNull :: Monad m => Sink a m ()
+sinkNull :: Monad m => Pipe a o m ()
 sinkNull =
     NeedInput push close
   where
@@ -356,7 +359,7 @@ sinkNull =
 -- synonym for 'mempty'.
 --
 -- Since 0.3.0
-sourceNull :: Monad m => Source m a
+sourceNull :: Monad m => Pipe i a m ()
 sourceNull = mempty
 
 -- | Combines two sources. The new source will stop producing once either
