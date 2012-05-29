@@ -6,6 +6,7 @@ import Test.Hspec.QuickCheck (prop)
 import Test.HUnit
 
 import qualified Data.Conduit as C
+import qualified Data.Conduit.Internal as CI
 import qualified Data.Conduit.List as CL
 import qualified Data.Conduit.Lazy as CLazy
 import qualified Data.Conduit.Binary as CB
@@ -28,6 +29,7 @@ import Control.Concurrent (threadDelay, killThread)
 import Control.Monad.IO.Class (liftIO)
 import Control.Applicative (pure, (<$>), (<*>))
 import Data.Functor.Identity (runIdentity)
+import Control.Monad (forever)
 
 main :: IO ()
 main = hspecX $ do
@@ -509,6 +511,12 @@ main = hspecX $ do
                 src = CL.sourceList bss
             res <- src C.$$ CB.lines C.=$ CL.consume
             return $ S8.lines bs == res
+
+    describe "SPipe" $ do
+        it "terminates early" $ do
+            let src = CI.toPipe $ forever $ CI.syield ()
+            x <- src C.$$ CL.head
+            x @?= Just ()
 
 it' :: String -> IO () -> Specs
 it' = it

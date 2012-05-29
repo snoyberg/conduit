@@ -12,6 +12,11 @@ module Data.Conduit.Internal
     , Sink
     , Conduit
     , Finalize (..)
+      -- * Simple pipes
+    , SPipe
+    , toPipe
+    , sawait
+    , syield
       -- * Functions
     , pipeClose
     , pipe
@@ -20,8 +25,6 @@ module Data.Conduit.Internal
     , pipeResume
     , runPipe
     , sinkToPipe
-    , await
-    , yield
     , hasInput
     , transPipe
     , mapOutput
@@ -29,6 +32,8 @@ module Data.Conduit.Internal
     , addCleanup
     , noInput
     , sourceList
+    , await
+    , yield
     ) where
 
 import Control.Applicative (Applicative (..), (<$>))
@@ -424,3 +429,42 @@ addCleanup cleanup (Leftover p i) = Leftover (addCleanup cleanup p) i
 sourceList :: Monad m => [a] -> Pipe i a m ()
 sourceList [] = Done ()
 sourceList (x:xs) = HaveOutput (sourceList xs) (return ()) x
+
+data SPipe i o m r =
+    SHaveOutput (SPipe i o m r) o
+  | SNeedInput (i -> SPipe i o m r)
+  | SDone r
+  | SPipeM (m (SPipe i o m r))
+
+toPipe :: Monad m => SPipe i o m () -> Pipe i o m ()
+toPipe (SHaveOutput p o) = HaveOutput (toPipe p) (FinalizePure ()) o
+toPipe (SNeedInput p) = NeedInput (toPipe . p) (Done ())
+toPipe (SDone r) = Done r
+toPipe (SPipeM mp) = PipeM (liftM toPipe mp) (FinalizePure ())
+
+sawait :: SPipe i o m i
+sawait = SNeedInput SDone
+
+syield :: o -> SPipe i o m ()
+syield = SHaveOutput (SDone ())
+
+instance Monad m => Functor (SPipe i o m) where
+    fmap = liftM
+instance Monad m => Applicative (SPipe i o m) where
+    pure = return
+    (<*>) = ap
+instance Monad m => Monad (SPipe i o m) where
+    return = SDone
+    SHaveOutput p o >>= fp = SHaveOutput (p >>= fp) o
+    SNeedInput push >>= fp = SNeedInput (push >=> fp)
+    SDone r >>= fp = fp r
+    SPipeM mp >>= fp = SPipeM (liftM (>>= fp) mp)
+instance MonadBase base m => MonadBase base (SPipe i o m) where
+    liftBase = lift . liftBase
+instance MonadTrans (SPipe i o) where
+    lift = SPipeM . liftM SDone
+instance MonadIO m => MonadIO (SPipe i o m) where
+    liftIO = lift . liftIO
+instance Monad m => Monoid (SPipe i o m ()) where
+    mempty = return ()
+    mappend = (>>)
