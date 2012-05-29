@@ -539,5 +539,27 @@ main = hspecX $ do
             i <- I.readIORef ref
             i @?= 0
 
+    describe "invariant violations" $ do
+        it "leftovers without input" $ do
+            ref <- I.newIORef []
+            let add x = I.modifyIORef ref (x:)
+                adder = C.NeedInput (\a -> liftIO (add a) >> adder) (return ())
+                residue x = C.Leftover (CI.Done ()) x
+
+            _ <- CI.yield' 1 C.$$ adder
+            x <- I.readIORef ref
+            x @?= [1]
+            I.writeIORef ref []
+
+            _ <- CI.yield' 1 C.$$ (residue 2 >> residue 3) >> adder
+            x <- I.readIORef ref
+            x @?= [1, 2, 3]
+            I.writeIORef ref []
+
+            _ <- CI.yield' 1 C.$$ residue 2 >> (residue 3 >> adder)
+            x <- I.readIORef ref
+            x @?= [1, 2, 3]
+            I.writeIORef ref []
+
 it' :: String -> IO () -> Specs
 it' = it
