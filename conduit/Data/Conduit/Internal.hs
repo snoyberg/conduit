@@ -27,6 +27,7 @@ module Data.Conduit.Internal
     , mapOutput
     , runFinalize
     , addCleanup
+    , noInput
     ) where
 
 import Control.Applicative (Applicative (..), (<$>))
@@ -113,7 +114,7 @@ data Pipe i o m r =
     -- gives a new @Pipe@ which takes no input from upstream. This allows a
     -- @Pipe@ to provide a final stream of output values after no more input is
     -- available from upstream.
-  | NeedInput (i -> Pipe i o m r) (Pipe i o m r)
+  | NeedInput (i -> Pipe i o m r) (Pipe Void o m r)
     -- | Processing with this @Pipe@ is complete. Provides an optional leftover
     -- input value and and result.
   | Done r
@@ -184,7 +185,7 @@ instance Monad m => Applicative (Pipe i o m) where
 
     Done f <*> px = f <$> px
     HaveOutput p c o <*> px = HaveOutput (p <*> px) (c `ap` pipeClose px) o
-    NeedInput p c <*> px = NeedInput (\i -> p i <*> px) (c <*> px)
+    NeedInput p c <*> px = NeedInput (\i -> p i <*> px) (c <*> noInput px)
     PipeM mp c <*> px = PipeM ((<*> px) `liftM` mp) (c `ap` pipeClose px)
     Leftover p i <*> px = Leftover (p <*> px) i
 
@@ -193,7 +194,7 @@ instance Monad m => Monad (Pipe i o m) where
 
     Done x >>= fp = fp x
     HaveOutput p c o >>= fp = HaveOutput (p >>= fp) (c >>= pipeClose . fp) o
-    NeedInput p c >>= fp = NeedInput (p >=> fp) (c >>= fp)
+    NeedInput p c >>= fp = NeedInput (p >=> fp) (c >>= noInput . fp)
     PipeM mp c >>= fp = PipeM ((>>= fp) `liftM` mp) (c >>= pipeClose . fp)
     Leftover p i >>= fp = Leftover (p >>= fp) i
 
@@ -320,7 +321,7 @@ noInput (NeedInput _ c) = noInput c
 
 noInput (PipeM mp c) = PipeM (noInput `liftM` mp) c
 
-noInput (Leftover p i) = noInput $ pipePush i p
+noInput (Leftover p i) = noInput $ pipePushStrip i p
 
 -- | Run a complete pipeline until processing completes.
 --

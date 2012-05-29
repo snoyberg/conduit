@@ -54,7 +54,7 @@ import Prelude
     , Enum (succ), Eq
     )
 import Data.Conduit
-import Data.Conduit.Internal (pipeClose, runFinalize, pipePushStrip)
+import Data.Conduit.Internal (pipeClose, runFinalize, pipePushStrip, noInput)
 import Data.Monoid (mempty)
 import Data.Void (absurd)
 import Control.Monad (liftM, liftM2)
@@ -389,6 +389,7 @@ zip left (NeedInput _ c) = zip left c
 zipSinks :: Monad m => Sink i m r -> Sink i m r' -> Sink i m (r, r')
 zipSinks = (><)
   where
+    (><) :: Monad m => Sink i m r -> Sink i m r' -> Sink i m (r, r')
     Leftover px i    >< py               = pipePushStrip i px >< py
     px               >< Leftover py i    = px >< pipePushStrip i py
     PipeM mpx mx     >< py               = PipeM (liftM (>< py) mpx) (liftM2 (,) mx (pipeClose py))
@@ -397,8 +398,8 @@ zipSinks = (><)
     Done x           >< Done y           = Done (x, y)
 
     NeedInput fpx px >< NeedInput fpy py = NeedInput (\i -> zipSinks (fpx i) (fpy i)) (px >< py)
-    NeedInput fpx px >< py               = NeedInput (\i -> zipSinks (fpx i) py)      (px >< py)
-    px               >< NeedInput fpy py = NeedInput (\i -> zipSinks px (fpy i))      (px >< py)
+    NeedInput fpx px >< py               = NeedInput (\i -> zipSinks (fpx i) py)      (px >< noInput py)
+    px               >< NeedInput fpy py = NeedInput (\i -> zipSinks px (fpy i))      (noInput px >< py)
 
     HaveOutput _ _ o >< _                = absurd o
     _                >< HaveOutput _ _ o = absurd o
