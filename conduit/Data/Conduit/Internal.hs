@@ -68,6 +68,10 @@ instance Monad m => Monad (Finalize m) where
             FinalizePure y -> return y
             FinalizeM my -> my
 
+    FinalizePure _ >> f = f
+    FinalizeM x >> FinalizeM y = FinalizeM (x >> y)
+    FinalizeM x >> FinalizePure y = FinalizeM (x >> return y)
+
 instance MonadTrans Finalize where
     lift = FinalizeM
 
@@ -301,16 +305,7 @@ pipeResume left right =
                 -- Left pipe needs to run a monadic action.
                 PipeM mp c -> PipeM
                     ((`pipeResume` right) `liftM` mp)
-                    (fmap ((,) mempty) $ combineFinalize c $ pipeClose right)
-
--- | A minor optimization on @>>@ which does not cause any allocations for the
--- common case of missing left actions.
---
--- Since 0.4.1
-combineFinalize :: Monad m => Finalize m () -> Finalize m r -> Finalize m r
-combineFinalize (FinalizePure ()) f = f
-combineFinalize (FinalizeM x) (FinalizeM y) = FinalizeM $ x >> y
-combineFinalize (FinalizeM x) (FinalizePure y) = FinalizeM $ x >> return y
+                    (fmap ((,) mempty) $ c >> pipeClose right)
 
 noInput :: Monad m => Pipe i' o m r -> Pipe i o m r
 noInput (Done r) = Done r
