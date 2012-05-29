@@ -15,6 +15,8 @@ module Data.Conduit.Internal
       -- * Functions
     , pipeClose
     , pipe
+    , pipePush
+    , pipePushStrip
     , pipeResume
     , runPipe
     , sinkToPipe
@@ -114,7 +116,7 @@ data Pipe i o m r =
   | NeedInput (i -> Pipe i o m r) (Pipe i o m r)
     -- | Processing with this @Pipe@ is complete. Provides an optional leftover
     -- input value and and result.
-  | Done (Maybe i) r
+  | Done r
     -- | Require running of a monadic action to get the next @Pipe@. Second
     -- field is an early cleanup function. Technically, this second field
     -- could be skipped, but doing so would require extra operations to be
@@ -122,6 +124,7 @@ data Pipe i o m r =
     -- file, it may be forced to pull an extra, unneeded chunk before closing
     -- the @Handle@.
   | PipeM (m (Pipe i o m r)) (Finalize m r)
+  | Leftover (Pipe i o m r) i
 
 -- | A @Pipe@ which provides a stream of output values, without consuming any
 -- input. The input parameter is set to @Void@ to indicate that this @Pipe@
@@ -152,44 +155,53 @@ type Conduit i m o = Pipe i o m ()
 pipeClose :: Monad m => Pipe i o m r -> Finalize m r
 pipeClose (HaveOutput _ c _) = c
 pipeClose (NeedInput _ p) = pipeClose p
-pipeClose (Done _ r) = FinalizePure r
+pipeClose (Done r) = FinalizePure r
 pipeClose (PipeM _ c) = c
+pipeClose (Leftover p _) = pipeClose p
 
 pipePush :: Monad m => i -> Pipe i o m r -> Pipe i o m r
 pipePush i (HaveOutput p c o) = HaveOutput (pipePush i p) c o
 pipePush i (NeedInput p _) = p i
-pipePush i (Done _ r) = Done (Just i) r
+pipePush i (Done r) = Leftover (Done r) i
 pipePush i (PipeM mp c) = PipeM (pipePush i `liftM` mp) c
+pipePush i p@Leftover{} = Leftover p i
+
+pipePushStrip :: Monad m => i -> Pipe i o m r -> Pipe i o m r
+pipePushStrip i p =
+    case pipePush i p of
+        Leftover p' _ -> p'
+        p' -> p'
 
 instance Monad m => Functor (Pipe i o m) where
     fmap f (HaveOutput p c o) = HaveOutput (f <$> p) (f `liftM` c) o
     fmap f (NeedInput p c) = NeedInput (fmap f . p) (f <$> c)
-    fmap f (Done l r) = Done l (f r)
+    fmap f (Done r) = Done (f r)
     fmap f (PipeM mp mr) = PipeM ((fmap f) `liftM` mp) (f `liftM` mr)
+    fmap f (Leftover p i) = Leftover (f <$> p) i
 
 instance Monad m => Applicative (Pipe i o m) where
-    pure = Done Nothing
+    pure = Done
 
-    Done Nothing f <*> px = f <$> px
-    Done (Just i) f <*> px = pipePush i $ f <$> px
+    Done f <*> px = f <$> px
     HaveOutput p c o <*> px = HaveOutput (p <*> px) (c `ap` pipeClose px) o
     NeedInput p c <*> px = NeedInput (\i -> p i <*> px) (c <*> px)
     PipeM mp c <*> px = PipeM ((<*> px) `liftM` mp) (c `ap` pipeClose px)
+    Leftover p i <*> px = Leftover (p <*> px) i
 
 instance Monad m => Monad (Pipe i o m) where
-    return = Done Nothing
+    return = Done
 
-    Done Nothing x >>= fp = fp x
-    Done (Just i) x >>= fp = pipePush i $ fp x
+    Done x >>= fp = fp x
     HaveOutput p c o >>= fp = HaveOutput (p >>= fp) (c >>= pipeClose . fp) o
     NeedInput p c >>= fp = NeedInput (p >=> fp) (c >>= fp)
     PipeM mp c >>= fp = PipeM ((>>= fp) `liftM` mp) (c >>= pipeClose . fp)
+    Leftover p i >>= fp = Leftover (p >>= fp) i
 
 instance MonadBase base m => MonadBase base (Pipe i o m) where
     liftBase = lift . liftBase
 
 instance MonadTrans (Pipe i o) where
-    lift mr = PipeM (Done Nothing `liftM` mr) (FinalizeM mr)
+    lift mr = PipeM (Done `liftM` mr) (FinalizeM mr)
 
 instance MonadIO m => MonadIO (Pipe i o m) where
     liftIO = lift . liftIO
@@ -225,22 +237,22 @@ pipeResume left right =
     -- pipe.
     case right of
         -- Right pipe is done, grab leftovers and the left pipe
-        Done leftoverr r ->
+        Done r ->
             -- Get any leftovers from the left pipe, the current state of the
             -- left pipe (sans leftovers), and a close action for the left
             -- pipe.
             let (leftover, left', leftClose) =
                     case left of
-                        Done leftoverl () -> (leftoverl, Done Nothing (), FinalizePure ())
+                        Done () -> ({-leftoverl-} Nothing, Done (), FinalizePure ())
                         _ -> (Nothing, left, pipeClose left)
             -- Combine the current state of the left pipe with any leftovers
             -- from the right pipe.
                 left'' =
-                    case leftoverr of
+                    case {-leftoverr-} Nothing of
                         Just a -> HaveOutput left' leftClose a
                         Nothing -> left'
             -- Return the leftovers, the final left pipe state, and the result.
-             in Done leftover (left'', r)
+             in maybe id (flip Leftover) leftover $ Done (left'', r)
 
         -- Right pipe needs to run a monadic action.
         PipeM mp c -> PipeM
@@ -253,9 +265,12 @@ pipeResume left right =
             (((,) left) `fmap` c)
             o
 
+        Leftover p i -> pipeResume (HaveOutput left (pipeClose left) i) p
+
         -- Right pipe needs input, so let's get it
         NeedInput rp rc ->
             case left of
+                Leftover lp i -> (\(p, r) -> (Leftover p i, r)) <$> pipeResume lp (NeedInput rp rc)
                 -- Left pipe has output, right pipe wants it.
                 HaveOutput lp _ a -> pipeResume lp $ rp a
 
@@ -279,7 +294,7 @@ pipeResume left right =
                 -- Left pipe is done, right pipe needs input. In such a case,
                 -- tell the right pipe there is no more input, and eventually
                 -- replace its leftovers with the left pipe's leftover.
-                Done l () -> ((,) mempty) `liftM` replaceLeftover l rc
+                Done () -> ((,) mempty) `liftM` noInput rc
 
                 -- Left pipe needs to run a monadic action.
                 PipeM mp c -> PipeM
@@ -295,15 +310,17 @@ combineFinalize (FinalizePure ()) f = f
 combineFinalize (FinalizeM x) (FinalizeM y) = FinalizeM $ x >> y
 combineFinalize (FinalizeM x) (FinalizePure y) = FinalizeM $ x >> return y
 
-replaceLeftover :: Monad m => Maybe i -> Pipe i' o m r -> Pipe i o m r
-replaceLeftover l (Done _ r) = Done l r
-replaceLeftover l (HaveOutput p c o) = HaveOutput (replaceLeftover l p) c o
+noInput :: Monad m => Pipe i' o m r -> Pipe i o m r
+noInput (Done r) = Done r
+noInput (HaveOutput p c o) = HaveOutput (noInput p) c o
 
 -- This function is only called on pipes when there is no more input available.
 -- Therefore, we can ignore the push record.
-replaceLeftover l (NeedInput _ c) = replaceLeftover l c
+noInput (NeedInput _ c) = noInput c
 
-replaceLeftover l (PipeM mp c) = PipeM (replaceLeftover l `liftM` mp) c
+noInput (PipeM mp c) = PipeM (noInput `liftM` mp) c
+
+noInput (Leftover p i) = noInput $ pipePush i p
 
 -- | Run a complete pipeline until processing completes.
 --
@@ -311,8 +328,9 @@ replaceLeftover l (PipeM mp c) = PipeM (replaceLeftover l `liftM` mp) c
 runPipe :: Monad m => Pipe Void Void m r -> m r
 runPipe (HaveOutput _ c _) = runFinalize c
 runPipe (NeedInput _ c) = runPipe c
-runPipe (Done _ r) = return r
+runPipe (Done r) = return r
 runPipe (PipeM mp _) = mp >>= runPipe
+runPipe (Leftover p _) = runPipe p
 
 -- | Perform any necessary finalization actions.
 --
@@ -325,21 +343,21 @@ runFinalize (FinalizeM mr) = mr
 --
 -- Since 0.4.0
 yield :: Monad m => o -> Pipe i o m ()
-yield = HaveOutput (Done Nothing ()) (FinalizePure ())
+yield = HaveOutput (Done ()) (FinalizePure ())
 
 -- | Wait for a single input value from upstream, and remove it from the
 -- stream. Returns @Nothing@ if no more data is available.
 --
 -- Since 0.4.0
 await :: Pipe i o m (Maybe i)
-await = NeedInput (Done Nothing . Just) (Done Nothing Nothing)
+await = NeedInput (Done . Just) (Done Nothing)
 
 -- | Check if input is available from upstream. Will not remove the data from
 -- the stream.
 --
 -- Since 0.4.0
 hasInput :: Pipe i o m Bool
-hasInput = NeedInput (\i -> Done (Just i) True) (Done Nothing False)
+hasInput = NeedInput (Leftover (Done True)) (Done False)
 
 -- | A @Sink@ has a @Void@ type parameter for the output, which makes it
 -- difficult to compose with @Source@s and @Conduit@s. This function replaces
@@ -350,8 +368,9 @@ hasInput = NeedInput (\i -> Done (Just i) True) (Done Nothing False)
 sinkToPipe :: Monad m => Sink i m r -> Pipe i o m r
 sinkToPipe (HaveOutput _ _ o) = absurd o
 sinkToPipe (NeedInput p c) = NeedInput (sinkToPipe . p) (sinkToPipe c)
-sinkToPipe (Done i r) = Done i r
+sinkToPipe (Done r) = Done r
 sinkToPipe (PipeM mp c) = PipeM (liftM sinkToPipe mp) c
+sinkToPipe (Leftover p i) = Leftover (sinkToPipe p) i
 
 -- | Transform the monad that a @Pipe@ lives in.
 --
@@ -359,8 +378,9 @@ sinkToPipe (PipeM mp c) = PipeM (liftM sinkToPipe mp) c
 transPipe :: Monad m => (forall a. m a -> n a) -> Pipe i o m r -> Pipe i o n r
 transPipe f (HaveOutput p c o) = HaveOutput (transPipe f p) (transFinalize f c) o
 transPipe f (NeedInput p c) = NeedInput (transPipe f . p) (transPipe f c)
-transPipe _ (Done i r) = Done i r
+transPipe _ (Done r) = Done r
 transPipe f (PipeM mp c) = PipeM (f $ liftM (transPipe f) mp) (transFinalize f c)
+transPipe f (Leftover p i) = Leftover (transPipe f p) i
 
 transFinalize :: (forall a. m a -> n a) -> Finalize m r -> Finalize n r
 transFinalize _ (FinalizePure r) = FinalizePure r
@@ -375,8 +395,9 @@ transFinalize f (FinalizeM mr) = FinalizeM $ f mr
 mapOutput :: Monad m => (o1 -> o2) -> Pipe i o1 m r -> Pipe i o2 m r
 mapOutput f (HaveOutput p c o) = HaveOutput (mapOutput f p) c (f o)
 mapOutput f (NeedInput p c) = NeedInput (mapOutput f . p) (mapOutput f c)
-mapOutput _ (Done i r) = Done i r
+mapOutput _ (Done r) = Done r
 mapOutput f (PipeM mp c) = PipeM (liftM (mapOutput f) mp) c
+mapOutput f (Leftover p i) = Leftover (mapOutput f p) i
 
 -- | Add some code to be run when the given @Pipe@ cleans up.
 --
@@ -385,8 +406,8 @@ addCleanup :: Monad m
            => (Bool -> m ()) -- ^ @True@ if @Pipe@ ran to completion, @False@ for early termination.
            -> Pipe i o m r
            -> Pipe i o m r
-addCleanup cleanup (Done leftover r) = PipeM
-    (cleanup True >> return (Done leftover r))
+addCleanup cleanup (Done r) = PipeM
+    (cleanup True >> return (Done r))
     (lift (cleanup True) >> return r)
 addCleanup cleanup (HaveOutput src close x) = HaveOutput
     (addCleanup cleanup src)
@@ -398,3 +419,4 @@ addCleanup cleanup (PipeM msrc close) = PipeM
 addCleanup cleanup (NeedInput p c) = NeedInput
     (addCleanup cleanup . p)
     (addCleanup cleanup c)
+addCleanup cleanup (Leftover p i) = Leftover (addCleanup cleanup p) i

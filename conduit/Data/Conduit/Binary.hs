@@ -80,7 +80,7 @@ sourceHandle h =
     pull = do
         bs <- liftIO (S.hGetSome h 4096)
         if S.null bs
-            then return $ Done Nothing ()
+            then return $ Done ()
             else return $ HaveOutput src close bs
 
     close = return ()
@@ -154,7 +154,7 @@ sourceFileRange fp offset count = PipeM
         if S.null bs
             then do
                 release key
-                return $ Done Nothing ()
+                return $ Done ()
             else do
                 let src = PipeM
                         (pullUnlimited handle key)
@@ -169,7 +169,7 @@ sourceFileRange fp offset count = PipeM
             if S.null bs
                 then do
                     release key
-                    return $ Done Nothing ()
+                    return $ Done ()
                 else do
                     let src = PipeM
                             (pullLimited (toInteger c') handle key)
@@ -233,8 +233,8 @@ head =
         case S.uncons bs of
             Nothing -> NeedInput push close
             Just (w, bs') ->
-                let lo = if S.null bs' then Nothing else Just bs'
-                 in Done lo (Just w)
+                let lo = if S.null bs' then id else flip Leftover bs'
+                 in lo $ Done (Just w)
     close = return Nothing
 
 -- | Return all bytes while the predicate returns @True@.
@@ -251,7 +251,7 @@ takeWhile p =
                     then r
                     else HaveOutput r (return ()) x
         | otherwise =
-            let f = Done (Just y) ()
+            let f = Leftover (Done ()) y
              in if S.null x
                     then f
                     else HaveOutput f (return ()) x
@@ -268,7 +268,7 @@ dropWhile p =
   where
     push bs
         | S.null bs' = NeedInput push close
-        | otherwise  = Done (Just bs') ()
+        | otherwise  = Leftover (Done ()) bs'
       where
         bs' = S.dropWhile p bs
     close = return ()
@@ -286,10 +286,10 @@ take n0 =
         push bs =
             case S.length bs `compare` n of
                 LT -> go (n - S.length bs) (front . (bs:))
-                EQ -> Done Nothing $ L.fromChunks $ front [bs]
+                EQ -> Done $ L.fromChunks $ front [bs]
                 GT ->
                     let (x, y) = S.splitAt n bs
-                     in Done (Just y) $ L.fromChunks $ front [x]
+                     in assert (not $ S.null y) $ Leftover (Done $ L.fromChunks $ front [x]) y
         close = return $ L.fromChunks $ front []
 
 -- | Split the input bytes into lines. In other words, split on the LF byte
@@ -312,6 +312,6 @@ lines = NeedInput (push id) (close S.empty)
         (first, second) = S.breakByte 10 more
 
     close rest
-        | S.null rest = Done Nothing ()
-        | otherwise   = HaveOutput (Done Nothing ()) (return ()) rest
+        | S.null rest = Done ()
+        | otherwise   = HaveOutput (Done ()) (return ()) rest
 

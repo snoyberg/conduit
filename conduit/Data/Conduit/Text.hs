@@ -82,8 +82,8 @@ lines =
         (first', second) = T.break (== '\n') more
 
     close rest
-        | T.null rest = C.Done Nothing ()
-        | otherwise   = C.HaveOutput (C.Done Nothing ()) (return ()) rest
+        | T.null rest = C.Done ()
+        | otherwise   = C.HaveOutput (C.Done ()) (return ()) rest
 
 -- | Convert text into bytes, using the provided codec. If the codec is
 -- not capable of representing an input character, an exception will be thrown.
@@ -115,7 +115,7 @@ decode codec =
 
     close bs =
         case B.uncons bs of
-            Nothing -> C.Done Nothing ()
+            Nothing -> C.Done ()
             Just (w, _) ->
                 let exc = monadThrow $ DecodeException codec w
                  in C.PipeM exc (lift exc)
