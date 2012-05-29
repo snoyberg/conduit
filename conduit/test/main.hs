@@ -548,17 +548,17 @@ main = hspecX $ do
 
             _ <- CI.yield' 1 C.$$ adder
             x <- I.readIORef ref
-            x @?= [1]
+            x @?= [1 :: Int]
             I.writeIORef ref []
 
             _ <- CI.yield' 1 C.$$ (residue 2 >> residue 3) >> adder
-            x <- I.readIORef ref
-            x @?= [1, 2, 3]
+            y <- I.readIORef ref
+            y @?= [1, 2, 3]
             I.writeIORef ref []
 
             _ <- CI.yield' 1 C.$$ residue 2 >> (residue 3 >> adder)
-            x <- I.readIORef ref
-            x @?= [1, 2, 3]
+            z <- I.readIORef ref
+            z @?= [1, 2, 3]
             I.writeIORef ref []
 
 it' :: String -> IO () -> Specs
