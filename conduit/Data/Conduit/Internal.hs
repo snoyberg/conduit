@@ -323,7 +323,9 @@ noInput (NeedInput _ c) = noInput c
 
 noInput (PipeM mp c) = PipeM (noInput `liftM` mp) c
 
-noInput (Leftover p i) = noInput $ pipePushStrip i p
+-- In theory, this is better, but I believe it violates the Monad laws.
+-- noInput (Leftover p i) = noInput $ pipePushStrip i p
+noInput (Leftover p _) = noInput p
 
 -- | Run a complete pipeline until processing completes.
 --
