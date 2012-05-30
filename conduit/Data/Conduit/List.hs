@@ -102,8 +102,8 @@ fold :: Monad m
      => (b -> a -> b)
      -> b
      -> Pipe a o m b
-fold f accum0 =
-    go accum0
+fold f =
+    go
   where
     go accum = NeedInput (push accum) (return accum)
 
