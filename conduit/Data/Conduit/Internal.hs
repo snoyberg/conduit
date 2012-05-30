@@ -256,23 +256,8 @@ pipeResume left right =
     -- only if the right pipe is asking for more input do we process the left
     -- pipe.
     case right of
-        -- Right pipe is done, grab leftovers and the left pipe
-        Done r ->
-            -- Get any leftovers from the left pipe, the current state of the
-            -- left pipe (sans leftovers), and a close action for the left
-            -- pipe.
-            let (leftover, left', leftClose) =
-                    case left of
-                        Done () -> ({-leftoverl-} Nothing, Done (), FinalizePure ())
-                        _ -> (Nothing, left, pipeClose left)
-            -- Combine the current state of the left pipe with any leftovers
-            -- from the right pipe.
-                left'' =
-                    case {-leftoverr-} Nothing of
-                        Just a -> HaveOutput left' leftClose a
-                        Nothing -> left'
-            -- Return the leftovers, the final left pipe state, and the result.
-             in maybe id (flip Leftover) leftover $ Done (left'', r)
+        -- Right pipe is done, grab result and the left pipe
+        Done r -> Done (left, r)
 
         -- Right pipe needs to run a monadic action.
         PipeM mp c -> PipeM
