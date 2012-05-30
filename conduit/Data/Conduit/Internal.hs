@@ -202,7 +202,18 @@ instance Monad m => Monad (Pipe i o m) where
 
     Done x >>= fp = fp x
     HaveOutput p c o >>= fp = HaveOutput (p >>= fp) (c >>= pipeClose . fp) o
-    NeedInput p c >>= fp = NeedInput (p >=> fp) (c >>= noInput . fp)
+    NeedInput p c >>= fp =
+        NeedInput (p >=> fp) (c >>= noInput . fp)
+        {-
+         - Possible reimplementation of noInput which does not apply noInput to
+         - the second field of NeedInput
+      where
+        go (Done x) = Done x
+        go (HaveOutput p c o) = HaveOutput (go p) c o
+        go (NeedInput _ c) = c
+        go (PipeM mp c) = PipeM (liftM go mp) c
+        go (Leftover p _) = go p
+        -}
     PipeM mp c >>= fp = PipeM ((>>= fp) `liftM` mp) (c >>= pipeClose . fp)
     Leftover p i >>= fp = Leftover (p >>= fp) i
 
