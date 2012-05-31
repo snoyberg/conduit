@@ -136,18 +136,18 @@ main = hspecX $ do
 
     describe "zipping" $ do
         it "zipping two small lists" $ do
-            res <- runResourceT $ CL.zip (CL.sourceList [1..10]) (CL.sourceList [11..12]) C.$$ CL.consume
+            res <- runResourceT $ C.zip (CL.sourceList [1..10]) (CL.sourceList [11..12]) C.$$ CL.consume
             res @=? zip [1..10 :: Int] [11..12 :: Int]
 
     describe "zipping sinks" $ do
         it "take all" $ do
-            res <- runResourceT $ CL.sourceList [1..10] C.$$ CL.zipSinks CL.consume CL.consume
+            res <- runResourceT $ CL.sourceList [1..10] C.$$ C.zipSinks CL.consume CL.consume
             res @=? ([1..10 :: Int], [1..10 :: Int])
         it "take fewer on left" $ do
-            res <- runResourceT $ CL.sourceList [1..10] C.$$ CL.zipSinks (CL.take 4) CL.consume
+            res <- runResourceT $ CL.sourceList [1..10] C.$$ C.zipSinks (CL.take 4) CL.consume
             res @=? ([1..4 :: Int], [1..10 :: Int])
         it "take fewer on right" $ do
-            res <- runResourceT $ CL.sourceList [1..10] C.$$ CL.zipSinks CL.consume (CL.take 4)
+            res <- runResourceT $ CL.sourceList [1..10] C.$$ C.zipSinks CL.consume (CL.take 4)
             res @=? ([1..10 :: Int], [1..4 :: Int])
 
     describe "Monad instance for Sink" $ do
@@ -404,7 +404,7 @@ main = hspecX $ do
             (    CL.sourceList [1..10 :: Int]
               C.$$ CL.map (+ 1)
              C.=$= CL.map (subtract 1)
-             C.=$= CL.map (* 2)
+             C.=$= CL.mapM (return . (* 2))
              C.=$= CL.map (`div` 2)
              C.=$= CL.fold (+) 0
             ) @?= sum [1..10]

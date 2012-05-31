@@ -20,8 +20,6 @@ module Data.Conduit.List
     , take
     , drop
     , head
-    , zip
-    , zipSinks
     , peek
     , consume
     , sinkNull
@@ -57,14 +55,8 @@ import Prelude
     , maybe
     )
 import Data.Conduit
-import Data.Conduit.Internal (Pipe (..)) -- FIXME
-import Data.Conduit.Internal
-    ( pipeClose, runFinalize, pipePushStrip, noInput, Finalize (FinalizeM)
-    , sourceList
-    )
-import Data.Monoid (mempty)
-import Data.Void (absurd)
-import Control.Monad (liftM, liftM2, forever)
+import Data.Conduit.Internal (sourceList)
+import Control.Monad (forever, when)
 import Control.Monad.Trans.Class (lift)
 
 -- | Generate a source from a seed value.
@@ -79,8 +71,8 @@ unfold f =
   where
     go seed =
         case f seed of
-            Just (a, seed') -> HaveOutput (go seed') (return ()) a
-            Nothing -> Done ()
+            Just (a, seed') -> yield' a $ go seed'
+            Nothing -> return ()
 
 -- | Enumerate from a value to a final value, inclusive, via 'succ'.
 --
@@ -97,8 +89,8 @@ enumFromTo start stop =
     go start
   where
     go i
-        | i == stop = HaveOutput (Done ()) (return ()) i
-        | otherwise = HaveOutput (go (succ i)) (return ()) i
+        | i == stop = yield' i $ return ()
+        | otherwise = yield' i $ go $ succ i
 
 -- | A strict left fold.
 --
@@ -108,13 +100,15 @@ fold :: Monad m
      -> b
      -> Pipe a o m b
 fold f =
-    go
+    loop
   where
-    go accum = NeedInput (push accum) (return accum)
-
-    push accum input =
-        let accum' = f accum input
-         in accum' `seq` go accum'
+    loop accum =
+        await' >>= go
+      where
+        go Nothing = return accum
+        go (Just a) =
+            let accum' = f accum a
+             in accum' `seq` loop accum'
 
 -- | A monadic strict left fold.
 --
@@ -123,16 +117,16 @@ foldM :: Monad m
       => (b -> a -> m b)
       -> b
       -> Pipe a o m b
-foldM f accum0 =
-    sink accum0
+foldM f =
+    loop
   where
-    sink accum = NeedInput (\a -> PipeM (push accum a) (final accum a)) (return accum)
-
-    push accum a = do
-        accum' <- f accum a
-        accum' `seq` return (sink accum')
-
-    final accum a = FinalizeM $ f accum a
+    loop accum = do
+        ma <- await'
+        case ma of
+            Nothing -> return accum
+            Just a -> do
+                accum' <- lift $ f accum a
+                accum' `seq` loop accum'
 
 -- | Apply the action to all values in the stream.
 --
@@ -140,11 +134,7 @@ foldM f accum0 =
 mapM_ :: Monad m
       => (a -> m ())
       -> Pipe a o m ()
-mapM_ f =
-    NeedInput push close
-  where
-    push input = PipeM (f input >> return (NeedInput push close)) (return ())
-    close = return ()
+mapM_ f = toPipe $ forever $ await >>= lift . f
 
 -- | Ignore a certain number of values in the stream. This function is
 -- semantically equivalent to:
@@ -158,14 +148,11 @@ mapM_ f =
 drop :: Monad m
      => Int
      -> Pipe a o m ()
-drop 0 = NeedInput (Leftover (Done ())) (return ())
-drop count =
-    NeedInput push (return ())
+drop =
+    toPipe . loop
   where
-    count' = count - 1
-    push _
-        | count' == 0 = Done ()
-        | otherwise   = drop count'
+    loop 0 = return ()
+    loop count = await >> loop (count - 1)
 
 -- | Take some values from the stream and return as a list. If you want to
 -- instead create a conduit that pipes data to another sink, see 'isolate'.
@@ -177,49 +164,32 @@ drop count =
 take :: Monad m
      => Int
      -> Pipe a o m [a]
-take count0 =
-    go count0 id
+take =
+    loop id
   where
-    go count front = NeedInput (push count front) (return $ front [])
-
-    push 0 front x = Leftover (Done $ front []) x
-    push count front x
-        | count' == 0 = Done (front [x])
-        | otherwise   = NeedInput (push count' front') (return $ front' [])
-      where
-        count' = count - 1
-        front' = front . (x:)
+    loop front 0 = return $ front []
+    loop front count = await' >>= maybe
+        (return $ front [])
+        (\x -> loop (front .(x:)) (count - 1))
 
 -- | Take a single value from the stream, if available.
 --
 -- Since 0.3.0
 head :: Monad m => Pipe a o m (Maybe a)
-head =
-    NeedInput push close
-  where
-    push x = Done (Just x)
-    close = return Nothing
+head = await'
 
 -- | Look at the next value in the stream, if available. This function will not
 -- change the state of the stream.
 --
 -- Since 0.3.0
 peek :: Monad m => Pipe a o m (Maybe a)
-peek =
-    NeedInput push close
-  where
-    push x = Leftover (Done $ Just x) x
-    close = Done Nothing
+peek = await' >>= maybe (return Nothing) (\x -> leftover' x >> return (Just x))
 
 -- | Apply a transformation to all values in a stream.
 --
 -- Since 0.3.0
 map :: Monad m => (a -> b) -> Conduit a m b
-map f =
-    NeedInput push close
-  where
-    push i = HaveOutput (NeedInput push close) (return ()) (f i)
-    close = mempty
+map f = toPipe $ forever $ await >>= yield . f
 
 -- | Apply a monadic transformation to all values in a stream.
 --
@@ -228,11 +198,7 @@ map f =
 --
 -- Since 0.3.0
 mapM :: Monad m => (a -> m b) -> Conduit a m b
-mapM f =
-    NeedInput push close
-  where
-    push = flip PipeM (return ()) . liftM (HaveOutput (NeedInput push close) (return ())) . f
-    close = mempty
+mapM f = toPipe $ forever $ await >>= lift . f >>= yield
 
 -- | Apply a transformation to all values in a stream, concatenating the output
 -- values.
@@ -281,10 +247,9 @@ concatMapAccumM f =
 -- Since 0.3.0
 consume :: Monad m => Pipe a o m [a]
 consume =
-    go id
+    loop id
   where
-    go front = NeedInput (push front) (return $ front [])
-    push front x = go (front . (x:))
+    loop front = await' >>= maybe (return $ front []) (\x -> loop $ front . (x:))
 
 -- | Grouping input according to an equality function.
 --
@@ -327,72 +292,18 @@ isolate =
 --
 -- Since 0.3.0
 filter :: Monad m => (a -> Bool) -> Conduit a m a
-filter f =
-    NeedInput push close
-  where
-    push i | f i = HaveOutput (NeedInput push close) (return ()) i
-    push _       = NeedInput push close
-    close = mempty
+filter f = toPipe $ forever $ await >>= \x -> when (f x) $ yield x
 
 -- | Ignore the remainder of values in the source. Particularly useful when
 -- combined with 'isolate'.
 --
 -- Since 0.3.0
 sinkNull :: Monad m => Pipe a o m ()
-sinkNull =
-    NeedInput push close
-  where
-    push _ = sinkNull
-    close = return ()
+sinkNull = toPipe $ forever $ await >> return ()
 
 -- | A source that returns nothing. Note that this is just a type-restricted
 -- synonym for 'mempty'.
 --
 -- Since 0.3.0
 sourceNull :: Monad m => Pipe i a m ()
-sourceNull = mempty
-
--- | Combines two sources. The new source will stop producing once either
---   source has been exhausted.
---
--- Since 0.3.0
-zip :: Monad m => Source m a -> Source m b -> Source m (a, b)
-zip (Leftover p i) right = zip (pipePushStrip i p) right
-zip left (Leftover p i)  = zip left (pipePushStrip i p)
-zip (Done ()) (Done ()) = Done ()
-zip (Done ()) (HaveOutput _ close _) = PipeM (runFinalize close >> return (Done ())) close
-zip (HaveOutput _ close _) (Done ()) = PipeM (runFinalize close >> return (Done ())) close
-zip (Done ()) (PipeM _ close) = PipeM (runFinalize close >> return (Done ())) close
-zip (PipeM _ close) (Done ()) = PipeM (runFinalize close >> return (Done ())) close
-zip (PipeM mx closex) (PipeM my closey) = PipeM (liftM2 zip mx my) (closex >> closey)
-zip (PipeM mx closex) y@(HaveOutput _ closey _) = PipeM (liftM (\x -> zip x y) mx) (closex >> closey)
-zip x@(HaveOutput _ closex _) (PipeM my closey) = PipeM (liftM (\y -> zip x y) my) (closex >> closey)
-zip (HaveOutput srcx closex x) (HaveOutput srcy closey y) = HaveOutput (zip srcx srcy) (closex >> closey) (x, y)
-zip (NeedInput _ c) right = zip c right
-zip left (NeedInput _ c) = zip left c
-
-
--- | Combines two sinks. The new sink will complete when both input sinks have
---   completed.
---
--- If both sinks finish on the same chunk, and both report leftover input,
--- arbitrarily yield the left sink's leftover input.
---
--- Since 0.4.1
-zipSinks :: Monad m => Sink i m r -> Sink i m r' -> Sink i m (r, r')
-zipSinks = (><)
-  where
-    (><) :: Monad m => Sink i m r -> Sink i m r' -> Sink i m (r, r')
-    Leftover px i    >< py               = pipePushStrip i px >< py
-    px               >< Leftover py i    = px >< pipePushStrip i py
-    PipeM mpx mx     >< py               = PipeM (liftM (>< py) mpx) (liftM2 (,) mx (pipeClose py))
-    px               >< PipeM mpy my     = PipeM (liftM (px ><) mpy) (liftM2 (,) (pipeClose px) my)
-
-    Done x           >< Done y           = Done (x, y)
-
-    NeedInput fpx px >< NeedInput fpy py = NeedInput (\i -> zipSinks (fpx i) (fpy i)) (px >< py)
-    NeedInput fpx px >< py               = NeedInput (\i -> zipSinks (fpx i) py)      (px >< noInput py)
-    px               >< NeedInput fpy py = NeedInput (\i -> zipSinks px (fpy i))      (noInput px >< py)
-
-    HaveOutput _ _ o >< _                = absurd o
-    _                >< HaveOutput _ _ o = absurd o
+sourceNull = return ()
