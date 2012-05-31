@@ -42,16 +42,19 @@ module Data.Conduit.List
     , concatMapAccumM
     ) where
 
+import qualified Prelude
 import Prelude
     ( ($), return, (==), (-), Int
     , (.), id, Maybe (..), Monad
     , Bool (..)
     , Ordering (..)
     , (>>)
+    , (>>=)
     , flip
     , seq
     , otherwise
     , Enum (succ), Eq
+    , maybe
     )
 import Data.Conduit
 import Data.Conduit.Internal (Pipe (..)) -- FIXME
@@ -61,8 +64,8 @@ import Data.Conduit.Internal
     )
 import Data.Monoid (mempty)
 import Data.Void (absurd)
-import Control.Monad (liftM, liftM2)
-import Data.Conduit.Util -- FIXME remove
+import Control.Monad (liftM, liftM2, forever)
+import Control.Monad.Trans.Class (lift)
 
 -- | Generate a source from a seed value.
 --
@@ -236,42 +239,40 @@ mapM f =
 --
 -- Since 0.3.0
 concatMap :: Monad m => (a -> [b]) -> Conduit a m b
-concatMap f =
-    NeedInput push close
-  where
-    push = haveMore (NeedInput push close) (return ()) . f
-    close = mempty
+concatMap f = toPipe $ forever $ await >>= Prelude.mapM_ yield . f
 
 -- | Apply a monadic transformation to all values in a stream, concatenating
 -- the output values.
 --
 -- Since 0.3.0
 concatMapM :: Monad m => (a -> m [b]) -> Conduit a m b
-concatMapM f =
-    NeedInput push close
-  where
-    push = flip PipeM (return ()) . liftM (haveMore (NeedInput push close) (return ())) . f
-    close = mempty
+concatMapM f = toPipe $ forever $ await >>= lift . f >>= Prelude.mapM_ yield
 
 -- | 'concatMap' with an accumulator.
 --
 -- Since 0.3.0
 concatMapAccum :: Monad m => (a -> accum -> (accum, [b])) -> accum -> Conduit a m b
-concatMapAccum f accum = conduitState accum push close
+concatMapAccum f =
+    toPipe . loop
   where
-    push state input = let (state', result) = f input state
-                       in return $ StateProducing state' result
-    close _ = return []
+    loop accum = do
+        a <- await
+        let (accum', bs) = f a accum
+        Prelude.mapM_ yield bs
+        loop accum'
 
 -- | 'concatMapM' with an accumulator.
 --
 -- Since 0.3.0
 concatMapAccumM :: Monad m => (a -> accum -> m (accum, [b])) -> accum -> Conduit a m b
-concatMapAccumM f accum = conduitState accum push close
+concatMapAccumM f =
+    toPipe . loop
   where
-    push state input = do (state', result) <- f input state
-                          return $ StateProducing state' result
-    close _ = return []
+    loop accum = do
+        a <- await
+        (accum', bs) <- lift $ f a accum
+        Prelude.mapM_ yield bs
+        loop accum'
 
 -- | Consume all values from the stream and return as a list. Note that this
 -- will pull all values into memory. For a lazy variant, see
@@ -289,18 +290,18 @@ consume =
 --
 -- Since 0.3.0
 groupBy :: Monad m => (a -> a -> Bool) -> Conduit a m [a]
-groupBy f = conduitState
-    []
-    push
-    close
+groupBy f =
+    start
   where
-    push []      v = return $ StateProducing [v] []
-    push s@(x:_) v =
-      if f x v then
-        return $ StateProducing (v:s) []
-      else
-        return $ StateProducing [v] [s]
-    close s = return [s]
+    start = await' >>= maybe (return ()) (loop id)
+
+    loop rest x = do
+        my <- await'
+        case my of
+            Nothing -> yield' $ x : rest []
+            Just y
+                | f x y -> loop (rest . (y:)) x
+                | otherwise -> yield' (x : rest []) >> loop id y
 
 -- | Ensure that the inner sink consumes no more than the given number of
 -- values. Note this this does /not/ ensure that the sink consumes all of those
@@ -316,20 +317,11 @@ groupBy f = conduitState
 --
 -- Since 0.3.0
 isolate :: Monad m => Int -> Conduit a m a
-isolate count0 = conduitState
-    count0
-    push
-    close
+isolate =
+    toPipe . loop
   where
-    close _ = return []
-    push count x = do
-        if count == 0
-            then return $ StateFinished (Just x) []
-            else do
-                let count' = count - 1
-                return $ if count' == 0
-                    then StateFinished Nothing [x]
-                    else StateProducing count' [x]
+    loop 0 = return ()
+    loop count = await >>= \x -> yield x >> loop (count - 1)
 
 -- | Keep only values in the stream passing a given predicate.
 --
