@@ -337,9 +337,31 @@ runFinalize (FinalizeM mr) = mr
 
 -- | Send a single output value downstream.
 --
--- Since 0.4.0
-yield' :: o -> Pipe i o m ()
-yield' = HaveOutput (Done ()) (FinalizePure ())
+-- /Note to self/: Make this explanation more user friendly.
+--
+-- Due to the nature of @SPipe@, the @yield@ function will automatically
+-- terminate when downstream no longer wants input. This is because monadic
+-- bind for @SPipe@ handles automatic termination.
+--
+-- By contrast, the monadic bind for @Pipe@ does no such automatic termination,
+-- as that would (for one thing) prevent resource finalization. As a result, if
+-- we had an equivalent @yield@ function for @Pipe@, the following code would
+-- be an infinite loop:
+--
+-- > mapM_ yield [1..] $$ take 10
+--
+-- The solution is that @yield'@ takes two arguments: the value to send
+-- downstream, and the next @Pipe@ to be run, /if downstream if still accepting
+-- input/. If downstream is not accepting input, then the second argument to
+-- this function will not be called.
+--
+-- Note that you can still cause infinite loops via monadic bind, but the type
+-- signature of this function should make it significantly less likely. Basic
+-- approach: @yield'@ should be the last call in any chain of monadic binding.
+--
+-- Since 0.5.0
+yield' :: o -> Pipe i o m () -> Pipe i o m ()
+yield' o p = HaveOutput p (FinalizePure ()) o
 
 -- | Wait for a single input value from upstream, and remove it from the
 -- stream. Returns @Nothing@ if no more data is available.

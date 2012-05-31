@@ -298,10 +298,10 @@ groupBy f =
     loop rest x = do
         my <- await'
         case my of
-            Nothing -> yield' $ x : rest []
+            Nothing -> yield' (x : rest []) (return ())
             Just y
                 | f x y -> loop (rest . (y:)) x
-                | otherwise -> yield' (x : rest []) >> loop id y
+                | otherwise -> yield' (x : rest []) (loop id y)
 
 -- | Ensure that the inner sink consumes no more than the given number of
 -- values. Note this this does /not/ ensure that the sink consumes all of those

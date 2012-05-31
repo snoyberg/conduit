@@ -568,20 +568,32 @@ main = hspecX $ do
                 adder = CI.NeedInput (\a -> liftIO (add a) >> adder) (return ())
                 residue x = CI.Leftover (CI.Done ()) x
 
-            _ <- CI.yield' 1 C.$$ adder
+            _ <- CI.yield' 1 (return ()) C.$$ adder
             x <- I.readIORef ref
             x @?= [1 :: Int]
             I.writeIORef ref []
 
-            _ <- CI.yield' 1 C.$$ (residue 2 >> residue 3) >> adder
+            _ <- CI.yield' 1 (return ()) C.$$ (residue 2 >> residue 3) >> adder
             y <- I.readIORef ref
             y @?= [1, 2, 3]
             I.writeIORef ref []
 
-            _ <- CI.yield' 1 C.$$ residue 2 >> (residue 3 >> adder)
+            _ <- CI.yield' 1 (return ()) C.$$ residue 2 >> (residue 3 >> adder)
             z <- I.readIORef ref
             z @?= [1, 2, 3]
             I.writeIORef ref []
+
+    describe "sane yield'/await'" $ do
+        it' "yield' terminates" $ do
+            let is = [1..11] ++ undefined
+                src [] = return ()
+                src (x:xs) = CI.yield' x $ src xs
+            x <- src is C.$$ CL.take 10
+            x @?= [1..10 :: Int]
+        it' "yield terminates" $ do
+            let is = [1..11] ++ undefined
+            x <- CI.toPipe (mapM_ CI.yield is) C.$$ CL.take 10
+            x @?= [1..10 :: Int]
 
 it' :: String -> IO () -> Specs
 it' = it

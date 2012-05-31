@@ -207,10 +207,11 @@ takeWhile p =
             Nothing -> return ()
             Just bs -> go bs
 
-    go bs = do
-        unless (S.null x) $ yield' x
-        if S.null y then loop else leftover' y
+    go bs
+        | S.null x = next
+        | otherwise = yield' x next
       where
+        next = if S.null y then loop else leftover' y
         (x, y) = S.span p bs
 
 -- | Ignore all bytes while the predicate returns @True@.
@@ -260,12 +261,12 @@ lines =
         case mbs of
             Nothing ->
                 let final = front S.empty
-                 in unless (S.null final) $ yield' final
+                 in unless (S.null final) $ yield' final $ return ()
             Just bs -> go front bs
 
     go sofar more =
         case S.uncons second of
-            Just (_, second') -> yield' (sofar first) >> go id second'
+            Just (_, second') -> yield' (sofar first) $ go id second'
             Nothing ->
                 let rest = sofar more
                  in loop $ S.append rest
