@@ -2,19 +2,33 @@
 {-# LANGUAGE CPP #-}
 -- | Functions for interacting with bytes.
 module Data.Conduit.Binary
-    ( sourceFile
+    ( -- * Files and @Handle@s
+
+      -- | Note that most of these functions live in the @MonadResource@ monad
+      -- to ensure resource finalization even in the presence of exceptions. In
+      -- order to run such code, you will need to use @runResourceT@.
+
+      -- ** Sources
+      sourceFile
     , sourceHandle
     , sourceIOHandle
     , sourceFileRange
+      -- ** Sinks
     , sinkFile
     , sinkHandle
     , sinkIOHandle
+      -- ** Conduits
     , conduitFile
-    , isolate
+      -- * Utilities
+      -- ** Sources
+    , sourceLbs
+      -- ** Sinks
     , head
-    , takeWhile
     , dropWhile
     , take
+      -- ** Conduits
+    , isolate
+    , takeWhile
     , Data.Conduit.Binary.lines
     ) where
 
@@ -22,6 +36,7 @@ import Prelude hiding (head, take, takeWhile, dropWhile)
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Lazy as L
 import Data.Conduit
+import Data.Conduit.List (sourceList)
 import Control.Exception (assert)
 import Control.Monad (forever, unless)
 import Control.Monad.IO.Class (liftIO, MonadIO)
@@ -272,3 +287,9 @@ lines =
                  in loop $ S.append rest
       where
         (first, second) = S.breakByte 10 more
+
+-- | Stream the chunks from a lazy bytestring.
+--
+-- Since 0.5.0
+sourceLbs :: Monad m => L.ByteString -> Source m S.ByteString
+sourceLbs = sourceList . L.toChunks
