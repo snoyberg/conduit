@@ -41,11 +41,11 @@ import           Data.Word (Word8, Word16)
 import           System.IO.Unsafe (unsafePerformIO)
 import           Data.Typeable (Typeable)
 
-import qualified Data.Conduit as C
-import qualified Data.Conduit.Internal as C (Pipe (..)) -- FIXME
+import Data.Conduit
 import qualified Data.Conduit.List as CL
-import Control.Monad.Trans.Resource (MonadThrow (..))
 import Control.Monad.Trans.Class (lift)
+import Control.Monad (unless)
+import Control.Applicative ((<$>))
 
 -- | A specific character encoding.
 --
@@ -69,28 +69,32 @@ instance Show Codec where
 -- | Emit each line separately
 --
 -- Since 0.4.1
-lines :: Monad m => C.Conduit T.Text m T.Text
+lines :: Monad m => Conduit T.Text m T.Text
 lines =
-    C.NeedInput (push id) (close T.empty)
+    loop id
   where
-    push sofar more =
+    loop front = do
+        mbs <- await'
+        case mbs of
+            Nothing ->
+                let final = front T.empty
+                 in unless (T.null final) $ yield' final $ return ()
+            Just bs -> go front bs
+
+    go sofar more =
         case T.uncons second of
-            Just (_, second') -> C.HaveOutput (push id second') (return ()) (sofar first')
+            Just (_, second') -> yield' (sofar first') $ go id second'
             Nothing ->
                 let rest = sofar more
-                 in C.NeedInput (push $ T.append rest) (close rest)
+                 in loop $ T.append rest
       where
         (first', second) = T.break (== '\n') more
-
-    close rest
-        | T.null rest = C.Done ()
-        | otherwise   = C.HaveOutput (C.Done ()) (return ()) rest
 
 -- | Convert text into bytes, using the provided codec. If the codec is
 -- not capable of representing an input character, an exception will be thrown.
 --
 -- Since 0.3.0
-encode :: MonadThrow m => Codec -> C.Conduit T.Text m B.ByteString
+encode :: MonadThrow m => Codec -> Conduit T.Text m B.ByteString
 encode codec = CL.mapM $ \t -> do
     let (bs, mexc) = codecEncode codec t
     maybe (return bs) (monadThrow . fst) mexc
@@ -100,31 +104,25 @@ encode codec = CL.mapM $ \t -> do
 -- not capable of decoding an input byte sequence, an exception will be thrown.
 --
 -- Since 0.3.0
-decode :: MonadThrow m => Codec -> C.Conduit B.ByteString m T.Text
+decode :: MonadThrow m => Codec -> Conduit B.ByteString m T.Text
 decode codec =
-    C.NeedInput push (close B.empty)
+    loop id
   where
-    push bs =
+    loop front = do
+        mbs <- await'
+        case front <$> mbs of
+            Nothing ->
+                case B.uncons $ front B.empty of
+                    Nothing -> return ()
+                    Just (w, _) -> lift $ monadThrow $ DecodeException codec w
+            Just bs -> go bs
+
+    go bs =
         case extra of
-            Left (exc, _) -> C.PipeM (monadThrow exc) (monadThrow exc)
-            Right bs' ->
-                let push' = if B.null bs' then push else push . B.append bs'
-                    close' = close bs'
-                 in C.HaveOutput (C.NeedInput push' close') (close2 bs') text
+            Left (exc, _) -> lift $ monadThrow exc
+            Right bs' -> yield' text $ loop $ B.append bs'
       where
         (text, extra) = codecDecode codec bs
-
-    close bs =
-        case B.uncons bs of
-            Nothing -> C.Done ()
-            Just (w, _) ->
-                let exc = monadThrow $ DecodeException codec w
-                 in C.PipeM exc (lift exc)
-
-    close2 bs =
-        case B.uncons bs of
-            Nothing -> return ()
-            Just (w, _) -> monadThrow $ DecodeException codec w
 
 -- |
 -- Since 0.3.0
