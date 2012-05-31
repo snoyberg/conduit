@@ -5,6 +5,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TupleSections #-}
 module Data.Conduit.Internal
     ( -- * Types
       Pipe (..)
@@ -261,15 +262,10 @@ pipeResume left right =
         Done r -> Done (left, r)
 
         -- Right pipe needs to run a monadic action.
-        PipeM mp c -> PipeM
-            (pipeResume left `liftM` mp)
-            (((,) left) `fmap` c)
+        PipeM mp c -> PipeM (pipeResume left `liftM` mp) ((left,) <$> c)
 
         -- Right pipe has some output, provide it downstream and continue.
-        HaveOutput p c o -> HaveOutput
-            (pipeResume left p)
-            (((,) left) `fmap` c)
-            o
+        HaveOutput p c o -> HaveOutput (pipeResume left p) ((left, ) <$> c) o
 
         Leftover p i -> pipeResume (HaveOutput left (pipeClose left) i) p
 
@@ -285,28 +281,27 @@ pipeResume left right =
                     (\a -> pipeResume (p a) right)
                     (do
                         -- There is no more input available, so connect the
-                        -- no-more-input record with the right.
+                        -- no-more-input field with the right.
                         (left', res) <- pipeResume c right
 
-                        -- Theoretically, we could return the left' value as
-                        -- the first element in the tuple. However, it is not
-                        -- recommended to give input to a pipe after it has
-                        -- been told there is no more input. Instead, we close
-                        -- the pipe and return mempty in its place.
+                        -- left' can no longer accept input, so close it
                         lift $ runFinalize $ pipeClose left'
-                        return (mempty, res)
+
+                        -- left is closed, return the result
+                        return (Done (), res)
                         )
 
                 -- Left pipe is done, right pipe needs input. In such a case,
-                -- tell the right pipe there is no more input, and eventually
-                -- replace its leftovers with the left pipe's leftover.
-                Done () -> ((,) $ Done ()) `liftM` noInput rc
+                -- tell the right pipe there is no more input.
+                Done () -> (Done (),) `liftM` noInput rc
 
                 -- Left pipe needs to run a monadic action.
                 PipeM mp c -> PipeM
                     ((`pipeResume` right) `liftM` mp)
-                    (fmap ((,) mempty) $ c >> pipeClose right)
+                    ((Done (),) <$> (c >> pipeClose right))
 
+-- | Run a @Pipe@ without providing it any input. Since the resulting @Pipe@ no
+-- longer depends on any input, the @i@ parameter may have any type.
 noInput :: Monad m => Pipe i' o m r -> Pipe i o m r
 noInput (Done r) = Done r
 noInput (HaveOutput p c o) = HaveOutput (noInput p) c o
