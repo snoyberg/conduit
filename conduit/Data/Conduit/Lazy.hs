@@ -1,7 +1,8 @@
 {-# LANGUAGE FlexibleContexts #-}
 -- | Use lazy I\/O for consuming the contents of a source. Warning: All normal
--- warnings of lazy I\/O apply. However, if you consume the content within the
--- ResourceT, you should be safe.
+-- warnings of lazy I\/O apply. In particular, if you are using this with a
+-- @ResourceT@ transformer, you must force the list to be evaluated before
+-- exiting the @ResourceT@.
 module Data.Conduit.Lazy
     ( lazyConsume
     ) where

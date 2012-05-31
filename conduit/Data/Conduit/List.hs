@@ -15,6 +15,11 @@ module Data.Conduit.List
     , unfold
     , enumFromTo
       -- * Sinks
+
+      -- | Note that the @Sink@ functions do not have type @Sink@, but @Pipe@.
+      -- This more general formulation allows them to be easily used to build
+      -- up larger @Conduit@s. However, they all behave as @Sink@s.
+
       -- ** Pure
     , fold
     , take
@@ -26,7 +31,7 @@ module Data.Conduit.List
       -- ** Monadic
     , foldM
     , mapM_
-      -- Conduits
+      -- * Conduits
       -- ** Pure
     , map
     , concatMap
@@ -301,7 +306,7 @@ filter f = toPipe $ forever $ await >>= \x -> when (f x) $ yield x
 sinkNull :: Monad m => Pipe a o m ()
 sinkNull = toPipe $ forever $ await >> return ()
 
--- | A source that returns nothing. Note that this is just a type-restricted
+-- | A source that outputs no values. Note that this is just a type-restricted
 -- synonym for 'mempty'.
 --
 -- Since 0.3.0
