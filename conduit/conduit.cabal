@@ -47,6 +47,7 @@ Library
                        Data.Conduit.List
                        Data.Conduit.Lazy
                        Data.Conduit.Internal
+                       Data.Conduit.Util
   Other-modules:       Data.Conduit.Util.Source
                        Data.Conduit.Util.Sink
                        Data.Conduit.Util.Conduit

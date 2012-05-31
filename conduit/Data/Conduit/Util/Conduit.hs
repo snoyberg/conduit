@@ -167,7 +167,7 @@ sequenceSink state0 fsink = do
 -- @sequence . return@.
 --
 -- Since 0.3.0
-sequence :: Monad m => Sink input m output -> Conduit input m output
+sequence :: Monad m => Sink input m output -> Conduit input m output -- FIXME move to Data.Conduit
 sequence sink = self
   where
     self = do

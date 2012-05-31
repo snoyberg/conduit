@@ -6,6 +6,7 @@ import Test.Hspec.QuickCheck (prop)
 import Test.HUnit
 
 import qualified Data.Conduit as C
+import qualified Data.Conduit.Util as C
 import qualified Data.Conduit.Internal as CI
 import qualified Data.Conduit.List as CL
 import qualified Data.Conduit.Lazy as CLazy
@@ -564,8 +565,8 @@ main = hspecX $ do
         it "leftovers without input" $ do
             ref <- I.newIORef []
             let add x = I.modifyIORef ref (x:)
-                adder = C.NeedInput (\a -> liftIO (add a) >> adder) (return ())
-                residue x = C.Leftover (CI.Done ()) x
+                adder = CI.NeedInput (\a -> liftIO (add a) >> adder) (return ())
+                residue x = CI.Leftover (CI.Done ()) x
 
             _ <- CI.yield' 1 C.$$ adder
             x <- I.readIORef ref

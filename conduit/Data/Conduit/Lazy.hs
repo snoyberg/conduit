@@ -7,7 +7,7 @@ module Data.Conduit.Lazy
     ) where
 
 import Data.Conduit
-import Data.Conduit.Internal (pipePushStrip)
+import Data.Conduit.Internal (Pipe (..), pipePushStrip)
 import System.IO.Unsafe (unsafeInterleaveIO)
 import Control.Monad.Trans.Control (MonadBaseControl, liftBaseOp_)
 import Control.Monad.Trans.Resource (MonadActive (monadActive))

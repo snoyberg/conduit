@@ -24,7 +24,7 @@
 -- * Connect a @Source@ to a @Sink@ to obtain a result.
 module Data.Conduit
     ( -- * Types
-      Pipe (..)
+      Pipe
     , Source
     , Conduit
     , Sink
@@ -38,15 +38,16 @@ module Data.Conduit
       -- ** General
     , await
     , yield
+    , leftover
+    , await'
+    , yield'
+    , leftover'
     , hasInput
     , transPipe
     , mapOutput
-      -- ** Source
-    , module Data.Conduit.Util.Source
-      -- ** Sink
-    , module Data.Conduit.Util.Sink
-      -- ** Conduit
-    , module Data.Conduit.Util.Conduit
+    , bracketPipe
+    , bracketSPipe
+    , toPipe
       -- * Flushing
     , Flush (..)
       -- * Convenience re-exports
@@ -59,9 +60,6 @@ module Data.Conduit
 
 import Control.Monad.Trans.Resource
 import Data.Conduit.Internal
-import Data.Conduit.Util.Source
-import Data.Conduit.Util.Sink
-import Data.Conduit.Util.Conduit
 
 -- $typeOverview
 

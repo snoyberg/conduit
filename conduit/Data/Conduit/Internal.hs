@@ -18,6 +18,7 @@ module Data.Conduit.Internal
     , toPipe
     , await
     , yield
+    , leftover
     , bracketPipe
     , bracketSPipe
       -- * Functions
@@ -36,6 +37,7 @@ module Data.Conduit.Internal
     , noInput
     , sourceList
     , await'
+    , leftover'
     , yield'
     ) where
 
@@ -336,7 +338,7 @@ runFinalize (FinalizeM mr) = mr
 -- | Send a single output value downstream.
 --
 -- Since 0.4.0
-yield' :: Monad m => o -> Pipe i o m ()
+yield' :: o -> Pipe i o m ()
 yield' = HaveOutput (Done ()) (FinalizePure ())
 
 -- | Wait for a single input value from upstream, and remove it from the
@@ -345,6 +347,9 @@ yield' = HaveOutput (Done ()) (FinalizePure ())
 -- Since 0.4.0
 await' :: Pipe i o m (Maybe i)
 await' = NeedInput (Done . Just) (Done Nothing)
+
+leftover' :: i -> Pipe i o m ()
+leftover' = Leftover (Done ())
 
 -- | Check if input is available from upstream. Will not remove the data from
 -- the stream.
@@ -427,6 +432,7 @@ data SPipe i o m r =
   | SNeedInput (i -> SPipe i o m r)
   | SDone r
   | SPipeM (m (SPipe i o m r))
+  | SLeftover (SPipe i o m r) i
 
 toPipe :: Monad m => SPipe i o m () -> Pipe i o m ()
 toPipe = toPipeFinalize (FinalizePure ())
@@ -442,6 +448,7 @@ toPipeFinalize final =
     go (SNeedInput p) = NeedInput (go . p) done
     go (SDone ()) = done
     go (SPipeM mp) = PipeM (liftM go mp) final
+    go (SLeftover p i) = Leftover (go p) i
 
     done =
         case final of
@@ -453,6 +460,9 @@ await = SNeedInput SDone
 
 yield :: o -> SPipe i o m ()
 yield = SHaveOutput (SDone ())
+
+leftover :: i -> SPipe i o m ()
+leftover = SLeftover (SDone ())
 
 bracketPipe :: MonadResource m
             => IO a
@@ -489,6 +499,7 @@ instance Monad m => Monad (SPipe i o m) where
     SNeedInput push >>= fp = SNeedInput (push >=> fp)
     SDone r >>= fp = fp r
     SPipeM mp >>= fp = SPipeM (liftM (>>= fp) mp)
+    SLeftover p i >>= fp = SLeftover (p >>= fp) i
 instance MonadBase base m => MonadBase base (SPipe i o m) where
     liftBase = lift . liftBase
 instance MonadTrans (SPipe i o) where

@@ -20,7 +20,6 @@ import Data.Word (Word8)
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Unsafe as BU
 import Prelude hiding (read)
-import Data.Conduit.Util.Source (SourceIOResult (..))
 
 #include <fcntl.h>
 
@@ -49,13 +48,13 @@ openRead fp = do
         then throwErrno $ "Could not open file: " ++ fp
         else return $ FD h
 
-read :: FD -> IO (SourceIOResult S.ByteString)
+read :: FD -> IO (Maybe S.ByteString)
 read fd = do
     cstr <- mallocBytes 4096
     len <- c_read fd cstr 4096
     if len == 0
-        then free cstr >> return IOClosed
-        else fmap IOOpen $ BU.unsafePackCStringFinalizer
+        then free cstr >> return Nothing
+        else fmap Just $ BU.unsafePackCStringFinalizer
                 cstr
                 (fromIntegral len)
                 (free cstr)

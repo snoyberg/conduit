@@ -42,6 +42,7 @@ import           System.IO.Unsafe (unsafePerformIO)
 import           Data.Typeable (Typeable)
 
 import qualified Data.Conduit as C
+import qualified Data.Conduit.Internal as C (Pipe (..)) -- FIXME
 import qualified Data.Conduit.List as CL
 import Control.Monad.Trans.Resource (MonadThrow (..))
 import Control.Monad.Trans.Class (lift)

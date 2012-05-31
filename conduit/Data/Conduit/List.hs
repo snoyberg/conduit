@@ -54,6 +54,7 @@ import Prelude
     , Enum (succ), Eq
     )
 import Data.Conduit
+import Data.Conduit.Internal (Pipe (..)) -- FIXME
 import Data.Conduit.Internal
     ( pipeClose, runFinalize, pipePushStrip, noInput, Finalize (FinalizeM)
     , sourceList
@@ -61,6 +62,7 @@ import Data.Conduit.Internal
 import Data.Monoid (mempty)
 import Data.Void (absurd)
 import Control.Monad (liftM, liftM2)
+import Data.Conduit.Util -- FIXME remove
 
 -- | Generate a source from a seed value.
 --

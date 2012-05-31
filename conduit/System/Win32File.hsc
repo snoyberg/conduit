@@ -18,7 +18,6 @@ import Data.Text (pack)
 import Data.Text.Encoding (encodeUtf16LE)
 import Data.Word (Word8)
 import Prelude hiding (read)
-import Data.Conduit (SourceIOResult (..))
 
 #include <fcntl.h>
 #include <Share.h>
@@ -74,16 +73,16 @@ openRead fp = do
         then throwErrno $ "Could not open file: " ++ fp
         else return $ FD h
 
-read :: FD -> IO (SourceIOResult S.ByteString)
+read :: FD -> IO (Maybe S.ByteString)
 read fd = do
     cstr <- mallocBytes 4096
     len <- c_read fd cstr 4096
     if len == 0
         then do
             free cstr
-            return IOClosed
+            return Nothing
         else do
-            fmap IOOpen $ BU.unsafePackCStringFinalizer
+            fmap Just $ BU.unsafePackCStringFinalizer
                 cstr
                 (fromIntegral len)
                 (free cstr)
