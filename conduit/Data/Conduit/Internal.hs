@@ -17,6 +17,7 @@ module Data.Conduit.Internal
     , toPipe
     , await
     , yield
+    , bracketPipe
     , bracketSPipe
       -- * Functions
     , pipeClose
@@ -457,6 +458,18 @@ await = SNeedInput SDone
 
 yield :: o -> SPipe i o m ()
 yield = SHaveOutput (SDone ())
+
+bracketPipe :: MonadResource m
+            => IO a
+            -> (a -> IO ())
+            -> (a -> Pipe i o m ())
+            -> Pipe i o m ()
+bracketPipe alloc free inside =
+    PipeM start (FinalizePure ())
+  where
+    start = do
+        (key, seed) <- allocate alloc free
+        return $ addCleanup (const $ release key) (inside seed)
 
 bracketSPipe :: MonadResource m
              => IO a

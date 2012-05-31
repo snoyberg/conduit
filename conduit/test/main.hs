@@ -538,6 +538,27 @@ main = hspecX $ do
             val @?= 10
             i <- I.readIORef ref
             i @?= 0
+        it "bracket + toPipe" $ do
+            ref <- I.newIORef (0 :: Int)
+            let src = CI.bracketPipe
+                    (I.modifyIORef ref (+ 1))
+                    (\() -> I.modifyIORef ref (+ 2))
+                    (\() -> CI.toPipe $ forever $ CI.yield (1 :: Int))
+            val <- C.runResourceT $ src C.$$ CL.isolate 10 C.=$ CL.fold (+) 0
+            val @?= 10
+            i <- I.readIORef ref
+            i @?= 3
+        it "bracket skipped if not needed" $ do
+            ref <- I.newIORef (0 :: Int)
+            let src = CI.bracketPipe
+                    (I.modifyIORef ref (+ 1))
+                    (\() -> I.modifyIORef ref (+ 2))
+                    (\() -> CI.toPipe $ forever $ CI.yield (1 :: Int))
+                src' = CL.sourceList $ repeat 1
+            val <- C.runResourceT $ (src' >> src) C.$$ CL.isolate 10 C.=$ CL.fold (+) 0
+            val @?= 10
+            i <- I.readIORef ref
+            i @?= 0
 
     describe "invariant violations" $ do
         it "leftovers without input" $ do
