@@ -18,13 +18,13 @@ import           Control.Exception (Exception)
 import           Data.Typeable (Typeable)
 import qualified Data.ByteString as B
 import qualified Data.Text as T
-import Control.Monad.Trans.Class (lift)
+import           Control.Monad.Trans.Class (lift)
+import           Control.Monad (unless)
 
 import qualified Data.Attoparsec.ByteString
 import qualified Data.Attoparsec.Text
 import qualified Data.Attoparsec.Types as A
-import qualified Data.Conduit as C
-import           Data.Conduit.Internal (noInput)
+import           Data.Conduit
 
 -- | The context and message from a 'A.Fail' value.
 data ParseError = ParseError
@@ -57,34 +57,28 @@ instance AttoparsecInput T.Text where
     isNull = T.null
     notEmpty = filter (not . T.null)
 
--- | Convert an Attoparsec 'A.Parser' into a 'C.Sink'. The parser will
+-- | Convert an Attoparsec 'A.Parser' into a 'Sink'. The parser will
 -- be streamed bytes until it returns 'A.Done' or 'A.Fail'.
 --
--- If parsing fails, a 'ParseError' will be thrown with 'C.monadThrow'.
-sinkParser :: (AttoparsecInput a, C.MonadThrow m) => A.Parser a b -> C.Pipe a o m b
+-- If parsing fails, a 'ParseError' will be thrown with 'monadThrow'.
+sinkParser :: (AttoparsecInput a, MonadThrow m) => A.Parser a b -> Pipe a o m b
 sinkParser =
     sink . parseA
   where
-    sink parser = C.NeedInput (push parser) (noInput $ close parser)
-
-    push parser c | isNull c = sink parser
-    push parser c = go (parser c) sink
+    sink parser = do
+        mc <- tryAwait
+        case mc of
+            Nothing -> close parser
+            Just c
+                | isNull c  -> sink parser
+                | otherwise -> go (parser c) sink
 
     close parser = go
         (feedA (parser empty) empty)
-        (const $ C.PipeM exc $ lift exc)
-      where
-        exc = C.monadThrow DivergentParser
+        (const $ lift $ monadThrow DivergentParser)
 
-    go (A.Done leftover x) _ =
-        lo $ C.Done x
-      where
-        lo
-            | isNull leftover = id
-            | otherwise = flip C.Leftover leftover
-    go (A.Fail _ contexts msg) _ =
-        C.PipeM exc $ lift exc
-      where
-        exc = C.monadThrow $ ParseError contexts msg
-
+    go (A.Done lo x) _ = do
+        unless (isNull lo) $ leftover lo
+        return x
+    go (A.Fail _ contexts msg) _ = lift $ monadThrow $ ParseError contexts msg
     go (A.Partial parser') onPartial = onPartial parser'

@@ -41,8 +41,10 @@ module Data.Conduit.Blaze
   , builderToByteStringWithFlush
     ) where
 
-import Data.Conduit hiding (Pipe (Done))
-import Control.Monad (liftM)
+import Data.Conduit
+import qualified Data.Conduit.List as CL
+import Control.Monad (forever)
+import Control.Monad.Trans.Class (lift)
 
 import qualified Data.ByteString                   as S
 
@@ -83,14 +85,10 @@ unsafeBuilderToByteString = builderToByteStringWith . reuseBufferStrategy
 builderToByteStringWith :: MonadUnsafeIO m
                         => BufferAllocStrategy
                         -> Conduit Builder m S.ByteString
-builderToByteStringWith (ioBuf0, nextBuf) = conduitState
-    ioBuf0
-    (push nextBuf)
-    close
+builderToByteStringWith strategy =
+    CL.map Chunk =$= builderToByteStringWithFlush strategy =$= unchunk
   where
-    close ioBuf = unsafeLiftIO $ do
-        buf <- ioBuf
-        return $ maybe [] return $ unsafeFreezeNonEmptyBuffer buf
+    unchunk = toPipe $ forever $ await >>= \x -> case x of { Chunk y -> yield y ; Flush -> return () }
 
 -- |
 --
@@ -99,60 +97,49 @@ builderToByteStringWithFlush
     :: MonadUnsafeIO m
     => BufferAllocStrategy
     -> Conduit (Flush Builder) m (Flush S.ByteString)
-builderToByteStringWithFlush (ioBuf0, nextBuf) = conduitState
-    ioBuf0
-    push'
-    close
+builderToByteStringWithFlush (ioBufInit, nextBuf) =
+    loop ioBufInit
   where
-    close ioBuf = unsafeLiftIO $ do
-        buf <- ioBuf
-        return $ maybe [] (return . Chunk) $ unsafeFreezeNonEmptyBuffer buf
+    loop ioBuf = do
+        mfb <- tryAwait
+        case mfb of
+            Nothing -> close ioBuf
+            Just Flush -> push ioBuf flush $ tryYield Flush . loop
+            Just (Chunk builder) -> push ioBuf builder loop
 
-    push' :: MonadUnsafeIO m
-          => IO Buffer
-          -> Flush Builder
-          -> m (ConduitStateResult (IO Buffer) input (Flush S.ByteString))
-    push' ioBuf Flush = do
-        StateProducing ioBuf' chunks <- push nextBuf ioBuf flush
-        let myFold bs rest
-                | S.null bs = rest
-                | otherwise = Chunk bs : rest
-            chunks' = foldr myFold [Flush] chunks
-        return $ StateProducing ioBuf' chunks'
-    push' ioBuf (Chunk builder) = (liftM . fmap) Chunk (push nextBuf ioBuf builder)
+    close ioBuf = do
+        buf <- lift $ unsafeLiftIO $ ioBuf
+        case unsafeFreezeNonEmptyBuffer buf of
+            Nothing -> return ()
+            Just bs -> tryYield (Chunk bs) $ return ()
 
-push :: MonadUnsafeIO m
-     => (Int -> Buffer -> IO (IO Buffer))
-     -> IO Buffer
-     -> Builder
-     -> m (ConduitStateResult (IO Buffer) input S.ByteString)
-push nextBuf ioBuf0 x = unsafeLiftIO $ do
-    (ioBuf', front) <- go (unBuilder x (buildStep finalStep)) ioBuf0 id
-    return $ StateProducing ioBuf' $ front []
-  where
-    finalStep !(BufRange pf _) = return $ Done pf ()
+    push ioBuf0 x continue = do
+        go (unBuilder x (buildStep finalStep)) ioBuf0
+      where
+        finalStep !(BufRange pf _) = return $ Done pf ()
 
-    go bStep ioBuf front = do
-        !buf   <- ioBuf
-        signal <- (execBuildStep bStep buf)
-        case signal of
-            Done op' _ -> return (return $ updateEndOfSlice buf op', front)
-            BufferFull minSize op' bStep' -> do
-                let buf' = updateEndOfSlice buf op'
-                    {-# INLINE cont #-}
-                    cont front' = do
-                        -- sequencing the computation of the next buffer
-                        -- construction here ensures that the reference to the
-                        -- foreign pointer `fp` is lost as soon as possible.
-                        ioBuf' <- nextBuf minSize buf'
-                        go bStep' ioBuf' front'
-                case unsafeFreezeNonEmptyBuffer buf' of
-                    Nothing -> cont front
-                    Just bs -> cont (front . (bs:))
-            InsertByteString op' bs bStep' -> do
-                let buf' = updateEndOfSlice buf op'
-                    bsk  = maybe id (:) $ unsafeFreezeNonEmptyBuffer buf'
-                    bsk' = if S.null bs then id else (bs:)
-                    front' = front . bsk . bsk'
-                ioBuf' <- nextBuf 1 buf'
-                go bStep' ioBuf' front'
+        go bStep ioBuf = do
+            !buf   <- lift $ unsafeLiftIO $ ioBuf
+            signal <- lift $ unsafeLiftIO $ execBuildStep bStep buf
+            case signal of
+                Done op' _ -> continue $ return $ updateEndOfSlice buf op'
+                BufferFull minSize op' bStep' -> do
+                    let buf' = updateEndOfSlice buf op'
+                        {-# INLINE cont #-}
+                        cont = do
+                            -- sequencing the computation of the next buffer
+                            -- construction here ensures that the reference to the
+                            -- foreign pointer `fp` is lost as soon as possible.
+                            ioBuf' <- lift $ unsafeLiftIO $ nextBuf minSize buf'
+                            go bStep' ioBuf'
+                    case unsafeFreezeNonEmptyBuffer buf' of
+                        Nothing -> cont
+                        Just bs -> tryYield (Chunk bs) cont
+                InsertByteString op' bs bStep' -> do
+                    let buf' = updateEndOfSlice buf op'
+                    let y1 =
+                            case unsafeFreezeNonEmptyBuffer buf' of
+                                Nothing -> id
+                                Just bs' -> tryYield (Chunk bs')
+                        y2 = if S.null bs then id else tryYield (Chunk bs)
+                    y1 $ y2 $ lift (unsafeLiftIO $ nextBuf 1 buf') >>= go bStep'

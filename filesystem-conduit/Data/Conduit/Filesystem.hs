@@ -21,7 +21,7 @@ module Data.Conduit.Filesystem
 import           Prelude hiding (FilePath)
 
 import           Control.Monad.IO.Class (MonadIO, liftIO)
-import qualified Data.Conduit as C
+import           Data.Conduit
 import qualified Data.Conduit.Binary as CB
 import           Filesystem
 import           Filesystem.Path.CurrentOS (FilePath, encodeString)
@@ -41,24 +41,22 @@ import qualified System.Posix as Posix
 traverse :: MonadIO m
          => Bool -- ^ Follow directory symlinks (only used on POSIX platforms)
          -> FilePath -- ^ Root directory
-         -> C.Source m FilePath
-traverse followSymlinks root = C.PipeM
-    (liftIO (listDirectory root) >>= pull)
-    (return ())
+         -> Source m FilePath
+traverse followSymlinks root = toPipe $ do
+    liftIO (listDirectory root) >>= pull
   where
-    mkSrc ps = C.PipeM (pull ps) (return ())
-
-    pull [] = return $ C.Done ()
+    pull [] = return ()
     pull (p:ps) = do
         isFile' <- liftIO $ isFile p
         if isFile'
-            then return $ C.HaveOutput (mkSrc ps) (return ()) p
+            then yield p >> pull ps
             else do
                 follow' <- liftIO $ follow p
                 if follow'
                     then do
                         ps' <- liftIO $ listDirectory p
-                        pull $ ps ++ ps'
+                        pull ps
+                        pull ps'
                     else pull ps
 
     follow :: FilePath -> IO Bool
@@ -74,13 +72,13 @@ traverse followSymlinks root = C.PipeM
 #endif
 
 -- | Same as 'CB.sourceFile', but uses system-filepath\'s @FilePath@ type.
-sourceFile :: C.MonadResource m
+sourceFile :: MonadResource m
            => FilePath
-           -> C.Source m S.ByteString
+           -> Source m S.ByteString
 sourceFile = CB.sourceFile . encodeString
 
 -- | Same as 'CB.sinkFile', but uses system-filepath\'s @FilePath@ type.
-sinkFile :: C.MonadResource m
+sinkFile :: MonadResource m
          => FilePath
-         -> C.Sink S.ByteString m ()
+         -> Sink S.ByteString m ()
 sinkFile = CB.sinkFile . encodeString
