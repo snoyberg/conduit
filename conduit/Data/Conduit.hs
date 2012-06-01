@@ -9,20 +9,23 @@ module Data.Conduit
     , Conduit
     , Sink
 
-      -- * Utility functions
-      -- ** General
-    , await
-    , yield
-    , leftover
+      -- * Construction
     , await'
     , yield'
     , leftover'
-    , hasInput
+      -- ** Finalization
+    , bracketPipe
+      -- ** Terminating pipes
+    , SPipe
+    , toPipe
+    , await
+    , yield
+    , leftover
+    , bracketSPipe
+
+      -- * Utility functions
     , transPipe
     , mapOutput
-    , bracketPipe
-    , bracketSPipe
-    , toPipe
 
       -- * Connect/fuse operators
       -- $fusion
