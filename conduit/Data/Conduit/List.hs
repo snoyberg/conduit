@@ -73,7 +73,7 @@ unfold f =
   where
     go seed =
         case f seed of
-            Just (a, seed') -> yield' a $ go seed'
+            Just (a, seed') -> tryYield a $ go seed'
             Nothing -> return ()
 
 -- | Enumerate from a value to a final value, inclusive, via 'succ'.
@@ -91,8 +91,8 @@ enumFromTo start stop =
     go start
   where
     go i
-        | i == stop = yield' i $ return ()
-        | otherwise = yield' i $ go $ succ i
+        | i == stop = tryYield i $ return ()
+        | otherwise = tryYield i $ go $ succ i
 
 -- | A strict left fold.
 --
@@ -105,7 +105,7 @@ fold f =
     loop
   where
     loop accum =
-        await' >>= go
+        tryAwait >>= go
       where
         go Nothing = return accum
         go (Just a) =
@@ -123,7 +123,7 @@ foldM f =
     loop
   where
     loop accum = do
-        ma <- await'
+        ma <- tryAwait
         case ma of
             Nothing -> return accum
             Just a -> do
@@ -170,7 +170,7 @@ take =
     loop id
   where
     loop front 0 = return $ front []
-    loop front count = await' >>= maybe
+    loop front count = tryAwait >>= maybe
         (return $ front [])
         (\x -> loop (front .(x:)) (count - 1))
 
@@ -178,14 +178,14 @@ take =
 --
 -- Since 0.3.0
 head :: Monad m => Pipe a o m (Maybe a)
-head = await'
+head = tryAwait
 
 -- | Look at the next value in the stream, if available. This function will not
 -- change the state of the stream.
 --
 -- Since 0.3.0
 peek :: Monad m => Pipe a o m (Maybe a)
-peek = await' >>= maybe (return Nothing) (\x -> leftover' x >> return (Just x))
+peek = tryAwait >>= maybe (return Nothing) (\x -> leftover x >> return (Just x))
 
 -- | Apply a transformation to all values in a stream.
 --
@@ -251,7 +251,7 @@ consume :: Monad m => Pipe a o m [a]
 consume =
     loop id
   where
-    loop front = await' >>= maybe (return $ front []) (\x -> loop $ front . (x:))
+    loop front = tryAwait >>= maybe (return $ front []) (\x -> loop $ front . (x:))
 
 -- | Grouping input according to an equality function.
 --
@@ -260,15 +260,15 @@ groupBy :: Monad m => (a -> a -> Bool) -> Conduit a m [a]
 groupBy f =
     start
   where
-    start = await' >>= maybe (return ()) (loop id)
+    start = tryAwait >>= maybe (return ()) (loop id)
 
     loop rest x = do
-        my <- await'
+        my <- tryAwait
         case my of
-            Nothing -> yield' (x : rest []) (return ())
+            Nothing -> tryYield (x : rest []) (return ())
             Just y
                 | f x y -> loop (rest . (y:)) x
-                | otherwise -> yield' (x : rest []) (loop id y)
+                | otherwise -> tryYield (x : rest []) (loop id y)
 
 -- | Ensure that the inner sink consumes no more than the given number of
 -- values. Note this this does /not/ ensure that the sink consumes all of those

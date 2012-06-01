@@ -168,4 +168,4 @@ sequence sink = self
   where
     self = do
         x <- hasInput
-        when x $ sinkToPipe sink >>= flip yield' self
+        when x $ sinkToPipe sink >>= flip tryYield self

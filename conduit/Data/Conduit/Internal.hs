@@ -12,14 +12,14 @@ module Data.Conduit.Internal
     , Sink
     , Conduit
     , Finalize (..)
-      -- * Simple pipes
-    , SPipe
+      -- * Terminating pipes
+    , TPipe
     , toPipe
     , await
     , yield
-    , leftover
-    , bracketPipe
-    , bracketSPipe
+    , leftoverTP
+    , bracketP
+    , bracketTP
       -- * Functions
     , pipeClose
     , pipe
@@ -35,9 +35,9 @@ module Data.Conduit.Internal
     , addCleanup
     , noInput
     , sourceList
-    , await'
-    , leftover'
-    , yield'
+    , tryAwait
+    , leftover
+    , tryYield
     ) where
 
 import Control.Applicative (Applicative (..), (<$>))
@@ -334,9 +334,9 @@ runFinalize (FinalizeM mr) = mr
 --
 -- /Note to self/: Make this explanation more user friendly.
 --
--- Due to the nature of @SPipe@, the @yield@ function will automatically
+-- Due to the nature of @TPipe@, the @yield@ function will automatically
 -- terminate when downstream no longer wants input. This is because monadic
--- bind for @SPipe@ handles automatic termination.
+-- bind for @TPipe@ handles automatic termination.
 --
 -- By contrast, the monadic bind for @Pipe@ does no such automatic termination,
 -- as that would (for one thing) prevent resource finalization. As a result, if
@@ -355,18 +355,28 @@ runFinalize (FinalizeM mr) = mr
 -- approach: @yield'@ should be the last call in any chain of monadic binding.
 --
 -- Since 0.5.0
-yield' :: o -> Pipe i o m () -> Pipe i o m ()
-yield' o p = HaveOutput p (FinalizePure ()) o
+tryYield :: o -- ^ output value
+         -> Pipe i o m ()
+         -- ^ next @Pipe@ to be run, if downstream is still accepting input
+         -> Pipe i o m ()
+tryYield o p = HaveOutput p (FinalizePure ()) o
 
 -- | Wait for a single input value from upstream, and remove it from the
 -- stream. Returns @Nothing@ if no more data is available.
 --
--- Since 0.4.0
-await' :: Pipe i o m (Maybe i)
-await' = NeedInput (Done . Just) (Done Nothing)
+-- Since 0.5.0
+tryAwait :: Pipe i o m (Maybe i)
+tryAwait = NeedInput (Done . Just) (Done Nothing)
 
-leftover' :: i -> Pipe i o m ()
-leftover' = Leftover (Done ())
+-- | Provide a single piece of leftover input to be consumed by the next pipe
+-- in the current monadic binding.
+--
+-- /Note/: it is highly encouraged to only return leftover values from input
+-- already consumed from upstream.
+--
+-- Since 0.5.0
+leftover :: i -> Pipe i o m ()
+leftover = Leftover (Done ())
 
 -- | Check if input is available from upstream. Will not remove the data from
 -- the stream.
@@ -444,85 +454,120 @@ sourceList :: Monad m => [a] -> Pipe i a m ()
 sourceList [] = Done ()
 sourceList (x:xs) = HaveOutput (sourceList xs) (return ()) x
 
-data SPipe i o m r =
-    SHaveOutput (SPipe i o m r) o
-  | SNeedInput (i -> SPipe i o m r)
-  | SDone r
-  | SPipeM (m (SPipe i o m r))
-  | SLeftover (SPipe i o m r) i
+-- | A terminating pipe. As opposed to normal @Pipe@s, @TPipe@s will stop
+-- running as soon as either their upstream or downstream components terminate.
+-- While this approach cannot model all use cases (e.g., folds cannot be
+-- expressed), it can simplify certain other cases (e.g., infinite producers).
+--
+-- Since 0.5.0
+data TPipe i o m r =
+    THaveOutput (TPipe i o m r) o
+  | TNeedInput (i -> TPipe i o m r)
+  | TDone r
+  | TPipeM (m (TPipe i o m r))
+  | TLeftover (TPipe i o m r) i
 
-toPipe :: Monad m => SPipe i o m () -> Pipe i o m ()
+-- | Converting a terminating pipe to a regular pipe.
+--
+-- Since 0.5.0
+toPipe :: Monad m => TPipe i o m () -> Pipe i o m ()
 toPipe = toPipeFinalize (FinalizePure ())
 
 toPipeFinalize :: Monad m
                => Finalize m ()
-               -> SPipe i o m ()
+               -> TPipe i o m ()
                -> Pipe i o m ()
 toPipeFinalize final =
     go
   where
-    go (SHaveOutput p o) = HaveOutput (go p) final o
-    go (SNeedInput p) = NeedInput (go . p) done
-    go (SDone ()) = done
-    go (SPipeM mp) = PipeM (liftM go mp) final
-    go (SLeftover p i) = Leftover (go p) i
+    go (THaveOutput p o) = HaveOutput (go p) final o
+    go (TNeedInput p) = NeedInput (go . p) done
+    go (TDone ()) = done
+    go (TPipeM mp) = PipeM (liftM go mp) final
+    go (TLeftover p i) = Leftover (go p) i
 
     done =
         case final of
             FinalizeM f -> PipeM (liftM Done f) final
             FinalizePure () -> Done ()
 
-await :: SPipe i o m i
-await = SNeedInput SDone
+-- | Wait for a single input value from upstream, terminating immediately if no
+-- data is available.
+--
+-- Since 0.5.0
+await :: TPipe i o m i
+await = TNeedInput TDone
 
-yield :: o -> SPipe i o m ()
-yield = SHaveOutput (SDone ())
+-- | Yield a single value downstream, terminating immediately if downstream is
+-- no longer accepting input.
+--
+-- Since 0.5.0
+yield :: o -> TPipe i o m ()
+yield = THaveOutput (TDone ())
 
-leftover :: i -> SPipe i o m ()
-leftover = SLeftover (SDone ())
+-- | Same as 'leftover', but for terminating pipes.
+--
+-- Since 0.5.0
+leftoverTP :: i -> TPipe i o m ()
+leftoverTP = TLeftover (TDone ())
 
-bracketPipe :: MonadResource m
-            => IO a
-            -> (a -> IO ())
-            -> (a -> Pipe i o m ())
-            -> Pipe i o m ()
-bracketPipe alloc free inside =
+-- | Perform some allocation and run an inner @Pipe@. Two guarantees are given
+-- about resource finalization:
+--
+-- 1. It will be /prompt/. The finalization will be run as early as possible.
+--
+-- 2. It is exception safe. Due to usage of @resourcet@, the finalization will
+--    be run in the event of any exceptions.
+--
+-- Since 0.5.0
+bracketP :: MonadResource m
+         => IO a
+         -> (a -> IO ())
+         -> (a -> Pipe i o m ())
+         -> Pipe i o m ()
+bracketP alloc free inside =
     PipeM start (FinalizePure ())
   where
     start = do
         (key, seed) <- allocate alloc free
         return $ addCleanup (const $ release key) (inside seed)
 
-bracketSPipe :: MonadResource m
-             => IO a
-             -> (a -> IO ())
-             -> (a -> SPipe i o m ())
-             -> Pipe i o m ()
-bracketSPipe alloc free inside =
+-- | The same as 'bracketP', but runs a terminating pipe instead of a regular
+-- pipe. This is equivalent to:
+--
+-- > bracketTP alloc free inner = bracketP alloc free (toPipe . inner)
+--
+-- Since 0.5.0
+bracketTP :: MonadResource m
+          => IO a
+          -> (a -> IO ())
+          -> (a -> TPipe i o m ())
+          -> Pipe i o m ()
+bracketTP alloc free inside =
     PipeM start (FinalizePure ())
   where
     start = do
         (key, seed) <- allocate alloc free
         return $ toPipeFinalize (FinalizeM (release key)) (inside seed)
 
-instance Monad m => Functor (SPipe i o m) where
+instance Monad m => Functor (TPipe i o m) where
     fmap = liftM
-instance Monad m => Applicative (SPipe i o m) where
+instance Monad m => Applicative (TPipe i o m) where
     pure = return
     (<*>) = ap
-instance Monad m => Monad (SPipe i o m) where
-    return = SDone
-    SHaveOutput p o >>= fp = SHaveOutput (p >>= fp) o
-    SNeedInput push >>= fp = SNeedInput (push >=> fp)
-    SDone r >>= fp = fp r
-    SPipeM mp >>= fp = SPipeM (liftM (>>= fp) mp)
-    SLeftover p i >>= fp = SLeftover (p >>= fp) i
-instance MonadBase base m => MonadBase base (SPipe i o m) where
+instance Monad m => Monad (TPipe i o m) where
+    return = TDone
+    THaveOutput p o >>= fp = THaveOutput (p >>= fp) o
+    TNeedInput push >>= fp = TNeedInput (push >=> fp)
+    TDone r >>= fp = fp r
+    TPipeM mp >>= fp = TPipeM (liftM (>>= fp) mp)
+    TLeftover p i >>= fp = TLeftover (p >>= fp) i
+instance MonadBase base m => MonadBase base (TPipe i o m) where
     liftBase = lift . liftBase
-instance MonadTrans (SPipe i o) where
-    lift = SPipeM . liftM SDone
-instance MonadIO m => MonadIO (SPipe i o m) where
+instance MonadTrans (TPipe i o) where
+    lift = TPipeM . liftM TDone
+instance MonadIO m => MonadIO (TPipe i o m) where
     liftIO = lift . liftIO
-instance Monad m => Monoid (SPipe i o m ()) where
+instance Monad m => Monoid (TPipe i o m ()) where
     mempty = return ()
     mappend = (>>)

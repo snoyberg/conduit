@@ -56,7 +56,7 @@ sourceFile :: MonadResource m
            -> Source m S.ByteString
 sourceFile fp =
 #if CABAL_OS_WINDOWS || NO_HANDLES
-    bracketSPipe
+    bracketTP
         (F.openRead fp)
          F.close
          loop
@@ -92,7 +92,7 @@ sourceHandle h =
 sourceIOHandle :: MonadResource m
                => IO IO.Handle
                -> Source m S.ByteString
-sourceIOHandle alloc = bracketPipe alloc IO.hClose sourceHandle
+sourceIOHandle alloc = bracketP alloc IO.hClose sourceHandle
 
 -- | Stream all incoming data to the given 'IO.Handle'. Note that this function
 -- will /not/ automatically close the @Handle@ when processing completes.
@@ -112,7 +112,7 @@ sinkHandle h = toPipe $ forever $ await >>= liftIO . S.hPut h
 sinkIOHandle :: MonadResource m
              => IO IO.Handle
              -> Sink S.ByteString m ()
-sinkIOHandle alloc = bracketPipe alloc IO.hClose sinkHandle
+sinkIOHandle alloc = bracketP alloc IO.hClose sinkHandle
 
 -- | Stream the contents of a file as binary data, starting from a certain
 -- offset and only consuming up to a certain number of bytes.
@@ -123,7 +123,7 @@ sourceFileRange :: MonadResource m
                 -> Maybe Integer -- ^ Offset
                 -> Maybe Integer -- ^ Maximum count
                 -> Source m S.ByteString
-sourceFileRange fp offset count = bracketSPipe
+sourceFileRange fp offset count = bracketTP
     (IO.openBinaryFile fp IO.ReadMode)
     IO.hClose
     start
@@ -169,7 +169,7 @@ sinkFile fp = sinkIOHandle (IO.openBinaryFile fp IO.WriteMode)
 conduitFile :: MonadResource m
             => FilePath
             -> Conduit S.ByteString m S.ByteString
-conduitFile fp = bracketSPipe
+conduitFile fp = bracketTP
     (IO.openBinaryFile fp IO.WriteMode)
     IO.hClose
     (\h -> forever $ await >>= \bs -> liftIO (S.hPut h bs) >> yield bs)
@@ -191,7 +191,7 @@ isolate =
         let (a, b) = S.splitAt count bs
         case count - S.length a of
             0 -> do
-                unless (S.null b) $ leftover b
+                unless (S.null b) $ leftoverTP b
                 yield a
             count' -> assert (S.null b) $ yield a >> loop count'
 
@@ -200,13 +200,13 @@ isolate =
 -- Since 0.3.0
 head :: Monad m => Sink S.ByteString m (Maybe Word8)
 head = do
-    mbs <- await'
+    mbs <- tryAwait
     case mbs of
         Nothing -> return Nothing
         Just bs ->
             case S.uncons bs of
                 Nothing -> head
-                Just (w, bs') -> leftover' bs' >> return (Just w)
+                Just (w, bs') -> leftover bs' >> return (Just w)
 
 -- | Return all bytes while the predicate returns @True@.
 --
@@ -216,16 +216,16 @@ takeWhile p =
     loop
   where
     loop = do
-        mbs <- await'
+        mbs <- tryAwait
         case mbs of
             Nothing -> return ()
             Just bs -> go bs
 
     go bs
         | S.null x = next
-        | otherwise = yield' x next
+        | otherwise = tryYield x next
       where
-        next = if S.null y then loop else leftover' y
+        next = if S.null y then loop else leftover y
         (x, y) = S.span p bs
 
 -- | Ignore all bytes while the predicate returns @True@.
@@ -236,12 +236,12 @@ dropWhile p =
     loop
   where
     loop = do
-        mbs <- await'
+        mbs <- tryAwait
         case S.dropWhile p <$> mbs of
             Nothing -> return ()
             Just bs
                 | S.null bs -> loop
-                | otherwise -> leftover' bs
+                | otherwise -> leftover bs
 
 -- | Take the given number of bytes, if available.
 --
@@ -251,7 +251,7 @@ take n0 =
     go n0 id
   where
     go n front = do
-        mbs <- await'
+        mbs <- tryAwait
         case mbs of
             Nothing -> return $ L.fromChunks $ front []
             Just bs ->
@@ -260,7 +260,7 @@ take n0 =
                     EQ -> return $ L.fromChunks $ front [bs]
                     GT ->
                         let (x, y) = S.splitAt n bs
-                         in assert (not $ S.null y) $ leftover' y >> return (L.fromChunks $ front [x])
+                         in assert (not $ S.null y) $ leftover y >> return (L.fromChunks $ front [x])
 
 -- | Split the input bytes into lines. In other words, split on the LF byte
 -- (10), and strip it from the output.
@@ -271,16 +271,16 @@ lines =
     loop id
   where
     loop front = do
-        mbs <- await'
+        mbs <- tryAwait
         case mbs of
             Nothing ->
                 let final = front S.empty
-                 in unless (S.null final) $ yield' final $ return ()
+                 in unless (S.null final) $ tryYield final $ return ()
             Just bs -> go front bs
 
     go sofar more =
         case S.uncons second of
-            Just (_, second') -> yield' (sofar first) $ go id second'
+            Just (_, second') -> tryYield (sofar first) $ go id second'
             Nothing ->
                 let rest = sofar more
                  in loop $ S.append rest

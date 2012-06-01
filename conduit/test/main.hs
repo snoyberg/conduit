@@ -520,7 +520,7 @@ main = hspecX $ do
             x @?= Just ()
         it "bracket" $ do
             ref <- I.newIORef (0 :: Int)
-            let src = CI.bracketSPipe
+            let src = CI.bracketTP
                     (I.modifyIORef ref (+ 1))
                     (\() -> I.modifyIORef ref (+ 2))
                     (\() -> forever $ CI.yield (1 :: Int))
@@ -530,7 +530,7 @@ main = hspecX $ do
             i @?= 3
         it "bracket skipped if not needed" $ do
             ref <- I.newIORef (0 :: Int)
-            let src = CI.bracketSPipe
+            let src = CI.bracketTP
                     (I.modifyIORef ref (+ 1))
                     (\() -> I.modifyIORef ref (+ 2))
                     (\() -> forever $ CI.yield (1 :: Int))
@@ -541,7 +541,7 @@ main = hspecX $ do
             i @?= 0
         it "bracket + toPipe" $ do
             ref <- I.newIORef (0 :: Int)
-            let src = CI.bracketPipe
+            let src = CI.bracketP
                     (I.modifyIORef ref (+ 1))
                     (\() -> I.modifyIORef ref (+ 2))
                     (\() -> CI.toPipe $ forever $ CI.yield (1 :: Int))
@@ -551,7 +551,7 @@ main = hspecX $ do
             i @?= 3
         it "bracket skipped if not needed" $ do
             ref <- I.newIORef (0 :: Int)
-            let src = CI.bracketPipe
+            let src = CI.bracketP
                     (I.modifyIORef ref (+ 1))
                     (\() -> I.modifyIORef ref (+ 2))
                     (\() -> CI.toPipe $ forever $ CI.yield (1 :: Int))
@@ -568,26 +568,26 @@ main = hspecX $ do
                 adder = CI.NeedInput (\a -> liftIO (add a) >> adder) (return ())
                 residue x = CI.Leftover (CI.Done ()) x
 
-            _ <- CI.yield' 1 (return ()) C.$$ adder
+            _ <- CI.tryYield 1 (return ()) C.$$ adder
             x <- I.readIORef ref
             x @?= [1 :: Int]
             I.writeIORef ref []
 
-            _ <- CI.yield' 1 (return ()) C.$$ (residue 2 >> residue 3) >> adder
+            _ <- CI.tryYield 1 (return ()) C.$$ (residue 2 >> residue 3) >> adder
             y <- I.readIORef ref
             y @?= [1, 2, 3]
             I.writeIORef ref []
 
-            _ <- CI.yield' 1 (return ()) C.$$ residue 2 >> (residue 3 >> adder)
+            _ <- CI.tryYield 1 (return ()) C.$$ residue 2 >> (residue 3 >> adder)
             z <- I.readIORef ref
             z @?= [1, 2, 3]
             I.writeIORef ref []
 
-    describe "sane yield'/await'" $ do
-        it' "yield' terminates" $ do
+    describe "sane tryYield/await'" $ do
+        it' "tryYield terminates" $ do
             let is = [1..11] ++ undefined
                 src [] = return ()
-                src (x:xs) = CI.yield' x $ src xs
+                src (x:xs) = CI.tryYield x $ src xs
             x <- src is C.$$ CL.take 10
             x @?= [1..10 :: Int]
         it' "yield terminates" $ do

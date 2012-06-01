@@ -10,18 +10,19 @@ module Data.Conduit
     , Sink
 
       -- * Construction
-    , await'
-    , yield'
-    , leftover'
+    , tryAwait
+    , tryYield
+    , leftover
       -- ** Finalization
-    , bracketPipe
+    , bracketP
+    , addCleanup
       -- ** Terminating pipes
-    , SPipe
+    , TPipe
     , toPipe
     , await
     , yield
-    , leftover
-    , bracketSPipe
+    , leftoverTP
+    , bracketTP
 
       -- * Utility functions
     , transPipe
