@@ -162,7 +162,9 @@ Fusion, on the other hand, will connect the output from an upstream @Pipe@ to
 the input of a downstream @Pipe@. The upstream @Pipe@ is required to have a
 result type of @()@, since any results it produces are thrown out. This form of
 composition produces a new @Pipe@ with the input parameter of the upstream
-@Pipe@ and the output and result parameters of the downstream @Pipe@.
+@Pipe@ and the output and result parameters of the downstream @Pipe@. (For
+examples, see the initial examples on this page. Every usage of the connect or
+fusion operators is fusion composition.)
 
 -}
 
@@ -298,7 +300,7 @@ It's important to note the type of @pipeResume@:
 
 We'll discuss later why we would want the final state of the upstream @Pipe@ to
 be returned, but for now there are two other questions: how do we get rid of
-that upstream state, and how do we actually the @Pipe@?
+that upstream state, and how do we actually run the @Pipe@?
 
 The former is handled by the 'pipe' function. This function applies
 @pipeResume@, runs any finalizers from the upstream @Pipe@, and then returns
