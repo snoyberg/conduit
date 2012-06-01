@@ -1,33 +1,14 @@
--- | The main module, exporting types, utility functions, and fuse and connect
--- operators.
---
--- There are three main types in this package: @Source@ (data producer), @Sink@
--- (data consumer), and @Conduit@ (data transformer). All three are in fact
--- type synonyms for the underlying @Pipe@ data type.
---
--- The typical approach to use of this package is:
---
--- * Compose multiple @Sink@s together using its @Monad@ instance.
---
--- * Left-fuse @Source@s and @Conduit@s into new @Conduit@s.
---
--- * Right-fuse @Conduit@s and @Sink@s into new @Sink@s.
---
--- * Middle-fuse two @Conduit@s into a new @Conduit@.
---
--- * Connect a @Source@ to a @Sink@ to obtain a result.
 module Data.Conduit
-    ( -- * Types
+    ( -- * Overview
+      -- $overview
+
+      -- * Types
+      -- $types
       Pipe
     , Source
     , Conduit
     , Sink
-      -- * Connect/fuse operators
-    , ($$)
-    , ($$+)
-    , ($=)
-    , (=$)
-    , (=$=)
+
       -- * Utility functions
       -- ** General
     , await
@@ -42,8 +23,18 @@ module Data.Conduit
     , bracketPipe
     , bracketSPipe
     , toPipe
+
+      -- * Connect/fuse operators
+      -- $fusion
+    , ($$)
+    , ($$+)
+    , ($=)
+    , (=$)
+    , (=$=)
+
       -- * Flushing
     , Flush (..)
+
       -- * Convenience re-exports
     , ResourceT
     , MonadResource
@@ -52,10 +43,204 @@ module Data.Conduit
     , runResourceT
     ) where
 
+-- >>> yield' 5 (return ()) $$ await'
+-- Just 5
+--
+-- >>> :load Data.Conduit.List
+-- >>> :module +Prelude
+-- >>> :module +Data.Conduit
+-- >>> :module +Data.Conduit.List
+-- >>> sourceList [1..10] $$ fold (+) 0
+-- 55
+--
+-- >>> :load Data.Conduit.List
+-- >>> :module +Prelude
+-- >>> :module +Data.Conduit
+-- >>> :module +Data.Conduit.List
+-- >>> toPipe (Prelude.mapM_ yield [1..10]) $$ fold (+) 0
+-- 55
+
 import Control.Monad.Trans.Resource
 import Data.Conduit.Internal
 
--- $typeOverview
+{- $overview
+
+Let's start off with a few simple examples of @conduit@ usage. First, a file
+copy utility:
+
+>>> :load Data.Conduit.Binary
+>>> runResourceT $ sourceFile "input.txt" $$ sinkFile "output.txt"
+
+@runResourceT@ is a function provided by the @resourcet@ package, and ensures
+that resources are properly cleaned up, even in the presence of exceptions. The
+type system will enforce that @runResourceT@ is called as needed. The remainder
+of this tutorial will not discuss @runResourceT@; please see the documentation
+in @resourcet@ for more information.
+
+Looking at the rest of our example, there are three components to understand:
+@sourceFile@, @sinkFile@, and the @$$@ operator (called \"connect\"). These
+represent the most basic building blocks in @conduit@: a @Source@ produces a
+stream of values, a @Sink@ consumes such a stream, and @$$@ will combine these
+together.
+
+In the case of file copying, there was no value produced by the @Sink@.
+However, often times a @Sink@ will produce some result value. For example:
+
+>>> :load Data.Conduit.List
+>>> :module +Prelude
+>>> sourceList [1..10] $$ fold (+) 0
+55
+
+@sourceList@ is a convenience function for turning a list into a @Source@.
+@fold@ implements a strict left fold for consuming the input stream.
+
+There is one more major aspect to the @conduit@ library: the @Conduit@ type.
+This type represents a stream /transformer/. In order to use a @Conduit@, we
+must /fuse/ it with either a @Source@ or @Sink@. For example:
+
+>>> :load Data.Conduit.List
+>>> :module +Prelude
+>>> sourceList [1..10] $= Data.Conduit.List.map (+1) $$ consume
+[2,3,4,5,6,7,8,9,10,11]
+
+Notice the addition of the @$=@, or /left fuse/ operator. This combines a
+@Source@ and a @Conduit@ into a new @Source@, which can then be connected to a
+@Sink@ (in this case, @consume@). We can similarly perform /right fusion/ to
+combine a @Conduit@ and @Sink@, or /middle fusion/ to combine two @Conduit@s.
+Examples will follow.
+
+A number of very common functions are provided in the "Data.Conduit.List"
+module. Many of these functions correspond very closely to standard Haskell
+functions.
+
+-}
+
+{- $types
+
+We discussed three main types in the @conduit@ package: @Source@, @Sink@, and
+@Conduit@. In fact, these are all unified into a single type, @Pipe@. This
+greatly simplifies the internal workings of this package, and makes it much
+easier to build more powerful components from simpler ones. (For example, it is
+easy to combine a number of simple @Sink@s together to produce a more powerful
+@Conduit@.)
+
+If we look again at our examples from above, we'll see a few different aspects
+to @Pipe@s:
+
+* @Sink@s and @Conduit@s can consume a stream of input values. Both @map@ and
+  @fold@ took a stream of @Int@s, while @sinkFile@ took a stream of
+  @ByteString@s.
+
+* @Source@s and @Conduit@s can produce a stream of output values. @sourceFile@
+  produced a stream of @ByteString@s, which was then consumed by @sinkFile@. This
+  is an important point in @conduit@: the output of the left-hand pipe (a.k.a.,
+  /upstream/) must match the input of the right-hand pipe (a.k.a., /downstream/).
+
+* All @Pipe@s have some underlying @Monad@. The @sourceFile@ and @sinkFile@
+  functions needed to use @MonadResource@ from @resourcet@ to get exception
+  handling, but our other functions could live in any monad. Since @Pipe@
+  provides a @MonadTrans@ instance, you can actually lift any action from the
+  underlying @Monad@ into your @Pipe@.
+
+* @Sink@s can provide a result type. Our @fold@ returned a final @Int@, while
+  @sinkFile@ returned @()@.
+
+Putting this all together, a @Pipe@ has four type parameters: @Pipe i o m r@,
+corresponding to each of the bullets above. @Source@, @Conduit@, and @Sink@ are
+simply type aliases that restrict one or more of these type parameters to
+specific types. For example, both @Source@ and @Conduit@ have @r@ restricted to
+@()@, since neither may return a result.
+
+There are two ways that @Pipe@s can be composed: via the @Monad@ instance, and
+via fusion. (/Note/: connecting is just a special case of fusion, where the
+@Pipe@ is then run. We'll discuss that more later on.) In the @pipes@ package,
+these are referred to as /vertical/ and /horizontal/ composition, respectively.
+Let's clarify the distinction between these two:
+
+Monadic composition takes two @Pipe@s with the same input and output types, and
+combines them into a single @Pipe@. These two @Pipe@s will be run one after the
+other, and they will share the same input and output streams. Essentially, the
+second @Pipe@ will continue consuming input where the first left off, and the
+output streams of each will be concatenated. Let\'s see a simple example:
+
+>>> :load Data.Conduit.List
+>>> sourceList [1..10] $$ do { x <- take 3; y <- take 2; return (x, y) }
+([1,2,3],[4,5])
+
+Fusion, on the other hand, will connect the output from an upstream @Pipe@ to
+the input of a downstream @Pipe@. The upstream @Pipe@ is required to have a
+result type of @()@, since any results it produces are thrown out. This form of
+composition produces a new @Pipe@ with the input parameter of the upstream
+@Pipe@ and the output and result parameters of the downstream @Pipe@.
+
+-}
+
+{- $fusion
+
+We've already demonstrated how to use most of the connect and fuse operators.
+Let's now address some intuition about what they do.
+
+Under the surface, all five operators in this section are implemented by a
+single function: 'pipeResume'. At a high level, this function does the
+following:
+
+* If the downstream @Pipe@ needs input, it runs the upstream @Pipe@ until it
+  produces output.
+
+* If the upstream @Pipe@ has no more output, it indicates this to the
+  downstream @Pipe@ until completion.
+
+* If the downstream @Pipe@ is done, it returns the result value from
+  downstream, together with the current state of the upstream @Pipe@.
+
+There are other details as well, such as dealing with running monadic actions,
+resource finalization, upstream input requirements, and downstream output.
+Please see the source of @pipeResume@ for a more detailed analysis. For our
+purposes here, the above explanation is sufficient.
+
+It's important to note the type of @pipeResume@:
+
+> pipeResume :: Pipe a b m () -> Pipe b c m r -> Pipe a c m (Pipe a b m (), r)
+
+We'll discuss later why we would want the final state of the upstream @Pipe@ to
+be returned, but for now there are two other questions: how do we get rid of
+that upstream state, and how do we actually the @Pipe@?
+
+The former is handled by the 'pipe' function. This function applies
+@pipeResume@, runs any finalizers from the upstream @Pipe@, and then returns
+the result. Its type is:
+
+> pipe :: Pipe a b m () -> Pipe b c m r -> Pipe a c m r
+
+And in fact, our fusion operators (@$=@, @=$@, and @=$=@) are all synonyms for
+this single function. The former two are type restricted to specifically fuse
+on the left and right respectively, but technically all usages of either of the
+first two can be replaced by the third.
+
+The second question is how we get rid of the surrounding @Pipe@. The answer is
+the 'runPipe' function:
+
+> runPipe :: Pipe Void Void m r -> m r
+
+Notice how the input and output types are both set to @Void@. This ensures that
+we have a complete pipeline, going from a @Source@ to a @Sink@. We are
+guaranteed that the @Pipe@ requires no input stream, and produces no output
+stream.
+
+And finally, what's going on with @pipeResume@? It seems silly that we go to
+all the effort of retaining that upstream @Pipe@ just to throw it away later.
+The reason is so that we can implement the @$$+@ operator (called
+connect-and-resume). The idea is that you can incrementally apply a @Source@ to
+a number of different @Sink@s, without structuring your entire codebase around
+@conduit@.
+
+Most use cases will not require this operator, but certain more complicated
+control flows benefit greatly from it. The original use case was simplifying
+composition of multiple streams, as occurs when trying to combine a
+@conduit@-powered HTTP server and client into an HTTP proxy. For more examples
+of usage, see the @warp@ and @http-conduit@ codebases.
+
+-}
 
 infixr 0 $$
 infixr 0 $$+
@@ -65,25 +250,19 @@ infixr 2 =$=
 
 
 -- | The connect operator, which pulls data from a source and pushes to a sink.
--- There are two ways this process can terminate:
---
--- 1. If the @Sink@ is a @Done@ constructor, the @Source@ is closed.
---
--- 2. If the @Source@ is a @Done@ constructor, the @Sink@ is closed.
---
--- In other words, both the @Source@ and @Sink@ will always be closed. If you
--- would like to keep the @Source@ open to be used for another operations, use
--- the connect-and-resume operators '$$+'.
+-- When either side closes, the other side will be immediately closed as well.
+-- If you would like to keep the @Source@ open to be used for another
+-- operations, use the connect-and-resume operator '$$+'.
 --
 -- Since 0.4.0
 ($$) :: Monad m => Source m a -> Sink a m b -> m b
 src $$ sink = runPipe $ pipe src sink
 {-# INLINE ($$) #-}
 
--- | The connect-and-resume operator. Does not close the @Source@, but instead
--- returns it to be used again. This allows a @Source@ to be used incrementally
--- in a large program, without forcing the entire program to live in the @Sink@
--- monad.
+-- | The connect-and-resume operator. This does not close the @Source@, but
+-- instead returns it to be used again. This allows a @Source@ to be used
+-- incrementally in a large program, without forcing the entire program to live
+-- in the @Sink@ monad.
 --
 -- Mnemonic: connect + do more.
 --

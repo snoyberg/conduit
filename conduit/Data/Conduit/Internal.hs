@@ -108,13 +108,7 @@ instance MonadResource m => MonadResource (Finalize m) where
 -- stream of values this @Pipe@ will produce and send downstream. /r/ is the
 -- final output of this @Pipe@.
 --
--- @Pipe@s can be composed via the 'pipe' function. To do so, the output type
--- of the left pipe much match the input type of the right pipe, and the result
--- type of the left pipe must be unit @()@. This is due to the fact that any
--- result produced by the left pipe must be discarded in favor of the result of
--- the right pipe.
---
--- Since 0.4.0
+-- Since 0.5.0
 data Pipe i o m r =
     -- | Provide new output to be sent downstream. This constructor has three
     -- fields: the next @Pipe@ to be used, an early-closed function, and the
@@ -126,8 +120,7 @@ data Pipe i o m r =
     -- @Pipe@ to provide a final stream of output values after no more input is
     -- available from upstream.
   | NeedInput (i -> Pipe i o m r) (Pipe Void o m r)
-    -- | Processing with this @Pipe@ is complete. Provides an optional leftover
-    -- input value and and result.
+    -- | Processing with this @Pipe@ is complete, providing the final result.
   | Done r
     -- | Require running of a monadic action to get the next @Pipe@. Second
     -- field is an early cleanup function. Technically, this second field
@@ -136,6 +129,7 @@ data Pipe i o m r =
     -- file, it may be forced to pull an extra, unneeded chunk before closing
     -- the @Handle@.
   | PipeM (m (Pipe i o m r)) (Finalize m r)
+    -- | Return leftover input, which should be provided to future operations.
   | Leftover (Pipe i o m r) i
 
 -- | A @Pipe@ which provides a stream of output values, without consuming any
@@ -148,8 +142,7 @@ type Source m a = Pipe Void a m ()
 
 -- | A @Pipe@ which consumes a stream of input values and produces a final
 -- result. It cannot produce any output values, and thus the output parameter
--- is set to @Void@. In other words, it is impossible to create a @HaveOutput@
--- constructor for a @Sink@.
+-- is set to @Void@.
 --
 -- Since 0.4.0
 type Sink i m r = Pipe i Void m r
@@ -242,7 +235,10 @@ instance Monad m => Monoid (Pipe i o m ()) where
 --
 -- Since 0.4.0
 pipe :: Monad m => Pipe a b m () -> Pipe b c m r -> Pipe a c m r
-pipe l r = pipeResume l r >>= \(l', res) -> lift (runFinalize $ pipeClose l') >> return res
+pipe l r = do
+    (l', res) <- pipeResume l r
+    lift $ runFinalize $ pipeClose l'
+    return res
 
 -- | Same as 'pipe', but retain both the new left pipe and the leftovers from
 -- the right pipe. The two components are combined together into a single pipe
