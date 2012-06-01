@@ -330,29 +330,12 @@ runFinalize :: Monad m => Finalize m r -> m r
 runFinalize (FinalizePure r) = return r
 runFinalize (FinalizeM mr) = mr
 
--- | Send a single output value downstream.
+-- | Send a single output value downstream, and if it is accepted, continue
+-- with the given @Pipe@.
 --
--- /Note to self/: Make this explanation more user friendly.
---
--- Due to the nature of @TPipe@, the @yield@ function will automatically
--- terminate when downstream no longer wants input. This is because monadic
--- bind for @TPipe@ handles automatic termination.
---
--- By contrast, the monadic bind for @Pipe@ does no such automatic termination,
--- as that would (for one thing) prevent resource finalization. As a result, if
--- we had an equivalent @yield@ function for @Pipe@, the following code would
--- be an infinite loop:
---
--- > mapM_ yield [1..] $$ take 10
---
--- The solution is that @yield'@ takes two arguments: the value to send
--- downstream, and the next @Pipe@ to be run, /if downstream if still accepting
--- input/. If downstream is not accepting input, then the second argument to
--- this function will not be called.
---
--- Note that you can still cause infinite loops via monadic bind, but the type
--- signature of this function should make it significantly less likely. Basic
--- approach: @yield'@ should be the last call in any chain of monadic binding.
+-- Note that if you use monadic bind to include another @Pipe@ after this one,
+-- it will be called regardless of whether downstream has completed. It is
+-- therefore advisable in most cases to avoid such usage.
 --
 -- Since 0.5.0
 tryYield :: o -- ^ output value
@@ -474,9 +457,9 @@ toPipe :: Monad m => TPipe i o m () -> Pipe i o m ()
 toPipe = toPipeFinalize (FinalizePure ())
 
 toPipeFinalize :: Monad m
-               => Finalize m ()
+               => Finalize m r
                -> TPipe i o m ()
-               -> Pipe i o m ()
+               -> Pipe i o m r
 toPipeFinalize final =
     go
   where
@@ -489,7 +472,7 @@ toPipeFinalize final =
     done =
         case final of
             FinalizeM f -> PipeM (liftM Done f) final
-            FinalizePure () -> Done ()
+            FinalizePure r -> Done r
 
 -- | Wait for a single input value from upstream, terminating immediately if no
 -- data is available.

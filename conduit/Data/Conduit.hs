@@ -10,18 +10,22 @@ module Data.Conduit
     , Sink
 
       -- * Construction
+      -- $construction
     , tryAwait
     , tryYield
     , leftover
       -- ** Finalization
     , bracketP
     , addCleanup
-      -- ** Terminating pipes
+
+      -- * Terminating pipes
+      -- $terminatingPipes
     , TPipe
     , toPipe
     , await
     , yield
     , leftoverTP
+      -- ** Finalization
     , bracketTP
 
       -- * Utility functions
@@ -46,23 +50,6 @@ module Data.Conduit
     , MonadUnsafeIO (..)
     , runResourceT
     ) where
-
--- >>> yield' 5 (return ()) $$ await'
--- Just 5
---
--- >>> :load Data.Conduit.List
--- >>> :module +Prelude
--- >>> :module +Data.Conduit
--- >>> :module +Data.Conduit.List
--- >>> sourceList [1..10] $$ fold (+) 0
--- 55
---
--- >>> :load Data.Conduit.List
--- >>> :module +Prelude
--- >>> :module +Data.Conduit
--- >>> :module +Data.Conduit.List
--- >>> toPipe (Prelude.mapM_ yield [1..10]) $$ fold (+) 0
--- 55
 
 import Control.Monad.Trans.Resource
 import Data.Conduit.Internal
@@ -176,6 +163,109 @@ the input of a downstream @Pipe@. The upstream @Pipe@ is required to have a
 result type of @()@, since any results it produces are thrown out. This form of
 composition produces a new @Pipe@ with the input parameter of the upstream
 @Pipe@ and the output and result parameters of the downstream @Pipe@.
+
+-}
+
+{- $construction
+
+While @conduit@ provides a number of built-in @Source@s, @Sink@s, and
+@Conduit@s, you will almost certainly want to construct some of your own. While
+previous versions recommended using the constructors directly, beginning with
+0.5, the recommended approach is to compose existing @Pipe@s into larger ones.
+
+It is certainly possible (and advisable!) to leverage existing @Pipe@s- like
+those in "Data.Conduit.List". However, you will often need to go to a lower
+level set of @Pipe@s to start your composition. The following three functions
+should be sufficient for expressing all constructs besides finalization. Adding
+in @bracketP@ and @addCleanup@, you should be able to create any @Pipe@ you
+need. (In fact, that's precisely how the remainder of this package is written.)
+
+The three basic operations are /awaiting/, /yielding/, and /leftovers/.
+Awaiting asks for a new value from upstream, or returns @Nothing@ if upstream
+is done. For example:
+
+>>> :load Data.Conduit.List
+>>> sourceList [1..10] $$ tryAwait
+Just 1
+
+>>> :load Data.Conduit.List
+>>> sourceList [] $$ tryAwait
+Nothing
+
+Similarly, we have a @tryYield@ function. For those familiar with the @pipes@
+package, there is a subtle yet important distinction from that package's
+@yield@ function. @yield@ features automatic termination, where an upstream
+@Pipe@ will stop processing as soon as a downstream @Pipe@ stops. This is not
+the case in @conduit@: due to differences to how result values are generated
+and how finalization is performed, @conduit@ avoids automatic termination. (See
+the section on terminating pipes below for more details.)
+
+The upshot of this is that implementing the equivalent of the following in
+@conduit@ results in an infinite loop:
+
+> forever $ yield ()
+
+Therefore, @tryYield@ takes two arguments: a value to yield, and a @Pipe@ to
+continue with /if downstream is still accepting input/. To implement the
+equivalent of the above, you would write:
+
+>>> let infinite = tryYield () infinite
+>>> infinite $$ tryAwait
+Just ()
+
+Or for something a bit more sophisticated:
+
+>>> let enumFrom' i = tryYield i $ enumFrom' $ succ i
+>>> enumFrom' 1 $$ take 5
+[1,2,3,4,5]
+
+Note that you should in general avoid using monadic bind after a call to
+@tryYield@, as that will similarly result in code being called after downstream
+is closed.
+
+The final primitive @Pipe@ is @leftover@. This allows you to return unused
+input to be used by the next @Pipe@ in the monadic chain. A simple use case
+would be implementing the @peek@ function:
+
+>>> let peek = tryAwait >>= maybe (return Nothing) (\x -> leftover x >> return (Just x)) :: Pipe i o Prelude.IO (Maybe i)
+>>> enumFrom' 1 $$ do { mx <- peek; my <- tryAwait; mz <- tryAwait; return (mx, my, mz) }
+(Just 1,Just 1,Just 2)
+
+Note that you should only return leftovers that were previously yielded from
+upstream.
+
+-}
+
+{- $terminatingPipes
+
+When you bind two @Pipe@s together monadically, both @Pipe@s are guaranteed to
+run. This has two positive ramifications: finalizers are guaranteed to run, and
+we are guaranteed to get a result value. However, this has the downside of
+requiring explicit management of @Pipe@ termination, as exemplified by the
+@tryYield@ examples above.
+
+However, if we were to relax the two requirements above, we could create a
+version of @Pipe@ that automatically terminates when either upstream or
+downstream terminates. This is precisely what a @TPipe@ provides. Using a
+@TPipe@, you can write the simple, infinitely looping versions of some
+functions, and have them terminate.
+
+>>> toPipe (mapM_ yield [1..]) $$ tryAwait
+Just 1
+
+Note the usage of @toPipe@, which converts a @TPipe@ to a @Pipe@, and the usage
+of @yield@ in place of @tryYield@. We can also use @TPipe@s to construct many
+@Conduit@s, such as @map@.
+
+>>> let map' f = toPipe $ Control.Monad.forever $ await >>= yield . f
+>>> toPipe (mapM_ yield [1..]) $$ map' (+ 1) =$ tryAwait
+Just 2
+
+You can also implement some @Sink@s, but only those that return no results.
+
+>>> let mapM_' f = toPipe $ Control.Monad.forever $ await >>= Control.Monad.Trans.Class.lift . f
+>>> toPipe (mapM_ yield [1..5]) $$ mapM_' (putStr . show)
+12345
 
 -}
 
