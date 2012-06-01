@@ -1,4 +1,3 @@
-{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE CPP #-}
 -- | Functions for interacting with bytes.
 module Data.Conduit.Binary

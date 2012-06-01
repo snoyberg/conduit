@@ -1,7 +1,3 @@
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE CPP #-}
 -- | Utilities for constructing and converting 'Source', 'Source' and
 -- 'BSource' types. Please see "Data.Conduit.Types.Source" for more information
 -- on the base types.

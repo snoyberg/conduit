@@ -1,6 +1,5 @@
 {-# OPTIONS_HADDOCK not-home #-}
 {-# OPTIONS_GHC -O2 #-} -- necessary to avoid some space leaks
-{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE UndecidableInstances #-}

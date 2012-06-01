@@ -1,4 +1,3 @@
-{-# LANGUAGE FlexibleContexts #-}
 -- | Higher-level functions to interact with the elements of a stream. Most of
 -- these are based on list functions.
 --
@@ -50,10 +49,8 @@ import Prelude
     ( ($), return, (==), (-), Int
     , (.), id, Maybe (..), Monad
     , Bool (..)
-    , Ordering (..)
     , (>>)
     , (>>=)
-    , flip
     , seq
     , otherwise
     , Enum (succ), Eq

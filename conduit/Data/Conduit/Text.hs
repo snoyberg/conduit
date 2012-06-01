@@ -1,5 +1,4 @@
 {-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE FlexibleContexts #-}
 -- |
 -- Copyright: 2011 Michael Snoyman, 2010-2011 John Millikin
 -- License: MIT

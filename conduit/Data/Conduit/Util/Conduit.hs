@@ -1,7 +1,3 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE CPP #-}
 -- | Utilities for constructing and covnerting conduits. Please see
 -- "Data.Conduit.Types.Conduit" for more information on the base types.
 module Data.Conduit.Util.Conduit
@@ -19,7 +15,7 @@ module Data.Conduit.Util.Conduit
 
 import Prelude hiding (sequence)
 import Control.Monad.Trans.Resource
-import Data.Conduit.Internal
+import Data.Conduit.Internal hiding (leftover)
 import Control.Monad (liftM, when)
 
 -- | A helper function for returning a list of values from a @Conduit@.

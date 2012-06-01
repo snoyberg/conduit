@@ -1,7 +1,3 @@
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE CPP #-}
 -- | Utilities for constructing 'Sink's. Please see "Data.Conduit.Types.Sink"
 -- for more information on the base types.
 module Data.Conduit.Util.Sink
