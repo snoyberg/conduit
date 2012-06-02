@@ -8,19 +8,18 @@ module Data.Conduit.Util
     , module Data.Conduit.Util.Sink
       -- * Conduit
     , module Data.Conduit.Util.Conduit
+    {- FIXME
       -- * Misc
     , zip
     , zipSinks
+    -}
     ) where
 
 import Data.Conduit.Util.Source
 import Data.Conduit.Util.Sink
 import Data.Conduit.Util.Conduit
-import Data.Conduit.Internal
-import Data.Void (absurd)
-import Prelude hiding (zip)
-import Control.Monad (liftM, liftM2)
 
+{- FIXME
 -- | Combines two sources. The new source will stop producing once either
 --   source has been exhausted.
 --
@@ -29,10 +28,10 @@ zip :: Monad m => Source m a -> Source m b -> Source m (a, b)
 zip (Leftover p i) right = zip (pipePushStrip i p) right
 zip left (Leftover p i)  = zip left (pipePushStrip i p)
 zip (Done ()) (Done ()) = Done ()
-zip (Done ()) (HaveOutput _ close _) = PipeM (runFinalize close >> return (Done ())) close
-zip (HaveOutput _ close _) (Done ()) = PipeM (runFinalize close >> return (Done ())) close
-zip (Done ()) (PipeM _ close) = PipeM (runFinalize close >> return (Done ())) close
-zip (PipeM _ close) (Done ()) = PipeM (runFinalize close >> return (Done ())) close
+zip (Done ()) (HaveOutput _ close _) = PipeM (close >> return (Done ()))
+zip (HaveOutput _ close _) (Done ()) = PipeM (close >> return (Done ()))
+zip (Done ()) (PipeM _) = Done ()
+zip (PipeM _) (Done ()) = Done ()
 zip (PipeM mx closex) (PipeM my closey) = PipeM (liftM2 zip mx my) (closex >> closey)
 zip (PipeM mx closex) y@(HaveOutput _ closey _) = PipeM (liftM (\x -> zip x y) mx) (closex >> closey)
 zip x@(HaveOutput _ closex _) (PipeM my closey) = PipeM (liftM (\y -> zip x y) my) (closex >> closey)
@@ -65,3 +64,4 @@ zipSinks = (><)
 
     HaveOutput _ _ o >< _                = absurd o
     _                >< HaveOutput _ _ o = absurd o
+-}

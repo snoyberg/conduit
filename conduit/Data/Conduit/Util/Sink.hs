@@ -31,15 +31,14 @@ sinkState
     -> (state -> m output) -- ^ Close. Note that the state is not returned, as it is not needed.
     -> Sink input m output
 sinkState state0 push0 close0 =
-    NeedInput (push state0) (close state0)
+    NeedInput (push state0) (\() -> close state0)
   where
     push state input = PipeM
         (do
             res <- state `seq` push0 state input
             case res of
-                StateProcessing state' -> return $ NeedInput (push state') (close state')
+                StateProcessing state' -> return $ NeedInput (push state') (\() -> close state')
                 StateDone mleftover output -> return $ maybe id (flip Leftover) mleftover $ Done output)
-        (FinalizeM $ close0 state)
 
     close = lift . close0
 
@@ -60,12 +59,10 @@ sinkIO :: MonadResource m
        -> (state -> m output) -- ^ close
        -> Sink input m output
 sinkIO alloc cleanup push0 close0 = NeedInput
-    (\input -> PipeM (do
+    (\input -> PipeM $ do
         (key, state) <- allocate alloc cleanup
-        push key state input) (FinalizeM $ do
-            (key, state) <- allocate alloc cleanup
-            close key state))
-    (do
+        push key state input)
+    (\() -> do
         (key, state) <- lift $ allocate alloc cleanup
         lift $ close key state)
   where
@@ -76,10 +73,8 @@ sinkIO alloc cleanup push0 close0 = NeedInput
                 release key
                 return $ maybe id (flip Leftover) a $ Done b
             IOProcessing -> return $ NeedInput
-                (\i ->
-                    let mpipe = push key state i
-                     in PipeM mpipe (lift mpipe >>= pipeClose))
-                (lift $ close key state)
+                (PipeM . push key state)
+                (\() -> lift $ close key state)
     close key state = do
         res <- close0 state
         release key

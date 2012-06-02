@@ -30,7 +30,7 @@ sourceState
 sourceState state0 pull0 =
     src state0
   where
-    src state = PipeM (pull state) (return ())
+    src state = PipeM (pull state)
 
     pull state = do
         res <- pull0 state
@@ -55,9 +55,9 @@ sourceIO :: MonadResource m
 sourceIO alloc cleanup pull0 =
     PipeM (do
         (key, state) <- allocate alloc cleanup
-        pull key state) (return ())
+        pull key state)
   where
-    src key state = PipeM (pull key state) (release key)
+    src key state = PipeM (pull key state)
 
     pull key state = do
         res <- pull0 state
@@ -78,9 +78,9 @@ sourceStateIO :: MonadResource m
 sourceStateIO alloc cleanup pull0 =
     PipeM (do
         (key, state) <- allocate alloc cleanup
-        pull key state) (return ())
+        pull key state)
   where
-    src key state = PipeM (pull key state) (release key)
+    src key state = PipeM (pull key state)
 
     pull key state = do
         res <- pull0 state

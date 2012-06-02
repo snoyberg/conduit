@@ -55,10 +55,11 @@ import Prelude
     , otherwise
     , Enum (succ), Eq
     , maybe
+    , either
     )
 import Data.Conduit
 import Data.Conduit.Internal (sourceList)
-import Control.Monad (forever, when)
+import Control.Monad (when)
 import Control.Monad.Trans.Class (lift)
 
 -- | Generate a source from a seed value.
@@ -67,13 +68,13 @@ import Control.Monad.Trans.Class (lift)
 unfold :: Monad m
        => (b -> Maybe (a, b))
        -> b
-       -> Pipe i a m ()
+       -> Pipe i a u m ()
 unfold f =
     go
   where
     go seed =
         case f seed of
-            Just (a, seed') -> tryYield a $ go seed'
+            Just (a, seed') -> yield a >> go seed'
             Nothing -> return ()
 
 -- | Enumerate from a value to a final value, inclusive, via 'succ'.
@@ -86,13 +87,13 @@ unfold f =
 enumFromTo :: (Enum a, Eq a, Monad m)
            => a
            -> a
-           -> Pipe i a m ()
+           -> Pipe i a u m ()
 enumFromTo start stop =
     go start
   where
     go i
-        | i == stop = tryYield i $ return ()
-        | otherwise = tryYield i $ go $ succ i
+        | i == stop = yield i
+        | otherwise = yield i >> go (succ i)
 
 -- | A strict left fold.
 --
@@ -100,12 +101,12 @@ enumFromTo start stop =
 fold :: Monad m
      => (b -> a -> b)
      -> b
-     -> Pipe a o m b
+     -> Pipe a o u m b
 fold f =
     loop
   where
     loop accum =
-        tryAwait >>= go
+        await >>= go
       where
         go Nothing = return accum
         go (Just a) =
@@ -118,12 +119,12 @@ fold f =
 foldM :: Monad m
       => (b -> a -> m b)
       -> b
-      -> Pipe a o m b
+      -> Pipe a o u m b
 foldM f =
     loop
   where
     loop accum = do
-        ma <- tryAwait
+        ma <- await
         case ma of
             Nothing -> return accum
             Just a -> do
@@ -135,8 +136,11 @@ foldM f =
 -- Since 0.3.0
 mapM_ :: Monad m
       => (a -> m ())
-      -> Pipe a o m ()
-mapM_ f = toPipe $ forever $ await >>= lift . f
+      -> Pipe a o u m u
+mapM_ f =
+    go
+  where
+    go = awaitE >>= either return (\x -> lift (f x) >> go)
 
 -- | Ignore a certain number of values in the stream. This function is
 -- semantically equivalent to:
@@ -149,12 +153,12 @@ mapM_ f = toPipe $ forever $ await >>= lift . f
 -- Since 0.3.0
 drop :: Monad m
      => Int
-     -> Pipe a o m ()
+     -> Pipe a o u m ()
 drop =
-    toPipe . loop
+    loop
   where
     loop 0 = return ()
-    loop count = await >> loop (count - 1)
+    loop count = await >>= maybe (return ()) (\_ -> loop (count - 1))
 
 -- | Take some values from the stream and return as a list. If you want to
 -- instead create a conduit that pipes data to another sink, see 'isolate'.
@@ -165,33 +169,36 @@ drop =
 -- Since 0.3.0
 take :: Monad m
      => Int
-     -> Pipe a o m [a]
+     -> Pipe a o u m [a]
 take =
     loop id
   where
     loop front 0 = return $ front []
-    loop front count = tryAwait >>= maybe
+    loop front count = await >>= maybe
         (return $ front [])
         (\x -> loop (front .(x:)) (count - 1))
 
 -- | Take a single value from the stream, if available.
 --
 -- Since 0.3.0
-head :: Monad m => Pipe a o m (Maybe a)
-head = tryAwait
+head :: Monad m => Pipe a o u m (Maybe a)
+head = await
 
 -- | Look at the next value in the stream, if available. This function will not
 -- change the state of the stream.
 --
 -- Since 0.3.0
-peek :: Monad m => Pipe a o m (Maybe a)
-peek = tryAwait >>= maybe (return Nothing) (\x -> leftover x >> return (Just x))
+peek :: Monad m => Pipe a o u m (Maybe a)
+peek = await >>= maybe (return Nothing) (\x -> leftover x >> return (Just x))
 
 -- | Apply a transformation to all values in a stream.
 --
 -- Since 0.3.0
 map :: Monad m => (a -> b) -> Conduit a m b
-map f = toPipe $ forever $ await >>= yield . f
+map f =
+    go
+  where
+    go = await >>= maybe (return ()) (\x -> yield (f x) >> go)
 
 -- | Apply a monadic transformation to all values in a stream.
 --
@@ -200,58 +207,73 @@ map f = toPipe $ forever $ await >>= yield . f
 --
 -- Since 0.3.0
 mapM :: Monad m => (a -> m b) -> Conduit a m b
-mapM f = toPipe $ forever $ await >>= lift . f >>= yield
+mapM f =
+    go
+  where
+    go = await >>= maybe (return ()) (\x -> lift (f x) >>= yield >> go)
 
 -- | Apply a transformation to all values in a stream, concatenating the output
 -- values.
 --
 -- Since 0.3.0
 concatMap :: Monad m => (a -> [b]) -> Conduit a m b
-concatMap f = toPipe $ forever $ await >>= Prelude.mapM_ yield . f
+concatMap f =
+    go
+  where
+    go = await >>= maybe (return ()) (\x -> Prelude.mapM_ yield (f x) >> go)
 
 -- | Apply a monadic transformation to all values in a stream, concatenating
 -- the output values.
 --
 -- Since 0.3.0
 concatMapM :: Monad m => (a -> m [b]) -> Conduit a m b
-concatMapM f = toPipe $ forever $ await >>= lift . f >>= Prelude.mapM_ yield
+concatMapM f =
+    go
+  where
+    go = await >>= maybe (return ()) (\x -> lift (f x) >>= Prelude.mapM_ yield >> go)
 
 -- | 'concatMap' with an accumulator.
 --
 -- Since 0.3.0
 concatMapAccum :: Monad m => (a -> accum -> (accum, [b])) -> accum -> Conduit a m b
 concatMapAccum f =
-    toPipe . loop
+    loop
   where
     loop accum = do
-        a <- await
-        let (accum', bs) = f a accum
-        Prelude.mapM_ yield bs
-        loop accum'
+        ma <- await
+        case ma of
+            Nothing -> return ()
+            Just a -> do
+                let (accum', bs) = f a accum
+                Prelude.mapM_ yield bs
+                loop accum'
 
 -- | 'concatMapM' with an accumulator.
 --
 -- Since 0.3.0
 concatMapAccumM :: Monad m => (a -> accum -> m (accum, [b])) -> accum -> Conduit a m b
 concatMapAccumM f =
-    toPipe . loop
+    loop
   where
     loop accum = do
-        a <- await
-        (accum', bs) <- lift $ f a accum
-        Prelude.mapM_ yield bs
-        loop accum'
+        ma <- await
+        case ma of
+            Nothing -> return ()
+            Just a -> do
+                (accum', bs) <- lift $ f a accum
+                Prelude.mapM_ yield bs
+                loop accum'
 
 -- | Consume all values from the stream and return as a list. Note that this
 -- will pull all values into memory. For a lazy variant, see
 -- "Data.Conduit.Lazy".
 --
 -- Since 0.3.0
-consume :: Monad m => Pipe a o m [a]
+consume :: Monad m => Pipe a o u m [a]
 consume =
     loop id
   where
-    loop front = tryAwait >>= maybe (return $ front []) (\x -> loop $ front . (x:))
+    loop front = await >>= maybe (return $ front []) (\x -> loop $ front . (x:))
 
 -- | Grouping input according to an equality function.
 --
@@ -260,15 +282,15 @@ groupBy :: Monad m => (a -> a -> Bool) -> Conduit a m [a]
 groupBy f =
     start
   where
-    start = tryAwait >>= maybe (return ()) (loop id)
+    start = await >>= maybe (return ()) (loop id)
 
     loop rest x = do
-        my <- tryAwait
+        my <- await
         case my of
-            Nothing -> tryYield (x : rest []) (return ())
+            Nothing -> yield (x : rest [])
             Just y
                 | f x y -> loop (rest . (y:)) x
-                | otherwise -> tryYield (x : rest []) (loop id y)
+                | otherwise -> yield (x : rest []) >> loop id y
 
 -- | Ensure that the inner sink consumes no more than the given number of
 -- values. Note this this does /not/ ensure that the sink consumes all of those
@@ -285,27 +307,33 @@ groupBy f =
 -- Since 0.3.0
 isolate :: Monad m => Int -> Conduit a m a
 isolate =
-    toPipe . loop
+    loop
   where
     loop 0 = return ()
-    loop count = await >>= \x -> yield x >> loop (count - 1)
+    loop count = await >>= maybe (return ()) (\x -> yield x >> loop (count - 1))
 
 -- | Keep only values in the stream passing a given predicate.
 --
 -- Since 0.3.0
 filter :: Monad m => (a -> Bool) -> Conduit a m a
-filter f = toPipe $ forever $ await >>= \x -> when (f x) $ yield x
+filter f =
+    go
+  where
+    go = await >>= maybe (return ()) (\x -> when (f x) (yield x) >> go)
 
 -- | Ignore the remainder of values in the source. Particularly useful when
 -- combined with 'isolate'.
 --
 -- Since 0.3.0
-sinkNull :: Monad m => Pipe a o m ()
-sinkNull = toPipe $ forever $ await >> return ()
+sinkNull :: Monad m => Pipe a o u m u
+sinkNull =
+    go
+  where
+    go = awaitE >>= either return (\_ -> go)
 
 -- | A source that outputs no values. Note that this is just a type-restricted
 -- synonym for 'mempty'.
 --
 -- Since 0.3.0
-sourceNull :: Monad m => Pipe i a m ()
+sourceNull :: Monad m => Pipe i a u m ()
 sourceNull = return ()

@@ -73,16 +73,16 @@ lines =
     loop id
   where
     loop front = do
-        mbs <- tryAwait
+        mbs <- await
         case mbs of
             Nothing ->
                 let final = front T.empty
-                 in unless (T.null final) $ tryYield final $ return ()
+                 in unless (T.null final) $ yield final
             Just bs -> go front bs
 
     go sofar more =
         case T.uncons second of
-            Just (_, second') -> tryYield (sofar first') $ go id second'
+            Just (_, second') -> yield (sofar first') >> go id second'
             Nothing ->
                 let rest = sofar more
                  in loop $ T.append rest
@@ -108,7 +108,7 @@ decode codec =
     loop id
   where
     loop front = do
-        mbs <- tryAwait
+        mbs <- await
         case front <$> mbs of
             Nothing ->
                 case B.uncons $ front B.empty of
@@ -119,7 +119,7 @@ decode codec =
     go bs =
         case extra of
             Left (exc, _) -> lift $ monadThrow exc
-            Right bs' -> tryYield text $ loop $ B.append bs'
+            Right bs' -> yield text >> loop (B.append bs')
       where
         (text, extra) = codecDecode codec bs
 

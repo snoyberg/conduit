@@ -26,7 +26,7 @@ haveMore :: Conduit a m b -- ^ The next @Conduit@ to return after the list has b
          -> [b] -- ^ The values to send down the stream.
          -> Conduit a m b
 haveMore res _ [] = res
-haveMore res close (x:xs) = HaveOutput (haveMore res close xs) (FinalizeM close) x
+haveMore res close (x:xs) = HaveOutput (haveMore res close xs) close x
 
 -- | A helper type for @conduitState@, indicating the result of being pushed
 -- to.  It can either indicate that processing is done, or to continue with the
@@ -52,20 +52,20 @@ conduitState
     -> (state -> m [output]) -- ^ Close function. The state need not be returned, since it will not be used again.
     -> Conduit input m output
 conduitState state0 push0 close0 =
-    NeedInput (push state0) (close state0)
+    NeedInput (push state0) (\() -> close state0)
   where
-    push state input = PipeM (liftM goRes' $ state `seq` push0 state input) (return ())
+    push state input = PipeM (liftM goRes' $ state `seq` push0 state input)
 
     close state = PipeM (do
         os <- close0 state
-        return $ sourceList os) (return ())
+        return $ sourceList os)
 
     goRes' (StateFinished leftover output) = maybe id pipePush leftover $ haveMore
         (Done ())
         (return ())
         output
     goRes' (StateProducing state output) = haveMore
-        (NeedInput (push state) (close state))
+        (NeedInput (push state) (\() -> close state))
         (return ())
         output
 
@@ -91,21 +91,21 @@ conduitIO :: MonadResource m
            -> (state -> m [output]) -- ^ Close function. Note that this need not explicitly perform any cleanup.
            -> Conduit input m output
 conduitIO alloc cleanup push0 close0 = NeedInput
-    (\input -> flip PipeM (return ()) $ do
+    (\input -> PipeM $ do
         (key, state) <- allocate alloc cleanup
         push key state input)
-    (PipeM (do
+    (\() -> PipeM $ do
         (key, state) <- allocate alloc cleanup
         os <- close0 state
         release key
-        return $ sourceList os) (return ()))
+        return $ sourceList os)
   where
     push key state input = do
         res <- push0 state input
         case res of
             IOProducing output -> return $ haveMore
-                (NeedInput (flip PipeM (FinalizeM $ release key) . push key state) (close key state))
-                (release key >> return ())
+                (NeedInput (PipeM . push key state) (\() -> close key state))
+                (release key)
                 output
             IOFinished leftover output -> do
                 release key
@@ -114,10 +114,10 @@ conduitIO alloc cleanup push0 close0 = NeedInput
                     (return ())
                     output
 
-    close key state = PipeM (do
+    close key state = PipeM $ do
         output <- close0 state
         release key
-        return $ sourceList output) (FinalizeM $ release key)
+        return $ sourceList output
 
 -- | Return value from a 'SequencedSink'.
 --
@@ -168,4 +168,4 @@ sequence sink = self
   where
     self = do
         x <- hasInput
-        when x $ sinkToPipe sink >>= flip tryYield self
+        when x $ sinkToPipe sink >>= yield >> self

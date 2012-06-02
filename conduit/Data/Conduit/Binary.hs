@@ -37,7 +37,7 @@ import qualified Data.ByteString.Lazy as L
 import Data.Conduit
 import Data.Conduit.List (sourceList)
 import Control.Exception (assert)
-import Control.Monad (forever, unless)
+import Control.Monad (unless)
 import Control.Monad.IO.Class (liftIO, MonadIO)
 import qualified System.IO as IO
 import Data.Word (Word8)
@@ -56,7 +56,7 @@ sourceFile :: MonadResource m
            -> Source m S.ByteString
 sourceFile fp =
 #if CABAL_OS_WINDOWS || NO_HANDLES
-    bracketTP
+    bracketP
         (F.openRead fp)
          F.close
          loop
@@ -75,7 +75,7 @@ sourceHandle :: MonadIO m
              => IO.Handle
              -> Source m S.ByteString
 sourceHandle h =
-    toPipe loop
+    loop
   where
     loop = do
         bs <- liftIO (S.hGetSome h 4096)
@@ -100,8 +100,11 @@ sourceIOHandle alloc = bracketP alloc IO.hClose sourceHandle
 -- Since 0.3.0
 sinkHandle :: MonadIO m
            => IO.Handle
-           -> Sink S.ByteString m ()
-sinkHandle h = toPipe $ forever $ await >>= liftIO . S.hPut h
+           -> Pipe S.ByteString o r m r
+sinkHandle h =
+    loop
+  where
+    loop = awaitE >>= either return (\bs -> liftIO (S.hPut h bs) >> loop)
 
 -- | An alternative to 'sinkHandle'.
 -- Instead of taking a pre-opened 'IO.Handle', it takes an action that opens
@@ -123,7 +126,7 @@ sourceFileRange :: MonadResource m
                 -> Maybe Integer -- ^ Offset
                 -> Maybe Integer -- ^ Maximum count
                 -> Source m S.ByteString
-sourceFileRange fp offset count = bracketTP
+sourceFileRange fp offset count = bracketP
     (IO.openBinaryFile fp IO.ReadMode)
     IO.hClose
     start
@@ -168,11 +171,13 @@ sinkFile fp = sinkIOHandle (IO.openBinaryFile fp IO.WriteMode)
 -- Since 0.3.0
 conduitFile :: MonadResource m
             => FilePath
-            -> Conduit S.ByteString m S.ByteString
-conduitFile fp = bracketTP
+            -> Pipe S.ByteString S.ByteString r m r
+conduitFile fp = bracketP
     (IO.openBinaryFile fp IO.WriteMode)
     IO.hClose
-    (\h -> forever $ await >>= \bs -> liftIO (S.hPut h bs) >> yield bs)
+    loop
+  where
+    loop h = awaitE >>= either return (\bs -> liftIO (S.hPut h bs) >> yield bs >> loop h)
 
 -- | Ensure that only up to the given number of bytes are consume by the inner
 -- sink. Note that this does /not/ ensure that all of those bytes are in fact
@@ -181,26 +186,29 @@ conduitFile fp = bracketTP
 -- Since 0.3.0
 isolate :: Monad m
         => Int
-        -> Conduit S.ByteString m S.ByteString
+        -> Pipe S.ByteString S.ByteString r m ()
 isolate =
-    toPipe . loop
+    loop
   where
     loop 0 = return ()
     loop count = do
-        bs <- await
-        let (a, b) = S.splitAt count bs
-        case count - S.length a of
-            0 -> do
-                unless (S.null b) $ leftoverTP b
-                yield a
-            count' -> assert (S.null b) $ yield a >> loop count'
+        mbs <- await
+        case mbs of
+            Nothing -> return ()
+            Just bs -> do
+                let (a, b) = S.splitAt count bs
+                case count - S.length a of
+                    0 -> do
+                        unless (S.null b) $ leftover b
+                        yield a
+                    count' -> assert (S.null b) $ yield a >> loop count'
 
 -- | Return the next byte from the stream, if available.
 --
 -- Since 0.3.0
 head :: Monad m => Sink S.ByteString m (Maybe Word8)
 head = do
-    mbs <- tryAwait
+    mbs <- await
     case mbs of
         Nothing -> return Nothing
         Just bs ->
@@ -216,14 +224,14 @@ takeWhile p =
     loop
   where
     loop = do
-        mbs <- tryAwait
+        mbs <- await
         case mbs of
             Nothing -> return ()
             Just bs -> go bs
 
     go bs
         | S.null x = next
-        | otherwise = tryYield x next
+        | otherwise = yield x >> next
       where
         next = if S.null y then loop else leftover y
         (x, y) = S.span p bs
@@ -236,7 +244,7 @@ dropWhile p =
     loop
   where
     loop = do
-        mbs <- tryAwait
+        mbs <- await
         case S.dropWhile p <$> mbs of
             Nothing -> return ()
             Just bs
@@ -251,7 +259,7 @@ take n0 =
     go n0 id
   where
     go n front = do
-        mbs <- tryAwait
+        mbs <- await
         case mbs of
             Nothing -> return $ L.fromChunks $ front []
             Just bs ->
@@ -271,16 +279,16 @@ lines =
     loop id
   where
     loop front = do
-        mbs <- tryAwait
+        mbs <- await
         case mbs of
             Nothing ->
                 let final = front S.empty
-                 in unless (S.null final) $ tryYield final $ return ()
+                 in unless (S.null final) $ yield final
             Just bs -> go front bs
 
     go sofar more =
         case S.uncons second of
-            Just (_, second') -> tryYield (sofar first) $ go id second'
+            Just (_, second') -> yield (sofar first) >> go id second'
             Nothing ->
                 let rest = sofar more
                  in loop $ S.append rest

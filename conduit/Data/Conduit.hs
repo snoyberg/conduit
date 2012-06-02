@@ -11,22 +11,13 @@ module Data.Conduit
 
       -- * Construction
       -- $construction
-    , tryAwait
-    , tryYield
+    , await
+    , awaitE
+    , yield
     , leftover
       -- ** Finalization
     , bracketP
     , addCleanup
-
-      -- * Terminating pipes
-      -- $terminatingPipes
-    , TPipe
-    , toPipe
-    , await
-    , yield
-    , leftoverTP
-      -- ** Finalization
-    , bracketTP
 
       -- * Utility functions
     , transPipe
@@ -36,6 +27,8 @@ module Data.Conduit
       -- $fusion
     , ($$)
     , ($$+)
+    , ($$++)
+    , ($$+-)
     , ($=)
     , (=$)
     , (=$=)
@@ -53,6 +46,7 @@ module Data.Conduit
 
 import Control.Monad.Trans.Resource
 import Data.Conduit.Internal
+import Data.Void (Void)
 
 {- $overview
 
@@ -340,6 +334,8 @@ of usage, see the @warp@ and @http-conduit@ codebases.
 
 infixr 0 $$
 infixr 0 $$+
+infixr 0 $$++
+infixr 0 $$+-
 infixl 1 $=
 infixr 2 =$
 infixr 2 =$=
@@ -363,9 +359,20 @@ src $$ sink = runPipe $ pipe src sink
 -- Mnemonic: connect + do more.
 --
 -- Since 0.4.0
-($$+) :: Monad m => Source m a -> Sink a m b -> m (Source m a, b)
-src $$+ sink = runPipe $ pipeResume src sink
+($$+) :: Monad m => Source m a -> Sink a m b -> m (ResumablePipe Void a () m (), b)
+src $$+ sink = runPipe $ pipeResume (ResumablePipe src (return ())) sink
 {-# INLINE ($$+) #-}
+
+($$++) :: Monad m => ResumablePipe Void a () m () -> Sink a m b -> m (ResumablePipe Void a () m (), b)
+rsrc $$++ sink = runPipe $ pipeResume rsrc sink
+{-# INLINE ($$++) #-}
+
+($$+-) :: Monad m => ResumablePipe Void a () m () -> Sink a m b -> m b
+rsrc $$+- sink = do
+    (ResumablePipe _ final, res) <- runPipe $ pipeResume rsrc sink
+    final
+    return res
+{-# INLINE ($$+-) #-}
 
 -- | Left fuse, combining a source and a conduit together into a new source.
 --
@@ -402,7 +409,7 @@ src $$+ sink = runPipe $ pipeResume src sink
 -- all @Pipe@s, including @Source@s and @Sink@s.
 --
 -- Since 0.4.0
-(=$=) :: Monad m => Pipe a b m () -> Pipe b c m r -> Pipe a c m r
+(=$=) :: Monad m => Pipe a b r0 m r1 -> Pipe b c r1 m r2 -> Pipe a c r0 m r2
 (=$=) = pipe
 {-# INLINE (=$=) #-}
 
