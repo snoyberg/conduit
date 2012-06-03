@@ -31,6 +31,7 @@ import Control.Monad.IO.Class (liftIO)
 import Control.Applicative (pure, (<$>), (<*>))
 import Data.Functor.Identity (runIdentity)
 import Control.Monad (forever)
+import Data.Void (Void)
 
 main :: IO ()
 main = hspecX $ do
@@ -602,6 +603,17 @@ main = hspecX $ do
             src C.$$ CL.isolate 10 C.=$ CL.sinkNull
             x <- I.readIORef iref
             x @?= 10
+
+    describe "upstream results" $ do
+        it' "works" $ do
+            let foldUp :: (b -> a -> b) -> b -> C.Pipe a Void u IO (u, b)
+                foldUp f b = C.awaitE >>= either (\u -> return (u, b)) (\a -> let b' = f b a in b' `seq` foldUp f b')
+                passFold :: (b -> a -> b) -> b -> C.Pipe a a () IO b
+                passFold f b = C.await >>= maybe (return b) (\a -> let b' = f b a in b' `seq` C.yield a >> passFold f b')
+            (x, y) <- CL.sourceList [1..10 :: Int]
+                 C.$$  passFold (+) 0
+                 C.=$= foldUp (*) 1
+            (x, y) @?= (sum [1..10], product [1..10])
 
 it' :: String -> IO () -> Specs
 it' = it

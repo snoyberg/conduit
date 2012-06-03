@@ -79,6 +79,7 @@ test-suite test
                    , transformers
                    , text
                    , resourcet
+                   , void
     ghc-options:     -Wall
 
 source-repository head
