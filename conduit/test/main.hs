@@ -587,13 +587,13 @@ main = hspecX $ do
 
     describe "sane yield/await'" $ do
         it' "yield terminates" $ do
-            let is = [1..11] ++ undefined
+            let is = [1..10] ++ undefined
                 src [] = return ()
                 src (x:xs) = CI.yield x >> src xs
             x <- src is C.$$ CL.take 10
             x @?= [1..10 :: Int]
         it' "yield terminates (2)" $ do
-            let is = [1..11] ++ undefined
+            let is = [1..10] ++ undefined
             x <- mapM_ CI.yield is C.$$ CL.take 10
             x @?= [1..10 :: Int]
         it' "yieldOr finalizer called" $ do
