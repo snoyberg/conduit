@@ -7,7 +7,7 @@ module Data.Conduit.ImageSize
     ) where
 
 import qualified Data.ByteString.Lazy as L
-import qualified Data.Conduit as C
+import Data.Conduit
 import qualified Data.Conduit.Binary as CB
 import qualified Data.ByteString as S
 import Data.ByteString.Char8 ()
@@ -22,28 +22,29 @@ data FileFormat = GIF | PNG | JPG
 
 -- | Specialized version of 'sinkImageInfo' that returns only the
 -- image size.
-sinkImageSize :: Monad m => C.Sink S.ByteString m (Maybe Size)
+sinkImageSize :: Monad m => Sink S.ByteString m (Maybe Size)
 sinkImageSize = fmap (fmap fst) sinkImageInfo
 
 -- | Find out the size of an image.  Also returns the file format
 -- that parsed correctly.  Note that this function does not
 -- verify that the file is indeed in the format that it returns,
 -- since it looks only at a small part of the header.
-sinkImageInfo :: Monad m => C.Sink S.ByteString m (Maybe (Size, FileFormat))
+sinkImageInfo :: Monad m => Sink S.ByteString m (Maybe (Size, FileFormat))
 sinkImageInfo =
-    C.NeedInput (pushHeader id) close
+    start id
   where
-    close = return Nothing
+    start front = await >>= maybe (return Nothing) (pushHeader front)
+
     pushHeader front bs'
         | S.length bs >= 11 && S.take 5 (S.drop 6 bs) ==
             S.pack [0x4A, 0x46, 0x49, 0x46, 0x00] =
-                sinkPush jpg $ S.drop 4 bs
+                leftover (S.drop 4 bs) >> jpg
         | S.length bs >= 6 && S.take 6 bs `elem` gifs =
-            sinkPush gif $ S.drop 6 bs
+            leftover (S.drop 6 bs) >> gif
         | S.length bs >= 8 && S.take 8 bs == S.pack [137, 80, 78, 71, 13, 10, 26, 10] =
-            sinkPush png $ S.drop 8 bs
-        | S.length bs < 11 = C.NeedInput (pushHeader $ S.append bs) close
-        | otherwise = C.Leftover (C.Done Nothing) bs
+            leftover (S.drop 8 bs) >> png
+        | S.length bs < 11 = start $ S.append bs
+        | otherwise = leftover bs >> return Nothing
       where
         bs = front bs'
 
@@ -64,9 +65,6 @@ sinkImageInfo =
                 mh <- getInt 4 0
                 return $ (\w h -> (Size w h, PNG)) <$> mw <*> mh
             else return Nothing
-
-    sinkPush (C.NeedInput push _) x = push x
-    sinkPush _ _ = error "Data.Conduit.ImageSize.sinkPush"
 
     jpg = do
         mi <- getInt 2 0
@@ -94,7 +92,7 @@ sinkImageInfo =
 getInt :: (Monad m, Integral i)
        => Int
        -> i
-       -> C.Sink S.ByteString m (Maybe i)
+       -> Sink S.ByteString m (Maybe i)
 getInt 0 i = return $ Just i
 getInt len i = do
     mx <- CB.head

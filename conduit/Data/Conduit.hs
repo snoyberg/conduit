@@ -23,6 +23,8 @@ module Data.Conduit
       -- * Utility functions
     , transPipe
     , mapOutput
+    , mapOutputMaybe
+    , mapInput
 
       -- * Connect/fuse operators
       -- $fusion

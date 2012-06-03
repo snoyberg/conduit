@@ -29,6 +29,7 @@ import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Exception (bracketOnError, IOException, throwIO, SomeException, try, finally, bracket)
 import Control.Monad (forever)
 import Control.Monad.Trans.Control (MonadBaseControl, control)
+import Control.Monad.Trans.Class (lift)
 import Control.Concurrent (forkIO)
 import Data.String (IsString (fromString))
 import qualified Control.Exception as E
@@ -40,29 +41,24 @@ import qualified Control.Exception as E
 -- Since 0.0.0
 sourceSocket :: MonadIO m => Socket -> Source m ByteString
 sourceSocket socket =
-    src
+    loop
   where
-    src = PipeM pull close
-
-    pull = do
-        bs <- liftIO (recv socket 4096)
-        return $ if S.null bs then Done () else HaveOutput src close bs
-    close = return ()
+    loop = do
+        bs <- lift $ liftIO $ recv socket 4096
+        if S.null bs
+            then return ()
+            else yield bs >> loop
 
 -- | Stream data to the socket.
 --
 -- This function does /not/ automatically close the socket.
 --
 -- Since 0.0.0
-sinkSocket :: MonadIO m => Socket -> Sink ByteString m ()
+sinkSocket :: MonadIO m => Socket -> Pipe ByteString o r m r
 sinkSocket socket =
-    sink
+    loop
   where
-    sink = NeedInput push (Done ())
-
-    push bs = PipeM (do
-        liftIO (sendAll socket bs)
-        return sink) (return ())
+    loop = awaitE >>= either return (\bs -> lift (liftIO $ sendAll socket bs) >> loop)
 
 -- | A simple TCP application. It takes two arguments: the @Source@ to read
 -- input data from, and the @Sink@ to send output data to.

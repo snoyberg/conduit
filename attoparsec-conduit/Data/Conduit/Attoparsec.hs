@@ -61,12 +61,12 @@ instance AttoparsecInput T.Text where
 -- be streamed bytes until it returns 'A.Done' or 'A.Fail'.
 --
 -- If parsing fails, a 'ParseError' will be thrown with 'monadThrow'.
-sinkParser :: (AttoparsecInput a, MonadThrow m) => A.Parser a b -> Pipe a o m b
+sinkParser :: (AttoparsecInput a, MonadThrow m) => A.Parser a b -> Pipe a o u m b
 sinkParser =
     sink . parseA
   where
     sink parser = do
-        mc <- tryAwait
+        mc <- await
         case mc of
             Nothing -> close parser
             Just c

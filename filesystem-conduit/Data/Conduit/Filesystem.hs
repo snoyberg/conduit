@@ -42,7 +42,7 @@ traverse :: MonadIO m
          => Bool -- ^ Follow directory symlinks (only used on POSIX platforms)
          -> FilePath -- ^ Root directory
          -> Source m FilePath
-traverse followSymlinks root = toPipe $ do
+traverse followSymlinks root =
     liftIO (listDirectory root) >>= pull
   where
     pull [] = return ()

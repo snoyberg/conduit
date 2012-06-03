@@ -17,8 +17,8 @@ import qualified Data.Conduit as C
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as S
 import Control.Exception (try)
-import Control.Monad ((<=<))
-import Data.Void (Void)
+import Control.Monad ((<=<), unless)
+import Control.Monad.Trans.Class (lift)
 
 -- | Gzip compression with default parameters.
 gzip :: (MonadThrow m, MonadUnsafeIO m) => Conduit ByteString m ByteString
@@ -44,58 +44,50 @@ decompress
     :: (MonadUnsafeIO m, MonadThrow m)
     => WindowBits -- ^ Zlib parameter (see the zlib-bindings package as well as the zlib C library)
     -> Conduit ByteString m ByteString
-decompress config = NeedInput
-    (\input -> PipeM (do
-        inf <- unsafeLiftIO $ initInflate config
-        push inf input) (return ()))
-    (Done ())
+decompress =
+    mapOutput unChunk . mapInput Chunk unChunk' . decompressFlush
   where
-    push' inf x = PipeM (push inf x) (return ())
+    unChunk Flush = S.empty
+    unChunk (Chunk bs) = bs
 
-    push inf x = do
-        popper <- unsafeLiftIO $ feedInflate inf x
-        goPopper (push' inf) (close inf) id [] popper
-
-    close inf = flip PipeM (return ()) $ do
-        chunk <- unsafeLiftIO $ finishInflate inf
-        return $
-            if S.null chunk
-                then Done ()
-                else HaveOutput (Done ()) (return ()) chunk
+    unChunk' Flush = Nothing
+    unChunk' (Chunk bs) = Just bs
 
 -- | Same as 'decompress', but allows you to explicitly flush the stream.
 decompressFlush
     :: (MonadUnsafeIO m, MonadThrow m)
     => WindowBits -- ^ Zlib parameter (see the zlib-bindings package as well as the zlib C library)
-    -> Conduit (Flush ByteString) m (Flush ByteString)
-decompressFlush config = NeedInput
-    (\input -> flip PipeM (return ()) $ do
-        inf <- unsafeLiftIO $ initInflate config
-        push inf input)
-    (Done ())
+    -> Pipe (Flush ByteString) (Flush ByteString) r m r
+decompressFlush config =
+    awaitE >>= either return start
   where
-    push' inf x = PipeM (push inf x) (return ())
+    start input = do
+        inf <- lift $ unsafeLiftIO $ initInflate config
+        push inf input
+
+    continue inf = awaitE >>= either (close inf) (push inf)
+
+    goPopper popper = do
+        mbs <- lift $ unsafeLiftIO popper
+        case mbs of
+            Nothing -> return ()
+            Just bs -> yield (Chunk bs) >> goPopper popper
 
     push inf (Chunk x) = do
-        popper <- unsafeLiftIO $ feedInflate inf x
-        goPopper (push' inf) (close inf) Chunk [] popper
-    push inf Flush = do
-        chunk <- unsafeLiftIO $ flushInflate inf
-        let next = HaveOutput
-                (NeedInput (push' inf) (close inf))
-                (return ())
-                Flush
-        return $
-            if S.null chunk
-                then next
-                else HaveOutput next (return ()) (Chunk chunk)
+        popper <- lift $ unsafeLiftIO $ feedInflate inf x
+        goPopper popper
+        continue inf
 
-    close inf = flip PipeM (return ()) $ do
-        chunk <- unsafeLiftIO $ finishInflate inf
-        return $
-            if S.null chunk
-                then Done ()
-                else HaveOutput (Done ()) (return ()) $ Chunk chunk
+    push inf Flush = do
+        chunk <- lift $ unsafeLiftIO $ flushInflate inf
+        unless (S.null chunk) $ yield $ Chunk chunk
+        yield Flush
+        continue inf
+
+    close inf ret = do
+        chunk <- lift $ unsafeLiftIO $ finishInflate inf
+        unless (S.null chunk) $ yield $ Chunk chunk
+        return ret
 
 -- |
 -- Compress (deflate) a stream of 'ByteString's. The 'WindowBits' also control
@@ -106,61 +98,48 @@ compress
     => Int         -- ^ Compression level
     -> WindowBits  -- ^ Zlib parameter (see the zlib-bindings package as well as the zlib C library)
     -> Conduit ByteString m ByteString
-compress level config = NeedInput
-    (\input -> flip PipeM (return ()) $ do
-        def <- unsafeLiftIO $ initDeflate level config
-        push def input) (Done ())
+compress level =
+    mapOutput unChunk . mapInput Chunk unChunk' . compressFlush level
   where
-    push' def input = PipeM (push def input) (return ())
-    push def x = do
-        popper <- unsafeLiftIO $ feedDeflate def x
-        goPopper (push' def) (close def) id [] popper
+    unChunk Flush = S.empty
+    unChunk (Chunk bs) = bs
 
-    close def = slurp $ unsafeLiftIO $ finishDeflate def
+    unChunk' Flush = Nothing
+    unChunk' (Chunk bs) = Just bs
 
 -- | Same as 'compress', but allows you to explicitly flush the stream.
 compressFlush
     :: (MonadUnsafeIO m, MonadThrow m)
     => Int         -- ^ Compression level
     -> WindowBits  -- ^ Zlib parameter (see the zlib-bindings package as well as the zlib C library)
-    -> Conduit (Flush ByteString) m (Flush ByteString)
-compressFlush level config = NeedInput
-    (\input -> flip PipeM (return ()) $ do
-        def <- unsafeLiftIO $ initDeflate level config
-        push def input) (Done ())
+    -> Pipe (Flush ByteString) (Flush ByteString) r m r
+compressFlush level config =
+    awaitE >>= either return start
   where
-    push' def input = PipeM (push def input) (return ())
+    start input = do
+        def <- lift $ unsafeLiftIO $ initDeflate level config
+        push def input
+
+    continue def = awaitE >>= either (close def) (push def)
+
+    goPopper popper = do
+        mbs <- lift $ unsafeLiftIO popper
+        case mbs of
+            Nothing -> return ()
+            Just bs -> yield (Chunk bs) >> goPopper popper
 
     push def (Chunk x) = do
-        popper <- unsafeLiftIO $ feedDeflate def x
-        goPopper (push' def) (close def) Chunk [] popper
-    push def Flush = goPopper (push' def) (close def) Chunk [Flush] $ flushDeflate def
+        popper <- lift $ unsafeLiftIO $ feedDeflate def x
+        goPopper popper
+        continue def
 
-    close def = flip PipeM (return ()) $ do
-        mchunk <- unsafeLiftIO $ finishDeflate def
-        return $ case mchunk of
-            Nothing -> Done ()
-            Just chunk -> HaveOutput (Done ()) (return ()) (Chunk chunk)
+    push def Flush = do
+        mchunk <- lift $ unsafeLiftIO $ flushDeflate def
+        maybe (return ()) (yield . Chunk) mchunk
+        yield Flush
+        continue def
 
-goPopper :: (MonadUnsafeIO m, MonadThrow m)
-         => (input -> Conduit input m output)
-         -> Conduit Void m output
-         -> (S.ByteString -> output)
-         -> [output]
-         -> Popper
-         -> m (Conduit input m output)
-goPopper push close wrap final popper = do
-    mbs <- unsafeLiftIO popper
-    return $ case mbs of
-        Nothing ->
-            let go [] = NeedInput push close
-                go (x:xs) = HaveOutput (go xs) (return ()) x
-             in go final
-        Just bs -> HaveOutput (PipeM (goPopper push close wrap final popper) (return ())) (return ()) (wrap bs)
-
-slurp :: Monad m => m (Maybe a) -> Pipe i a m ()
-slurp pop = flip PipeM (return ()) $ do
-    x <- pop
-    return $ case x of
-        Nothing -> Done ()
-        Just y -> HaveOutput (slurp pop) (return ()) y
+    close def ret = do
+        mchunk <- lift $ unsafeLiftIO $ finishDeflate def
+        maybe (return ()) (yield . Chunk) mchunk
+        return ret

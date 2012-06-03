@@ -28,6 +28,7 @@ module Data.Conduit.Internal
     , hasInput
     , transPipe
     , mapOutput
+    , mapOutputMaybe
     , mapInput
     , addCleanup
     , sourceList
@@ -331,12 +332,19 @@ mapOutput _ (Done r) = Done r
 mapOutput f (PipeM mp) = PipeM (liftM (mapOutput f) mp)
 mapOutput f (Leftover p i) = Leftover (mapOutput f p) i
 
-mapInput :: Monad m => (i1 -> i2) -> (i2 -> i1) -> Pipe i2 o u m r -> Pipe i1 o u m r
+mapOutputMaybe :: Monad m => (o1 -> Maybe o2) -> Pipe i o1 u m r -> Pipe i o2 u m r
+mapOutputMaybe f (HaveOutput p c o) = maybe id (\o' p' -> HaveOutput p' c o') (f o) (mapOutputMaybe f p)
+mapOutputMaybe f (NeedInput p c) = NeedInput (mapOutputMaybe f . p) (mapOutputMaybe f . c)
+mapOutputMaybe _ (Done r) = Done r
+mapOutputMaybe f (PipeM mp) = PipeM (liftM (mapOutputMaybe f) mp)
+mapOutputMaybe f (Leftover p i) = Leftover (mapOutputMaybe f p) i
+
+mapInput :: Monad m => (i1 -> i2) -> (i2 -> Maybe i1) -> Pipe i2 o u m r -> Pipe i1 o u m r
 mapInput f f' (HaveOutput p c o) = HaveOutput (mapInput f f' p) c o
 mapInput f f' (NeedInput p c)    = NeedInput (mapInput f f' . p . f) (mapInput f f' . c)
 mapInput _ _  (Done r)           = Done r
 mapInput f f' (PipeM mp)         = PipeM (liftM (mapInput f f') mp)
-mapInput f f' (Leftover p i)     = Leftover (mapInput f f' p) (f' i)
+mapInput f f' (Leftover p i)     = maybe id (flip Leftover) (f' i) $ mapInput f f' p
 
 -- | Add some code to be run when the given @Pipe@ cleans up.
 --
