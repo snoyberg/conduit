@@ -16,6 +16,7 @@ module Data.Conduit.Internal
     , await
     , awaitE
     , yield
+    , yieldOr
     , bracketP
       -- * Functions
     , pipe
@@ -269,6 +270,12 @@ yield :: Monad m
       => o -- ^ output value
       -> Pipe i o u m ()
 yield = HaveOutput (Done ()) (return ())
+
+yieldOr :: Monad m
+        => o
+        -> m ()
+        -> Pipe i o u m ()
+yieldOr o f = HaveOutput (Done ()) f o
 
 -- | Provide a single piece of leftover input to be consumed by the next pipe
 -- in the current monadic binding.

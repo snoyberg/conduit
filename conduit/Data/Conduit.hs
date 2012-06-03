@@ -14,6 +14,7 @@ module Data.Conduit
     , await
     , awaitE
     , yield
+    , yieldOr
     , leftover
       -- ** Finalization
     , bracketP

@@ -592,10 +592,16 @@ main = hspecX $ do
                 src (x:xs) = CI.yield x >> src xs
             x <- src is C.$$ CL.take 10
             x @?= [1..10 :: Int]
-        it' "yield terminates" $ do
+        it' "yield terminates (2)" $ do
             let is = [1..11] ++ undefined
             x <- mapM_ CI.yield is C.$$ CL.take 10
             x @?= [1..10 :: Int]
+        it' "yieldOr finalizer called" $ do
+            iref <- I.newIORef (0 :: Int)
+            let src = mapM_ (\i -> C.yieldOr i $ I.writeIORef iref i) [1..]
+            src C.$$ CL.isolate 10 C.=$ CL.sinkNull
+            x <- I.readIORef iref
+            x @?= 10
 
 it' :: String -> IO () -> Specs
 it' = it
