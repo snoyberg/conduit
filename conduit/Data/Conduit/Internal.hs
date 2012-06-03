@@ -28,6 +28,7 @@ module Data.Conduit.Internal
     , hasInput
     , transPipe
     , mapOutput
+    , mapInput
     , addCleanup
     , sourceList
     , leftover
@@ -329,6 +330,13 @@ mapOutput f (NeedInput p c) = NeedInput (mapOutput f . p) (mapOutput f . c)
 mapOutput _ (Done r) = Done r
 mapOutput f (PipeM mp) = PipeM (liftM (mapOutput f) mp)
 mapOutput f (Leftover p i) = Leftover (mapOutput f p) i
+
+mapInput :: Monad m => (i1 -> i2) -> (i2 -> i1) -> Pipe i2 o u m r -> Pipe i1 o u m r
+mapInput f f' (HaveOutput p c o) = HaveOutput (mapInput f f' p) c o
+mapInput f f' (NeedInput p c)    = NeedInput (mapInput f f' . p . f) (mapInput f f' . c)
+mapInput _ _  (Done r)           = Done r
+mapInput f f' (PipeM mp)         = PipeM (liftM (mapInput f f') mp)
+mapInput f f' (Leftover p i)     = Leftover (mapInput f f' p) (f' i)
 
 -- | Add some code to be run when the given @Pipe@ cleans up.
 --

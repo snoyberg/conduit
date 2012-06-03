@@ -615,5 +615,20 @@ main = hspecX $ do
                  C.=$= foldUp (*) 1
             (x, y) @?= (sum [1..10], product [1..10])
 
+    describe "input/output mapping" $ do
+        it' "mapOutput" $ do
+            x <- CI.mapOutput (+ 1) (CL.sourceList [1..10 :: Int]) C.$$ CL.fold (+) 0
+            x @?= sum [2..11]
+        it' "mapInput" $ do
+            xyz <- (CL.sourceList $ map show [1..10 :: Int]) C.$$ do
+                (x, y) <- CI.mapInput read show $ ((do
+                    x <- CL.isolate 5 C.=$ CL.fold (+) 0
+                    y <- CL.peek
+                    return (x :: Int, y :: Maybe Int)) :: C.Sink Int IO (Int, Maybe Int))
+                z <- CL.consume
+                return (x, y, concat z)
+
+            xyz @?= (sum [1..5], Just 6, "678910")
+
 it' :: String -> IO () -> Specs
 it' = it
