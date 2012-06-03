@@ -13,28 +13,27 @@ build-type:      Simple
 homepage:        https://github.com/litherum/cereal-conduit
 
 library
-    build-depends: base     >= 4       && < 5
-                 , conduit  >= 0.4.0   && < 0.5.0
-                 , cereal   >= 0.3.1.0
-                 , mtl
+    build-depends: base         >= 4       && < 5
+                 , conduit      >= 0.4.0   && < 0.5.0
+                 , cereal       >= 0.3.1.0
                  , bytestring
                  , void
-                 , exception-transformers
     exposed-modules: Data.Conduit.Cereal
                    , Data.Conduit.Cereal.Internal
     ghc-options:     -Wall
 
 Test-Suite test-cereal-conduit
     type: exitcode-stdio-1.0
-    main-is: Test/CerealConduit.hs
+    main-is: Test/Main.hs
     build-depends: base >= 4 && < 5
                  , conduit >= 0.4.0 && < 0.5.0
                  , cereal >= 0.3.1.0
-                 , mtl
                  , bytestring
-                 , test-framework-hunit
+                 --, test-framework-hunit
                  , HUnit
-                 , transformers
+                 , void
+                 , resourcet
+                 , mtl
 
 source-repository head
   type:     git
