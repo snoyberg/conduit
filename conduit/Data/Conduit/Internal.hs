@@ -28,7 +28,6 @@ module Data.Conduit.Internal
     , transPipe
     , mapOutput
     , addCleanup
-    , noInput
     , sourceList
     , leftover
     ) where
@@ -41,7 +40,6 @@ import Control.Monad.Base (MonadBase (liftBase))
 import Data.Void (Void, absurd)
 import Data.Monoid (Monoid (mappend, mempty))
 import Control.Monad.Trans.Resource
-import Control.Arrow (first)
 
 -- | The underlying datatype for all the types in this package.  In has four
 -- type parameters:
@@ -69,7 +67,7 @@ data Pipe i o u m r =
     -- gives a new @Pipe@ which takes no input from upstream. This allows a
     -- @Pipe@ to provide a final stream of output values after no more input is
     -- available from upstream.
-  | NeedInput (i -> Pipe i o u m r) (u -> Pipe Void o () m r)
+  | NeedInput (i -> Pipe i o u m r) (u -> Pipe i o u m r)
     -- | Processing with this @Pipe@ is complete, providing the final result.
   | Done r
     -- | Require running of a monadic action to get the next @Pipe@. Second
@@ -142,22 +140,11 @@ instance Monad m => Applicative (Pipe i o u m) where
 instance Monad m => Monad (Pipe i o u m) where
     return = Done
 
-    Done x >>= fp = fp x
-    HaveOutput p c o >>= fp = HaveOutput (p >>= fp) c o
-    NeedInput p c >>= fp =
-        NeedInput (p >=> fp) (\u -> c u >>= noInput u . fp)
-        {-
-         - Possible reimplementation of noInput which does not apply noInput to
-         - the second field of NeedInput
-      where
-        go (Done x) = Done x
-        go (HaveOutput p c o) = HaveOutput (go p) c o
-        go (NeedInput _ c) = c
-        go (PipeM mp c) = PipeM (liftM go mp) c
-        go (Leftover p _) = go p
-        -}
-    PipeM mp >>= fp = PipeM ((>>= fp) `liftM` mp)
-    Leftover p i >>= fp = Leftover (p >>= fp) i
+    Done x           >>= fp = fp x
+    HaveOutput p c o >>= fp = HaveOutput (p >>= fp)            c          o
+    NeedInput p c    >>= fp = NeedInput  (p >=> fp)            (c >=> fp)
+    PipeM mp         >>= fp = PipeM      ((>>= fp) `liftM` mp)
+    Leftover p i     >>= fp = Leftover   (p >>= fp)                       i
 
 instance MonadBase base m => MonadBase base (Pipe i o u m) where
     liftBase = lift . liftBase
@@ -181,10 +168,25 @@ instance Monad m => Monoid (Pipe i o u m ()) where
 --
 -- Since 0.4.0
 pipe :: Monad m => Pipe a b r0 m r1 -> Pipe b c r1 m r2 -> Pipe a c r0 m r2
-pipe l r = do
-    (ResumablePipe _ closeLeft, res) <- pipeResume (ResumablePipe l (return ())) r
-    lift closeLeft
-    return res
+pipe =
+    pipe' (return ())
+  where
+    pipe' :: Monad m => m () -> Pipe a b r0 m r1 -> Pipe b c r1 m r2 -> Pipe a c r0 m r2
+    pipe' final left right =
+        case right of
+            Done r2 -> PipeM (final >> return (Done r2))
+            HaveOutput p c o -> HaveOutput (pipe' final left p) c o
+            PipeM mp -> PipeM (liftM (pipe' final left) mp)
+            Leftover p i -> pipe' final (HaveOutput left final i) p
+            NeedInput rp rc ->
+                case left of
+                    Done r1 -> noInput r1 (rc r1)
+                    HaveOutput left' final' o -> pipe' final' left' (rp o)
+                    PipeM mp -> PipeM (liftM (\left' -> pipe' final left' right) mp)
+                    Leftover left' i -> Leftover (pipe' final left' right) i
+                    NeedInput left' lc -> NeedInput
+                        (\a -> pipe' final (left' a) right)
+                        (\r0 -> pipe' final (lc r0) right)
 
 data ResumablePipe i o u m r = ResumablePipe (Pipe i o u m r) (m ())
 
@@ -229,30 +231,21 @@ pipeResume leftTotal@(ResumablePipe left leftFinal) right =
                 -- Left pipe needs more input, ask for it.
                 NeedInput p c -> NeedInput
                     (\a -> pipeResume (ResumablePipe (p a) leftFinal) right)
-                    (\r0 -> first (\(ResumablePipe p' pf) -> ResumablePipe (noInput () p') pf) <$> pipeResume (ResumablePipe (c r0) leftFinal) right)
+                    (\r0 -> pipeResume (ResumablePipe (c r0) leftFinal) right)
 
                 -- Left pipe is done, right pipe needs input. In such a case,
                 -- tell the right pipe there is no more input.
-                Done r1 -> (ResumablePipe (Done r1) (return ()),) <$> noInput () (rc r1)
+                Done r1 -> noInput r1 $ (ResumablePipe (Done r1) (return ()),) <$> rc r1
 
                 -- Left pipe needs to run a monadic action.
-                PipeM mp -> PipeM ((\p -> (ResumablePipe p (error "should never be used") `pipeResume` right)) `liftM` mp)
+                PipeM mp -> PipeM ((\p -> (ResumablePipe p leftFinal `pipeResume` right)) `liftM` mp)
 
--- | Run a @Pipe@ without providing it any input. Since the resulting @Pipe@ no
--- longer depends on any input, the @i@ parameter may have any type.
-noInput :: Monad m => u' -> Pipe i' o u' m r -> Pipe i o u m r
-noInput _ (Done r) = Done r
-noInput u (HaveOutput p c o) = HaveOutput (noInput u p) c o
-
--- This function is only called on pipes when there is no more input available.
--- Therefore, we can ignore the push record.
-noInput u (NeedInput _ c) = noInput () (c u)
-
-noInput u (PipeM mp) = PipeM (noInput u `liftM` mp)
-
--- In theory, this is better, but I believe it violates the Monad laws.
--- noInput (Leftover p i) = noInput $ pipePushStrip i p
+noInput :: Monad m => u1 -> Pipe i1 o u1 m r -> Pipe i o u m r
 noInput u (Leftover p _) = noInput u p
+noInput _ (Done r2) = Done r2
+noInput u (NeedInput _ rc') = noInput u (rc' u)
+noInput u (HaveOutput p c o) = HaveOutput (noInput u p) c o
+noInput u (PipeM mp) = PipeM (liftM (noInput u) mp)
 
 -- | Run a complete pipeline until processing completes.
 --
