@@ -56,6 +56,8 @@ conduitFile fp =
 src1 = sourceFile "sfiletest.hs" $= CL.isolate 3
 src2 = CL.sourceList "world"
 
-main = runResourceT $
-    ((src1 $= conduitFile "conduit") >> src2)
-    $$ sinkFile "sink"
+main = runResourceT $ do
+    ((src1 $= conduitFile "conduit") >> src2) $$ sinkFile "sink"
+
+    liftIO $ putStrLn "Trying connecting to null"
+    src1 $$ return ()
