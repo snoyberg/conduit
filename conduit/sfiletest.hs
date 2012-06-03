@@ -7,7 +7,7 @@ import Control.Monad.IO.Class
 
 sourceFile :: MonadResource m => FilePath -> Source m Char
 sourceFile fp =
-    bracketSPipe
+    bracketP
         (putStrLn "opening source" >> openFile fp ReadMode)
         (\h -> putStrLn "closing source" >> hClose h)
         loop
@@ -22,28 +22,36 @@ sourceFile fp =
 
 sinkFile :: MonadResource m => FilePath -> Sink Char m ()
 sinkFile fp =
-    bracketSPipe
+    bracketP
         (putStrLn "opening sink" >> openFile fp WriteMode)
         (\h -> putStrLn "closing sink" >> hClose h)
-        (forever . go)
+        go
   where
     go handle = do
-        c <- await
-        liftIO $ putStrLn $ "Writing to sink: " ++ show c
-        liftIO $ hPutChar handle c
+        mc <- await
+        case mc of
+            Nothing -> return ()
+            Just c -> do
+                liftIO $ putStrLn $ "Writing to sink: " ++ show c
+                liftIO $ hPutChar handle c
+                go handle
 
 conduitFile :: MonadResource m => FilePath -> Conduit Char m Char
 conduitFile fp =
-    bracketSPipe
+    bracketP
         (putStrLn "opening conduit" >> openFile fp WriteMode)
         (\h -> putStrLn "closing conduit" >> hClose h)
-        (forever . go)
+        go
   where
     go handle = do
-        c <- await
-        liftIO $ putStrLn $ "Writing to conduit: " ++ show c
-        liftIO $ hPutChar handle c
-        yield c
+        mc <- await
+        case mc of
+            Nothing -> return ()
+            Just c -> do
+                liftIO $ putStrLn $ "Writing to conduit: " ++ show c
+                liftIO $ hPutChar handle c
+                yield c
+                go handle
 
 src1 = sourceFile "sfiletest.hs" $= CL.isolate 3
 src2 = CL.sourceList "world"
