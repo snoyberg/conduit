@@ -633,5 +633,15 @@ main = hspecX $ do
 
             xyz @?= (sum [1..5], Just 6, "678910")
 
+    describe "left/right identity" $ do
+        it' "left identity" $ do
+            x <- CL.sourceList [1..10 :: Int] C.$$ CI.idP C.=$ CL.fold (+) 0
+            y <- CL.sourceList [1..10 :: Int] C.$$ CL.fold (+) 0
+            x @?= y
+        it' "right identity" $ do
+            x <- CL.sourceList [1..10 :: Int] C.$$ CL.fold (+) 0 C.=$= CI.idP
+            y <- CL.sourceList [1..10 :: Int] C.$$ CL.fold (+) 0
+            x @?= y
+
 it' :: String -> IO () -> Specs
 it' = it

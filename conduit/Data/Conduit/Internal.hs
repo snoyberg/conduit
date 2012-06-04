@@ -18,6 +18,7 @@ module Data.Conduit.Internal
     , yield
     , yieldOr
     , bracketP
+    , idP
       -- * Functions
     , pipe
     , pipePush
@@ -162,6 +163,9 @@ instance Monad m => Monoid (Pipe i o u m ()) where
     mempty = return ()
     mappend = (>>)
 
+idP :: Monad m => Pipe a a r m r
+idP = NeedInput (HaveOutput idP (return ())) Done
+
 -- | Compose a left and right pipe together into a complete pipe. The left pipe
 -- will be automatically closed when the right pipe finishes, and any leftovers
 -- from the right pipe will be discarded.
@@ -180,16 +184,28 @@ pipe =
             Done r2 -> PipeM (final >> return (Done r2))
             HaveOutput p c o -> HaveOutput (pipe' final left p) c o
             PipeM mp -> PipeM (liftM (pipe' final left) mp)
-            Leftover p i -> pipe' final (HaveOutput left final i) p
-            NeedInput rp rc ->
-                case left of
-                    Done r1 -> noInput r1 (rc r1)
-                    HaveOutput left' final' o -> pipe' final' left' (rp o)
-                    PipeM mp -> PipeM (liftM (\left' -> pipe' final left' right) mp)
-                    Leftover left' i -> Leftover (pipe' final left' right) i
-                    NeedInput left' lc -> NeedInput
-                        (\a -> pipe' final (left' a) right)
-                        (\r0 -> pipe' final (lc r0) right)
+            Leftover p i -> pipe' final left $ inject i p
+            NeedInput rp rc -> upstream rp rc
+      where
+        upstream rp rc =
+            case left of
+                Done r1 -> pipe (Done r1) (rc r1)
+                HaveOutput left' final' o -> pipe' final' left' (rp o)
+                PipeM mp -> PipeM (liftM (\left' -> pipe' final left' right) mp)
+                Leftover left' i -> Leftover (pipe' final left' right) i
+                NeedInput left' lc -> NeedInput
+                    (\a -> pipe' final (left' a) right)
+                    (\r0 -> pipe' final (lc r0) right)
+
+inject :: Monad m => i -> Pipe i o u m r -> Pipe i o u m r
+inject _ (Done r) = Done r
+inject i (PipeM mp) = PipeM (liftM (inject i) mp)
+inject i (NeedInput p _) =
+    case p i of
+        Leftover p' i' -> inject i' p'
+        p' -> p'
+inject i (HaveOutput p c o) = HaveOutput (inject i p) c o
+inject i (Leftover p i') = inject i $ inject i' p
 
 data ResumablePipe i o u m r = ResumablePipe (Pipe i o u m r) (m ())
 
@@ -258,7 +274,7 @@ runPipe (HaveOutput _ _ o) = absurd o
 runPipe (NeedInput _ c) = runPipe (c ())
 runPipe (Done r) = return r
 runPipe (PipeM mp) = mp >>= runPipe
-runPipe (Leftover p _) = runPipe p
+runPipe (Leftover p i) = runPipe $ inject i p
 
 -- | Send a single output value downstream, and if it is accepted, continue
 -- with the given @Pipe@.
