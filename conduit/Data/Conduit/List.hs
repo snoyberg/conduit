@@ -106,10 +106,9 @@ fold f =
     loop
   where
     loop accum =
-        await >>= go
+        await >>= maybe (return accum) go
       where
-        go Nothing = return accum
-        go (Just a) =
+        go a =
             let accum' = f accum a
              in accum' `seq` loop accum'
 
@@ -124,12 +123,11 @@ foldM f =
     loop
   where
     loop accum = do
-        ma <- await
-        case ma of
-            Nothing -> return accum
-            Just a -> do
-                accum' <- lift $ f accum a
-                accum' `seq` loop accum'
+        await >>= maybe (return accum) go
+      where
+        go a = do
+            accum' <- lift $ f accum a
+            accum' `seq` loop accum'
 
 -- | Apply the action to all values in the stream.
 --
@@ -239,14 +237,13 @@ concatMapAccum :: Monad m => (a -> accum -> (accum, [b])) -> accum -> Conduit a 
 concatMapAccum f =
     loop
   where
-    loop accum = do
-        ma <- await
-        case ma of
-            Nothing -> return ()
-            Just a -> do
-                let (accum', bs) = f a accum
-                Prelude.mapM_ yield bs
-                loop accum'
+    loop accum =
+        await >>= maybe (return ()) go
+      where
+        go a = do
+            let (accum', bs) = f a accum
+            Prelude.mapM_ yield bs
+            loop accum'
 
 -- | 'concatMapM' with an accumulator.
 --
@@ -256,13 +253,12 @@ concatMapAccumM f =
     loop
   where
     loop accum = do
-        ma <- await
-        case ma of
-            Nothing -> return ()
-            Just a -> do
-                (accum', bs) <- lift $ f a accum
-                Prelude.mapM_ yield bs
-                loop accum'
+        await >>= maybe (return ()) go
+      where
+        go a = do
+            (accum', bs) <- lift $ f a accum
+            Prelude.mapM_ yield bs
+            loop accum'
 
 -- | Consume all values from the stream and return as a list. Note that this
 -- will pull all values into memory. For a lazy variant, see
@@ -284,13 +280,12 @@ groupBy f =
   where
     start = await >>= maybe (return ()) (loop id)
 
-    loop rest x = do
-        my <- await
-        case my of
-            Nothing -> yield (x : rest [])
-            Just y
-                | f x y -> loop (rest . (y:)) x
-                | otherwise -> yield (x : rest []) >> loop id y
+    loop rest x =
+        await >>= maybe (yield $ x : rest []) go
+      where
+        go y
+            | f x y     = loop (rest . (y:)) x
+            | otherwise = yield (x : rest []) >> loop id y
 
 -- | Ensure that the inner sink consumes no more than the given number of
 -- values. Note this this does /not/ ensure that the sink consumes all of those

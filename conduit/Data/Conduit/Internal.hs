@@ -393,9 +393,13 @@ sourceList (x:xs) = HaveOutput (sourceList xs) (return ()) x
 -- Since 0.5.0
 await :: Pipe i o u m (Maybe i)
 await = NeedInput (Done . Just) (\_ -> Done Nothing)
+{-# RULES "await >>= maybe" forall x y. await >>= maybe x y = NeedInput y (const x) #-}
+{-# INLINE [1] await #-}
 
 awaitE :: Pipe i o u m (Either u i)
 awaitE = NeedInput (Done . Right) (Done . Left)
+{-# RULES "awaitE >>= either" forall x y. awaitE >>= either x y = NeedInput y x #-}
+{-# INLINE [1] awaitE #-}
 
 -- | Perform some allocation and run an inner @Pipe@. Two guarantees are given
 -- about resource finalization:
