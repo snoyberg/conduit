@@ -13,7 +13,6 @@ main = defaultMain
     , bench "bigsum-io" (whnfIO $ CL.sourceList [1..1000 :: Int] C.$$ CL.fold (+) 0)
     , bench "bigsum-st" $ whnf (\i -> (runST $ CL.sourceList [1..1000 :: Int] C.$$ CL.fold (+) i)) 0
     , bench "bigsum-identity" $ whnf (\i -> (runIdentity $ CL.sourceList [1..1000 :: Int] C.$$ CL.fold (+) i)) 0
-    , bench "bigsum-identity-pure" $ whnf (\i -> (runIdentity $ CL.sourceListPure [1..1000 :: Int] C.$$ CL.foldPure (+) i)) 0
     , bench "bigsum-foldM" $ whnf (\i -> (runIdentity $ foldM (\a b -> return $! a + b) i [1..1000 :: Int])) 0
     , bench "bigsum-pure" $ whnf (\i -> foldl' (+) i [1..1000 :: Int]) 0
     ]
