@@ -21,7 +21,7 @@ main = defaultMain
     , bench "bigsum-io" (whnfIO $ CL.sourceList [1..1000 :: Int] C.$$ CL.fold (+) 0)
     , bench "bigsum-st" $ whnf (\i -> (runST $ CL.sourceList [1..1000 :: Int] C.$$ CL.fold (+) i)) 0
     , bench "bigsum-identity" $ whnf (\i -> (runIdentity $ CL.sourceList [1..1000 :: Int] C.$$ CL.fold (+) i)) 0
-    , bench "bigsum-spipe" $ whnf (\i -> (runIdentity $ CI.toPipe (mapM_ CI.yield [1..1000 :: Int]) C.$$ CL.fold (+) i)) 0
+    , bench "bigsum-spipe" $ whnf (\i -> (runIdentity $ (mapM_ CI.yield [1..1000 :: Int]) C.$$ CL.fold (+) i)) 0
     , bench "bigsum-foldM" $ whnf (\i -> (runIdentity $ foldM (\a b -> return $! a + b) i [1..1000 :: Int])) 0
     , bench "bigsum-pure" $ whnf (\i -> foldl' (+) i [1..1000 :: Int]) 0
     , bench "bigsum-pipes" $ whnf pipeTest 0
