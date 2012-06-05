@@ -406,10 +406,10 @@ main = hspecX $ do
             runIdentity
             (    CL.sourceList [1..10 :: Int]
               C.$$ CL.map (+ 1)
-             C.=$= CL.map (subtract 1)
-             C.=$= CL.mapM (return . (* 2))
-             C.=$= CL.map (`div` 2)
-             C.=$= CL.fold (+) 0
+             C.=$  CL.map (subtract 1)
+             C.=$  CL.mapM (return . (* 2))
+             C.=$  CL.map (`div` 2)
+             C.=$  CL.fold (+) 0
             ) @?= sum [1..10]
         it "only use =$" $
             runIdentity
@@ -423,16 +423,16 @@ main = hspecX $ do
         it "chain" $ do
             x <-      CL.sourceList [1..10 :: Int]
                 C.$=  CL.map (+ 1)
-                C.=$= CL.map (+ 1)
+                C.$= CL.map (+ 1)
                 C.$=  CL.map (+ 1)
-                C.=$= CL.map (subtract 3)
-                C.=$= CL.map (* 2)
+                C.$= CL.map (subtract 3)
+                C.$= CL.map (* 2)
                 C.$$  CL.map (`div` 2)
-                C.=$= CL.map (+ 1)
                 C.=$  CL.map (+ 1)
-                C.=$= CL.map (+ 1)
+                C.=$  CL.map (+ 1)
+                C.=$  CL.map (+ 1)
                 C.=$  CL.map (subtract 3)
-                C.=$= CL.fold (+) 0
+                C.=$  CL.fold (+) 0
             x @?= sum [1..10]
 
 
@@ -606,13 +606,11 @@ main = hspecX $ do
 
     describe "upstream results" $ do
         it' "works" $ do
-            let foldUp :: (b -> a -> b) -> b -> C.Pipe a Void u IO (u, b)
+            let foldUp :: (b -> a -> b) -> b -> C.Pipe l a Void u IO (u, b)
                 foldUp f b = C.awaitE >>= either (\u -> return (u, b)) (\a -> let b' = f b a in b' `seq` foldUp f b')
-                passFold :: (b -> a -> b) -> b -> C.Pipe a a () IO b
+                passFold :: (b -> a -> b) -> b -> C.Pipe l a a () IO b
                 passFold f b = C.await >>= maybe (return b) (\a -> let b' = f b a in b' `seq` C.yield a >> passFold f b')
-            (x, y) <- CL.sourceList [1..10 :: Int]
-                 C.$$  passFold (+) 0
-                 C.=$= foldUp (*) 1
+            (x, y) <- CI.runPipe $ CL.sourceList [1..10 :: Int] C.=$$= passFold (+) 0 C.=$$=  foldUp (*) 1
             (x, y) @?= (sum [1..10], product [1..10])
 
     describe "input/output mapping" $ do
@@ -639,8 +637,8 @@ main = hspecX $ do
             y <- CL.sourceList [1..10 :: Int] C.$$ CL.fold (+) 0
             x @?= y
         it' "right identity" $ do
-            x <- CL.sourceList [1..10 :: Int] C.$$ CL.fold (+) 0 C.=$= CI.idP
-            y <- CL.sourceList [1..10 :: Int] C.$$ CL.fold (+) 0
+            x <- CI.runPipe $ CL.sourceList [1..10 :: Int] C.=$$= CL.fold (+) 0 C.=$$= CI.idP
+            y <- CI.runPipe $ CL.sourceList [1..10 :: Int] C.=$$= CL.fold (+) 0
             x @?= y
 
 it' :: String -> IO () -> Specs

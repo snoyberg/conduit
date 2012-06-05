@@ -8,10 +8,11 @@ module Data.Conduit.Lazy
     ) where
 
 import Data.Conduit
-import Data.Conduit.Internal (Pipe (..), pipePushStrip)
+import Data.Conduit.Internal (Pipe (..))
 import System.IO.Unsafe (unsafeInterleaveIO)
 import Control.Monad.Trans.Control (MonadBaseControl, liftBaseOp_)
 import Control.Monad.Trans.Resource (MonadActive (monadActive))
+import Data.Void (absurd)
 
 -- | Use lazy I\/O to consume all elements from a @Source@.
 --
@@ -30,4 +31,4 @@ lazyConsume (PipeM msrc) = liftBaseOp_ unsafeInterleaveIO $ do
         then msrc >>= lazyConsume
         else return []
 lazyConsume (NeedInput _ c) = lazyConsume (c ())
-lazyConsume (Leftover p i) = lazyConsume $ pipePushStrip i p
+lazyConsume (Leftover _ i) = absurd i

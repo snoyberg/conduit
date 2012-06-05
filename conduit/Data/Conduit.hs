@@ -35,6 +35,7 @@ module Data.Conduit
     , ($=)
     , (=$)
     , (=$=)
+    , (=$$=)
 
       -- * Flushing
     , Flush (..)
@@ -351,7 +352,7 @@ infixr 2 =$=
 --
 -- Since 0.4.0
 ($$) :: Monad m => Source m a -> Sink a m b -> m b
-src $$ sink = runPipe $ pipe src sink
+src $$ sink = runPipe $ injectLeftovers src `pipe` injectLeftovers sink
 {-# INLINE ($$) #-}
 
 -- | The connect-and-resume operator. This does not close the @Source@, but
@@ -362,15 +363,15 @@ src $$ sink = runPipe $ pipe src sink
 -- Mnemonic: connect + do more.
 --
 -- Since 0.4.0
-($$+) :: Monad m => Source m a -> Sink a m b -> m (ResumablePipe Void a () m (), b)
+($$+) :: Monad m => Source m a -> Sink a m b -> m (ResumablePipe Void Void a () m (), b)
 src $$+ sink = runPipe $ pipeResume (ResumablePipe src (return ())) sink
 {-# INLINE ($$+) #-}
 
-($$++) :: Monad m => ResumablePipe Void a () m () -> Sink a m b -> m (ResumablePipe Void a () m (), b)
+($$++) :: Monad m => ResumablePipe Void Void a () m () -> Sink a m b -> m (ResumablePipe Void Void a () m (), b)
 rsrc $$++ sink = runPipe $ pipeResume rsrc sink
 {-# INLINE ($$++) #-}
 
-($$+-) :: Monad m => ResumablePipe Void a () m () -> Sink a m b -> m b
+($$+-) :: Monad m => ResumablePipe Void Void a () m () -> Sink a m b -> m b
 rsrc $$+- sink = do
     (ResumablePipe _ final, res) <- runPipe $ pipeResume rsrc sink
     final
@@ -386,7 +387,7 @@ rsrc $$+- sink = do
 --
 -- Since 0.4.0
 ($=) :: Monad m => Source m a -> Conduit a m b -> Source m b
-($=) = pipe
+s $= c = injectLeftovers s `pipe` injectLeftovers c
 {-# INLINE ($=) #-}
 
 -- | Right fuse, combining a conduit and a sink together into a new sink.
@@ -398,7 +399,7 @@ rsrc $$+- sink = do
 --
 -- Since 0.4.0
 (=$) :: Monad m => Conduit a m b -> Sink b m c -> Sink a m c
-(=$) = pipe
+c =$ s = anyLeftovers $ injectLeftovers c `pipe` injectLeftovers s
 {-# INLINE (=$) #-}
 
 -- | Fusion operator, combining two @Pipe@s together into a new @Pipe@.
@@ -412,9 +413,12 @@ rsrc $$+- sink = do
 -- all @Pipe@s, including @Source@s and @Sink@s.
 --
 -- Since 0.4.0
-(=$=) :: Monad m => Pipe a b r0 m r1 -> Pipe b c r1 m r2 -> Pipe a c r0 m r2
-(=$=) = pipe
+(=$=) :: Monad m => Conduit a m b -> Conduit b m c -> Conduit a m c
+l =$= r = anyLeftovers $ injectLeftovers l `pipe` injectLeftovers r
 {-# INLINE (=$=) #-}
+
+(=$$=) :: Monad m => Pipe Void a b r0 m r1 -> Pipe Void b c r1 m r2 -> Pipe Void a c r0 m r2
+(=$$=) = pipe
 
 -- | Provide for a stream of data that can be flushed.
 --

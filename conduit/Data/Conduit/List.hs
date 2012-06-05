@@ -57,7 +57,7 @@ import Prelude
     , maybe
     , either
     )
-import Data.Conduit
+import Data.Conduit hiding (Source, Sink, Conduit)
 import Data.Conduit.Internal (sourceList)
 import Control.Monad (when)
 import Control.Monad.Trans.Class (lift)
@@ -68,7 +68,7 @@ import Control.Monad.Trans.Class (lift)
 unfold :: Monad m
        => (b -> Maybe (a, b))
        -> b
-       -> Pipe i a u m ()
+       -> Pipe l i a u m ()
 unfold f =
     go
   where
@@ -87,7 +87,7 @@ unfold f =
 enumFromTo :: (Enum a, Eq a, Monad m)
            => a
            -> a
-           -> Pipe i a u m ()
+           -> Pipe l i a u m ()
 enumFromTo start stop =
     go start
   where
@@ -101,7 +101,7 @@ enumFromTo start stop =
 fold :: Monad m
      => (b -> a -> b)
      -> b
-     -> Pipe a o u m b
+     -> Pipe l a o u m b
 fold f =
     loop
   where
@@ -118,7 +118,7 @@ fold f =
 foldM :: Monad m
       => (b -> a -> m b)
       -> b
-      -> Pipe a o u m b
+      -> Pipe l a o u m b
 foldM f =
     loop
   where
@@ -134,7 +134,7 @@ foldM f =
 -- Since 0.3.0
 mapM_ :: Monad m
       => (a -> m ())
-      -> Pipe a o u m u
+      -> Pipe l a o u m u
 mapM_ f =
     go
   where
@@ -151,7 +151,7 @@ mapM_ f =
 -- Since 0.3.0
 drop :: Monad m
      => Int
-     -> Pipe a o u m ()
+     -> Pipe l a o u m ()
 drop =
     loop
   where
@@ -167,7 +167,7 @@ drop =
 -- Since 0.3.0
 take :: Monad m
      => Int
-     -> Pipe a o u m [a]
+     -> Pipe l a o u m [a]
 take =
     loop id
   where
@@ -179,24 +179,24 @@ take =
 -- | Take a single value from the stream, if available.
 --
 -- Since 0.3.0
-head :: Monad m => Pipe a o u m (Maybe a)
+head :: Monad m => Pipe l a o u m (Maybe a)
 head = await
 
 -- | Look at the next value in the stream, if available. This function will not
 -- change the state of the stream.
 --
 -- Since 0.3.0
-peek :: Monad m => Pipe a o u m (Maybe a)
+peek :: Monad m => Pipe a a o u m (Maybe a)
 peek = await >>= maybe (return Nothing) (\x -> leftover x >> return (Just x))
 
 -- | Apply a transformation to all values in a stream.
 --
 -- Since 0.3.0
-map :: Monad m => (a -> b) -> Conduit a m b
+map :: Monad m => (a -> b) -> Pipe l a b r m r
 map f =
     go
   where
-    go = await >>= maybe (return ()) (\x -> yield (f x) >> go)
+    go = awaitE >>= either return (\x -> yield (f x) >> go)
 
 -- | Apply a monadic transformation to all values in a stream.
 --
@@ -204,41 +204,41 @@ map f =
 -- side-effects of running the action, see 'mapM_'.
 --
 -- Since 0.3.0
-mapM :: Monad m => (a -> m b) -> Conduit a m b
+mapM :: Monad m => (a -> m b) -> Pipe l a b r m r
 mapM f =
     go
   where
-    go = await >>= maybe (return ()) (\x -> lift (f x) >>= yield >> go)
+    go = awaitE >>= either return (\x -> lift (f x) >>= yield >> go)
 
 -- | Apply a transformation to all values in a stream, concatenating the output
 -- values.
 --
 -- Since 0.3.0
-concatMap :: Monad m => (a -> [b]) -> Conduit a m b
+concatMap :: Monad m => (a -> [b]) -> Pipe l a b r m r
 concatMap f =
     go
   where
-    go = await >>= maybe (return ()) (\x -> Prelude.mapM_ yield (f x) >> go)
+    go = awaitE >>= either return (\x -> Prelude.mapM_ yield (f x) >> go)
 
 -- | Apply a monadic transformation to all values in a stream, concatenating
 -- the output values.
 --
 -- Since 0.3.0
-concatMapM :: Monad m => (a -> m [b]) -> Conduit a m b
+concatMapM :: Monad m => (a -> m [b]) -> Pipe l a b r m r
 concatMapM f =
     go
   where
-    go = await >>= maybe (return ()) (\x -> lift (f x) >>= Prelude.mapM_ yield >> go)
+    go = awaitE >>= either return (\x -> lift (f x) >>= Prelude.mapM_ yield >> go)
 
 -- | 'concatMap' with an accumulator.
 --
 -- Since 0.3.0
-concatMapAccum :: Monad m => (a -> accum -> (accum, [b])) -> accum -> Conduit a m b
+concatMapAccum :: Monad m => (a -> accum -> (accum, [b])) -> accum -> Pipe l a b r m r
 concatMapAccum f =
     loop
   where
     loop accum =
-        await >>= maybe (return ()) go
+        awaitE >>= either return go
       where
         go a = do
             let (accum', bs) = f a accum
@@ -248,12 +248,12 @@ concatMapAccum f =
 -- | 'concatMapM' with an accumulator.
 --
 -- Since 0.3.0
-concatMapAccumM :: Monad m => (a -> accum -> m (accum, [b])) -> accum -> Conduit a m b
+concatMapAccumM :: Monad m => (a -> accum -> m (accum, [b])) -> accum -> Pipe l a b r m r
 concatMapAccumM f =
     loop
   where
     loop accum = do
-        await >>= maybe (return ()) go
+        awaitE >>= either return go
       where
         go a = do
             (accum', bs) <- lift $ f a accum
@@ -265,7 +265,7 @@ concatMapAccumM f =
 -- "Data.Conduit.Lazy".
 --
 -- Since 0.3.0
-consume :: Monad m => Pipe a o u m [a]
+consume :: Monad m => Pipe l a o u m [a]
 consume =
     loop id
   where
@@ -274,14 +274,14 @@ consume =
 -- | Grouping input according to an equality function.
 --
 -- Since 0.3.0
-groupBy :: Monad m => (a -> a -> Bool) -> Conduit a m [a]
+groupBy :: Monad m => (a -> a -> Bool) -> Pipe l a [a] r m r
 groupBy f =
     start
   where
-    start = await >>= maybe (return ()) (loop id)
+    start = awaitE >>= either return (loop id)
 
     loop rest x =
-        await >>= maybe (yield $ x : rest []) go
+        awaitE >>= either (\r -> yield (x : rest []) >> return r) go
       where
         go y
             | f x y     = loop (rest . (y:)) x
@@ -300,7 +300,7 @@ groupBy f =
 -- >     ...
 --
 -- Since 0.3.0
-isolate :: Monad m => Int -> Conduit a m a
+isolate :: Monad m => Int -> Pipe l a a u m ()
 isolate =
     loop
   where
@@ -310,17 +310,17 @@ isolate =
 -- | Keep only values in the stream passing a given predicate.
 --
 -- Since 0.3.0
-filter :: Monad m => (a -> Bool) -> Conduit a m a
+filter :: Monad m => (a -> Bool) -> Pipe l a a r m r
 filter f =
     go
   where
-    go = await >>= maybe (return ()) (\x -> when (f x) (yield x) >> go)
+    go = awaitE >>= either return (\x -> when (f x) (yield x) >> go)
 
 -- | Ignore the remainder of values in the source. Particularly useful when
 -- combined with 'isolate'.
 --
 -- Since 0.3.0
-sinkNull :: Monad m => Pipe a o u m u
+sinkNull :: Monad m => Pipe l a o u m u
 sinkNull =
     go
   where
@@ -330,5 +330,5 @@ sinkNull =
 -- synonym for 'mempty'.
 --
 -- Since 0.3.0
-sourceNull :: Monad m => Pipe i a u m ()
+sourceNull :: Monad m => Pipe l i a u m ()
 sourceNull = return ()

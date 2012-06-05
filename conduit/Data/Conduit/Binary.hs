@@ -100,7 +100,7 @@ sourceIOHandle alloc = bracketP alloc IO.hClose sourceHandle
 -- Since 0.3.0
 sinkHandle :: MonadIO m
            => IO.Handle
-           -> Pipe S.ByteString o r m r
+           -> Pipe l S.ByteString o r m r
 sinkHandle h =
     loop
   where
@@ -171,7 +171,7 @@ sinkFile fp = sinkIOHandle (IO.openBinaryFile fp IO.WriteMode)
 -- Since 0.3.0
 conduitFile :: MonadResource m
             => FilePath
-            -> Pipe S.ByteString S.ByteString r m r
+            -> Pipe l S.ByteString S.ByteString r m r
 conduitFile fp = bracketP
     (IO.openBinaryFile fp IO.WriteMode)
     IO.hClose
@@ -186,7 +186,7 @@ conduitFile fp = bracketP
 -- Since 0.3.0
 isolate :: Monad m
         => Int
-        -> Pipe S.ByteString S.ByteString r m ()
+        -> Pipe S.ByteString S.ByteString S.ByteString r m ()
 isolate =
     loop
   where
