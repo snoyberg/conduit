@@ -12,7 +12,6 @@ import Data.Conduit.Internal (Pipe (..))
 import System.IO.Unsafe (unsafeInterleaveIO)
 import Control.Monad.Trans.Control (MonadBaseControl, liftBaseOp_)
 import Control.Monad.Trans.Resource (MonadActive (monadActive))
-import Data.Void (absurd)
 
 -- | Use lazy I\/O to consume all elements from a @Source@.
 --
@@ -20,8 +19,8 @@ import Data.Void (absurd)
 -- state has been closed.
 --
 -- Since 0.3.0
-lazyConsume :: (MonadBaseControl IO m, MonadActive m) => Source m a -> m [a]
-lazyConsume (Done ()) = return []
+lazyConsume :: (MonadBaseControl IO m, MonadActive m) => Pipe l i a () m r -> m [a]
+lazyConsume (Done _) = return []
 lazyConsume (HaveOutput src _ x) = do
     xs <- lazyConsume src
     return $ x : xs
@@ -31,4 +30,4 @@ lazyConsume (PipeM msrc) = liftBaseOp_ unsafeInterleaveIO $ do
         then msrc >>= lazyConsume
         else return []
 lazyConsume (NeedInput _ c) = lazyConsume (c ())
-lazyConsume (Leftover _ i) = absurd i
+lazyConsume (Leftover p _) = lazyConsume p

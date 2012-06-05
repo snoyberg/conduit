@@ -34,7 +34,7 @@ module Data.Conduit.Binary
 import Prelude hiding (head, take, takeWhile, dropWhile)
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Lazy as L
-import Data.Conduit
+import Data.Conduit hiding (Source, Conduit, Sink)
 import Data.Conduit.List (sourceList)
 import Control.Exception (assert)
 import Control.Monad (unless)
@@ -53,7 +53,7 @@ import qualified System.PosixFile as F
 -- Since 0.3.0
 sourceFile :: MonadResource m
            => FilePath
-           -> Source m S.ByteString
+           -> Pipe l i S.ByteString u m ()
 sourceFile fp =
 #if CABAL_OS_WINDOWS || NO_HANDLES
     bracketP
@@ -73,7 +73,7 @@ sourceFile fp =
 -- Since 0.3.0
 sourceHandle :: MonadIO m
              => IO.Handle
-             -> Source m S.ByteString
+             -> Pipe l i S.ByteString u m ()
 sourceHandle h =
     loop
   where
@@ -91,7 +91,7 @@ sourceHandle h =
 -- Since 0.3.0
 sourceIOHandle :: MonadResource m
                => IO IO.Handle
-               -> Source m S.ByteString
+               -> Pipe l i S.ByteString u m ()
 sourceIOHandle alloc = bracketP alloc IO.hClose sourceHandle
 
 -- | Stream all incoming data to the given 'IO.Handle'. Note that this function
@@ -114,7 +114,7 @@ sinkHandle h =
 -- Since 0.3.0
 sinkIOHandle :: MonadResource m
              => IO IO.Handle
-             -> Sink S.ByteString m ()
+             -> Pipe l S.ByteString o r m r
 sinkIOHandle alloc = bracketP alloc IO.hClose sinkHandle
 
 -- | Stream the contents of a file as binary data, starting from a certain
@@ -125,7 +125,7 @@ sourceFileRange :: MonadResource m
                 => FilePath
                 -> Maybe Integer -- ^ Offset
                 -> Maybe Integer -- ^ Maximum count
-                -> Source m S.ByteString
+                -> Pipe l i S.ByteString u m ()
 sourceFileRange fp offset count = bracketP
     (IO.openBinaryFile fp IO.ReadMode)
     IO.hClose
@@ -162,7 +162,7 @@ sourceFileRange fp offset count = bracketP
 -- Since 0.3.0
 sinkFile :: MonadResource m
          => FilePath
-         -> Sink S.ByteString m ()
+         -> Pipe l S.ByteString o r m r
 sinkFile fp = sinkIOHandle (IO.openBinaryFile fp IO.WriteMode)
 
 -- | Stream the contents of the input to a file, and also send it along the
@@ -206,7 +206,7 @@ isolate =
 -- | Return the next byte from the stream, if available.
 --
 -- Since 0.3.0
-head :: Monad m => Sink S.ByteString m (Maybe Word8)
+head :: Monad m => Pipe S.ByteString S.ByteString o u m (Maybe Word8)
 head = do
     mbs <- await
     case mbs of
@@ -219,15 +219,11 @@ head = do
 -- | Return all bytes while the predicate returns @True@.
 --
 -- Since 0.3.0
-takeWhile :: Monad m => (Word8 -> Bool) -> Conduit S.ByteString m S.ByteString
+takeWhile :: Monad m => (Word8 -> Bool) -> Pipe S.ByteString S.ByteString S.ByteString u m ()
 takeWhile p =
     loop
   where
-    loop = do
-        mbs <- await
-        case mbs of
-            Nothing -> return ()
-            Just bs -> go bs
+    loop = await >>= maybe (return ()) go
 
     go bs
         | S.null x = next
@@ -239,7 +235,7 @@ takeWhile p =
 -- | Ignore all bytes while the predicate returns @True@.
 --
 -- Since 0.3.0
-dropWhile :: Monad m => (Word8 -> Bool) -> Sink S.ByteString m ()
+dropWhile :: Monad m => (Word8 -> Bool) -> Pipe S.ByteString S.ByteString o u m ()
 dropWhile p =
     loop
   where
@@ -254,37 +250,34 @@ dropWhile p =
 -- | Take the given number of bytes, if available.
 --
 -- Since 0.3.0
-take :: Monad m => Int -> Sink S.ByteString m L.ByteString
+take :: Monad m => Int -> Pipe S.ByteString S.ByteString o u m L.ByteString
 take n0 =
     go n0 id
   where
-    go n front = do
-        mbs <- await
-        case mbs of
-            Nothing -> return $ L.fromChunks $ front []
-            Just bs ->
-                case S.length bs `compare` n of
-                    LT -> go (n - S.length bs) (front . (bs:))
-                    EQ -> return $ L.fromChunks $ front [bs]
-                    GT ->
-                        let (x, y) = S.splitAt n bs
-                         in assert (not $ S.null y) $ leftover y >> return (L.fromChunks $ front [x])
+    go n front =
+        await >>= maybe (return $ L.fromChunks $ front []) go'
+      where
+        go' bs =
+            case S.length bs `compare` n of
+                LT -> go (n - S.length bs) (front . (bs:))
+                EQ -> return $ L.fromChunks $ front [bs]
+                GT ->
+                    let (x, y) = S.splitAt n bs
+                     in assert (not $ S.null y) $ leftover y >> return (L.fromChunks $ front [x])
 
 -- | Split the input bytes into lines. In other words, split on the LF byte
 -- (10), and strip it from the output.
 --
 -- Since 0.3.0
-lines :: Monad m => Conduit S.ByteString m S.ByteString
+lines :: Monad m => Pipe l S.ByteString S.ByteString r m r
 lines =
     loop id
   where
-    loop front = do
-        mbs <- await
-        case mbs of
-            Nothing ->
-                let final = front S.empty
-                 in unless (S.null final) $ yield final
-            Just bs -> go front bs
+    loop front = awaitE >>= either (finish front) (go front)
+
+    finish front r =
+        let final = front S.empty
+         in unless (S.null final) (yield final) >> return r
 
     go sofar more =
         case S.uncons second of
@@ -298,5 +291,5 @@ lines =
 -- | Stream the chunks from a lazy bytestring.
 --
 -- Since 0.5.0
-sourceLbs :: Monad m => L.ByteString -> Source m S.ByteString
+sourceLbs :: Monad m => L.ByteString -> Pipe l i S.ByteString u m ()
 sourceLbs = sourceList . L.toChunks
