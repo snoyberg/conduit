@@ -17,6 +17,7 @@ module Data.Conduit
     , (>+>)
     , (<+<)
     , runPipe
+    , injectLeftovers
 
       -- * Primitives
       -- $primitives
@@ -31,7 +32,7 @@ module Data.Conduit
 
       -- * Connect-and-resume
       -- $connectAndResume
-    , ResumablePipe
+    , ResumableSource
     , ($$+)
     , ($$++)
     , ($$+-)
@@ -397,7 +398,7 @@ infixr 2 =$=
 --
 -- Since 0.4.0
 ($$) :: Monad m => Source m a -> Sink a m b -> m b
-src $$ sink = runPipeL $ src `pipeL` sink
+src $$ sink = runPipe $ src `pipeL` sink
 {-# INLINE ($$) #-}
 
 -- | The connect-and-resume operator. This does not close the @Source@, but
@@ -408,25 +409,25 @@ src $$ sink = runPipeL $ src `pipeL` sink
 -- Mnemonic: connect + do more.
 --
 -- Since 0.5.0
-($$+) :: Monad m => Source m a -> Sink a m b -> m (ResumablePipe () a () m (), b)
-src $$+ sink = runPipeL $ pipeResume (ResumablePipe src (return ())) sink
+($$+) :: Monad m => Source m a -> Sink a m b -> m (ResumableSource m a, b)
+src $$+ sink = connectResume (ResumableSource src (return ())) sink
 {-# INLINE ($$+) #-}
 
 -- | Continue processing after usage of @$$+@.
 --
 -- Since 0.5.0
-($$++) :: Monad m => ResumablePipe () a () m () -> Sink a m b -> m (ResumablePipe () a () m (), b)
-rsrc $$++ sink = runPipeL $ pipeResume rsrc sink
+($$++) :: Monad m => ResumableSource m a -> Sink a m b -> m (ResumableSource m a, b)
+($$++) = connectResume
 {-# INLINE ($$++) #-}
 
--- | Complete processing of a @ResumablePipe@. This will run the finalizer
--- associated with the @ResumablePipe@. In order to guarantee process resource
+-- | Complete processing of a @ResumableSource@. This will run the finalizer
+-- associated with the @ResumableSource@. In order to guarantee process resource
 -- finalization, you /must/ use this operator after using @$$+@ and @$$++@.
 --
 -- Since 0.5.0
-($$+-) :: Monad m => ResumablePipe () a () m () -> Sink a m b -> m b
+($$+-) :: Monad m => ResumableSource m a -> Sink a m b -> m b
 rsrc $$+- sink = do
-    (ResumablePipe _ final, res) <- runPipeL $ pipeResume rsrc sink
+    (ResumableSource _ final, res) <- connectResume rsrc sink
     final
     return res
 {-# INLINE ($$+-) #-}
@@ -471,6 +472,17 @@ infixl 9 >+>
 
 -- | Fuse together two @Pipe@s, connecting the output from the left to the
 -- input of the right.
+--
+-- Notice that the /leftover/ parameter for the @Pipe@s must be @Void@. This
+-- ensures that there is no accidental data loss of leftovers during fusion. If
+-- you have a @Pipe@ with leftovers, you must first call 'injectLeftovers'. For
+-- example:
+--
+-- >>> :load Data.Conduit.List
+-- >>> :set -XNoMonomorphismRestriction
+-- >>> let pipe = peek >>= \x -> fold (Prelude.+) 0 >>= \y -> return (x, y)
+-- >>> runPipe $ sourceList [1..10] >+> injectLeftovers pipe
+-- (Just 1,55)
 --
 -- Since 0.5.0
 (>+>) :: Monad m => Pipe Void a b r0 m r1 -> Pipe Void b c r1 m r2 -> Pipe Void a c r0 m r2

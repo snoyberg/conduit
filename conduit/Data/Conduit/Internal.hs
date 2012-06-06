@@ -10,32 +10,32 @@ module Data.Conduit.Internal
     , Source
     , Sink
     , Conduit
-    , ResumablePipe (..)
-      -- * Terminating pipes
+    , ResumableSource (..)
+      -- * Primitives
     , await
     , awaitE
     , yield
     , yieldOr
     , leftover
+      -- * Finalization
     , bracketP
+    , addCleanup
+      -- * Composition
     , idP
-      -- * Functions
     , pipe
     , pipeL
-    , pipeResume
+    , connectResume
     , runPipe
-    , runPipeL
+    , injectLeftovers
+      -- * Utilities
     , transPipe
     , mapOutput
     , mapOutputMaybe
     , mapInput
-    , addCleanup
     , sourceList
-    , injectLeftovers
-    , anyLeftovers
     ) where
 
-import Control.Applicative (Applicative (..), (<$>))
+import Control.Applicative (Applicative (..))
 import Control.Monad ((>=>), liftM, ap)
 import Control.Monad.Trans.Class (MonadTrans (lift))
 import Control.Monad.IO.Class (MonadIO (liftIO))
@@ -132,9 +132,20 @@ instance Monad m => Monoid (Pipe l i o u m ()) where
     mempty = return ()
     mappend = (>>)
 
+-- | The identity @Pipe@.
+--
+-- Since 0.5.0
 idP :: Monad m => Pipe l a a r m r
 idP = NeedInput (HaveOutput idP (return ())) Done
 
+-- | Transforms a @Pipe@ that provides leftovers to one which does not,
+-- allowing it to be composed.
+--
+-- This function will provide any leftover values within this @Pipe@ to any
+-- calls to @await@. If there are more leftover values than are demanded, the
+-- remainder are discarded.
+--
+-- Since 0.5.0
 injectLeftovers :: Monad m => Pipe i i o u m r -> Pipe l i o u m r
 injectLeftovers (Done r) = Done r
 injectLeftovers (PipeM mp) = PipeM (liftM injectLeftovers mp)
@@ -152,22 +163,11 @@ injectLeftovers (Leftover p0 i0) =
             Leftover p' _ -> p'
             p' -> Leftover p' i
 
-anyLeftovers :: Monad m => Pipe Void i o u m r -> Pipe l i o u m r
-anyLeftovers (Leftover _ l) = absurd l
-anyLeftovers (HaveOutput p c o) = HaveOutput (anyLeftovers p) c o
-anyLeftovers (NeedInput p c) = NeedInput (anyLeftovers . p) (anyLeftovers . c)
-anyLeftovers (Done r) = Done r
-anyLeftovers (PipeM mp) = PipeM $ liftM anyLeftovers mp
-
 -- | Compose a left and right pipe together into a complete pipe. The left pipe
--- will be automatically closed when the right pipe finishes, and any leftovers
--- from the right pipe will be discarded.
+-- will be automatically closed when the right pipe finishes.
 --
--- This is in fact a wrapper around 'pipeResume'. This function closes the left
--- @Pipe@ returns by @pipeResume@ and returns only the result.
---
--- Since 0.4.0
-pipe :: Monad m => Pipe Void a b r0 m r1 -> Pipe Void b c r1 m r2 -> Pipe Void a c r0 m r2
+-- Since 0.5.0
+pipe :: Monad m => Pipe Void a b r0 m r1 -> Pipe Void b c r1 m r2 -> Pipe l a c r0 m r2
 pipe =
     pipe' (return ())
   where
@@ -189,73 +189,46 @@ pipe =
                     (\a -> pipe' final (left' a) right)
                     (\r0 -> pipe' final (lc r0) right)
 
-pipeL :: Monad m => Pipe a a b r0 m r1 -> Pipe b b c r1 m r2 -> Pipe a a c r0 m r2
-pipeL l r = anyLeftovers $ injectLeftovers l `pipe` injectLeftovers r
-
--- | A @Pipe@ which has been started, but has not yet completed.
+-- | Same as 'pipe', but automatically applies 'injectLeftovers' to both input @Pipe@s.
 --
--- This type contains both the current state of the @Pipe@, and the finalizer
+-- Since 0.5.0
+pipeL :: Monad m => Pipe a a b r0 m r1 -> Pipe b b c r1 m r2 -> Pipe l a c r0 m r2
+pipeL l r = injectLeftovers l `pipe` injectLeftovers r
+
+-- | A @Source@ which has been started, but has not yet completed.
+--
+-- This type contains both the current state of the @Source@, and the finalizer
 -- to be run to close it.
 --
 -- Since 0.5.0
-data ResumablePipe i o u m r = ResumablePipe (Pipe i i o u m r) (m ())
+data ResumableSource m o = ResumableSource (Source m o) (m ())
 
--- | Same as 'pipe', but retain both the new left pipe and the leftovers from
--- the right pipe. The two components are combined together into a single pipe
--- and returned, together with the result of the right pipe.
+-- | Connect a @Source@ to a @Sink@ until the latter closes. Returns both the
+-- most recent state of the @Source@ and the result of the @Sink@.
 --
--- Note: we're biased towards checking the right side first to avoid pulling
--- extra data which is not needed. Doing so could cause data loss.
+-- We use a @ResumableSource@ to keep track of the most recent finalizer
+-- provided by the @Source@.
 --
--- Since 0.4.0
-pipeResume :: Monad m
-           => ResumablePipe a b r0 m r1
-           -> Pipe b b c r1 m r2
-           -> Pipe a a c r0 m (ResumablePipe a b r0 m r1, r2)
-pipeResume leftTotal@(ResumablePipe left leftFinal) right =
-    -- We're using a case statement instead of pattern matching in the function
-    -- itself to make the logic explicit. We first check the right pipe, and
-    -- only if the right pipe is asking for more input do we process the left
-    -- pipe.
+-- Since 0.5.0
+connectResume :: Monad m
+              => ResumableSource m o
+              -> Sink o m r
+              -> m (ResumableSource m o, r)
+connectResume leftTotal@(ResumableSource left leftFinal) right =
     case right of
-        -- Right pipe is done, grab result and the left pipe
-        Done r2 -> Done (leftTotal, r2)
-
-        -- Right pipe needs to run a monadic action.
-        PipeM mp -> PipeM (pipeResume leftTotal `liftM` mp)
-
-        -- Right pipe has some output, provide it downstream and continue.
-        HaveOutput p c o -> HaveOutput (pipeResume leftTotal p) c o
-
-        Leftover p i -> pipeResume (ResumablePipe (HaveOutput left leftFinal i) leftFinal) p
-
-        -- Right pipe needs input, so let's get it
+        Done r2 -> return (leftTotal, r2)
+        PipeM mp -> mp >>= connectResume leftTotal
+        HaveOutput _ _ o -> absurd o
+        Leftover p i -> connectResume (ResumableSource (HaveOutput left leftFinal i) leftFinal) p
         NeedInput rp rc ->
             case left of
-                Leftover lp i ->
-                    (\(ResumablePipe p pf, r) -> (ResumablePipe (Leftover p i) pf, r))
-                    <$> pipeResume (ResumablePipe lp leftFinal) (NeedInput rp rc)
-                -- Left pipe has output, right pipe wants it.
-                HaveOutput lp lc a -> pipeResume (ResumablePipe lp lc) $ rp a
-
-                -- Left pipe needs more input, ask for it.
-                NeedInput p c -> NeedInput
-                    (\a -> pipeResume (ResumablePipe (p a) leftFinal) right)
-                    (\r0 -> pipeResume (ResumablePipe (c r0) leftFinal) right)
-
-                -- Left pipe is done, right pipe needs input. In such a case,
-                -- tell the right pipe there is no more input.
-                Done r1 -> noInput r1 $ (ResumablePipe (Done r1) (return ()),) <$> rc r1
-
-                -- Left pipe needs to run a monadic action.
-                PipeM mp -> PipeM ((\p -> (ResumablePipe p leftFinal `pipeResume` right)) `liftM` mp)
-
-noInput :: Monad m => u1 -> Pipe l1 i1 o u1 m r -> Pipe l i o u m r
-noInput u (Leftover p _) = noInput u p
-noInput _ (Done r2) = Done r2
-noInput u (NeedInput _ rc') = noInput u (rc' u)
-noInput u (HaveOutput p c o) = HaveOutput (noInput u p) c o
-noInput u (PipeM mp) = PipeM (liftM (noInput u) mp)
+                Leftover p () -> connectResume (ResumableSource p leftFinal) right
+                HaveOutput left' leftFinal' o -> connectResume
+                    (ResumableSource left' leftFinal')
+                    (rp o)
+                NeedInput _ lc -> connectResume (ResumableSource (lc ()) leftFinal) right
+                Done () -> connectResume (ResumableSource (Done ()) (return ())) (rc ())
+                PipeM mp -> mp >>= \left' -> connectResume (ResumableSource left' leftFinal) right
 
 -- | Run a pipeline until processing completes.
 --
@@ -267,9 +240,6 @@ runPipe (Done r) = return r
 runPipe (PipeM mp) = mp >>= runPipe
 runPipe (Leftover _ i) = absurd i
 
-runPipeL :: Monad m => Pipe () () Void () m r -> m r
-runPipeL = runPipe . injectLeftovers
-
 -- | Send a single output value downstream. If the downstream @Pipe@
 -- terminates, this @Pipe@ will terminate as well.
 --
@@ -278,6 +248,7 @@ yield :: Monad m
       => o -- ^ output value
       -> Pipe l i o u m ()
 yield = HaveOutput (Done ()) (return ())
+{-# INLINE [1] yield #-}
 
 -- | Similar to @yield@, but additionally takes a finalizer to be run if the
 -- downstream @Pipe@ terminates.
@@ -288,10 +259,12 @@ yieldOr :: Monad m
         -> m () -- ^ finalizer
         -> Pipe l i o u m ()
 yieldOr o f = HaveOutput (Done ()) f o
+{-# INLINE [1] yieldOr #-}
 
 {-# RULES
-    "yield o >> p" forall o (p :: Pipe l i o u m r). yield o >> p = HaveOutput p  (return ()) o
+    "yield o >> p" forall o (p :: Pipe l i o u m r). yield o >> p = HaveOutput p (return ()) o
   ; "mapM_ yield" mapM_ yield = sourceList
+  ; "yieldOr o c >> p" forall o c (p :: Pipe l i o u m r). yieldOr o c >> p = HaveOutput p c o
   #-}
 
 -- | Provide a single piece of leftover input to be consumed by the next pipe
