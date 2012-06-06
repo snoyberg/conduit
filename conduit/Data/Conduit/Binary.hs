@@ -25,13 +25,14 @@ module Data.Conduit.Binary
     , head
     , dropWhile
     , take
+    , drop
       -- ** Conduits
     , isolate
     , takeWhile
     , Data.Conduit.Binary.lines
     ) where
 
-import Prelude hiding (head, take, takeWhile, dropWhile)
+import Prelude hiding (head, take, drop, takeWhile, dropWhile)
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Lazy as L
 import Data.Conduit hiding (Source, Conduit, Sink)
@@ -264,6 +265,24 @@ take n0 =
                 GT ->
                     let (x, y) = S.splitAt n bs
                      in assert (not $ S.null y) $ leftover y >> return (L.fromChunks $ front [x])
+
+-- | Drop up to the given number of bytes.
+--
+-- Since 0.5.0
+drop :: Monad m => Int -> Pipe S.ByteString S.ByteString o u m ()
+drop =
+    go
+  where
+    go n =
+        await >>= maybe (return ()) go'
+      where
+        go' bs =
+            case S.length bs `compare` n of
+                LT -> go (n - S.length bs)
+                EQ -> return ()
+                GT ->
+                    let y = S.drop n bs
+                     in assert (not $ S.null y) $ leftover y >> return ()
 
 -- | Split the input bytes into lines. In other words, split on the LF byte
 -- (10), and strip it from the output.

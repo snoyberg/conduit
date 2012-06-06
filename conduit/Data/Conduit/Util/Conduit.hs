@@ -17,6 +17,7 @@ import Prelude hiding (sequence)
 import Control.Monad.Trans.Resource
 import Data.Conduit.Internal hiding (leftover)
 import Control.Monad (liftM, when)
+import Data.Void (absurd)
 
 -- | A helper function for returning a list of values from a @Conduit@.
 --
@@ -169,3 +170,36 @@ sequence sink = self
     self = do
         x <- hasInput
         when x $ sinkToPipe sink >>= yield >> self
+
+pipePush :: Monad m => i -> Pipe i i o u m r -> Pipe i i o u m r
+pipePush i (HaveOutput p c o) = HaveOutput (pipePush i p) c o
+pipePush i (NeedInput p _) =
+    case p i of
+        Leftover p' i' -> pipePush i' p'
+        p' -> p'
+pipePush i (Done r) = Leftover (Done r) i
+pipePush i (PipeM mp) = PipeM (pipePush i `liftM` mp)
+pipePush i (Leftover p i') =
+    case pipePush i' p of
+        Leftover p'' i'' -> Leftover (Leftover p'' i'') i
+        p' -> pipePush i p'
+
+-- | Check if input is available from upstream. Will not remove the data from
+-- the stream.
+--
+-- Since 0.4.0
+hasInput :: Pipe i i o u m Bool -- FIXME consider removing
+hasInput = NeedInput (Leftover (Done True)) (const $ Done False)
+
+-- | A @Sink@ has a @Void@ type parameter for the output, which makes it
+-- difficult to compose with @Source@s and @Conduit@s. This function replaces
+-- that parameter with a free variable. This function is essentially @id@; it
+-- only modifies the types, not the actions performed.
+--
+-- Since 0.4.0
+sinkToPipe :: Monad m => Sink i m r -> Pipe i i o u m r
+sinkToPipe (HaveOutput _ _ o) = absurd o
+sinkToPipe (NeedInput p c) = NeedInput (sinkToPipe . p) (const $ sinkToPipe $ c ())
+sinkToPipe (Done r) = Done r
+sinkToPipe (PipeM mp) = PipeM (liftM sinkToPipe mp)
+sinkToPipe (Leftover p i) = Leftover (sinkToPipe p) i
