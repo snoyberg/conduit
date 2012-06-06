@@ -454,14 +454,14 @@ src $$ sink = runPipe $ src `pipeL` sink
 -- (Just 1,55)
 --
 -- Since 0.5.0
-(>+>) :: Monad m => Pipe Void a b r0 m r1 -> Pipe Void b c r1 m r2 -> Pipe Void a c r0 m r2
+(>+>) :: Monad m => Pipe Void a b r0 m r1 -> Pipe Void b c r1 m r2 -> Pipe l a c r0 m r2
 (>+>) = pipe
 {-# INLINE (>+>) #-}
 
 -- | Same as '>+>', but reverse the order of the arguments.
 --
 -- Since 0.5.0
-(<+<) :: Monad m => Pipe Void b c r1 m r2 -> Pipe Void a b r0 m r1 -> Pipe Void a c r0 m r2
+(<+<) :: Monad m => Pipe Void b c r1 m r2 -> Pipe Void a b r0 m r1 -> Pipe l a c r0 m r2
 (<+<) = flip pipe
 {-# INLINE (<+<) #-}
 
