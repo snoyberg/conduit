@@ -42,7 +42,7 @@ traverse :: MonadIO m
          => Bool -- ^ Follow directory symlinks (only used on POSIX platforms)
          -> FilePath -- ^ Root directory
          -> Source m FilePath
-traverse followSymlinks root =
+traverse _followSymlinks root =
     liftIO (listDirectory root) >>= pull
   where
     pull [] = return ()
@@ -65,7 +65,7 @@ traverse followSymlinks root =
 #else
     follow p = do
         let path = encodeString p
-        stat <- if followSymlinks
+        stat <- if _followSymlinks
             then Posix.getFileStatus path
             else Posix.getSymbolicLinkStatus path
         return (Posix.isDirectory stat)

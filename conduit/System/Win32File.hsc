@@ -8,7 +8,11 @@ module System.Win32File
 
 import Foreign.C.String (CString)
 import Foreign.Marshal.Alloc (mallocBytes, free)
+#if __GLASGOW_HASKELL__ >= 704
+import Foreign.C.Types (CInt (..))
+#else
 import Foreign.C.Types (CInt)
+#endif
 import Foreign.C.Error (throwErrno)
 import Foreign.Ptr (Ptr)
 import Data.Bits (Bits, (.|.))

@@ -41,7 +41,7 @@ module Data.Conduit.Blaze
   , builderToByteStringWithFlush
     ) where
 
-import Data.Conduit
+import Data.Conduit hiding (Source, Conduit, Sink)
 import Control.Monad (unless)
 import Control.Monad.Trans.Class (lift)
 
@@ -53,14 +53,14 @@ import Blaze.ByteString.Builder.Internal.Buffer
 
 -- | Incrementally execute builders and pass on the filled chunks as
 -- bytestrings.
-builderToByteString :: MonadUnsafeIO m => Conduit Builder m S.ByteString
+builderToByteString :: MonadUnsafeIO m => Pipe l Builder S.ByteString r m r
 builderToByteString =
   builderToByteStringWith (allNewBuffersStrategy defaultBufferSize)
 
 -- |
 --
 -- Since 0.0.2
-builderToByteStringFlush :: MonadUnsafeIO m => Conduit (Flush Builder) m (Flush S.ByteString)
+builderToByteStringFlush :: MonadUnsafeIO m => Pipe l (Flush Builder) (Flush S.ByteString) r m r
 builderToByteStringFlush =
   builderToByteStringWithFlush (allNewBuffersStrategy defaultBufferSize)
 
@@ -73,7 +73,7 @@ builderToByteStringFlush =
 -- as control is returned from the inner sink!
 unsafeBuilderToByteString :: MonadUnsafeIO m
                           => IO Buffer  -- action yielding the inital buffer.
-                          -> Conduit Builder m S.ByteString
+                          -> Pipe l Builder S.ByteString r m r
 unsafeBuilderToByteString = builderToByteStringWith . reuseBufferStrategy
 
 
@@ -83,7 +83,7 @@ unsafeBuilderToByteString = builderToByteStringWith . reuseBufferStrategy
 -- INV: All bytestrings passed to the inner sink are non-empty.
 builderToByteStringWith :: MonadUnsafeIO m
                         => BufferAllocStrategy
-                        -> Conduit Builder m S.ByteString
+                        -> Pipe l Builder S.ByteString r m r
 builderToByteStringWith =
     mapOutputMaybe unChunk . mapInput Chunk unChunk . builderToByteStringWithFlush
   where
@@ -96,22 +96,20 @@ builderToByteStringWith =
 builderToByteStringWithFlush
     :: MonadUnsafeIO m
     => BufferAllocStrategy
-    -> Conduit (Flush Builder) m (Flush S.ByteString)
+    -> Pipe l (Flush Builder) (Flush S.ByteString) r m r
 builderToByteStringWithFlush (ioBufInit, nextBuf) =
     loop ioBufInit
   where
     loop ioBuf = do
-        mfb <- await
-        case mfb of
-            Nothing -> close ioBuf
-            Just Flush -> push ioBuf flush $ \ioBuf' -> yield Flush >> loop ioBuf'
-            Just (Chunk builder) -> push ioBuf builder loop
+        awaitE >>= either (close ioBuf) (cont' ioBuf)
 
-    close ioBuf = do
+    cont' ioBuf Flush = push ioBuf flush $ \ioBuf' -> yield Flush >> loop ioBuf'
+    cont' ioBuf (Chunk builder) = push ioBuf builder loop
+
+    close ioBuf r = do
         buf <- lift $ unsafeLiftIO $ ioBuf
-        case unsafeFreezeNonEmptyBuffer buf of
-            Nothing -> return ()
-            Just bs -> yield $ Chunk bs
+        maybe (return ()) (yield . Chunk) (unsafeFreezeNonEmptyBuffer buf)
+        return r
 
     push ioBuf0 x continue = do
         go (unBuilder x (buildStep finalStep)) ioBuf0
