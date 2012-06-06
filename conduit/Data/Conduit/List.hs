@@ -14,11 +14,6 @@ module Data.Conduit.List
     , unfold
     , enumFromTo
       -- * Sinks
-
-      -- | Note that the @Sink@ functions do not have type @Sink@, but @Pipe@.
-      -- This more general formulation allows them to be easily used to build
-      -- up larger @Conduit@s. However, they all behave as @Sink@s.
-
       -- ** Pure
     , fold
     , take
@@ -42,6 +37,8 @@ module Data.Conduit.List
     , mapM
     , concatMapM
     , concatMapAccumM
+      -- * Misc
+    , sequence
     ) where
 
 import qualified Prelude
@@ -332,3 +329,15 @@ sinkNull =
 -- Since 0.3.0
 sourceNull :: Monad m => Pipe l i a u m ()
 sourceNull = return ()
+
+-- | Run a @Pipe@ repeatedly, and output its result value downstream. Stops
+-- when no more input is available from upstream.
+--
+-- Since 0.5.0
+sequence :: Monad m
+         => Pipe i i o r m o -- ^ @Pipe@ to run repeatedly
+         -> Pipe i i o r m r
+sequence sink =
+    self
+  where
+    self = awaitE >>= either return (\i -> leftover i >> sink >>= yield >> self)

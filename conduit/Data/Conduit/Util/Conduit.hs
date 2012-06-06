@@ -9,14 +9,13 @@ module Data.Conduit.Util.Conduit
       -- *** Sequencing
     , SequencedSink
     , sequenceSink
-    , sequence
     , SequencedSinkResponse (..)
     ) where
 
 import Prelude hiding (sequence)
 import Control.Monad.Trans.Resource
 import Data.Conduit.Internal hiding (leftover)
-import Control.Monad (liftM, when)
+import Control.Monad (liftM)
 import Data.Void (absurd)
 
 -- | A helper function for returning a list of values from a @Conduit@.
@@ -156,20 +155,6 @@ sequenceSink state0 fsink = do
                 Stop -> return ()
                 StartConduit c -> c
         else return ()
-
--- | Specialised version of 'sequenceSink'
---
--- Note that this function will return an infinite stream if provided a
--- @Sink@ which does not consume data. In other words, you probably don\'t want to do
--- @sequence . return@.
---
--- Since 0.3.0
-sequence :: Monad m => Sink input m output -> Conduit input m output -- FIXME move to Data.Conduit
-sequence sink = self
-  where
-    self = do
-        x <- hasInput
-        when x $ sinkToPipe sink >>= yield >> self
 
 pipePush :: Monad m => i -> Pipe i i o u m r -> Pipe i i o u m r
 pipePush i (HaveOutput p c o) = HaveOutput (pipePush i p) c o

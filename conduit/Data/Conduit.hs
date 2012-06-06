@@ -382,14 +382,16 @@ demonstrating them:
 
 -}
 
+-- Define fixity of all our operators
 infixr 0 $$
-infixr 0 $$+
-infixr 0 $$++
-infixr 0 $$+-
 infixl 1 $=
 infixr 2 =$
 infixr 2 =$=
-
+infixr 9 <+<
+infixl 9 >+>
+infixr 0 $$+
+infixr 0 $$++
+infixr 0 $$+-
 
 -- | The connect operator, which pulls data from a source and pushes to a sink.
 -- When either side closes, the other side will immediately be closed as well.
@@ -400,37 +402,6 @@ infixr 2 =$=
 ($$) :: Monad m => Source m a -> Sink a m b -> m b
 src $$ sink = runPipe $ src `pipeL` sink
 {-# INLINE ($$) #-}
-
--- | The connect-and-resume operator. This does not close the @Source@, but
--- instead returns it to be used again. This allows a @Source@ to be used
--- incrementally in a large program, without forcing the entire program to live
--- in the @Sink@ monad.
---
--- Mnemonic: connect + do more.
---
--- Since 0.5.0
-($$+) :: Monad m => Source m a -> Sink a m b -> m (ResumableSource m a, b)
-src $$+ sink = connectResume (ResumableSource src (return ())) sink
-{-# INLINE ($$+) #-}
-
--- | Continue processing after usage of @$$+@.
---
--- Since 0.5.0
-($$++) :: Monad m => ResumableSource m a -> Sink a m b -> m (ResumableSource m a, b)
-($$++) = connectResume
-{-# INLINE ($$++) #-}
-
--- | Complete processing of a @ResumableSource@. This will run the finalizer
--- associated with the @ResumableSource@. In order to guarantee process resource
--- finalization, you /must/ use this operator after using @$$+@ and @$$++@.
---
--- Since 0.5.0
-($$+-) :: Monad m => ResumableSource m a -> Sink a m b -> m b
-rsrc $$+- sink = do
-    (ResumableSource _ final, res) <- connectResume rsrc sink
-    final
-    return res
-{-# INLINE ($$+-) #-}
 
 -- | Left fuse, combining a source and a conduit together into a new source.
 --
@@ -467,8 +438,6 @@ rsrc $$+- sink = do
 (=$=) = pipeL
 {-# INLINE (=$=) #-}
 
-infixr 9 <+<
-infixl 9 >+>
 
 -- | Fuse together two @Pipe@s, connecting the output from the left to the
 -- input of the right.
@@ -495,6 +464,37 @@ infixl 9 >+>
 (<+<) :: Monad m => Pipe Void b c r1 m r2 -> Pipe Void a b r0 m r1 -> Pipe Void a c r0 m r2
 (<+<) = flip pipe
 {-# INLINE (<+<) #-}
+
+-- | The connect-and-resume operator. This does not close the @Source@, but
+-- instead returns it to be used again. This allows a @Source@ to be used
+-- incrementally in a large program, without forcing the entire program to live
+-- in the @Sink@ monad.
+--
+-- Mnemonic: connect + do more.
+--
+-- Since 0.5.0
+($$+) :: Monad m => Source m a -> Sink a m b -> m (ResumableSource m a, b)
+src $$+ sink = connectResume (ResumableSource src (return ())) sink
+{-# INLINE ($$+) #-}
+
+-- | Continue processing after usage of @$$+@.
+--
+-- Since 0.5.0
+($$++) :: Monad m => ResumableSource m a -> Sink a m b -> m (ResumableSource m a, b)
+($$++) = connectResume
+{-# INLINE ($$++) #-}
+
+-- | Complete processing of a @ResumableSource@. This will run the finalizer
+-- associated with the @ResumableSource@. In order to guarantee process resource
+-- finalization, you /must/ use this operator after using @$$+@ and @$$++@.
+--
+-- Since 0.5.0
+($$+-) :: Monad m => ResumableSource m a -> Sink a m b -> m b
+rsrc $$+- sink = do
+    (ResumableSource _ final, res) <- connectResume rsrc sink
+    final
+    return res
+{-# INLINE ($$+-) #-}
 
 -- | Provide for a stream of data that can be flushed.
 --

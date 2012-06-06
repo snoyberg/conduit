@@ -280,28 +280,26 @@ main = hspecX $ do
 
     describe "sequence" $ do
         it "simple sink" $ do
-            let sumSink :: C.MonadResource m => C.Sink Int m Int
-                sumSink = do
+            let sumSink = do
                     ma <- CL.head
                     case ma of
                         Nothing -> return 0
                         Just a  -> (+a) . fromMaybe 0 <$> CL.head
 
-            res <- runResourceT $ CL.sourceList [1..11]
-                             C.$= C.sequence sumSink
+            res <- runResourceT $ CL.sourceList [1..11 :: Int]
+                             C.$= CL.sequence sumSink
                              C.$$ CL.consume
             res @?= [3, 7, 11, 15, 19, 11]
 
         it "sink with unpull behaviour" $ do
-            let sumSink :: C.MonadResource m => C.Sink Int m Int
-                sumSink = do
+            let sumSink = do
                     ma <- CL.head
                     case ma of
                         Nothing -> return 0
                         Just a  -> (+a) . fromMaybe 0 <$> CL.peek
 
-            res <- runResourceT $ CL.sourceList [1..11]
-                             C.$= C.sequence sumSink
+            res <- runResourceT $ CL.sourceList [1..11 :: Int]
+                             C.$= CL.sequence sumSink
                              C.$$ CL.consume
             res @?= [3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 11]
 
