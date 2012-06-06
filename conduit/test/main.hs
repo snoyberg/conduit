@@ -135,7 +135,6 @@ main = hspecX $ do
             bs1 @=? bs2
             bs1 @=? bs3
 
-    {- FIXME
     describe "zipping" $ do
         it "zipping two small lists" $ do
             res <- runResourceT $ C.zip (CL.sourceList [1..10]) (CL.sourceList [11..12]) C.$$ CL.consume
@@ -151,7 +150,6 @@ main = hspecX $ do
         it "take fewer on right" $ do
             res <- runResourceT $ CL.sourceList [1..10] C.$$ C.zipSinks CL.consume (CL.take 4)
             res @=? ([1..10 :: Int], [1..4 :: Int])
-    -}
 
     describe "Monad instance for Sink" $ do
         it "binding" $ do

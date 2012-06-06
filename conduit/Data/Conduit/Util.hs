@@ -8,60 +8,58 @@ module Data.Conduit.Util
     , module Data.Conduit.Util.Sink
       -- * Conduit
     , module Data.Conduit.Util.Conduit
-    {- FIXME
       -- * Misc
     , zip
     , zipSinks
-    -}
     ) where
 
+import Prelude hiding (zip)
+import Control.Monad (liftM, liftM2)
+import Data.Conduit.Internal (Pipe (..), Source, Sink, injectLeftovers)
+import Data.Void (Void, absurd)
 import Data.Conduit.Util.Source
 import Data.Conduit.Util.Sink
 import Data.Conduit.Util.Conduit
 
-{- FIXME
 -- | Combines two sources. The new source will stop producing once either
 --   source has been exhausted.
 --
 -- Since 0.3.0
 zip :: Monad m => Source m a -> Source m b -> Source m (a, b)
-zip (Leftover p i) right = zip (pipePushStrip i p) right
-zip left (Leftover p i)  = zip left (pipePushStrip i p)
+zip (Leftover left ()) right = zip left right
+zip left (Leftover right ())  = zip left right
 zip (Done ()) (Done ()) = Done ()
 zip (Done ()) (HaveOutput _ close _) = PipeM (close >> return (Done ()))
 zip (HaveOutput _ close _) (Done ()) = PipeM (close >> return (Done ()))
 zip (Done ()) (PipeM _) = Done ()
 zip (PipeM _) (Done ()) = Done ()
-zip (PipeM mx closex) (PipeM my closey) = PipeM (liftM2 zip mx my) (closex >> closey)
-zip (PipeM mx closex) y@(HaveOutput _ closey _) = PipeM (liftM (\x -> zip x y) mx) (closex >> closey)
-zip x@(HaveOutput _ closex _) (PipeM my closey) = PipeM (liftM (\y -> zip x y) my) (closex >> closey)
+zip (PipeM mx) (PipeM my) = PipeM (liftM2 zip mx my)
+zip (PipeM mx) y@HaveOutput{} = PipeM (liftM (\x -> zip x y) mx)
+zip x@HaveOutput{} (PipeM my) = PipeM (liftM (zip x) my)
 zip (HaveOutput srcx closex x) (HaveOutput srcy closey y) = HaveOutput (zip srcx srcy) (closex >> closey) (x, y)
-zip (NeedInput _ c) right = zip c right
-zip left (NeedInput _ c) = zip left c
-
+zip (NeedInput _ c) right = zip (c ()) right
+zip left (NeedInput _ c) = zip left (c ())
 
 -- | Combines two sinks. The new sink will complete when both input sinks have
 --   completed.
 --
--- If both sinks finish on the same chunk, and both report leftover input,
--- arbitrarily yield the left sink's leftover input.
+-- Any leftovers are discarded.
 --
 -- Since 0.4.1
 zipSinks :: Monad m => Sink i m r -> Sink i m r' -> Sink i m (r, r')
-zipSinks = (><)
+zipSinks x0 y0 =
+    injectLeftovers x0 >< injectLeftovers y0
   where
-    (><) :: Monad m => Sink i m r -> Sink i m r' -> Sink i m (r, r')
-    Leftover px i    >< py               = pipePushStrip i px >< py
-    px               >< Leftover py i    = px >< pipePushStrip i py
-    PipeM mpx mx     >< py               = PipeM (liftM (>< py) mpx) (liftM2 (,) mx (pipeClose py))
-    px               >< PipeM mpy my     = PipeM (liftM (px ><) mpy) (liftM2 (,) (pipeClose px) my)
+    (><) :: Monad m => Pipe Void i Void () m r1 -> Pipe Void i Void () m r2 -> Sink i m (r1, r2)
 
-    Done x           >< Done y           = Done (x, y)
-
-    NeedInput fpx px >< NeedInput fpy py = NeedInput (\i -> zipSinks (fpx i) (fpy i)) (px >< py)
-    NeedInput fpx px >< py               = NeedInput (\i -> zipSinks (fpx i) py)      (px >< noInput py)
-    px               >< NeedInput fpy py = NeedInput (\i -> zipSinks px (fpy i))      (noInput px >< py)
-
+    Leftover _  i    >< _                = absurd i
+    _                >< Leftover _  i    = absurd i
     HaveOutput _ _ o >< _                = absurd o
     _                >< HaveOutput _ _ o = absurd o
--}
+
+    PipeM mx         >< y                = PipeM (liftM (>< y) mx)
+    x                >< PipeM my         = PipeM (liftM (x ><) my)
+    Done x           >< Done y           = Done (x, y)
+    NeedInput px cx  >< NeedInput py cy  = NeedInput (\i -> px i >< py i) (\() -> cx () >< cy ())
+    NeedInput px cx  >< y@Done{}         = NeedInput (\i -> px i >< y)    (\u -> cx u >< y)
+    x@Done{}         >< NeedInput py cy  = NeedInput (\i -> x >< py i)    (\u -> x >< cy u)
