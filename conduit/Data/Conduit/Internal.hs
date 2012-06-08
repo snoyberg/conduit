@@ -250,7 +250,7 @@ idP = NeedInput (HaveOutput idP (return ())) Done
 -- will be automatically closed when the right pipe finishes.
 --
 -- Since 0.5.0
-pipe :: Monad m => Pipe Void a b r0 m r1 -> Pipe Void b c r1 m r2 -> Pipe l a c r0 m r2
+pipe :: Monad m => Pipe l a b r0 m r1 -> Pipe Void b c r1 m r2 -> Pipe l a c r0 m r2
 pipe =
     pipe' (return ())
   where
@@ -267,7 +267,7 @@ pipe =
                 Done r1 -> pipe (Done r1) (rc r1)
                 HaveOutput left' final' o -> pipe' final' left' (rp o)
                 PipeM mp -> PipeM (liftM (\left' -> pipe' final left' right) mp)
-                Leftover _ i -> absurd i
+                Leftover left' i -> Leftover (pipe' final left' right) i
                 NeedInput left' lc -> NeedInput
                     (\a -> pipe' final (left' a) right)
                     (\r0 -> pipe' final (lc r0) right)
