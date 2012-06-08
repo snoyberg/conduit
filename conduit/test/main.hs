@@ -637,5 +637,13 @@ main = hspecX $ do
             y <- CI.runPipe $ CL.sourceList [1..10 :: Int] C.>+> CL.fold (+) 0
             x @?= y
 
+    describe "generalizing" $ do
+        it' "works" $ do
+            x <-     C.runPipe
+                   $ C.sourceToPipe  (CL.sourceList [1..10 :: Int])
+               C.>+> C.conduitToPipe (CL.map (+ 1))
+               C.>+> C.sinkToPipe    (CL.fold (+) 0)
+            x @?= sum [2..11]
+
 it' :: String -> IO () -> Specs
 it' = it

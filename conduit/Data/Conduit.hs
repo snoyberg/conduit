@@ -42,6 +42,10 @@ module Data.Conduit
     , mapOutput
     , mapOutputMaybe
     , mapInput
+      -- ** Generalizing
+    , sourceToPipe
+    , sinkToPipe
+    , conduitToPipe
 
       -- * Flushing
     , Flush (..)

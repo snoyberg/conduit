@@ -27,6 +27,10 @@ module Data.Conduit.Internal
     , connectResume
     , runPipe
     , injectLeftovers
+      -- * Generalizing
+    , sourceToPipe
+    , sinkToPipe
+    , conduitToPipe
       -- * Utilities
     , transPipe
     , mapOutput
@@ -426,3 +430,30 @@ build g = g (\o p -> HaveOutput p (return ()) o) (return ())
 {-# RULES
     "sourceList/build" forall (f :: (forall b. (a -> b -> b) -> b -> b)). sourceList (GHC.Exts.build f) = build f
   #-}
+
+sourceToPipe :: Monad m => Source m o -> Pipe l i o u m ()
+sourceToPipe (Done ()) = Done ()
+sourceToPipe (PipeM mp) = PipeM (liftM sourceToPipe mp)
+sourceToPipe (NeedInput _ c) = sourceToPipe $ c ()
+sourceToPipe (HaveOutput p c o) = HaveOutput (sourceToPipe p) c o
+sourceToPipe (Leftover p ()) = sourceToPipe p
+
+sinkToPipe :: Monad m => Sink i m r -> Pipe l i o u m r
+sinkToPipe =
+    go . injectLeftovers
+  where
+    go (Done r) = Done r
+    go (PipeM mp) = PipeM (liftM go mp)
+    go (NeedInput p c) = NeedInput (go . p) (const $ go $ c ())
+    go (HaveOutput _ _ o) = absurd o
+    go (Leftover _ l) = absurd l
+
+conduitToPipe :: Monad m => Conduit i m o -> Pipe l i o u m ()
+conduitToPipe =
+    go . injectLeftovers
+  where
+    go (Done ()) = Done ()
+    go (PipeM mp) = PipeM (liftM go mp)
+    go (NeedInput p c) = NeedInput (go . p) (const $ go $ c ())
+    go (HaveOutput p c o) = HaveOutput (go p) c o
+    go (Leftover _ l) = absurd l
