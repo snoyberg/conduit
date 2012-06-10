@@ -27,6 +27,10 @@ main :: IO ()
 main = defaultMain
     [ bgroup "bigsum"
         [ bench "conduit5" $ whnf (\i -> (runIdentity $ CL.sourceList [1..1000 :: Int] C.$$ CL.fold (+) i)) 0
+        , bench "conduit5->+>" $ whnf (\i -> (runIdentity $ C.runPipe $ CL.sourceList [1..1000 :: Int] C.>+> CL.fold (+) i)) 0
+        , bench "conduit5-resume" $ flip whnf 0 $ \i -> runIdentity $ do
+            (rsrc, res) <- CL.sourceList [1..1000 :: Int] C.$$+ CL.fold (+) i
+            rsrc C.$$+- return ()
         , bench "conduit4" $ whnf (\i -> (runIdentity $ CL4.sourceList [1..1000 :: Int] C4.$$ CL4.fold (+) i)) 0
         , bench "pipes" $ whnf pipeTestSum 0
         , bench "pipes-core" $ whnf pipeCoreTest 0
@@ -35,6 +39,11 @@ main = defaultMain
         ]
     , bgroup "bytecount"
         [ bench "conduit5" (whnfIO $ C.runResourceT $ CB.sourceFile "foo" C.$$ CL.fold (\x bs -> x + S.length bs) 0)
+        , bench "conduit5->+>" (whnfIO $ C.runResourceT $ C.runPipe $ CB.sourceFile "foo" C.>+> CL.fold (\x bs -> x + S.length bs) 0)
+        , bench "conduit5-resume" $ whnfIO $ C.runResourceT $ do
+            (rsrc, res) <-  CB.sourceFile "foo" C.$$+ CL.fold (\x bs -> x + S.length bs) 0
+            rsrc C.$$+- return ()
+            return res
         , bench "conduit4" (whnfIO $ C4.runResourceT $ CB4.sourceFile "foo" C4.$$ CL4.fold (\x bs -> x + S.length bs) 0)
         , bench "pipes" (whnfIO pipeTestCount)
         , bench "pipes-resource" (whnfIO pipeTestResource)

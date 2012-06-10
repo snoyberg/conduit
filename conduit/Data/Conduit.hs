@@ -404,7 +404,10 @@ infixr 0 $$+-
 --
 -- Since 0.4.0
 ($$) :: Monad m => Source m a -> Sink a m b -> m b
-src $$ sink = runPipe $ src `pipeL` sink
+src $$ sink = do
+    (rsrc, res) <- src $$+ sink
+    rsrc $$+- return ()
+    return res
 {-# INLINE ($$) #-}
 
 -- | Left fuse, combining a source and a conduit together into a new source.

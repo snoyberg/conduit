@@ -312,21 +312,22 @@ connectResume :: Monad m
               => ResumableSource m o
               -> Sink o m r
               -> m (ResumableSource m o, r)
-connectResume leftTotal@(ResumableSource left leftFinal) right =
-    case right of
-        Done r2 -> return (leftTotal, r2)
-        PipeM mp -> mp >>= connectResume leftTotal
-        HaveOutput _ _ o -> absurd o
-        Leftover p i -> connectResume (ResumableSource (HaveOutput left leftFinal i) leftFinal) p
-        NeedInput rp rc ->
-            case left of
-                Leftover p () -> connectResume (ResumableSource p leftFinal) right
-                HaveOutput left' leftFinal' o -> connectResume
-                    (ResumableSource left' leftFinal')
-                    (rp o)
-                NeedInput _ lc -> connectResume (ResumableSource (lc ()) leftFinal) right
-                Done () -> connectResume (ResumableSource (Done ()) (return ())) (rc ())
-                PipeM mp -> mp >>= \left' -> connectResume (ResumableSource left' leftFinal) right
+connectResume (ResumableSource left0 leftFinal0) =
+    go leftFinal0 left0
+  where
+    go leftFinal left right =
+        case right of
+            Done r2 -> return (ResumableSource left leftFinal, r2)
+            PipeM mp -> mp >>= go leftFinal left
+            HaveOutput _ _ o -> absurd o
+            Leftover p i -> go leftFinal (HaveOutput left leftFinal i) p
+            NeedInput rp rc ->
+                case left of
+                    Leftover p () -> go leftFinal p right
+                    HaveOutput left' leftFinal' o -> go leftFinal' left' (rp o)
+                    NeedInput _ lc -> go leftFinal (lc ()) right
+                    Done () -> go (return ()) (Done ()) (rc ())
+                    PipeM mp -> mp >>= \left' -> go leftFinal left' right
 
 -- | Run a pipeline until processing completes.
 --
