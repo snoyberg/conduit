@@ -1,35 +1,67 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE CPP #-}
+{-# OPTIONS_GHC -fno-warn-incomplete-patterns #-}
 import Test.Hspec.Monadic
-{-
 import Test.Hspec.HUnit ()
-import Test.Hspec.QuickCheck (prop)
 import Test.HUnit
+import Control.Exception (fromException)
 
-import qualified Data.Conduit as C
+import Data.Conduit
+import Data.Conduit.Attoparsec
 import qualified Data.Conduit.List as CL
-import qualified Data.Conduit.Lazy as CLazy
-import qualified Data.Conduit.Text as CT
-import Data.Conduit.Blaze (builderToByteString)
-import Data.Conduit (runResourceT)
-import Control.Monad.ST (runST)
-import Data.Monoid
-import qualified Data.ByteString as S
-import qualified Data.IORef as I
-import Blaze.ByteString.Builder (fromByteString, toLazyByteString, insertLazyByteString)
-import qualified Data.ByteString.Lazy as L
-import Data.ByteString.Lazy.Char8 ()
-import Data.Maybe (catMaybes)
-import Control.Monad.Trans.Writer (Writer)
-import qualified Data.Text as T
-import qualified Data.Text.Lazy as TL
-import qualified Data.Text.Lazy.Encoding as TLE
-import Control.Monad.Trans.Resource (runExceptionT_, withIO, resourceForkIO)
-import Control.Concurrent (threadDelay, killThread)
-import Control.Monad.IO.Class (liftIO)
-import Control.Applicative (pure, (<$>), (<*>))
--}
+import qualified Data.Attoparsec.Text
+import qualified Data.Attoparsec.ByteString.Char8
+import Control.Applicative ((<|>))
+import Control.Monad.Trans.Resource
 
 main :: IO ()
 main = hspecX $ do
-    return ()
+    describe "error position" $ do
+        it "works for text" $ do
+            let input = ["aaa\na", "aaa\n\n", "aaa", "aab\n\naaaa"]
+                badLine = 4
+                badCol = 6
+                parser = Data.Attoparsec.Text.endOfInput <|> (Data.Attoparsec.Text.notChar 'b' >> parser)
+                sink = sinkParser parser
+            ea <- runExceptionT $ CL.sourceList input $$ sink
+            case ea of
+                Left e ->
+                    case fromException e of
+                        Just pe -> do
+                            (errorLine pe, errorColumn pe) @?= (badLine, badCol)
+        it "works for bytestring" $ do
+            let input = ["aaa\na", "aaa\n\n", "aaa", "aab\n\naaaa"]
+                badLine = 4
+                badCol = 6
+                parser = Data.Attoparsec.ByteString.Char8.endOfInput <|> (Data.Attoparsec.ByteString.Char8.notChar 'b' >> parser)
+                sink = sinkParser parser
+            ea <- runExceptionT $ CL.sourceList input $$ sink
+            case ea of
+                Left e ->
+                    case fromException e of
+                        Just pe -> do
+                            (errorLine pe, errorColumn pe) @?= (badLine, badCol)
+        it "works in last chunk" $ do
+            let input = ["aaa\na", "aaa\n\n", "aaa", "aab\n\naaaa"]
+                badLine = 6
+                badCol = 5
+                parser = Data.Attoparsec.Text.char 'c' <|> (Data.Attoparsec.Text.anyChar >> parser)
+                sink = sinkParser parser
+            ea <- runExceptionT $ CL.sourceList input $$ sink
+            case ea of
+                Left e ->
+                    case fromException e of
+                        Just pe -> do
+                            (errorLine pe, errorColumn pe) @?= (badLine, badCol)
+        it "works in last chunk" $ do
+            let input = ["aaa\na", "aaa\n\n", "aaa", "aa\n\naaaab"]
+                badLine = 6
+                badCol = 6
+                parser = Data.Attoparsec.Text.string "bc" <|> (Data.Attoparsec.Text.anyChar >> parser)
+                sink = sinkParser parser
+            ea <- runExceptionT $ CL.sourceList input $$ sink
+            case ea of
+                Left e ->
+                    case fromException e of
+                        Just pe -> do
+                            (errorLine pe, errorColumn pe) @?= (badLine, badCol)

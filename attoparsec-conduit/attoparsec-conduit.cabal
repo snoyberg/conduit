@@ -31,11 +31,11 @@ test-suite test
                    , base
                    , hspec
                    , HUnit
-                   , QuickCheck
-                   , bytestring
-                   , blaze-builder
-                   , transformers
                    , text
+                   , resourcet
+                   , attoparsec
+                   , attoparsec-conduit
+                   , conduit
     ghc-options:     -Wall
 
 source-repository head
