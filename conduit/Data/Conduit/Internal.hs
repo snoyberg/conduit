@@ -14,6 +14,7 @@ module Data.Conduit.Internal
       -- * Primitives
     , await
     , awaitE
+    , awaitForever
     , yield
     , yieldOr
     , leftover
@@ -161,6 +162,17 @@ awaitE :: Pipe l i o u m (Either u i)
 awaitE = NeedInput (Done . Right) (Done . Left)
 {-# RULES "awaitE >>= either" forall x y. awaitE >>= either x y = NeedInput y x #-}
 {-# INLINE [1] awaitE #-}
+
+-- | Wait for input forever, calling the given inner @Pipe@ for each piece of
+-- new input. Returns the upstream result type.
+--
+-- Since 0.5.0
+awaitForever :: Monad m => (i -> Pipe l i o r m r') -> Pipe l i o r m r
+awaitForever inner =
+    self
+  where
+    self = awaitE >>= either return (\i -> inner i >> self)
+{-# INLINE [1] awaitForever #-}
 
 -- | Send a single output value downstream. If the downstream @Pipe@
 -- terminates, this @Pipe@ will terminate as well.

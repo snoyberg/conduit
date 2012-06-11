@@ -56,7 +56,7 @@ import Prelude
     )
 import Data.Conduit hiding (Source, Sink, Conduit)
 import Data.Conduit.Internal (sourceList)
-import Control.Monad (when)
+import Control.Monad (when, (<=<))
 import Control.Monad.Trans.Class (lift)
 
 -- | Generate a source from a seed value.
@@ -132,10 +132,7 @@ foldM f =
 mapM_ :: Monad m
       => (a -> m ())
       -> Pipe l a o u m u
-mapM_ f =
-    go
-  where
-    go = awaitE >>= either return (\x -> lift (f x) >> go)
+mapM_ f = awaitForever $ lift . f
 
 -- | Ignore a certain number of values in the stream. This function is
 -- semantically equivalent to:
@@ -190,10 +187,7 @@ peek = await >>= maybe (return Nothing) (\x -> leftover x >> return (Just x))
 --
 -- Since 0.3.0
 map :: Monad m => (a -> b) -> Pipe l a b r m r
-map f =
-    go
-  where
-    go = awaitE >>= either return (\x -> yield (f x) >> go)
+map f = awaitForever $ yield . f
 
 -- | Apply a monadic transformation to all values in a stream.
 --
@@ -202,30 +196,21 @@ map f =
 --
 -- Since 0.3.0
 mapM :: Monad m => (a -> m b) -> Pipe l a b r m r
-mapM f =
-    go
-  where
-    go = awaitE >>= either return (\x -> lift (f x) >>= yield >> go)
+mapM f = awaitForever $ yield <=< lift . f
 
 -- | Apply a transformation to all values in a stream, concatenating the output
 -- values.
 --
 -- Since 0.3.0
 concatMap :: Monad m => (a -> [b]) -> Pipe l a b r m r
-concatMap f =
-    go
-  where
-    go = awaitE >>= either return (\x -> Prelude.mapM_ yield (f x) >> go)
+concatMap f = awaitForever $ sourceList . f
 
 -- | Apply a monadic transformation to all values in a stream, concatenating
 -- the output values.
 --
 -- Since 0.3.0
 concatMapM :: Monad m => (a -> m [b]) -> Pipe l a b r m r
-concatMapM f =
-    go
-  where
-    go = awaitE >>= either return (\x -> lift (f x) >>= Prelude.mapM_ yield >> go)
+concatMapM f = awaitForever $ sourceList <=< lift . f
 
 -- | 'concatMap' with an accumulator.
 --
@@ -308,20 +293,14 @@ isolate =
 --
 -- Since 0.3.0
 filter :: Monad m => (a -> Bool) -> Pipe l a a r m r
-filter f =
-    go
-  where
-    go = awaitE >>= either return (\x -> when (f x) (yield x) >> go)
+filter f = awaitForever $ \i -> when (f i) (yield i)
 
 -- | Ignore the remainder of values in the source. Particularly useful when
 -- combined with 'isolate'.
 --
 -- Since 0.3.0
 sinkNull :: Monad m => Pipe l a o u m u
-sinkNull =
-    go
-  where
-    go = awaitE >>= either return (\_ -> go)
+sinkNull = awaitForever $ \_ -> return ()
 
 -- | A source that outputs no values. Note that this is just a type-restricted
 -- synonym for 'mempty'.

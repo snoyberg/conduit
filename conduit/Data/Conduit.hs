@@ -23,6 +23,7 @@ module Data.Conduit
       -- $primitives
     , await
     , awaitE
+    , awaitForever
     , yield
     , yieldOr
     , leftover

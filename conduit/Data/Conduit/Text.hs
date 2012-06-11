@@ -316,7 +316,7 @@ iso8859_1 = Codec name enc dec where
 tryEvaluate :: a -> Either TextException a
 tryEvaluate = unsafePerformIO . Exc.try . Exc.evaluate
 
-maybeDecode:: (a, b) -> Maybe (a, b)
+maybeDecode :: (a, b) -> Maybe (a, b)
 maybeDecode (a, b) = case tryEvaluate a of
     Left _ -> Nothing
     Right _ -> Just (a, b)

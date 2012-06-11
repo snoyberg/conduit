@@ -102,10 +102,7 @@ sourceIOHandle alloc = bracketP alloc IO.hClose sourceHandle
 sinkHandle :: MonadIO m
            => IO.Handle
            -> Pipe l S.ByteString o r m r
-sinkHandle h =
-    loop
-  where
-    loop = awaitE >>= either return (\bs -> liftIO (S.hPut h bs) >> loop)
+sinkHandle h = awaitForever $ liftIO . S.hPut h
 
 -- | An alternative to 'sinkHandle'.
 -- Instead of taking a pre-opened 'IO.Handle', it takes an action that opens
@@ -176,9 +173,9 @@ conduitFile :: MonadResource m
 conduitFile fp = bracketP
     (IO.openBinaryFile fp IO.WriteMode)
     IO.hClose
-    loop
+    go
   where
-    loop h = awaitE >>= either return (\bs -> liftIO (S.hPut h bs) >> yield bs >> loop h)
+    go h = awaitForever $ \bs -> liftIO (S.hPut h bs) >> yield bs
 
 -- | Ensure that only up to the given number of bytes are consume by the inner
 -- sink. Note that this does /not/ ensure that all of those bytes are in fact
