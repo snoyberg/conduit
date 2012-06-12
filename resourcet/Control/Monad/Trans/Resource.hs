@@ -242,7 +242,7 @@ instance Exception InvalidAccess
 release' :: I.IORef ReleaseMap
          -> ReleaseKey
          -> IO ()
-release' istate (ReleaseKey key) = E.mask $ \restore -> do
+release' istate (ReleaseKey key) = E.mask $ \restore -> key `seq` do
     maction <- I.atomicModifyIORef istate lookupAction
     maybe (return ()) restore maction
   where
