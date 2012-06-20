@@ -15,7 +15,7 @@ import Control.Applicative ((<|>))
 import Control.Monad.Trans.Resource
 
 main :: IO ()
-main = hspecX $ do
+main = hspec $ do
     describe "error position" $ do
         it "works for text" $ do
             let input = ["aaa\na", "aaa\n\n", "aaa", "aab\n\naaaa"]

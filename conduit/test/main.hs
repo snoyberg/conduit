@@ -34,7 +34,7 @@ import Control.Monad (forever)
 import Data.Void (Void)
 
 main :: IO ()
-main = hspecX $ do
+main = hspec $ do
     describe "data loss rules" $ do
         it "consumes the source to quickly" $ do
             x <- runResourceT $ CL.sourceList [1..10 :: Int] C.$$ do
@@ -645,5 +645,5 @@ main = hspecX $ do
                C.>+> C.sinkToPipe    (CL.fold (+) 0)
             x @?= sum [2..11]
 
-it' :: String -> IO () -> Specs
+it' :: String -> IO () -> Spec
 it' = it

@@ -8,7 +8,7 @@ import Test.Hspec.HUnit ()
 import Test.HUnit
 
 main :: IO ()
-main = hspecX $ do
+main = hspec $ do
     describe "image size" $ do
         it "png" $ check (Just $ Size 271 61) "test/logo.png"
         it "jpg" $ check (Just $ Size 271 61) "test/logo.jpg"

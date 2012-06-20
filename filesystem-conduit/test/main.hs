@@ -31,5 +31,5 @@ import Control.Applicative (pure, (<$>), (<*>))
 -}
 
 main :: IO ()
-main = hspecX $ do
+main = hspec $ do
     return ()

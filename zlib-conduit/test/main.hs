@@ -13,7 +13,7 @@ import Data.ByteString.Lazy.Char8 ()
 import Control.Monad.Trans.Resource (runExceptionT_)
 
 main :: IO ()
-main = hspecX $ do
+main = hspec $ do
     describe "zlib" $ do
         prop "idempotent" $ \bss' -> runST $ do
             let bss = map S.pack bss'

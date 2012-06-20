@@ -17,7 +17,7 @@ import qualified Data.ByteString.Lazy as L
 import Data.ByteString.Lazy.Char8 ()
 
 main :: IO ()
-main = hspecX $ do
+main = hspec $ do
     describe "blaze" $ do
         prop "idempotent to toLazyByteString" $ \bss' -> runST $ do
             let bss = map S.pack bss'
