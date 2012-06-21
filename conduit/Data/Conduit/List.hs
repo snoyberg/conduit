@@ -14,6 +14,7 @@ module Data.Conduit.List
     , sourceNull
     , unfold
     , enumFromTo
+    , iterate
       -- * Sinks
       -- ** Pure
     , fold
@@ -92,6 +93,13 @@ enumFromTo start stop =
     go i
         | i == stop = yield i
         | otherwise = yield i >> go (succ i)
+
+-- | Produces an infinite stream of repeated applications of f to x.
+iterate :: Monad m => (a -> a) -> a -> GSource m a
+iterate f =
+    go
+  where
+    go a = yield a >> go (f a)
 
 -- | A strict left fold.
 --

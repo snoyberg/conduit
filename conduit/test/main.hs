@@ -652,5 +652,10 @@ main = hspec $ do
             res <- C.runPipe $ src C.>+> sink
             res @?= (True, sum [1..10])
 
+    describe "iterate" $ do
+        it' "works" $ do
+            res <- CL.iterate (+ 1) (1 :: Int) C.$$ CL.isolate 10 C.=$ CL.fold (+) 0
+            res @?= sum [1..10]
+
 it' :: String -> IO () -> Spec
 it' = it
