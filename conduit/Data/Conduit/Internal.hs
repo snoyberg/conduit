@@ -47,6 +47,7 @@ module Data.Conduit.Internal
     , mapOutputMaybe
     , mapInput
     , sourceList
+    , withUpstream
     ) where
 
 import Control.Applicative (Applicative (..))
@@ -524,3 +525,18 @@ conduitToPipe =
     go (NeedInput p c) = NeedInput (go . p) (const $ go $ c ())
     go (HaveOutput p c o) = HaveOutput (go p) c o
     go (Leftover _ l) = absurd l
+
+-- | Returns a tuple of the upstream and downstream results. Note that this
+-- will force consumption of the entire input stream.
+--
+-- Since 0.5.0
+withUpstream :: Monad m
+             => Pipe l i o u m r
+             -> Pipe l i o u m (u, r)
+withUpstream down =
+    down >>= go
+  where
+    go r =
+        loop
+      where
+        loop = awaitE >>= either (\u -> return (u, r)) (\_ -> loop)

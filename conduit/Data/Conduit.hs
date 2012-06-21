@@ -43,6 +43,7 @@ module Data.Conduit
     , mapOutput
     , mapOutputMaybe
     , mapInput
+    , withUpstream
       -- ** Generalizing
     , sourceToPipe
     , sinkToPipe

@@ -645,5 +645,12 @@ main = hspec $ do
                C.>+> C.sinkToPipe    (CL.fold (+) 0)
             x @?= sum [2..11]
 
+    describe "withUpstream" $ do
+        it' "works" $ do
+            let src = CL.sourceList [1..10 :: Int] >> return True
+                sink = C.withUpstream $ CL.fold (+) 0
+            res <- C.runPipe $ src C.>+> sink
+            res @?= (True, sum [1..10])
+
 it' :: String -> IO () -> Spec
 it' = it
