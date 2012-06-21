@@ -1,6 +1,5 @@
-#!/bin/bash -e 
 # allow a CABAL env var to override
-CABAL=${CABAL:-cabal}
+CABAL=cabal
 
 # install testing dependencies
 $CABAL install HUnit QuickCheck hspec

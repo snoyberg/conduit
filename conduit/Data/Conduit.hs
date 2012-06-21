@@ -48,6 +48,18 @@ module Data.Conduit
     , sinkToPipe
     , conduitToPipe
 
+      -- * Generalized conduit types
+      -- $generalizedConduitTypes
+    , GSource
+    , GSink
+    , GLSink
+    , GInfSink
+    , GLInfSink
+    , GConduit
+    , GLConduit
+    , GInfConduit
+    , GLInfConduit
+
       -- * Flushing
     , Flush (..)
 
@@ -384,6 +396,32 @@ demonstrating them:
 30
 >>> next $$+- consume
 [10]
+
+-}
+
+{- $generalizedConduitTypes
+
+It's recommended to keep your type signatures as general as possible to
+encourage reuse. For example, a theoretical signature for the @head@ function
+would be:
+
+> head :: Sink a m (Maybe a)
+
+However, doing so would prevent usage of @head@ from inside a @Conduit@, since
+a @Sink@ sets its output type parameter to @Void@. The most general type
+signature would instead be:
+
+> head :: Pipe l a o u m (Maybe a)
+
+However, that signature is much more confusing. To bridge this gap, we also
+provide some generalized conduit types. They follow a simple naming convention:
+
+* They have the same name as their non-generalized types, with a @G@ prepended.
+
+* If they have leftovers, we add an @L@.
+
+* If they consume the entirety of their input stream and return the upstream
+  result, we add @Inf@ to indicate /infinite consumption/.
 
 -}
 

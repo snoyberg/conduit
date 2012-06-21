@@ -8,8 +8,17 @@ module Data.Conduit.Internal
     ( -- * Types
       Pipe (..)
     , Source
+    , GSource
     , Sink
+    , GSink
+    , GLSink
+    , GInfSink
+    , GLInfSink
     , Conduit
+    , GConduit
+    , GLConduit
+    , GInfConduit
+    , GLInfConduit
     , ResumableSource (..)
       -- * Primitives
     , await
@@ -125,17 +134,62 @@ instance Monad m => Monoid (Pipe l i o u m ()) where
 -- Since 0.5.0
 type Source m o = Pipe () () o () m ()
 
+-- | Generalized 'Source'.
+--
+-- Since 0.5.0
+type GSource m o = forall l i u. Pipe l i o u m ()
+
 -- | Consumes a stream of input values and produces a final result, without
 -- producing any output.
 --
 -- Since 0.5.0
 type Sink i m r = Pipe i i Void () m r
 
+-- | Generalized 'Sink' without leftovers.
+--
+-- Since 0.5.0
+type GSink i m r = forall l o u. Pipe l i o u m r
+
+-- | Generalized 'Sink' with leftovers.
+--
+-- Since 0.5.0
+type GLSink i m r = forall o u. Pipe i i o u m r
+
+-- | Generalized 'Sink' without leftovers returning upstream result.
+--
+-- Since 0.5.0
+type GInfSink i m = forall l o r. Pipe l i o r m r
+
+-- | Generalized 'Sink' with leftovers returning upstream result.
+--
+-- Since 0.5.0
+type GLInfSink i m = forall o r. Pipe i i o r m r
+
 -- | Consumes a stream of input values and produces a stream of output values,
 -- without producing a final result.
 --
 -- Since 0.5.0
 type Conduit i m o = Pipe i i o () m ()
+
+-- | Generalized conduit without leftovers.
+--
+-- Since 0.5.0
+type GConduit i m o = forall l u. Pipe l i o u m ()
+
+-- | Generalized conduit with leftovers.
+--
+-- Since 0.5.0
+type GLConduit i m o = forall u. Pipe i i o u m ()
+
+-- | Generalized conduit without leftovers returning upstream result.
+--
+-- Since 0.5.0
+type GInfConduit i m o = forall l r. Pipe l i o r m r
+
+-- | Generalized conduit with leftovers returning upstream result.
+--
+-- Since 0.5.0
+type GLInfConduit i m o = forall r. Pipe i i o r m r
 
 -- | A @Source@ which has been started, but has not yet completed.
 --
