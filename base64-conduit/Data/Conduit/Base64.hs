@@ -6,6 +6,7 @@ module Data.Conduit.Base64
     ) where
 
 import Control.Monad (unless)
+import Control.Exception (assert)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as S
 
@@ -28,19 +29,24 @@ decodeURL = codeWith 4 B64U.decodeLenient
 
 codeWith :: Monad m => Int -> (ByteString -> ByteString) -> GInfConduit ByteString m ByteString
 codeWith size f =
-    go id
+    go S.empty
   where
-    go front = awaitE >>= either (close front) (push front)
+    go bs = awaitE >>= either (close bs) (push bs)
 
-    close front r = do
+    close bs r = do
         unless (S.null bs) $ yield $ f bs
         return r
-      where
-        bs = front S.empty
 
-    push front bs' = do
+    push bs1 bs2 | S.length bs1 + S.length bs2 < size = go (S.append bs1 bs2)
+    push bs1 bs2 = assert (S.length bs1 < size) $ do
+        bs <-
+            case S.length bs1 `mod` size of
+                0 -> return bs2
+                m -> do
+                    let (x, y) = S.splitAt (size - m) bs2
+                        bs1' = S.append bs1 x
+                    assert (S.length bs1' `mod` size == 0) $ yield $ f bs1'
+                    return y
+        let (x, y) = S.splitAt (size * (S.length bs `div` size)) bs
         unless (S.null x) $ yield $ f x
-        go $ S.append y
-      where
-        bs = front bs'
-        (x, y) = S.splitAt (size * (S.length bs `div` size)) bs
+        go y
