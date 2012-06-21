@@ -1,0 +1,41 @@
+Name:                base64-conduit
+Version:             0.5.0
+Synopsis:            Base64-encode and decode streams of bytes.
+Description:         Base64-encode and decode streams of bytes.
+License:             BSD3
+License-file:        LICENSE
+Author:              Michael Snoyman
+Maintainer:          michael@snoyman.com
+Category:            Data, Conduit
+Build-type:          Simple
+Cabal-version:       >=1.8
+Homepage:            http://github.com/snoyberg/conduit
+extra-source-files:  test/main.hs
+
+Library
+  Exposed-modules:     Data.Conduit.Base64
+  Build-depends:       base                     >= 4            && < 5
+                     , bytestring               >= 0.9
+                     , base64-bytestring        >= 0.1.1.1      && < 0.2
+                     , conduit                  >= 0.5          && < 0.6
+  ghc-options:     -Wall
+
+test-suite test
+    hs-source-dirs: test
+    main-is: main.hs
+    type: exitcode-stdio-1.0
+    cpp-options:   -DTEST
+    build-depends:   conduit
+                   , base
+                   , hspec
+                   , bytestring
+                   , HUnit
+                   , QuickCheck
+                   , base64-conduit
+                   , base64-bytestring
+                   , transformers
+    ghc-options:     -Wall
+
+source-repository head
+  type:     git
+  location: git://github.com/snoyberg/conduit.git

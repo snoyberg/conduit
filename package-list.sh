@@ -6,4 +6,5 @@ pkgs=( resourcet
        zlib-conduit
        network-conduit
        imagesize-conduit
+       base64-conduit
      )
