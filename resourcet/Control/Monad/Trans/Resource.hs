@@ -70,6 +70,13 @@ import Control.Monad.Trans.State    ( StateT   )
 import Control.Monad.Trans.Writer   ( WriterT  )
 import Control.Monad.Trans.RWS      ( RWST     )
 
+import Control.Monad.Cont.Class   ( MonadCont (..) )
+import Control.Monad.Error.Class  ( MonadError (..) )
+import Control.Monad.RWS.Class    ( MonadRWS (..) )
+import Control.Monad.Reader.Class ( MonadReader (..) )
+import Control.Monad.State.Class  ( MonadState (..) )
+import Control.Monad.Writer.Class ( MonadWriter (..) )
+
 import Data.Word (Word)
 
 import qualified Control.Monad.Trans.RWS.Strict    as Strict ( RWST   )
@@ -119,7 +126,7 @@ data ReleaseMap =
 -- a release action will only ever be called once.
 --
 -- Since 0.3.0
-newtype ResourceT m a = ResourceT (I.IORef ReleaseMap -> m a)
+newtype ResourceT m a = ResourceT { unResourceT :: I.IORef ReleaseMap -> m a }
 
 instance Typeable1 m => Typeable1 (ResourceT m) where
     typeOf1 = goType undefined
@@ -134,6 +141,32 @@ instance Typeable1 m => Typeable1 (ResourceT m) where
 #endif
                 [ typeOf1 m
                 ]
+
+instance MonadCont m => MonadCont (ResourceT m) where
+  callCC f = ResourceT $ \i -> callCC $ \c -> unResourceT (f (ResourceT . const . c)) i
+
+instance MonadError e m => MonadError e (ResourceT m) where
+  throwError = lift . throwError
+  catchError r h = ResourceT $ \i -> unResourceT r i `catchError` \e -> unResourceT (h e) i
+
+instance MonadRWS r w s m => MonadRWS r w s (ResourceT m)
+
+instance MonadReader r m => MonadReader r (ResourceT m) where
+  ask = lift ask
+  local = mapResourceT . local
+
+mapResourceT :: (m a -> n b) -> ResourceT m a -> ResourceT n b
+mapResourceT f = ResourceT . (f .) . unResourceT
+
+instance MonadState s m => MonadState s (ResourceT m) where
+  get = lift get
+  put = lift . put
+
+instance MonadWriter w m => MonadWriter w (ResourceT m) where
+  tell   = lift . tell
+  listen = mapResourceT listen
+  pass   = mapResourceT pass
+
 
 -- | A @Monad@ which allows for safe resource allocation. In theory, any monad
 -- transformer stack included a @ResourceT@ can be an instance of
