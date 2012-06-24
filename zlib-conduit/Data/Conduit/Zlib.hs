@@ -139,7 +139,7 @@ compressFlush level config = NeedInput
         mchunk <- unsafeLiftIO $ finishDeflate def
         return $ case mchunk of
             Nothing -> Done Nothing ()
-            Just chunk -> HaveOutput (Done Nothing ()) (return ()) (Chunk chunk)
+            Just chunk -> HaveOutput (close def) (return ()) (Chunk chunk)
 
 goPopper :: (MonadUnsafeIO m, MonadThrow m)
          => (input -> Conduit input m output)
