@@ -72,7 +72,7 @@ import Control.Monad.Trans.RWS      ( RWST     )
 
 import Control.Monad.Cont.Class   ( MonadCont (..) )
 import Control.Monad.Error.Class  ( MonadError (..) )
-import Control.Monad.RWS.Class    ( MonadRWS (..) )
+import Control.Monad.RWS.Class    ( MonadRWS )
 import Control.Monad.Reader.Class ( MonadReader (..) )
 import Control.Monad.State.Class  ( MonadState (..) )
 import Control.Monad.Writer.Class ( MonadWriter (..) )
