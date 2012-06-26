@@ -53,3 +53,11 @@ main = hspec $ do
             outBss <- src C.$= builderToByteStringFlush C.$$ CL.consume
             if bss == outBss then return () else error (show (bss, outBss))
             return $ bss == outBss
+        it "large flush input" $ do
+            let lbs = L.pack $ concat $ replicate 100000 [0..255]
+                chunks = map (C.Chunk . fromByteString) (L.toChunks lbs)
+                src = CL.sourceList chunks
+            bss <- src C.$$ builderToByteStringFlush C.=$ CL.consume
+            let unFlush (C.Chunk x) = [x]
+                unFlush C.Flush = []
+            L.fromChunks (concatMap unFlush bss) @?= lbs

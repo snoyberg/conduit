@@ -1,6 +1,7 @@
 import Test.Hspec.Monadic
 import Test.Hspec.HUnit ()
 import Test.Hspec.QuickCheck (prop)
+import Test.HUnit
 
 import qualified Data.Conduit as C
 import qualified Data.Conduit.List as CL
@@ -30,3 +31,11 @@ main = hspec $ do
                            C.$= CZ.decompressFlush (CZ.WindowBits 31)
                            C.$$ CL.consume
             return $ bssC == outBssC
+        it "compressFlush large data" $ do
+            let content = L.pack $ map (fromIntegral . fromEnum) $ concat $ ["BEGIN"] ++ map show [1..100000 :: Int] ++ ["END"]
+                src = CL.sourceList $ map C.Chunk $ L.toChunks content
+            bssC <- src C.$$ CZ.compressFlush 5 (CZ.WindowBits 31) C.=$ CL.consume
+            let unChunk (C.Chunk x) = [x]
+                unChunk C.Flush = []
+            bss <- CL.sourceList bssC C.$$ CL.concatMap unChunk C.=$ CZ.ungzip C.=$ CL.consume
+            L.fromChunks bss @?= content

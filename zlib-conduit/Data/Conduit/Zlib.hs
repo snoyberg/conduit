@@ -141,5 +141,6 @@ compressFlush level config =
 
     close def ret = do
         mchunk <- lift $ unsafeLiftIO $ finishDeflate def
-        maybe (return ()) (yield . Chunk) mchunk
-        return ret
+        case mchunk of
+            Nothing -> return ret
+            Just chunk -> yield (Chunk chunk) >> close def ret
