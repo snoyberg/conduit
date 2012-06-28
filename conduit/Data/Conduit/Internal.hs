@@ -339,19 +339,19 @@ pipe =
                     (\a -> pipe' final (left' a) right)
                     (\r0 -> pipe' final (lc r0) right)
 
--- | Same as 'pipe', but automatically applies 'injectLeftovers' to both input @Pipe@s.
+-- | Same as 'pipe', but automatically applies 'injectLeftovers' to the right @Pipe@.
 --
 -- Since 0.5.0
-pipeL :: Monad m => Pipe a a b r0 m r1 -> Pipe b b c r1 m r2 -> Pipe l a c r0 m r2
+pipeL :: Monad m => Pipe l a b r0 m r1 -> Pipe b b c r1 m r2 -> Pipe l a c r0 m r2
 -- Note: The following should be equivalent to the simpler:
 --
---     pipeL l r = injectLeftovers l `pipe` injectLeftovers r
+--     pipeL l r = l `pipe` injectLeftovers r
 --
 -- However, this version tested as being significantly more efficient.
 pipeL =
     pipe' (return ())
   where
-    pipe' :: Monad m => m () -> Pipe a a b r0 m r1 -> Pipe b b c r1 m r2 -> Pipe l a c r0 m r2
+    pipe' :: Monad m => m () -> Pipe l a b r0 m r1 -> Pipe b b c r1 m r2 -> Pipe l a c r0 m r2
     pipe' final left right =
         case right of
             Done r2 -> PipeM (final >> return (Done r2))
@@ -360,13 +360,13 @@ pipeL =
             Leftover right' i -> pipe' final (HaveOutput left final i) right'
             NeedInput rp rc ->
                 case left of
-                    Done r1 -> pipeL (Done r1) (rc r1)
+                    Done r1 -> pipe' (return ()) (Done r1) (rc r1)
                     HaveOutput left' final' o -> pipe' final' left' (rp o)
                     PipeM mp -> PipeM (liftM (\left' -> pipe' final left' right) mp)
                     NeedInput left' lc -> NeedInput
                         (\a -> pipe' final (left' a) right)
                         (\r0 -> pipe' final (lc r0) right)
-                    Leftover{} -> pipe' final (injectLeftovers left) right
+                    Leftover left' i -> Leftover (pipe' final left' right) i
 
 -- | Connect a @Source@ to a @Sink@ until the latter closes. Returns both the
 -- most recent state of the @Source@ and the result of the @Sink@.

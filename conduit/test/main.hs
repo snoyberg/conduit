@@ -451,12 +451,24 @@ main = hspec $ do
             let bss = map S.pack bss'
              in runIdentity $
                 CL.sourceList bss C.$$ go (L.fromChunks bss)
+                -}
     describe "binary takeWhile" $ do
         prop "works" $ \bss' ->
             let bss = map S.pack bss'
              in runIdentity $ do
                 bss2 <- CL.sourceList bss C.$$ CB.takeWhile (>= 5) C.=$ CL.consume
                 return $ L.fromChunks bss2 == L.takeWhile (>= 5) (L.fromChunks bss)
+        prop "leftovers present" $ \bss' ->
+            let bss = map S.pack bss'
+             in runIdentity $ do
+                result <- CL.sourceList bss C.$$ do
+                    x <- CB.takeWhile (>= 5) C.=$ CL.consume
+                    y <- CL.consume
+                    return (S.concat x, S.concat y)
+                let expected = S.span (>= 5) $ S.concat bss
+                if result == expected
+                    then return True
+                    else error $ show (S.concat bss, result, expected)
 
     describe "binary dropWhile" $ do
         prop "works" $ \bss' ->
