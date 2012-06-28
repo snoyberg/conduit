@@ -1,7 +1,7 @@
 Name:                attoparsec-conduit
 Version:             0.5.0
-Synopsis:            Turn attoparsec parsers into sinks.
-Description:         Turn attoparsec parsers into sinks.
+Synopsis:            Consume attoparsec parsers via conduit.
+Description:         Consume attoparsec parsers via conduit.
 License:             BSD3
 License-file:        LICENSE
 Author:              Michael Snoyman
