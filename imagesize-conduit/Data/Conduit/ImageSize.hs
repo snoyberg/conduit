@@ -22,14 +22,14 @@ data FileFormat = GIF | PNG | JPG
 
 -- | Specialized version of 'sinkImageInfo' that returns only the
 -- image size.
-sinkImageSize :: Monad m => Pipe S.ByteString S.ByteString o u m (Maybe Size)
+sinkImageSize :: Monad m => GLSink S.ByteString m (Maybe Size)
 sinkImageSize = fmap (fmap fst) sinkImageInfo
 
 -- | Find out the size of an image.  Also returns the file format
 -- that parsed correctly.  Note that this function does not
 -- verify that the file is indeed in the format that it returns,
 -- since it looks only at a small part of the header.
-sinkImageInfo :: Monad m => Pipe S.ByteString S.ByteString o u m (Maybe (Size, FileFormat))
+sinkImageInfo :: Monad m => GLSink S.ByteString m (Maybe (Size, FileFormat))
 sinkImageInfo =
     start id
   where

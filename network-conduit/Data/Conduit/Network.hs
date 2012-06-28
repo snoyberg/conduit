@@ -39,7 +39,7 @@ import qualified Control.Exception as E
 -- This function does /not/ automatically close the socket.
 --
 -- Since 0.0.0
-sourceSocket :: MonadIO m => Socket -> Pipe l i ByteString u m ()
+sourceSocket :: MonadIO m => Socket -> GSource m ByteString
 sourceSocket socket =
     loop
   where
@@ -54,7 +54,7 @@ sourceSocket socket =
 -- This function does /not/ automatically close the socket.
 --
 -- Since 0.0.0
-sinkSocket :: MonadIO m => Socket -> Pipe l ByteString o r m r
+sinkSocket :: MonadIO m => Socket -> GInfSink ByteString m
 sinkSocket socket =
     loop
   where

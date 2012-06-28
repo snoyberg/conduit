@@ -12,8 +12,8 @@ module Data.Conduit.Zlib (
 ) where
 
 import Codec.Zlib
-import Data.Conduit hiding (unsafeLiftIO, Source, Sink, Conduit)
-import qualified Data.Conduit as C
+import Data.Conduit hiding (unsafeLiftIO, Source, Sink, Conduit, Pipe)
+import qualified Data.Conduit as C (unsafeLiftIO)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as S
 import Control.Exception (try)
@@ -21,11 +21,11 @@ import Control.Monad ((<=<), unless)
 import Control.Monad.Trans.Class (lift)
 
 -- | Gzip compression with default parameters.
-gzip :: (MonadThrow m, MonadUnsafeIO m) => Pipe l ByteString ByteString r m r
+gzip :: (MonadThrow m, MonadUnsafeIO m) => GInfConduit ByteString m ByteString
 gzip = compress 1 (WindowBits 31)
 
 -- | Gzip decompression with default parameters.
-ungzip :: (MonadUnsafeIO m, MonadThrow m) => Pipe l ByteString ByteString r m r
+ungzip :: (MonadUnsafeIO m, MonadThrow m) => GInfConduit ByteString m ByteString
 ungzip = decompress (WindowBits 31)
 
 unsafeLiftIO :: (MonadUnsafeIO m, MonadThrow m) => IO a -> m a
@@ -43,7 +43,7 @@ unsafeLiftIO =
 decompress
     :: (MonadUnsafeIO m, MonadThrow m)
     => WindowBits -- ^ Zlib parameter (see the zlib-bindings package as well as the zlib C library)
-    -> Pipe l ByteString ByteString r m r
+    -> GInfConduit ByteString m ByteString
 decompress =
     mapOutput unChunk . mapInput Chunk unChunk' . decompressFlush
   where
@@ -57,7 +57,7 @@ decompress =
 decompressFlush
     :: (MonadUnsafeIO m, MonadThrow m)
     => WindowBits -- ^ Zlib parameter (see the zlib-bindings package as well as the zlib C library)
-    -> Pipe l (Flush ByteString) (Flush ByteString) r m r
+    -> GInfConduit (Flush ByteString) m (Flush ByteString)
 decompressFlush config =
     awaitE >>= either return start
   where
@@ -97,7 +97,7 @@ compress
     :: (MonadUnsafeIO m, MonadThrow m)
     => Int         -- ^ Compression level
     -> WindowBits  -- ^ Zlib parameter (see the zlib-bindings package as well as the zlib C library)
-    -> Pipe l ByteString ByteString r m r
+    -> GInfConduit ByteString m ByteString
 compress level =
     mapOutput unChunk . mapInput Chunk unChunk' . compressFlush level
   where
@@ -112,7 +112,7 @@ compressFlush
     :: (MonadUnsafeIO m, MonadThrow m)
     => Int         -- ^ Compression level
     -> WindowBits  -- ^ Zlib parameter (see the zlib-bindings package as well as the zlib C library)
-    -> Pipe l (Flush ByteString) (Flush ByteString) r m r
+    -> GInfConduit (Flush ByteString) m (Flush ByteString)
 compressFlush level config =
     awaitE >>= either return start
   where

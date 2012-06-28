@@ -41,7 +41,7 @@ import qualified System.Posix as Posix
 traverse :: MonadIO m
          => Bool -- ^ Follow directory symlinks (only used on POSIX platforms)
          -> FilePath -- ^ Root directory
-         -> Source m FilePath
+         -> GSource m FilePath
 traverse _followSymlinks root =
     liftIO (listDirectory root) >>= pull
   where
@@ -74,11 +74,11 @@ traverse _followSymlinks root =
 -- | Same as 'CB.sourceFile', but uses system-filepath\'s @FilePath@ type.
 sourceFile :: MonadResource m
            => FilePath
-           -> Source m S.ByteString
+           -> GSource m S.ByteString
 sourceFile = CB.sourceFile . encodeString
 
 -- | Same as 'CB.sinkFile', but uses system-filepath\'s @FilePath@ type.
 sinkFile :: MonadResource m
          => FilePath
-         -> Sink S.ByteString m ()
+         -> GInfSink S.ByteString m
 sinkFile = CB.sinkFile . encodeString
