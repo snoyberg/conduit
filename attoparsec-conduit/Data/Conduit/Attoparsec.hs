@@ -5,17 +5,20 @@
 -- Copyright: 2011 Michael Snoyman, 2010 John Millikin
 -- License: MIT
 --
--- Turn an Attoparsec parser into a 'C.Sink'.
+-- Consume attoparsec parsers via conduit.
 --
 -- This code was taken from attoparsec-enumerator and adapted for conduits.
 module Data.Conduit.Attoparsec
-    ( ParseError (..)
+    ( -- * Sink
+      sinkParser
+      -- * Conduit
+    , conduitParser
+      -- * Types
+    , ParseError (..)
     , Position (..)
     , PositionRange (..)
+      -- * Classes
     , AttoparsecInput
-    , sinkParser
-    , conduitParser
-    , conduitParserPos
     ) where
 
 import           Prelude hiding (lines)
@@ -30,7 +33,7 @@ import           Control.Monad (unless)
 import qualified Data.Attoparsec.ByteString
 import qualified Data.Attoparsec.Text
 import qualified Data.Attoparsec.Types as A
-import           Data.Conduit
+import           Data.Conduit hiding (Pipe, Sink, Conduit, Source)
 
 -- | The context and message from a 'A.Fail' value.
 data ParseError = ParseError
@@ -107,14 +110,17 @@ instance AttoparsecInput T.Text where
 -- be streamed bytes until it returns 'A.Done' or 'A.Fail'.
 --
 -- If parsing fails, a 'ParseError' will be thrown with 'monadThrow'.
-sinkParser :: (AttoparsecInput a, MonadThrow m) => A.Parser a b -> Pipe a a o u m b
+--
+-- Since 0.5.0
+sinkParser :: (AttoparsecInput a, MonadThrow m) => A.Parser a b -> GLSink a m b
 sinkParser = fmap snd . sinkParserPos (Position 1 1)
 
-conduitParser :: (AttoparsecInput a, MonadThrow m) => A.Parser a b -> Pipe a a b r m r
-conduitParser = mapOutput snd . conduitParserPos
-
-conduitParserPos :: (AttoparsecInput a, MonadThrow m) => A.Parser a b -> Pipe a a (PositionRange, b) r m r
-conduitParserPos parser =
+-- | Consume a stream of parsed tokens, returning both the token and the
+-- position it appears at.
+--
+-- Since 0.5.0
+conduitParser :: (AttoparsecInput a, MonadThrow m) => A.Parser a b -> GLInfConduit a m (PositionRange, b)
+conduitParser parser =
     conduit $ Position 1 0
   where
     conduit pos =
@@ -126,7 +132,7 @@ conduitParserPos parser =
             yield (PositionRange pos pos', res)
             conduit pos'
 
-sinkParserPos :: (AttoparsecInput a, MonadThrow m) => Position -> A.Parser a b -> Pipe a a o u m (Position, b)
+sinkParserPos :: (AttoparsecInput a, MonadThrow m) => Position -> A.Parser a b -> GLSink a m (Position, b)
 sinkParserPos pos0 =
     sink empty pos0 . parseA
   where

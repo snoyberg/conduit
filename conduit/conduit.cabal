@@ -6,7 +6,7 @@ Description:
 	.
 	Release history:
     .
-    [0.5] Introduction of the @TPipe@ type and @Leftover@ constructor. The internals of the package are now separated to the .Internal module, leaving only the higher-level interface in the advertised API.
+    [0.5] The internals of the package are now separated to the .Internal module, leaving only the higher-level interface in the advertised API. Internally, switched to a @Leftover@ constructor and slightly tweaked the finalization semantics.
     .
     [0.4] Inspired by the design of the pipes package: we now have a single unified type underlying @Source@, @Sink@, and @Conduit@. This type is named @Pipe@. There are type synonyms provided for the other three types. Additionally, @BufferedSource@ is no longer provided. Instead, the connect-and-resume operator, @$$+@, can be used for the same purpose.
     .

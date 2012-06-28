@@ -9,8 +9,17 @@
 module Data.Conduit.Blaze
     (
 
+  -- * Conduits from builders to bytestrings
+    builderToByteString
+  , unsafeBuilderToByteString
+  , builderToByteStringWith
+
+  -- ** Flush
+  , builderToByteStringFlush
+  , builderToByteStringWithFlush
+
   -- * Buffers
-    Buffer
+  , Buffer
 
   -- ** Status information
   , freeSize
@@ -30,18 +39,9 @@ module Data.Conduit.Blaze
   , BufferAllocStrategy
   , allNewBuffersStrategy
   , reuseBufferStrategy
-
-  -- * Conduits from builders to bytestrings
-  , builderToByteString
-  , unsafeBuilderToByteString
-  , builderToByteStringWith
-
-  -- ** Flush
-  , builderToByteStringFlush
-  , builderToByteStringWithFlush
     ) where
 
-import Data.Conduit hiding (Source, Conduit, Sink)
+import Data.Conduit hiding (Source, Conduit, Sink, Pipe)
 import Control.Monad (unless)
 import Control.Monad.Trans.Class (lift)
 
@@ -53,14 +53,14 @@ import Blaze.ByteString.Builder.Internal.Buffer
 
 -- | Incrementally execute builders and pass on the filled chunks as
 -- bytestrings.
-builderToByteString :: MonadUnsafeIO m => Pipe l Builder S.ByteString r m r
+builderToByteString :: MonadUnsafeIO m => GInfConduit Builder m S.ByteString
 builderToByteString =
   builderToByteStringWith (allNewBuffersStrategy defaultBufferSize)
 
 -- |
 --
 -- Since 0.0.2
-builderToByteStringFlush :: MonadUnsafeIO m => Pipe l (Flush Builder) (Flush S.ByteString) r m r
+builderToByteStringFlush :: MonadUnsafeIO m => GInfConduit (Flush Builder) m (Flush S.ByteString)
 builderToByteStringFlush =
   builderToByteStringWithFlush (allNewBuffersStrategy defaultBufferSize)
 
@@ -73,7 +73,7 @@ builderToByteStringFlush =
 -- as control is returned from the inner sink!
 unsafeBuilderToByteString :: MonadUnsafeIO m
                           => IO Buffer  -- action yielding the inital buffer.
-                          -> Pipe l Builder S.ByteString r m r
+                          -> GInfConduit Builder m S.ByteString
 unsafeBuilderToByteString = builderToByteStringWith . reuseBufferStrategy
 
 
@@ -83,7 +83,7 @@ unsafeBuilderToByteString = builderToByteStringWith . reuseBufferStrategy
 -- INV: All bytestrings passed to the inner sink are non-empty.
 builderToByteStringWith :: MonadUnsafeIO m
                         => BufferAllocStrategy
-                        -> Pipe l Builder S.ByteString r m r
+                        -> GInfConduit Builder m S.ByteString
 builderToByteStringWith =
     mapOutputMaybe unChunk . mapInput Chunk unChunk . builderToByteStringWithFlush
   where
@@ -96,7 +96,7 @@ builderToByteStringWith =
 builderToByteStringWithFlush
     :: MonadUnsafeIO m
     => BufferAllocStrategy
-    -> Pipe l (Flush Builder) (Flush S.ByteString) r m r
+    -> GInfConduit (Flush Builder) m (Flush S.ByteString)
 builderToByteStringWithFlush (ioBufInit, nextBuf) =
     loop ioBufInit
   where
