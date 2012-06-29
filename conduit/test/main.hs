@@ -651,9 +651,9 @@ main = hspec $ do
     describe "generalizing" $ do
         it' "works" $ do
             x <-     C.runPipe
-                   $ C.sourceToPipe  (CL.sourceList [1..10 :: Int])
-               C.>+> C.conduitToPipe (CL.map (+ 1))
-               C.>+> C.sinkToPipe    (CL.fold (+) 0)
+                   $ CI.sourceToPipe  (CL.sourceList [1..10 :: Int])
+               C.>+> CI.conduitToPipe (CL.map (+ 1))
+               C.>+> CI.sinkToPipe    (CL.fold (+) 0)
             x @?= sum [2..11]
 
     describe "withUpstream" $ do
