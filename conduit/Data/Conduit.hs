@@ -44,10 +44,6 @@ module Data.Conduit
     , mapOutputMaybe
     , mapInput
     , withUpstream
-      -- ** Generalizing
-    , sourceToPipe
-    , sinkToPipe
-    , conduitToPipe
 
       -- * Generalized conduit types
       -- $generalizedConduitTypes
