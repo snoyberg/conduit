@@ -451,7 +451,6 @@ main = hspec $ do
             let bss = map S.pack bss'
              in runIdentity $
                 CL.sourceList bss C.$$ go (L.fromChunks bss)
-                -}
     describe "binary takeWhile" $ do
         prop "works" $ \bss' ->
             let bss = map S.pack bss'
