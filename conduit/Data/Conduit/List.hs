@@ -30,6 +30,8 @@ module Data.Conduit.List
       -- * Conduits
       -- ** Pure
     , map
+    , catMaybes
+    , catMaybesM
     , concatMap
     , concatMapAccum
     , groupBy
@@ -206,6 +208,20 @@ map f = awaitForever $ yield . f
 -- Since 0.3.0
 mapM :: Monad m => (a -> m b) -> GInfConduit a m b
 mapM f = awaitForever $ yield <=< lift . f
+
+-- | Apply a transformation that may fail to all values in a stream, discarding
+-- the failures.
+--
+-- Since 0.5.1
+catMaybes :: Monad m => (a -> Maybe b) -> GInfConduit a m b
+catMaybes f = awaitForever $ maybe (return ()) yield . f
+
+-- | Apply a monadic transformation that may fail to all values in a stream,
+-- discarding the failures.
+--
+-- Since 0.5.1
+catMaybesM :: Monad m => (a -> m (Maybe b)) -> GInfConduit a m b
+catMaybesM f = awaitForever $ maybe (return ()) yield <=< lift . f
 
 -- | Apply a transformation to all values in a stream, concatenating the output
 -- values.
