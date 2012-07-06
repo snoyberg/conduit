@@ -210,7 +210,14 @@ main = hspec $ do
             x <- runResourceT $ CL.sourceList input
                     C.$$ CL.catMaybes id
                     C.=$ CL.consume
-            x @?= [1,2,3]
+            x @?= [1, 2, 3]
+
+        it "catMaybesM" $ do
+            let input = [Just (1::Int), Nothing, Just 2, Nothing, Just 3]
+            x <- runResourceT $ CL.sourceList input
+                    C.$$ CL.catMaybesM return
+                    C.=$ CL.consume
+            x @?= [1, 2, 3]
 
         it "concatMap" $ do
             let input = [1, 11, 21]
