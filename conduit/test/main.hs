@@ -205,6 +205,27 @@ main = hspec $ do
                     C.=$ CL.consume
             x @?= DL.groupBy (==) input
 
+        it "mapMaybe" $ do
+            let input = [Just (1::Int), Nothing, Just 2, Nothing, Just 3]
+            x <- runResourceT $ CL.sourceList input
+                    C.$$ CL.mapMaybe ((+2) <$>)
+                    C.=$ CL.consume
+            x @?= [3, 4, 5]
+
+        it "mapMaybeM" $ do
+            let input = [Just (1::Int), Nothing, Just 2, Nothing, Just 3]
+            x <- runResourceT $ CL.sourceList input
+                    C.$$ CL.mapMaybeM (return . ((+2) <$>))
+                    C.=$ CL.consume
+            x @?= [3, 4, 5]
+
+        it "catMaybes" $ do
+            let input = [Just (1::Int), Nothing, Just 2, Nothing, Just 3]
+            x <- runResourceT $ CL.sourceList input
+                    C.$$ CL.catMaybes
+                    C.=$ CL.consume
+            x @?= [1, 2, 3]
+
         it "concatMap" $ do
             let input = [1, 11, 21]
             x <- runResourceT $ CL.sourceList input
