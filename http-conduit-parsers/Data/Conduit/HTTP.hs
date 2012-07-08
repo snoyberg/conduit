@@ -39,11 +39,10 @@ headerLines =
                 checkMulti remaining here rest
 
     checkMulti remaining here rest
+        | S.null here = leftover rest
         | S.null rest = await >>= maybe (lift $ monadThrow IncompleteHeaders) (checkMulti remaining here)
         | S.head rest == 9 || S.head rest == 32 = push remaining $ S.append here rest
-        | otherwise = unless (S.null here) $ do
-            yield here
-            push remaining rest
+        | otherwise = yield here >> push remaining rest
 
 killCR :: ByteString -> ByteString
 killCR bs
