@@ -7,4 +7,5 @@ pkgs=( resourcet
        network-conduit
        imagesize-conduit
        base64-conduit
+       http-conduit-parsers
      )
