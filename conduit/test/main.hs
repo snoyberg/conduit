@@ -35,6 +35,7 @@ import Data.Void (Void)
 
 main :: IO ()
 main = hspec $ do
+{-
     describe "data loss rules" $ do
         it "consumes the source to quickly" $ do
             x <- runResourceT $ CL.sourceList [1..10 :: Int] C.$$ do
@@ -688,6 +689,79 @@ main = hspec $ do
         it' "works" $ do
             res <- CL.iterate (+ 1) (1 :: Int) C.$$ CL.isolate 10 C.=$ CL.fold (+) 0
             res @?= sum [1..10]
+            -}
+
+    describe "unwrapResumable" $ do
+        it' "works" $ do
+            ref <- I.newIORef (0 :: Int)
+            let src0 = do
+                    C.yieldOr () $ I.writeIORef ref 1
+                    C.yieldOr () $ I.writeIORef ref 2
+                    C.yieldOr () $ I.writeIORef ref 3
+            (rsrc0, Just ()) <- src0 C.$$+ CL.head
+
+            x0 <- I.readIORef ref
+            x0 @?= 0
+
+            (_, final) <- C.unwrapResumable rsrc0
+
+            x1 <- I.readIORef ref
+            x1 @?= 0
+
+            final
+
+            x2 <- I.readIORef ref
+            x2 @?= 1
+
+        it' "isn't called twice" $ do
+            ref <- I.newIORef (0 :: Int)
+            let src0 = do
+                    C.yieldOr () $ I.writeIORef ref 1
+                    C.yieldOr () $ I.writeIORef ref 2
+            (rsrc0, Just ()) <- src0 C.$$+ CL.head
+
+            x0 <- I.readIORef ref
+            x0 @?= 0
+
+            (src1, final) <- C.unwrapResumable rsrc0
+
+            x1 <- I.readIORef ref
+            x1 @?= 0
+
+            Just () <- src1 C.$$ CL.head
+
+            x2 <- I.readIORef ref
+            x2 @?= 2
+
+            final
+
+            x3 <- I.readIORef ref
+            x3 @?= 2
+
+        it' "source isn't used" $ do
+            ref <- I.newIORef (0 :: Int)
+            let src0 = do
+                    C.yieldOr () $ I.writeIORef ref 1
+                    C.yieldOr () $ I.writeIORef ref 2
+            (rsrc0, Just ()) <- src0 C.$$+ CL.head
+
+            x0 <- I.readIORef ref
+            x0 @?= 0
+
+            (src1, final) <- C.unwrapResumable rsrc0
+
+            x1 <- I.readIORef ref
+            x1 @?= 0
+
+            () <- src1 C.$$ return ()
+
+            x2 <- I.readIORef ref
+            x2 @?= 0
+
+            final
+
+            x3 <- I.readIORef ref
+            x3 @?= 1
 
 it' :: String -> IO () -> Spec
 it' = it

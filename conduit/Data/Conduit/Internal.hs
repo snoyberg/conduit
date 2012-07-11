@@ -48,10 +48,11 @@ module Data.Conduit.Internal
     , mapInput
     , sourceList
     , withUpstream
+    , unwrapResumable
     ) where
 
 import Control.Applicative (Applicative (..))
-import Control.Monad ((>=>), liftM, ap)
+import Control.Monad ((>=>), liftM, ap, when)
 import Control.Monad.Trans.Class (MonadTrans (lift))
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Base (MonadBase (liftBase))
@@ -59,6 +60,7 @@ import Data.Void (Void, absurd)
 import Data.Monoid (Monoid (mappend, mempty))
 import Control.Monad.Trans.Resource
 import qualified GHC.Exts
+import qualified Data.IORef as I
 
 -- | The underlying datatype for all the types in this package.  In has six
 -- type parameters:
@@ -540,3 +542,26 @@ withUpstream down =
         loop
       where
         loop = awaitE >>= either (\u -> return (u, r)) (\_ -> loop)
+
+-- | Unwraps a @ResumableSource@ into a @Source@ and a finalizer.
+--
+-- A @ResumableSource@ represents a @Source@ which has already been run, and
+-- therefore has a finalizer registered. As a result, if we want to turn it
+-- into a regular @Source@, we need to ensure that the finalizer will be run
+-- appropriately. By appropriately, I mean:
+--
+-- * If a new finalizer is registered, the old one should not be called.
+-- * If the old one is called, it should not be called again.
+--
+-- This function returns both a @Source@ and a finalizer which ensures that the
+-- above two conditions hold. Once you call that finalizer, the @Source@ is
+-- invalidated and cannot be used.
+--
+-- Since 0.5.2
+unwrapResumable :: MonadIO m => ResumableSource m o -> m (Source m o, m ())
+unwrapResumable (ResumableSource src final) = do
+    ref <- liftIO $ I.newIORef True
+    let final' = do
+            x <- liftIO $ I.readIORef ref
+            when x final
+    return (liftIO (I.writeIORef ref False) >> src, final')

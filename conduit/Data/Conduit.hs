@@ -37,6 +37,7 @@ module Data.Conduit
     , ($$+)
     , ($$++)
     , ($$+-)
+    , unwrapResumable
 
       -- * Utility functions
     , transPipe
