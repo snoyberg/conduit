@@ -4,7 +4,6 @@ import qualified Data.Conduit.Binary as CB
 import Data.Conduit.ImageSize
 
 import Test.Hspec
-import Test.HUnit
 
 main :: IO ()
 main = hspec $ do
@@ -14,7 +13,7 @@ main = hspec $ do
         it "gif" $ check (Just $ Size 271 61) "test/logo.gif"
         it "invalid" $ check Nothing "test/main.hs"
 
-check :: Maybe Size -> FilePath -> Assertion
+check :: Maybe Size -> FilePath -> Expectation
 check ex fp = do
     size <- C.runResourceT $ CB.sourceFile fp C.$$ sinkImageSize
-    size @?= ex
+    size `shouldBe` ex

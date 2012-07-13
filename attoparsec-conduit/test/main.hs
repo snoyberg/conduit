@@ -2,7 +2,6 @@
 {-# LANGUAGE CPP #-}
 {-# OPTIONS_GHC -fno-warn-incomplete-patterns #-}
 import Test.Hspec
-import Test.HUnit
 import Control.Exception (fromException)
 
 import Data.Conduit
@@ -27,7 +26,7 @@ main = hspec $ do
                 Left e ->
                     case fromException e of
                         Just pe -> do
-                            errorPosition pe @?= Position badLine badCol
+                            errorPosition pe `shouldBe` Position badLine badCol
         it "works for bytestring" $ do
             let input = ["aaa\na", "aaa\n\n", "aaa", "aab\n\naaaa"]
                 badLine = 4
@@ -39,7 +38,7 @@ main = hspec $ do
                 Left e ->
                     case fromException e of
                         Just pe -> do
-                            errorPosition pe @?= Position badLine badCol
+                            errorPosition pe `shouldBe` Position badLine badCol
         it "works in last chunk" $ do
             let input = ["aaa\na", "aaa\n\n", "aaa", "aab\n\naaaa"]
                 badLine = 6
@@ -51,7 +50,7 @@ main = hspec $ do
                 Left e ->
                     case fromException e of
                         Just pe -> do
-                            errorPosition pe @?= Position badLine badCol
+                            errorPosition pe `shouldBe` Position badLine badCol
         it "works in last chunk" $ do
             let input = ["aaa\na", "aaa\n\n", "aaa", "aa\n\naaaab"]
                 badLine = 6
@@ -63,4 +62,4 @@ main = hspec $ do
                 Left e ->
                     case fromException e of
                         Just pe -> do
-                            errorPosition pe @?= Position badLine badCol
+                            errorPosition pe `shouldBe` Position badLine badCol

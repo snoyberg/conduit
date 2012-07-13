@@ -27,7 +27,6 @@ test-suite test
                    , http-conduit-parsers
                    , base
                    , hspec == 1.3.*
-                   , HUnit
                    , bytestring
     ghc-options:     -Wall
 

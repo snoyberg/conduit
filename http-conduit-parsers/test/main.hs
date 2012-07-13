@@ -4,7 +4,6 @@ import Data.Conduit.List (consume, sinkNull)
 import Data.Conduit.HTTP
 
 import Test.Hspec
-import Test.HUnit
 import Data.ByteString.Char8 ()
 import qualified Data.ByteString.Lazy.Char8 as L
 import Control.Exception (try)
@@ -14,7 +13,7 @@ main = hspec $ do
     describe "headerLines" $ do
         it "works" $ do
             x <- mapM_ yield ["foo\r\n", "bar\r", "\nbaz\r\n\r\nbin\r\n"] $$ headerLines 1000 =$ consume
-            x @?= ["foo", "bar", "baz"]
+            x `shouldBe` ["foo", "bar", "baz"]
         it "overlargeheader" $ do
             x <- try $ mapM_ yield ["foo\r\n", "bar\r", "\nbaz\r\n\r\nbin\r\n"] $$ headerLines 5 =$ consume
             case x of
@@ -27,12 +26,12 @@ main = hspec $ do
                 _ -> error $ show x
         it "multiline" $ do
             x <- mapM_ yield ["foo\r\n", " foo2\r\nbar\r", "\n\tbar2\r\nbaz\r\n\r\nbin\r\n"] $$ headerLines 1000 =$ consume
-            x @?= ["foo foo2", "bar\tbar2", "baz"]
+            x `shouldBe` ["foo foo2", "bar\tbar2", "baz"]
         it "body remains" $ do
             x <- mapM_ yield ["foo\r\n", " foo2\r\nbar\r", "\n\tbar2\r\nbaz\r\n\r\nbin\r\n"] $$ do
                 headerLines 1000 =$ sinkNull
                 consume
-            L.fromChunks x @?= "bin\r\n"
+            L.fromChunks x `shouldBe` "bin\r\n"
         it "doesn't consume too much" $ do
             x <- mapM_ yield ["foo\r\n", "bar\r", "\nbaz\r\n\r\n", error "too much"] $$ headerLines 1000 =$ consume
-            x @?= ["foo", "bar", "baz"]
+            x `shouldBe` ["foo", "bar", "baz"]

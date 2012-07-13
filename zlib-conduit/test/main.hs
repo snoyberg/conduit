@@ -1,6 +1,5 @@
 import Test.Hspec
 import Test.Hspec.QuickCheck (prop)
-import Test.HUnit
 
 import qualified Data.Conduit as C
 import qualified Data.Conduit.List as CL
@@ -37,4 +36,4 @@ main = hspec $ do
             let unChunk (C.Chunk x) = [x]
                 unChunk C.Flush = []
             bss <- CL.sourceList bssC C.$$ CL.concatMap unChunk C.=$ CZ.ungzip C.=$ CL.consume
-            L.fromChunks bss @?= content
+            L.fromChunks bss `shouldBe` content
