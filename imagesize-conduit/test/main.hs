@@ -3,8 +3,7 @@ import qualified Data.Conduit as C
 import qualified Data.Conduit.Binary as CB
 import Data.Conduit.ImageSize
 
-import Test.Hspec.Monadic
-import Test.Hspec.HUnit ()
+import Test.Hspec
 import Test.HUnit
 
 main :: IO ()

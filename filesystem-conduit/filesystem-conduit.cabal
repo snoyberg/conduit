@@ -37,7 +37,7 @@ test-suite test
     cpp-options:   -DTEST
     build-depends:   conduit
                    , base
-                   , hspec
+                   , hspec == 1.3.*
                    , HUnit
                    , QuickCheck
                    , bytestring

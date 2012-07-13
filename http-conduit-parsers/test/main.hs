@@ -3,8 +3,7 @@ import Data.Conduit
 import Data.Conduit.List (consume, sinkNull)
 import Data.Conduit.HTTP
 
-import Test.Hspec.Monadic
-import Test.Hspec.HUnit ()
+import Test.Hspec
 import Test.HUnit
 import Data.ByteString.Char8 ()
 import qualified Data.ByteString.Lazy.Char8 as L
