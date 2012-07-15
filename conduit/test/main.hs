@@ -35,7 +35,6 @@ import Data.Void (Void)
 
 main :: IO ()
 main = hspec $ do
-{-
     describe "data loss rules" $ do
         it "consumes the source to quickly" $ do
             x <- runResourceT $ CL.sourceList [1..10 :: Int] C.$$ do
@@ -689,7 +688,6 @@ main = hspec $ do
         it' "works" $ do
             res <- CL.iterate (+ 1) (1 :: Int) C.$$ CL.isolate 10 C.=$ CL.fold (+) 0
             res @?= sum [1..10]
-            -}
 
     describe "unwrapResumable" $ do
         it' "works" $ do
@@ -762,6 +760,15 @@ main = hspec $ do
 
             x3 <- I.readIORef ref
             x3 @?= 1
+    describe "injectLeftovers" $ do
+        it "works" $ do
+            let src = CL.sourceList [1..10 :: Int]
+                conduit = C.awaitForever $ \i -> do
+                    js <- CL.take 2
+                    mapM_ C.leftover $ reverse js
+                    C.yield i
+            res <- (src C.>+> C.injectLeftovers conduit) C.$$ CL.consume
+            res @?= [1..10]
 
 it' :: String -> IO () -> Spec
 it' = it

@@ -431,7 +431,7 @@ injectLeftovers (Leftover p0 i0) =
     inject i (Leftover p i') =
         case inject i' p of
             Leftover p' _ -> p'
-            p' -> Leftover p' i
+            p' -> inject i p'
 
 -- | Transform the monad that a @Pipe@ lives in.
 --
