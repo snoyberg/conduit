@@ -26,8 +26,7 @@ test-suite test
     build-depends:   conduit
                    , http-conduit-parsers
                    , base
-                   , hspec
-                   , HUnit
+                   , hspec == 1.3.*
                    , bytestring
     ghc-options:     -Wall
 

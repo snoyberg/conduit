@@ -1,9 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE CPP #-}
-import Test.Hspec.Monadic
-import Test.Hspec.HUnit ()
+import Test.Hspec
 import Test.Hspec.QuickCheck (prop)
-import Test.HUnit
 
 import qualified Data.Conduit as C
 import qualified Data.Conduit.Util as C
@@ -33,6 +31,9 @@ import Data.Functor.Identity (runIdentity)
 import Control.Monad (forever)
 import Data.Void (Void)
 
+(@=?) :: (Eq a, Show a) => a -> a -> IO ()
+(@=?) = flip shouldBe
+
 main :: IO ()
 main = hspec $ do
     describe "data loss rules" $ do
@@ -41,19 +42,19 @@ main = hspec $ do
                   strings <- CL.map show C.=$ CL.take 5
                   liftIO $ putStr $ unlines strings
                   CL.fold (+) 0
-            40 @?= x
+            40 `shouldBe` x
 
         it "correctly consumes a chunked resource" $ do
             x <- runResourceT $ (CL.sourceList [1..5 :: Int] `mappend` CL.sourceList [6..10]) C.$$ do
                 strings <- CL.map show C.=$ CL.take 5
                 liftIO $ putStr $ unlines strings
                 CL.fold (+) 0
-            40 @?= x
+            40 `shouldBe` x
 
     describe "filter" $ do
         it "even" $ do
             x <- runResourceT $ CL.sourceList [1..10] C.$$ CL.filter even C.=$ CL.consume
-            x @?= filter even [1..10 :: Int]
+            x `shouldBe` filter even [1..10 :: Int]
 
     describe "ResourceT" $ do
         it "resourceForkIO" $ do
@@ -77,12 +78,12 @@ main = hspec $ do
             -- give enough of a chance to the cleanup code to finish
             threadDelay 1000
             res <- I.readIORef counter
-            res @?= (0 :: Int)
+            res `shouldBe` (0 :: Int)
 
     describe "sum" $ do
         it "works for 1..10" $ do
             x <- runResourceT $ CL.sourceList [1..10] C.$$ CL.fold (+) (0 :: Int)
-            x @?= sum [1..10]
+            x `shouldBe` sum [1..10]
         prop "is idempotent" $ \list ->
             (runST $ CL.sourceList list C.$$ CL.fold (+) (0 :: Int))
             == sum list
@@ -94,19 +95,19 @@ main = hspec $ do
                 seed = 10 :: Int
             x <- CL.unfold f seed C.$$ CL.consume
             let y = DL.unfoldr f seed
-            x @?= y
+            x `shouldBe` y
 
     describe "Monoid instance for Source" $ do
         it "mappend" $ do
             x <- runResourceT $ (CL.sourceList [1..5 :: Int] `mappend` CL.sourceList [6..10]) C.$$ CL.fold (+) 0
-            x @?= sum [1..10]
+            x `shouldBe` sum [1..10]
         it "mconcat" $ do
             x <- runResourceT $ mconcat
                 [ CL.sourceList [1..5 :: Int]
                 , CL.sourceList [6..10]
                 , CL.sourceList [11..20]
                 ] C.$$ CL.fold (+) 0
-            x @?= sum [1..20]
+            x `shouldBe` sum [1..20]
 
     describe "file access" $ do
         it "read" $ do
@@ -117,7 +118,7 @@ main = hspec $ do
         it "read range" $ do
             S.writeFile "tmp" "0123456789"
             bss <- runResourceT $ CB.sourceFileRange "tmp" (Just 2) (Just 3) C.$$ CL.consume
-            S.concat bss @?= "234"
+            S.concat bss `shouldBe` "234"
 
         it "write" $ do
             runResourceT $ CB.sourceFile "conduit.cabal" C.$$ CB.sinkFile "tmp"
@@ -156,13 +157,13 @@ main = hspec $ do
             x <- runResourceT $ CL.sourceList [1..10] C.$$ do
                 _ <- CL.take 5
                 CL.fold (+) (0 :: Int)
-            x @?= sum [6..10]
+            x `shouldBe` sum [6..10]
 
     describe "Applicative instance for Sink" $ do
         it "<$> and <*>" $ do
             x <- runResourceT $ CL.sourceList [1..10] C.$$
                 (+) <$> pure 5 <*> CL.fold (+) (0 :: Int)
-            x @?= sum [1..10] + 5
+            x `shouldBe` sum [1..10] + 5
 
     describe "resumable sources" $ do
         it "simple" $ do
@@ -172,9 +173,9 @@ main = hspec $ do
                 (src3, y) <- src2 C.$$++ CL.fold (+) 0
                 z <- src3 C.$$+- CL.consume
                 return (x, y, z)
-            x @?= [1..5] :: IO ()
-            y @?= sum [6..10]
-            z @?= []
+            x `shouldBe` [1..5] :: IO ()
+            y `shouldBe` sum [6..10]
+            z `shouldBe` []
 
     describe "conduits" $ do
         it "map, left" $ do
@@ -182,61 +183,61 @@ main = hspec $ do
                 CL.sourceList [1..10]
                     C.$= CL.map (* 2)
                     C.$$ CL.fold (+) 0
-            x @?= 2 * sum [1..10 :: Int]
+            x `shouldBe` 2 * sum [1..10 :: Int]
 
         it "map, right" $ do
             x <- runResourceT $
                 CL.sourceList [1..10]
                     C.$$ CL.map (* 2)
                     C.=$ CL.fold (+) 0
-            x @?= 2 * sum [1..10 :: Int]
+            x `shouldBe` 2 * sum [1..10 :: Int]
 
         it "groupBy" $ do
             let input = [1::Int, 1, 2, 3, 3, 3, 4, 5, 5]
             x <- runResourceT $ CL.sourceList input
                     C.$$ CL.groupBy (==)
                     C.=$ CL.consume
-            x @?= DL.groupBy (==) input
+            x `shouldBe` DL.groupBy (==) input
 
         it "groupBy (nondup begin/end)" $ do
             let input = [1::Int, 2, 3, 3, 3, 4, 5]
             x <- runResourceT $ CL.sourceList input
                     C.$$ CL.groupBy (==)
                     C.=$ CL.consume
-            x @?= DL.groupBy (==) input
+            x `shouldBe` DL.groupBy (==) input
 
         it "mapMaybe" $ do
             let input = [Just (1::Int), Nothing, Just 2, Nothing, Just 3]
             x <- runResourceT $ CL.sourceList input
                     C.$$ CL.mapMaybe ((+2) <$>)
                     C.=$ CL.consume
-            x @?= [3, 4, 5]
+            x `shouldBe` [3, 4, 5]
 
         it "mapMaybeM" $ do
             let input = [Just (1::Int), Nothing, Just 2, Nothing, Just 3]
             x <- runResourceT $ CL.sourceList input
                     C.$$ CL.mapMaybeM (return . ((+2) <$>))
                     C.=$ CL.consume
-            x @?= [3, 4, 5]
+            x `shouldBe` [3, 4, 5]
 
         it "catMaybes" $ do
             let input = [Just (1::Int), Nothing, Just 2, Nothing, Just 3]
             x <- runResourceT $ CL.sourceList input
                     C.$$ CL.catMaybes
                     C.=$ CL.consume
-            x @?= [1, 2, 3]
+            x `shouldBe` [1, 2, 3]
 
         it "concatMap" $ do
             let input = [1, 11, 21]
             x <- runResourceT $ CL.sourceList input
                     C.$$ CL.concatMap (\i -> enumFromTo i (i + 9))
                     C.=$ CL.fold (+) (0 :: Int)
-            x @?= sum [1..30]
+            x `shouldBe` sum [1..30]
 
         it "bind together" $ do
             let conduit = CL.map (+ 5) C.=$= CL.map (* 2)
             x <- runResourceT $ CL.sourceList [1..10] C.$= conduit C.$$ CL.fold (+) 0
-            x @?= sum (map (* 2) $ map (+ 5) [1..10 :: Int])
+            x `shouldBe` sum (map (* 2) $ map (+ 5) [1..10 :: Int])
 
 #if !FAST
     describe "isolate" $ do
@@ -246,8 +247,8 @@ main = hspec $ do
                 (src2, x) <- src1 C.$= CL.isolate 5 C.$$+ CL.consume
                 y <- src2 C.$$+- CL.consume
                 return (x, y)
-            x @?= [1..5]
-            y @?= []
+            x `shouldBe` [1..5]
+            y `shouldBe` []
 
         it "bound to sink, non-resumable" $ do
             (x, y) <- runResourceT $ do
@@ -255,8 +256,8 @@ main = hspec $ do
                     x <- CL.isolate 5 C.=$ CL.consume
                     y <- CL.consume
                     return (x, y)
-            x @?= [1..5]
-            y @?= [6..10]
+            x `shouldBe` [1..5]
+            y `shouldBe` [6..10]
 
         it "bound to sink, resumable" $ do
             (x, y) <- runResourceT $ do
@@ -264,14 +265,14 @@ main = hspec $ do
                 (src2, x) <- src1 C.$$+ CL.isolate 5 C.=$ CL.consume
                 y <- src2 C.$$+- CL.consume
                 return (x, y)
-            x @?= [1..5]
-            y @?= [6..10]
+            x `shouldBe` [1..5]
+            y `shouldBe` [6..10]
 
         it "consumes all data" $ do
             x <- runResourceT $ CL.sourceList [1..10 :: Int] C.$$ do
                 CL.isolate 5 C.=$ CL.sinkNull
                 CL.consume
-            x @?= [6..10]
+            x `shouldBe` [6..10]
 
     describe "lazy" $ do
         it' "works inside a ResourceT" $ runResourceT $ do
@@ -287,15 +288,15 @@ main = hspec $ do
                             _ -> do
                                 count <- liftIO $ I.atomicModifyIORef counter
                                     (\j -> (j + 1, j + 1))
-                                liftIO $ count @?= i
+                                liftIO $ count `shouldBe` i
                         return res
                             )
             nums <- CLazy.lazyConsume $ mconcat $ map incr [1..10]
-            liftIO $ nums @?= [1..10]
+            liftIO $ nums `shouldBe` [1..10]
 
         it' "returns nothing outside ResourceT" $ do
             bss <- runResourceT $ CLazy.lazyConsume $ CB.sourceFile "test/main.hs"
-            bss @?= []
+            bss `shouldBe` []
 
     describe "sequence" $ do
         it "simple sink" $ do
@@ -308,7 +309,7 @@ main = hspec $ do
             res <- runResourceT $ CL.sourceList [1..11 :: Int]
                              C.$= CL.sequence sumSink
                              C.$$ CL.consume
-            res @?= [3, 7, 11, 15, 19, 11]
+            res `shouldBe` [3, 7, 11, 15, 19, 11]
 
         it "sink with unpull behaviour" $ do
             let sumSink = do
@@ -320,7 +321,7 @@ main = hspec $ do
             res <- runResourceT $ CL.sourceList [1..11 :: Int]
                              C.$= CL.sequence sumSink
                              C.$$ CL.consume
-            res @?= [3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 11]
+            res `shouldBe` [3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 11]
 
 
     describe "sequenceSink" $ do
@@ -333,7 +334,7 @@ main = hspec $ do
             res <- runResourceT $ CL.sourceList [1..10 :: Int]
                            C.$= conduit
                            C.$$ CL.consume
-            res @?= [3, 6, 9]
+            res `shouldBe` [3, 6, 9]
         it "finishes on new state" $ do
             let sink () = do
                 x <- CL.head
@@ -341,7 +342,7 @@ main = hspec $ do
             let conduit = C.sequenceSink () sink
             res <- runResourceT $ CL.sourceList [1..10 :: Int]
                         C.$= conduit C.$$ CL.consume
-            res @?= [1..10]
+            res `shouldBe` [1..10]
         it "switch to a conduit" $ do
             let sink () = do
                 _ <- CL.drop 4
@@ -350,7 +351,7 @@ main = hspec $ do
             res <- runResourceT $ CL.sourceList [1..10 :: Int]
                             C.$= conduit
                             C.$$ CL.consume
-            res @?= [6, 8, 10]
+            res `shouldBe` [6, 8, 10]
 #endif
 
     describe "peek" $ do
@@ -359,7 +360,7 @@ main = hspec $ do
                 a <- CL.peek
                 b <- CL.consume
                 return (a, b)
-            (a, b) @?= (Just 1, [1..10])
+            (a, b) `shouldBe` (Just 1, [1..10])
 
     describe "text" $ do
         let go enc tenc cenc = do
@@ -402,21 +403,21 @@ main = hspec $ do
                 [[T.pack "ab", T.pack "cd", T.pack "e"]]
         it "is not too eager" $ do
             x <- CL.sourceList ["foobarbaz", error "ignore me"] C.$$ CT.decode CT.utf8 C.=$ CL.head
-            x @?= Just "foobarbaz"
+            x `shouldBe` Just "foobarbaz"
 
     describe "binary isolate" $ do
         it "works" $ do
             bss <- runResourceT $ CL.sourceList (replicate 1000 "X")
                            C.$= CB.isolate 6
                            C.$$ CL.consume
-            S.concat bss @?= "XXXXXX"
+            S.concat bss `shouldBe` "XXXXXX"
     describe "unbuffering" $ do
         it "works" $ do
             x <- runResourceT $ do
                 let src1 = CL.sourceList [1..10 :: Int]
                 (src2, ()) <- src1 C.$$+ CL.drop 5
                 src2 C.$$+- CL.fold (+) 0
-            x @?= sum [6..10]
+            x `shouldBe` sum [6..10]
 
     describe "operators" $ do
         it "only use =$=" $
@@ -427,7 +428,7 @@ main = hspec $ do
              C.=$  CL.mapM (return . (* 2))
              C.=$  CL.map (`div` 2)
              C.=$  CL.fold (+) 0
-            ) @?= sum [1..10]
+            ) `shouldBe` sum [1..10]
         it "only use =$" $
             runIdentity
             (    CL.sourceList [1..10 :: Int]
@@ -436,7 +437,7 @@ main = hspec $ do
               C.=$ CL.map (* 2)
               C.=$ CL.map (`div` 2)
               C.=$ CL.fold (+) 0
-            ) @?= sum [1..10]
+            ) `shouldBe` sum [1..10]
         it "chain" $ do
             x <-      CL.sourceList [1..10 :: Int]
                 C.$=  CL.map (+ 1)
@@ -450,14 +451,14 @@ main = hspec $ do
                 C.=$  CL.map (+ 1)
                 C.=$  CL.map (subtract 3)
                 C.=$  CL.fold (+) 0
-            x @?= sum [1..10]
+            x `shouldBe` sum [1..10]
 
 
     describe "properly using binary file reading" $ do
         it "sourceFile" $ do
             x <- runResourceT $ CB.sourceFile "test/random" C.$$ CL.consume
             lbs <- L.readFile "test/random"
-            L.fromChunks x @?= lbs
+            L.fromChunks x `shouldBe` lbs
 
     describe "binary head" $ do
         let go lbs = do
@@ -508,33 +509,33 @@ main = hspec $ do
       -- Taking nothing should result in an empty Bytestring
       it "nothing" $ do
         (a, b) <- runResourceT $ go 0 ["abc", "defg"]
-        a              @?= L.empty
-        L.fromChunks b @?= "abcdefg"
+        a              `shouldBe` L.empty
+        L.fromChunks b `shouldBe` "abcdefg"
 
       it "normal" $ do
         (a, b) <- runResourceT $ go 4 ["abc", "defg"]
-        a              @?= "abcd"
-        L.fromChunks b @?= "efg"
+        a              `shouldBe` "abcd"
+        L.fromChunks b `shouldBe` "efg"
 
       -- Taking exactly the data that is available should result in no
       -- leftover.
       it "all" $ do
         (a, b) <- runResourceT $ go 7 ["abc", "defg"]
-        a @?= "abcdefg"
-        b @?= []
+        a `shouldBe` "abcdefg"
+        b `shouldBe` []
 
       -- Take as much as possible.
       it "more" $ do
         (a, b) <- runResourceT $ go 10 ["abc", "defg"]
-        a @?= "abcdefg"
-        b @?= []
+        a `shouldBe` "abcdefg"
+        b `shouldBe` []
 
     describe "normalFuseLeft" $ do
         it "does not double close conduit" $ do
             x <- runResourceT $ do
                 let src = CL.sourceList ["foobarbazbin"]
                 src C.$= CB.isolate 10 C.$$ CL.head
-            x @?= Just "foobarbazb"
+            x `shouldBe` Just "foobarbazb"
 
     describe "binary" $ do
         prop "lines" $ \bss' -> runIdentity $ do
@@ -548,7 +549,7 @@ main = hspec $ do
         it "terminates early" $ do
             let src = forever $ CI.yield ()
             x <- src C.$$ CL.head
-            x @?= Just ()
+            x `shouldBe` Just ()
         it "bracket" $ do
             ref <- I.newIORef (0 :: Int)
             let src = CI.bracketP
@@ -556,9 +557,9 @@ main = hspec $ do
                     (\() -> I.modifyIORef ref (+ 2))
                     (\() -> forever $ CI.yield (1 :: Int))
             val <- C.runResourceT $ src C.$$ CL.isolate 10 C.=$ CL.fold (+) 0
-            val @?= 10
+            val `shouldBe` 10
             i <- I.readIORef ref
-            i @?= 3
+            i `shouldBe` 3
         it "bracket skipped if not needed" $ do
             ref <- I.newIORef (0 :: Int)
             let src = CI.bracketP
@@ -567,9 +568,9 @@ main = hspec $ do
                     (\() -> forever $ CI.yield (1 :: Int))
                 src' = CL.sourceList $ repeat 1
             val <- C.runResourceT $ (src' >> src) C.$$ CL.isolate 10 C.=$ CL.fold (+) 0
-            val @?= 10
+            val `shouldBe` 10
             i <- I.readIORef ref
-            i @?= 0
+            i `shouldBe` 0
         it "bracket + toPipe" $ do
             ref <- I.newIORef (0 :: Int)
             let src = CI.bracketP
@@ -577,9 +578,9 @@ main = hspec $ do
                     (\() -> I.modifyIORef ref (+ 2))
                     (\() -> forever $ CI.yield (1 :: Int))
             val <- C.runResourceT $ src C.$$ CL.isolate 10 C.=$ CL.fold (+) 0
-            val @?= 10
+            val `shouldBe` 10
             i <- I.readIORef ref
-            i @?= 3
+            i `shouldBe` 3
         it "bracket skipped if not needed" $ do
             ref <- I.newIORef (0 :: Int)
             let src = CI.bracketP
@@ -588,9 +589,9 @@ main = hspec $ do
                     (\() -> forever $ CI.yield (1 :: Int))
                 src' = CL.sourceList $ repeat 1
             val <- C.runResourceT $ (src' >> src) C.$$ CL.isolate 10 C.=$ CL.fold (+) 0
-            val @?= 10
+            val `shouldBe` 10
             i <- I.readIORef ref
-            i @?= 0
+            i `shouldBe` 0
 
     describe "invariant violations" $ do
         it "leftovers without input" $ do
@@ -601,17 +602,17 @@ main = hspec $ do
 
             _ <- CI.yield 1 C.$$ adder
             x <- I.readIORef ref
-            x @?= [1 :: Int]
+            x `shouldBe` [1 :: Int]
             I.writeIORef ref []
 
             _ <- CI.yield 1 C.$$ (residue 2 >> residue 3) >> adder
             y <- I.readIORef ref
-            y @?= [1, 2, 3]
+            y `shouldBe` [1, 2, 3]
             I.writeIORef ref []
 
             _ <- CI.yield 1 C.$$ residue 2 >> (residue 3 >> adder)
             z <- I.readIORef ref
-            z @?= [1, 2, 3]
+            z `shouldBe` [1, 2, 3]
             I.writeIORef ref []
 
     describe "sane yield/await'" $ do
@@ -620,17 +621,17 @@ main = hspec $ do
                 src [] = return ()
                 src (x:xs) = CI.yield x >> src xs
             x <- src is C.$$ CL.take 10
-            x @?= [1..10 :: Int]
+            x `shouldBe` [1..10 :: Int]
         it' "yield terminates (2)" $ do
             let is = [1..10] ++ undefined
             x <- mapM_ CI.yield is C.$$ CL.take 10
-            x @?= [1..10 :: Int]
+            x `shouldBe` [1..10 :: Int]
         it' "yieldOr finalizer called" $ do
             iref <- I.newIORef (0 :: Int)
             let src = mapM_ (\i -> C.yieldOr i $ I.writeIORef iref i) [1..]
             src C.$$ CL.isolate 10 C.=$ CL.sinkNull
             x <- I.readIORef iref
-            x @?= 10
+            x `shouldBe` 10
 
     describe "upstream results" $ do
         it' "works" $ do
@@ -639,15 +640,15 @@ main = hspec $ do
                 passFold :: (b -> a -> b) -> b -> C.Pipe l a a () IO b
                 passFold f b = C.await >>= maybe (return b) (\a -> let b' = f b a in b' `seq` C.yield a >> passFold f b')
             (x, y) <- CI.runPipe $ CL.sourceList [1..10 :: Int] C.>+> passFold (+) 0 C.>+>  foldUp (*) 1
-            (x, y) @?= (sum [1..10], product [1..10])
+            (x, y) `shouldBe` (sum [1..10], product [1..10])
 
     describe "input/output mapping" $ do
         it' "mapOutput" $ do
             x <- CI.mapOutput (+ 1) (CL.sourceList [1..10 :: Int]) C.$$ CL.fold (+) 0
-            x @?= sum [2..11]
+            x `shouldBe` sum [2..11]
         it' "mapOutputMaybe" $ do
             x <- CI.mapOutputMaybe (\i -> if even i then Just i else Nothing) (CL.sourceList [1..10 :: Int]) C.$$ CL.fold (+) 0
-            x @?= sum [2, 4..10]
+            x `shouldBe` sum [2, 4..10]
         it' "mapInput" $ do
             xyz <- (CL.sourceList $ map show [1..10 :: Int]) C.$$ do
                 (x, y) <- CI.mapInput read (Just . show) $ ((do
@@ -657,17 +658,17 @@ main = hspec $ do
                 z <- CL.consume
                 return (x, y, concat z)
 
-            xyz @?= (sum [1..5], Just 6, "678910")
+            xyz `shouldBe` (sum [1..5], Just 6, "678910")
 
     describe "left/right identity" $ do
         it' "left identity" $ do
             x <- CL.sourceList [1..10 :: Int] C.$$ CI.idP C.=$ CL.fold (+) 0
             y <- CL.sourceList [1..10 :: Int] C.$$ CL.fold (+) 0
-            x @?= y
+            x `shouldBe` y
         it' "right identity" $ do
             x <- CI.runPipe $ CL.sourceList [1..10 :: Int] C.>+> CL.fold (+) 0 C.>+> CI.idP
             y <- CI.runPipe $ CL.sourceList [1..10 :: Int] C.>+> CL.fold (+) 0
-            x @?= y
+            x `shouldBe` y
 
     describe "generalizing" $ do
         it' "works" $ do
@@ -675,19 +676,19 @@ main = hspec $ do
                    $ CI.sourceToPipe  (CL.sourceList [1..10 :: Int])
                C.>+> CI.conduitToPipe (CL.map (+ 1))
                C.>+> CI.sinkToPipe    (CL.fold (+) 0)
-            x @?= sum [2..11]
+            x `shouldBe` sum [2..11]
 
     describe "withUpstream" $ do
         it' "works" $ do
             let src = CL.sourceList [1..10 :: Int] >> return True
                 sink = C.withUpstream $ CL.fold (+) 0
             res <- C.runPipe $ src C.>+> sink
-            res @?= (True, sum [1..10])
+            res `shouldBe` (True, sum [1..10])
 
     describe "iterate" $ do
         it' "works" $ do
             res <- CL.iterate (+ 1) (1 :: Int) C.$$ CL.isolate 10 C.=$ CL.fold (+) 0
-            res @?= sum [1..10]
+            res `shouldBe` sum [1..10]
 
     describe "unwrapResumable" $ do
         it' "works" $ do
@@ -699,17 +700,17 @@ main = hspec $ do
             (rsrc0, Just ()) <- src0 C.$$+ CL.head
 
             x0 <- I.readIORef ref
-            x0 @?= 0
+            x0 `shouldBe` 0
 
             (_, final) <- C.unwrapResumable rsrc0
 
             x1 <- I.readIORef ref
-            x1 @?= 0
+            x1 `shouldBe` 0
 
             final
 
             x2 <- I.readIORef ref
-            x2 @?= 1
+            x2 `shouldBe` 1
 
         it' "isn't called twice" $ do
             ref <- I.newIORef (0 :: Int)
@@ -719,22 +720,22 @@ main = hspec $ do
             (rsrc0, Just ()) <- src0 C.$$+ CL.head
 
             x0 <- I.readIORef ref
-            x0 @?= 0
+            x0 `shouldBe` 0
 
             (src1, final) <- C.unwrapResumable rsrc0
 
             x1 <- I.readIORef ref
-            x1 @?= 0
+            x1 `shouldBe` 0
 
             Just () <- src1 C.$$ CL.head
 
             x2 <- I.readIORef ref
-            x2 @?= 2
+            x2 `shouldBe` 2
 
             final
 
             x3 <- I.readIORef ref
-            x3 @?= 2
+            x3 `shouldBe` 2
 
         it' "source isn't used" $ do
             ref <- I.newIORef (0 :: Int)
@@ -744,22 +745,22 @@ main = hspec $ do
             (rsrc0, Just ()) <- src0 C.$$+ CL.head
 
             x0 <- I.readIORef ref
-            x0 @?= 0
+            x0 `shouldBe` 0
 
             (src1, final) <- C.unwrapResumable rsrc0
 
             x1 <- I.readIORef ref
-            x1 @?= 0
+            x1 `shouldBe` 0
 
             () <- src1 C.$$ return ()
 
             x2 <- I.readIORef ref
-            x2 @?= 0
+            x2 `shouldBe` 0
 
             final
 
             x3 <- I.readIORef ref
-            x3 @?= 1
+            x3 `shouldBe` 1
     describe "injectLeftovers" $ do
         it "works" $ do
             let src = CL.sourceList [1..10 :: Int]
@@ -768,7 +769,7 @@ main = hspec $ do
                     mapM_ C.leftover $ reverse js
                     C.yield i
             res <- (src C.>+> C.injectLeftovers conduit) C.$$ CL.consume
-            res @?= [1..10]
+            res `shouldBe` [1..10]
 
 it' :: String -> IO () -> Spec
 it' = it

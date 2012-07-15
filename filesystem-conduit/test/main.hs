@@ -1,10 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE CPP #-}
-import Test.Hspec.Monadic
+import Test.Hspec
 {-
-import Test.Hspec.HUnit ()
 import Test.Hspec.QuickCheck (prop)
-import Test.HUnit
 
 import qualified Data.Conduit as C
 import qualified Data.Conduit.List as CL
