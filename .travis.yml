@@ -2,6 +2,6 @@ language: haskell
 
 install:
     - cabal update
-    - cabal install mega-sdist
+    - cabal install mega-sdist hspec
 
 script: mega-sdist --test
