@@ -6,4 +6,3 @@
 ./zlib-conduit
 ./network-conduit
 ./imagesize-conduit
-./http-conduit-parsers

@@ -417,21 +417,15 @@ runPipe (Leftover _ i) = absurd i
 --
 -- Since 0.5.0
 injectLeftovers :: Monad m => Pipe i i o u m r -> Pipe l i o u m r
-injectLeftovers (Done r) = Done r
-injectLeftovers (PipeM mp) = PipeM (liftM injectLeftovers mp)
-injectLeftovers (NeedInput p c) = NeedInput (injectLeftovers . p) (injectLeftovers . c)
-injectLeftovers (HaveOutput p c o) = HaveOutput (injectLeftovers p) c o
-injectLeftovers (Leftover p0 i0) =
-    injectLeftovers $ inject i0 p0
+injectLeftovers =
+    go []
   where
-    inject _ (Done r) = Done r
-    inject i (NeedInput p _) = p i
-    inject i (PipeM mp) = PipeM $ liftM (inject i) mp
-    inject i (HaveOutput p c o) = HaveOutput (inject i p) c o
-    inject i (Leftover p i') =
-        case inject i' p of
-            Leftover p' _ -> p'
-            p' -> inject i p'
+    go _ (Done r) = Done r
+    go ls (HaveOutput p c o) = HaveOutput (go ls p) c o
+    go ls (PipeM mp) = PipeM (liftM (go ls) mp)
+    go ls (Leftover p l) = go (l:ls) p
+    go (l:ls) (NeedInput p _) = go ls $ p l
+    go [] (NeedInput p c) = NeedInput (go [] . p) (go [] . c)
 
 -- | Transform the monad that a @Pipe@ lives in.
 --
