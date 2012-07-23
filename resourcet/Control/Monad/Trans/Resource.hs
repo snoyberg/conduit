@@ -5,6 +5,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 #if __GLASGOW_HASKELL__ >= 704
 {-# LANGUAGE ConstraintKinds #-}
@@ -43,6 +44,7 @@ module Control.Monad.Trans.Resource
 
 import Data.Typeable
 import Data.IntMap (IntMap)
+import qualified Unsafe.Coerce as Unsafe (unsafeCoerce)
 import qualified Data.IntMap as IntMap
 import Control.Exception (SomeException, throw, Exception)
 import Control.Monad.Trans.Control
@@ -105,14 +107,18 @@ import Data.Functor.Identity (Identity)
 -- 'register' and 'allocate', and is passed to 'release'.
 --
 -- Since 0.3.0
-newtype ReleaseKey = ReleaseKey Int
+newtype ReleaseKeyF a = ReleaseKeyF Int
     deriving Typeable
+
+type ReleaseKey = ReleaseKeyF ()
 
 type RefCount = Word
 type NextKey = Int
 
+data Elem = forall a . Elem !a !(a -> IO ())
+
 data ReleaseMap =
-    ReleaseMap !NextKey !RefCount !(IntMap (IO ()))
+    ReleaseMap !NextKey !RefCount !(IntMap Elem)
   | ReleaseMapClosed
 
 -- | The Resource transformer. This transformer keeps track of all registered
@@ -180,14 +186,31 @@ instance MonadWriter w m => MonadWriter w (ResourceT m) where
 --
 -- Since 0.3.0
 class (MonadThrow m, MonadUnsafeIO m, MonadIO m, Applicative m) => MonadResource m where
+    -- | Register some funcion with its default argument that
+    -- will be called precisely once, either when 'runResourceT' is called,
+    -- or when the 'ReleaseKey' is passed to 'release'.
+    --
+    -- Since 0.3.4
+    registerF :: a -> (a -> IO ()) -> m (ReleaseKeyF a)
+
+    -- | Call a release function early with the given argument, and deregister
+    -- it from the list of cleanup actions to be performed.
+    --
+    -- Since 0.3.4
+    releaseF :: (ReleaseKeyF a) -> a -> m ()
+
     -- | Register some action that will be called precisely once, either when
     -- 'runResourceT' is called, or when the 'ReleaseKey' is passed to 'release'.
+    --
+    -- Semantically equivivalent to:
+    --
+    -- > registerF () (const action)
     --
     -- Since 0.3.0
     register :: IO () -> m ReleaseKey
 
-    -- | Call a release action early, and deregister it from the list of cleanup
-    -- actions to be performed.
+    -- | Call a release function early with the default argument,
+    -- and deregister it from the list of cleanup actions to be performed.
     --
     -- Since 0.3.0
     release :: ReleaseKey -> m ()
@@ -217,6 +240,10 @@ instance (MonadThrow m, MonadUnsafeIO m, MonadIO m, Applicative m) => MonadResou
         key <- register' istate $ rel a
         return (key, a)
 
+    registerF def fun = ResourceT $ \istate -> liftIO $ registerF' istate def fun
+
+    releaseF rk def = ResourceT $ \istate -> liftIO $ releaseF' istate rk def
+
     register rel = ResourceT $ \istate -> liftIO $ register' istate rel
 
     release rk = ResourceT $ \istate -> liftIO $ release' istate rk
@@ -228,8 +255,8 @@ instance (MonadThrow m, MonadUnsafeIO m, MonadIO m, Applicative m) => MonadResou
         go :: (forall a. IO a -> IO a) -> (forall a. ResourceT IO a -> ResourceT IO a)
         go r (ResourceT g) = ResourceT (\i -> r (g i))
 
-#define GO(T) instance (MonadResource m) => MonadResource (T m) where allocate a = lift . allocate a; register = lift . register; release = lift . release; resourceMask = lift . resourceMask
-#define GOX(X, T) instance (X, MonadResource m) => MonadResource (T m) where allocate a = lift . allocate a; register = lift . register; release = lift . release; resourceMask = lift . resourceMask
+#define GO(T) instance (MonadResource m) => MonadResource (T m) where allocate a = lift . allocate a; registerF def = lift . registerF def; releaseF rk = lift. releaseF rk; register = lift . register; release = lift . release; resourceMask = lift . resourceMask
+#define GOX(X, T) instance (X, MonadResource m) => MonadResource (T m) where allocate a = lift . allocate a; registerF def = lift . registerF def; releaseF rk = lift. releaseF rk; register = lift . register; release = lift . release; resourceMask = lift . resourceMask
 GO(IdentityT)
 GO(ListT)
 GO(MaybeT)
@@ -251,8 +278,20 @@ register' :: I.IORef ReleaseMap
 register' istate rel = I.atomicModifyIORef istate $ \rm ->
     case rm of
         ReleaseMap key rf m ->
-            ( ReleaseMap (key - 1) rf (IntMap.insert key rel m)
-            , ReleaseKey key
+            ( ReleaseMap (key - 1) rf (IntMap.insert key (Elem () (const rel)) m)
+            , ReleaseKeyF key
+            )
+        ReleaseMapClosed -> throw $ InvalidAccess "register'"
+
+registerF' :: I.IORef ReleaseMap
+           -> a
+           -> (a -> IO ())
+           -> IO (ReleaseKeyF a)
+registerF' istate def fun = I.atomicModifyIORef istate $ \rm ->
+    case rm of
+        ReleaseMap key rf m ->
+            ( ReleaseMap (key - 1) rf (IntMap.insert key (Elem def fun) m)
+            , ReleaseKeyF key
             )
         ReleaseMapClosed -> throw $ InvalidAccess "register'"
 
@@ -275,16 +314,33 @@ instance Exception InvalidAccess
 release' :: I.IORef ReleaseMap
          -> ReleaseKey
          -> IO ()
-release' istate (ReleaseKey key) = E.mask $ \restore -> key `seq` do
+release' istate (ReleaseKeyF key) = E.mask $ \restore -> key `seq` do
     maction <- I.atomicModifyIORef istate lookupAction
     maybe (return ()) restore maction
   where
     lookupAction rm@(ReleaseMap next rf m) =
         case IntMap.lookup key m of
             Nothing -> (rm, Nothing)
-            Just action ->
+            Just (Elem def fun) ->
                 ( ReleaseMap next rf $ IntMap.delete key m
-                , Just action
+                , Just $! fun def
+                )
+    lookupAction ReleaseMapClosed = throw $ InvalidAccess "release'"
+
+releaseF' :: I.IORef ReleaseMap
+          -> (ReleaseKeyF a)
+          -> a
+          -> IO ()
+releaseF' istate (ReleaseKeyF key) def = E.mask $ \restore -> key `seq` do
+    maction <- I.atomicModifyIORef istate lookupAction
+    maybe (return ()) restore maction
+  where
+    lookupAction rm@(ReleaseMap next rf m) =
+        case IntMap.lookup key m of
+            Nothing -> (rm, Nothing)
+            Just (Elem _ fun) ->
+                ( ReleaseMap next rf $ IntMap.delete key m
+                , Just $! fun (Unsafe.unsafeCoerce def)
                 )
     lookupAction ReleaseMapClosed = throw $ InvalidAccess "release'"
 
@@ -308,7 +364,7 @@ stateCleanup istate = E.mask_ $ do
             ReleaseMapClosed -> throw $ InvalidAccess "stateCleanup"
     case mm of
         Just m ->
-            mapM_ (\x -> try x >> return ()) $ IntMap.elems m
+            mapM_ (\(Elem def fun) -> try (fun def) >> return ()) $ IntMap.elems m
         Nothing -> return ()
   where
     try :: IO a -> IO (Either SomeException a)
@@ -377,9 +433,9 @@ instance MonadTransControl ResourceT where
 
 instance MonadBaseControl b m => MonadBaseControl b (ResourceT m) where
      newtype StM (ResourceT m) a = StMT (StM m a)
-     liftBaseWith f = ResourceT $ \reader ->
+     liftBaseWith f = ResourceT $ \readerr ->
          liftBaseWith $ \runInBase ->
-             f $ liftM StMT . runInBase . (\(ResourceT r) -> r reader)
+             f $ liftM StMT . runInBase . (\(ResourceT r) -> r readerr)
      restoreM (StMT base) = ResourceT $ const $ restoreM base
 instance Monad m => MonadThrow (ExceptionT m) where
     monadThrow = ExceptionT . return . Left . E.toException
