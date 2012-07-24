@@ -186,12 +186,26 @@ instance MonadWriter w m => MonadWriter w (ResourceT m) where
 --
 -- Since 0.3.0
 class (MonadThrow m, MonadUnsafeIO m, MonadIO m, Applicative m) => MonadResource m where
+    -- | Perform some allocation, and automatically register a cleanup action.
+    --
+    -- This is almost identical to calling the allocation and then
+    -- @register@ing the release action, but this properly handles masking of
+    -- asynchronous exceptions.
+    --
+    -- Since 0.3.4
+    allocateF :: IO a -- ^ allocate
+              -> (b -> a -> IO ()) -- ^ free resource
+              -> b -- ^ Default value of `b` to be using in case it's not `releasedF` or when using `release`.
+              -> m (ReleaseKeyF b, a)
+    
     -- | Register some funcion with its default argument that
     -- will be called precisely once, either when 'runResourceT' is called,
     -- or when the 'ReleaseKey' is passed to 'release'.
     --
     -- Since 0.3.4
-    registerF :: a -> (a -> IO ()) -> m (ReleaseKeyF a)
+    registerF :: (a -> IO ()) -- ^ Function to be registered
+              -> a -- ^ Default value of `a` to be using in case it's not `releasedF` or when using `release`.
+              -> m (ReleaseKeyF a)
 
     -- | Call a release function early with the given argument, and deregister
     -- it from the list of cleanup actions to be performed.
@@ -202,7 +216,7 @@ class (MonadThrow m, MonadUnsafeIO m, MonadIO m, Applicative m) => MonadResource
     -- | Register some action that will be called precisely once, either when
     -- 'runResourceT' is called, or when the 'ReleaseKey' is passed to 'release'.
     --
-    -- Semantically equivivalent to:
+    -- Semantically equivalent to:
     --
     -- > registerF () (const action)
     --
@@ -221,6 +235,10 @@ class (MonadThrow m, MonadUnsafeIO m, MonadIO m, Applicative m) => MonadResource
     -- @register@ing the release action, but this properly handles masking of
     -- asynchronous exceptions.
     --
+    -- Semantically equivalent to:
+    --
+    -- > allocateF alloc (const free) ()
+    -- 
     -- Since 0.3.0
     allocate :: IO a -- ^ allocate
              -> (a -> IO ()) -- ^ free resource
@@ -235,14 +253,19 @@ class (MonadThrow m, MonadUnsafeIO m, MonadIO m, Applicative m) => MonadResource
     resourceMask :: ((forall a. ResourceT IO a -> ResourceT IO a) -> ResourceT IO b) -> m b
 
 instance (MonadThrow m, MonadUnsafeIO m, MonadIO m, Applicative m) => MonadResource (ResourceT m) where
+    allocateF acquire fun def = ResourceT $ \istate -> liftIO $ E.mask $ \restore -> do
+        a <- restore acquire
+        key <- registerF' istate (flip fun a) def
+        return (key, a)
+    
+    registerF fun def = ResourceT $ \istate -> liftIO $ registerF' istate fun def
+
+    releaseF rk def = ResourceT $ \istate -> liftIO $ releaseF' istate rk def
+    
     allocate acquire rel = ResourceT $ \istate -> liftIO $ E.mask $ \restore -> do
         a <- restore acquire
         key <- register' istate $ rel a
         return (key, a)
-
-    registerF def fun = ResourceT $ \istate -> liftIO $ registerF' istate def fun
-
-    releaseF rk def = ResourceT $ \istate -> liftIO $ releaseF' istate rk def
 
     register rel = ResourceT $ \istate -> liftIO $ register' istate rel
 
@@ -255,8 +278,8 @@ instance (MonadThrow m, MonadUnsafeIO m, MonadIO m, Applicative m) => MonadResou
         go :: (forall a. IO a -> IO a) -> (forall a. ResourceT IO a -> ResourceT IO a)
         go r (ResourceT g) = ResourceT (\i -> r (g i))
 
-#define GO(T) instance (MonadResource m) => MonadResource (T m) where allocate a = lift . allocate a; registerF def = lift . registerF def; releaseF rk = lift. releaseF rk; register = lift . register; release = lift . release; resourceMask = lift . resourceMask
-#define GOX(X, T) instance (X, MonadResource m) => MonadResource (T m) where allocate a = lift . allocate a; registerF def = lift . registerF def; releaseF rk = lift. releaseF rk; register = lift . register; release = lift . release; resourceMask = lift . resourceMask
+#define GO(T) instance (MonadResource m) => MonadResource (T m) where allocateF a f = lift . allocateF a f; registerF f = lift . registerF f; releaseF rk = lift. releaseF rk; allocate a = lift . allocate a; register = lift . register; release = lift . release; resourceMask = lift . resourceMask
+#define GOX(X, T) instance (X, MonadResource m) => MonadResource (T m) where allocateF a f = lift . allocateF a f; registerF f = lift . registerF f; releaseF rk = lift. releaseF rk; allocate a = lift . allocate a; register = lift . register; release = lift . release; resourceMask = lift . resourceMask
 GO(IdentityT)
 GO(ListT)
 GO(MaybeT)
@@ -284,10 +307,10 @@ register' istate rel = I.atomicModifyIORef istate $ \rm ->
         ReleaseMapClosed -> throw $ InvalidAccess "register'"
 
 registerF' :: I.IORef ReleaseMap
-           -> a
            -> (a -> IO ())
+           -> a
            -> IO (ReleaseKeyF a)
-registerF' istate def fun = I.atomicModifyIORef istate $ \rm ->
+registerF' istate fun def = I.atomicModifyIORef istate $ \rm ->
     case rm of
         ReleaseMap key rf m ->
             ( ReleaseMap (key - 1) rf (IntMap.insert key (Elem def fun) m)
