@@ -195,7 +195,7 @@ class (MonadThrow m, MonadUnsafeIO m, MonadIO m, Applicative m) => MonadResource
     -- Since 0.3.4
     allocateF :: IO a -- ^ allocate
               -> (b -> a -> IO ()) -- ^ free resource
-              -> b -- ^ Default value of `b` to be using in case it's not `releasedF` or when using `release`.
+              -> b -- ^ Default value of `b` to be used in case it's not `releasedF` or when using `release`.
               -> m (ReleaseKeyF b, a)
     
     -- | Register some funcion with its default argument that
@@ -204,7 +204,7 @@ class (MonadThrow m, MonadUnsafeIO m, MonadIO m, Applicative m) => MonadResource
     --
     -- Since 0.3.4
     registerF :: (a -> IO ()) -- ^ Function to be registered
-              -> a -- ^ Default value of `a` to be using in case it's not `releasedF` or when using `release`.
+              -> a -- ^ Default value of `a` to be used in case it's not `releasedF` or when using `release`.
               -> m (ReleaseKeyF a)
 
     -- | Call a release function early with the given argument, and deregister
