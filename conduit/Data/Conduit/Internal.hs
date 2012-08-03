@@ -326,7 +326,7 @@ pipe =
     pipe' final left right =
         case right of
             Done r2 -> PipeM (final >> return (Done r2))
-            HaveOutput p c o -> HaveOutput (pipe' final left p) c o
+            HaveOutput p c o -> HaveOutput (pipe' final left p) (c >> final) o
             PipeM mp -> PipeM (liftM (pipe' final left) mp)
             Leftover _ i -> absurd i
             NeedInput rp rc -> upstream rp rc
@@ -357,7 +357,7 @@ pipeL =
     pipe' final left right =
         case right of
             Done r2 -> PipeM (final >> return (Done r2))
-            HaveOutput p c o -> HaveOutput (pipe' final left p) c o
+            HaveOutput p c o -> HaveOutput (pipe' final left p) (c >> final) o
             PipeM mp -> PipeM (liftM (pipe' final left) mp)
             Leftover right' i -> pipe' final (HaveOutput left final i) right'
             NeedInput rp rc ->

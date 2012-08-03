@@ -26,6 +26,8 @@ import qualified Data.Text.Lazy.Encoding as TLE
 import Control.Monad.Trans.Resource (runExceptionT_, allocate, resourceForkIO)
 import Control.Concurrent (threadDelay, killThread)
 import Control.Monad.IO.Class (liftIO)
+import Control.Monad.Trans.Class (lift)
+import Control.Monad.Trans.Writer (execWriter, tell)
 import Control.Applicative (pure, (<$>), (<*>))
 import Data.Functor.Identity (runIdentity)
 import Control.Monad (forever)
@@ -770,6 +772,19 @@ main = hspec $ do
                     C.yield i
             res <- (src C.>+> C.injectLeftovers conduit) C.$$ CL.consume
             res `shouldBe` [1..10]
+    describe "up-upstream finalizers" $ do
+        let p1 = C.await >>= maybe (return ()) C.yield
+            p2 = idMsg "p2-final"
+            p3 = idMsg "p3-final"
+            idMsg msg = C.addCleanup (const $ tell [msg]) $ C.awaitForever C.yield
+            printer = C.awaitForever $ lift . tell . return . show
+            src = CL.sourceList [1 :: Int ..]
+        it "pipe" $ do
+            let run p = execWriter $ C.runPipe $ printer C.<+< p C.<+< src
+            run (p1 C.<+< (p2 C.<+< p3)) `shouldBe` run ((p1 C.<+< p2) C.<+< p3)
+        it "conduit" $ do
+            let run p = execWriter $ src C.$$ p C.=$ printer
+            run ((p3 C.=$= p2) C.=$= p1) `shouldBe` run (p3 C.=$= (p2 C.=$= p1))
 
 it' :: String -> IO () -> Spec
 it' = it
