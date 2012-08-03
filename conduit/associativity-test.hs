@@ -41,6 +41,7 @@ verify testL testR p1 p2 p3
     , testL
     , ""
     , p1 ++ " <+< (" ++ p2 ++ " <+< " ++ p3 ++ ")"
+    , "------------------"    
     , testR
     ]
  
