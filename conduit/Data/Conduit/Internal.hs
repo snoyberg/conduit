@@ -118,7 +118,7 @@ instance Monad m => Applicative (Pipe l i o u m) where
 instance Monad m => Monad (Pipe l i o u m) where
     return = done
 
-    Done c x         >>= fp = onSuccess c (fp x)
+    Done c x         >>= fp = PipeM      (c >> return (fp x))
     HaveOutput p c o >>= fp = HaveOutput (p >>= fp)            c          o
     NeedInput p c    >>= fp = NeedInput  (p >=> fp)            (c >=> fp)
     PipeM mp         >>= fp = PipeM      ((>>= fp) `liftM` mp)
