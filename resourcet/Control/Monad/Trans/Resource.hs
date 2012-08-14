@@ -19,6 +19,7 @@
 module Control.Monad.Trans.Resource
     ( -- * Data types
       ResourceT
+    , ResIO
     , ReleaseKey
       -- * Unwrap
     , runResourceT
