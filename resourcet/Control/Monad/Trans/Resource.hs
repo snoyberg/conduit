@@ -29,6 +29,11 @@ module Control.Monad.Trans.Resource
       -- * A specific Exception transformer
     , ExceptionT (..)
     , runExceptionT_
+      -- * Registering/releasing
+    , allocate
+    , register
+    , release
+    , resourceMask
       -- * Type class/associated types
     , MonadResource (..)
     , MonadUnsafeIO (..)
@@ -180,56 +185,72 @@ instance MonadWriter w m => MonadWriter w (ResourceT m) where
 --
 -- Since 0.3.0
 class (MonadThrow m, MonadUnsafeIO m, MonadIO m, Applicative m) => MonadResource m where
-    -- | Register some action that will be called precisely once, either when
-    -- 'runResourceT' is called, or when the 'ReleaseKey' is passed to 'release'.
+    -- | Lift a @ResourceT IO@ action into the current @Monad@.
     --
-    -- Since 0.3.0
-    register :: IO () -> m ReleaseKey
+    -- Since 0.4.0
+    liftResourceT :: ResourceT IO a -> m a
 
-    -- | Call a release action early, and deregister it from the list of cleanup
-    -- actions to be performed.
-    --
-    -- Since 0.3.0
-    release :: ReleaseKey -> m ()
+-- | Register some action that will be called precisely once, either when
+-- 'runResourceT' is called, or when the 'ReleaseKey' is passed to 'release'.
+--
+-- Since 0.3.0
+register :: MonadResource m => IO () -> m ReleaseKey
+register = liftResourceT . registerRIO
 
-    -- | Perform some allocation, and automatically register a cleanup action.
-    --
-    -- This is almost identical to calling the allocation and then
-    -- @register@ing the release action, but this properly handles masking of
-    -- asynchronous exceptions.
-    --
-    -- Since 0.3.0
-    allocate :: IO a -- ^ allocate
-             -> (a -> IO ()) -- ^ free resource
-             -> m (ReleaseKey, a)
+-- | Call a release action early, and deregister it from the list of cleanup
+-- actions to be performed.
+--
+-- Since 0.3.0
+release :: MonadResource m => ReleaseKey -> m ()
+release = liftResourceT . releaseRIO
 
-    -- | Perform asynchronous exception masking.
-    --
-    -- This is more general then @Control.Exception.mask@, yet more efficient
-    -- than @Control.Exception.Lifted.mask@.
-    --
-    -- Since 0.3.0
-    resourceMask :: ((forall a. ResourceT IO a -> ResourceT IO a) -> ResourceT IO b) -> m b
+-- | Perform some allocation, and automatically register a cleanup action.
+--
+-- This is almost identical to calling the allocation and then
+-- @register@ing the release action, but this properly handles masking of
+-- asynchronous exceptions.
+--
+-- Since 0.3.0
+allocate :: MonadResource m
+         => IO a -- ^ allocate
+         -> (a -> IO ()) -- ^ free resource
+         -> m (ReleaseKey, a)
+allocate a = liftResourceT . allocateRIO a
+
+-- | Perform asynchronous exception masking.
+--
+-- This is more general then @Control.Exception.mask@, yet more efficient
+-- than @Control.Exception.Lifted.mask@.
+--
+-- Since 0.3.0
+resourceMask :: MonadResource m => ((forall a. ResourceT IO a -> ResourceT IO a) -> ResourceT IO b) -> m b
+resourceMask = liftResourceT . resourceMaskRIO
 
 instance (MonadThrow m, MonadUnsafeIO m, MonadIO m, Applicative m) => MonadResource (ResourceT m) where
-    allocate acquire rel = ResourceT $ \istate -> liftIO $ E.mask $ \restore -> do
-        a <- restore acquire
-        key <- register' istate $ rel a
-        return (key, a)
+    liftResourceT = transResourceT liftIO
 
-    register rel = ResourceT $ \istate -> liftIO $ register' istate rel
+allocateRIO :: IO a -> (a -> IO ()) -> ResourceT IO (ReleaseKey, a)
+allocateRIO acquire rel = ResourceT $ \istate -> liftIO $ E.mask $ \restore -> do
+    a <- restore acquire
+    key <- register' istate $ rel a
+    return (key, a)
 
-    release rk = ResourceT $ \istate -> liftIO $ release' istate rk
+registerRIO :: IO () -> ResourceT IO ReleaseKey
+registerRIO rel = ResourceT $ \istate -> liftIO $ register' istate rel
 
-    resourceMask f = ResourceT $ \istate -> liftIO $ E.mask $ \restore ->
-        let ResourceT f' = f (go restore)
-         in f' istate
-      where
-        go :: (forall a. IO a -> IO a) -> (forall a. ResourceT IO a -> ResourceT IO a)
-        go r (ResourceT g) = ResourceT (\i -> r (g i))
+releaseRIO :: ReleaseKey -> ResourceT IO ()
+releaseRIO rk = ResourceT $ \istate -> liftIO $ release' istate rk
 
-#define GO(T) instance (MonadResource m) => MonadResource (T m) where allocate a = lift . allocate a; register = lift . register; release = lift . release; resourceMask = lift . resourceMask
-#define GOX(X, T) instance (X, MonadResource m) => MonadResource (T m) where allocate a = lift . allocate a; register = lift . register; release = lift . release; resourceMask = lift . resourceMask
+resourceMaskRIO :: ((forall a. ResourceT IO a -> ResourceT IO a) -> ResourceT IO b) -> ResourceT IO b
+resourceMaskRIO f = ResourceT $ \istate -> liftIO $ E.mask $ \restore ->
+    let ResourceT f' = f (go restore)
+     in f' istate
+  where
+    go :: (forall a. IO a -> IO a) -> (forall a. ResourceT IO a -> ResourceT IO a)
+    go r (ResourceT g) = ResourceT (\i -> r (g i))
+
+#define GO(T) instance (MonadResource m) => MonadResource (T m) where liftResourceT = lift . liftResourceT
+#define GOX(X, T) instance (X, MonadResource m) => MonadResource (T m) where liftResourceT = lift . liftResourceT
 GO(IdentityT)
 GO(ListT)
 GO(MaybeT)
