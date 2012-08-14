@@ -795,6 +795,11 @@ main = hspec $ do
           let src = CNE.nonEmptySourceList [1..10 :: Int]
           res <- CNE.fold1' (flip (:)) return src
           res `shouldBe` [10,9..1]
+        it "unfold" $ do
+          let src = flip CNE.unfoldM1 (1 :: Int) $
+                    \i -> return (i, if i >= 10 then Nothing else Just (i + 1))
+          res <- CNE.toPipe src C.$$ CL.consume
+          res `shouldBe` [1..10]
 
 it' :: String -> IO () -> Spec
 it' = it

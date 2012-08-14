@@ -30,6 +30,16 @@ toPipe (NonEmptyPipe action) = do (o, src) <- lift action
                                   yield o
                                   src
 
+-- | Generate a non-empty source from a monadic unfold.
+unfoldM1 :: Monad m => (b -> m (a, Maybe b)) -> b -> GNonEmptySource m a
+unfoldM1 f x = NonEmptyPipe $ do (s, n) <- f x
+                                 return (s, go n)
+  where
+    go Nothing  = return ()
+    go (Just v) = do (s, n) <- lift (f v)
+                     yield s
+                     go n
+
 -- | Fold the output of a non-empty pipe (strict left fold).
 --
 -- @fold1 f i x@ converts the first element of the non-empty pipe to the output type with @i@,
