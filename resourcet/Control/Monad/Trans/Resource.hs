@@ -19,6 +19,7 @@
 module Control.Monad.Trans.Resource
     ( -- * Data types
       ResourceT
+    , ResIO
     , ReleaseKey
       -- * Unwrap
     , runResourceT
@@ -127,6 +128,9 @@ data ReleaseMap =
 --
 -- Since 0.3.0
 newtype ResourceT m a = ResourceT { unResourceT :: I.IORef ReleaseMap -> m a }
+
+-- | Convenient alias for @ResourceT IO@.
+type ResIO a = ResourceT IO a
 
 instance Typeable1 m => Typeable1 (ResourceT m) where
     typeOf1 = goType undefined
