@@ -7,19 +7,6 @@ import           Data.Conduit.Internal
 import qualified Data.Conduit.List as CL
 import           Data.Void
 
-{-
-newtype NonEmptySource m o = NonEmptySource (m (o, Source m o))
-
-meld :: Monad m => NonEmptySource m o -> Source m o
-meld (NonEmptySource action) = do (o, src) <- lift action
-                                  yield o
-                                  src
-
-fold1 :: Monad m => (b -> a -> b) -> (a -> b) -> NonEmptySource m a -> m b
-fold1 f i (NonEmptySource action) = do (o, src) <- action
-                                       src $$ CL.fold f (i o)
--}
-
 -- | Pipes with non-empty output, by construction.
 --
 -- Cannot take input before returning first output element, because that would be unsafe.
