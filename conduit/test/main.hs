@@ -10,6 +10,7 @@ import qualified Data.Conduit.List as CL
 import qualified Data.Conduit.Lazy as CLazy
 import qualified Data.Conduit.Binary as CB
 import qualified Data.Conduit.Text as CT
+import qualified Data.Conduit.NonEmpty as CNE
 import Data.Conduit (runResourceT)
 import Data.Maybe (fromMaybe)
 import qualified Data.List as DL
@@ -785,6 +786,20 @@ main = hspec $ do
         it "conduit" $ do
             let run p = execWriter $ src C.$$ p C.=$ printer
             run ((p3 C.=$= p2) C.=$= p1) `shouldBe` run (p3 C.=$= (p2 C.=$= p1))
+    describe "non-empty pipes" $ do
+        it "pure round-trip" $ do
+          let src = CNE.nonEmptySourceList [1..10 :: Int]
+          res <- CNE.toPipe src C.$$ CL.consume
+          res `shouldBe` [1..10]
+        it "fold" $ do
+          let src = CNE.nonEmptySourceList [1..10 :: Int]
+          res <- CNE.fold1' (flip (:)) return src
+          res `shouldBe` [10,9..1]
+        it "unfold" $ do
+          let src = flip CNE.unfoldM1 (1 :: Int) $
+                    \i -> return (i, if i >= 10 then Nothing else Just (i + 1))
+          res <- CNE.toPipe src C.$$ CL.consume
+          res `shouldBe` [1..10]
 
 it' :: String -> IO () -> Spec
 it' = it
