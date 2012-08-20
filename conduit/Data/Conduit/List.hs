@@ -18,6 +18,7 @@ module Data.Conduit.List
       -- * Sinks
       -- ** Pure
     , fold
+    , foldMap
     , take
     , drop
     , head
@@ -59,6 +60,7 @@ import Prelude
     , maybe
     , either
     )
+import Data.Monoid (Monoid, mempty, mappend)
 import Data.Conduit hiding (Source, Sink, Conduit, Pipe)
 import Data.Conduit.Internal (sourceList)
 import Control.Monad (when, (<=<))
@@ -137,6 +139,17 @@ foldM f =
         go a = do
             accum' <- lift $ f accum a
             accum' `seq` loop accum'
+
+-- | A monoidal strict left fold.
+--
+-- Since 0.5.3
+foldMap :: (Monad m, Monoid b)
+        => (a -> b)
+        -> GSink a m b
+foldMap f =
+    fold combiner mempty
+  where
+    combiner accum = mappend accum . f
 
 -- | Apply the action to all values in the stream.
 --

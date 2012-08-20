@@ -90,6 +90,15 @@ main = hspec $ do
             (runST $ CL.sourceList list C.$$ CL.fold (+) (0 :: Int))
             == sum list
 
+    describe "foldMap" $ do
+        it "sums 1..10" $ do
+            Sum x <- CL.sourceList [1..(10 :: Int)] C.$$ CL.foldMap Sum
+            x `shouldBe` sum [1..10]
+
+        it "preserves order" $ do
+            x <- CL.sourceList [[4],[2],[3],[1]] C.$$ CL.foldMap (++[(9 :: Int)])
+            x `shouldBe` [4,9,2,9,3,9,1,9]
+
     describe "unfold" $ do
         it "works" $ do
             let f 0 = Nothing
