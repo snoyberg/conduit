@@ -429,6 +429,12 @@ injectLeftovers =
 
 -- | Transform the monad that a @Pipe@ lives in.
 --
+-- Note that the monad transforming function will be run multiple times,
+-- resulting in unintuitive behavior in some cases. For a fuller treatment,
+-- please see:
+--
+-- <https://github.com/snoyberg/conduit/wiki/Dealing-with-monad-transformers>
+--
 -- Since 0.4.0
 transPipe :: Monad m => (forall a. m a -> n a) -> Pipe l i o u m r -> Pipe l i o u n r
 transPipe f (HaveOutput p c o) = HaveOutput (transPipe f p) (f c) o
