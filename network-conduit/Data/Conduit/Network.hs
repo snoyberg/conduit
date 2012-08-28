@@ -1,5 +1,3 @@
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE FlexibleContexts #-}
 module Data.Conduit.Network
     ( -- * Basic utilities
@@ -26,13 +24,14 @@ import Network.Socket.ByteString (sendAll, recv)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as S
 import Control.Monad.IO.Class (MonadIO (liftIO))
-import Control.Exception (bracketOnError, IOException, throwIO, SomeException, try, finally, bracket)
+import Control.Exception (throwIO, SomeException, try, finally, bracket)
 import Control.Monad (forever)
 import Control.Monad.Trans.Control (MonadBaseControl, control)
 import Control.Monad.Trans.Class (lift)
 import Control.Concurrent (forkIO)
-import Data.String (IsString (fromString))
-import qualified Control.Exception as E
+
+import Data.Conduit.Network.Utils (HostPreference)
+import qualified Data.Conduit.Network.Utils as Utils
 
 -- | Stream data from the socket.
 --
@@ -120,13 +119,7 @@ runTCPClient (ClientSettings port host) app = control $ \run -> bracket
 -- Since 0.2.1
 getSocket :: String -> Int -> IO NS.Socket
 getSocket host' port' = do
-    let hints = NS.defaultHints {
-                          NS.addrFlags = [NS.AI_ADDRCONFIG]
-                        , NS.addrSocketType = NS.Stream
-                        }
-    (addr:_) <- NS.getAddrInfo (Just hints) (Just host') (Just $ show port')
-    sock <- NS.socket (NS.addrFamily addr) (NS.addrSocketType addr)
-                      (NS.addrProtocol addr)
+    (sock, addr) <- Utils.getSocket host' port' NS.Stream
     ee <- try' $ NS.connect sock (NS.addrAddress addr)
     case ee of
         Left e -> NS.sClose sock >> throwIO e
@@ -135,81 +128,12 @@ getSocket host' port' = do
     try' :: IO a -> IO (Either SomeException a)
     try' = try
 
--- | Which host to bind.
---
--- Note: The @IsString@ instance recognizes the following special values:
---
--- * @*@ means @HostAny@
---
--- * @*4@ means @HostIPv4@
---
--- * @*6@ means @HostIPv6@
-data HostPreference =
-    HostAny
-  | HostIPv4
-  | HostIPv6
-  | Host String
-    deriving (Eq, Ord, Show, Read)
-
-instance IsString HostPreference where
-    -- The funny code coming up is to get around some irritating warnings from
-    -- GHC. I should be able to just write:
-    {-
-    fromString "*" = HostAny
-    fromString "*4" = HostIPv4
-    fromString "*6" = HostIPv6
-    -}
-    fromString s'@('*':s) =
-        case s of
-            [] -> HostAny
-            ['4'] -> HostIPv4
-            ['6'] -> HostIPv6
-            _ -> Host s'
-    fromString s = Host s
-
 -- | Attempt to bind a listening @Socket@ on the given host/port. If no host is
 -- given, will use the first address available.
 --
 -- Since 0.3.0
 bindPort :: Int -> HostPreference -> IO Socket
 bindPort p s = do
-    let hints = NS.defaultHints
-            { NS.addrFlags = [ NS.AI_PASSIVE
-                             , NS.AI_NUMERICSERV
-                             , NS.AI_NUMERICHOST
-                             ]
-            , NS.addrSocketType = NS.Stream
-            }
-        host =
-            case s of
-                Host s' -> Just s'
-                _ -> Nothing
-        port = Just . show $ p
-    addrs <- NS.getAddrInfo (Just hints) host port
-    -- Choose an IPv6 socket if exists.  This ensures the socket can
-    -- handle both IPv4 and IPv6 if v6only is false.
-    let addrs4 = filter (\x -> NS.addrFamily x /= NS.AF_INET6) addrs
-        addrs6 = filter (\x -> NS.addrFamily x == NS.AF_INET6) addrs
-        addrs' =
-            case s of
-                HostIPv4 -> addrs4 ++ addrs6
-                HostIPv6 -> addrs6 ++ addrs4
-                _ -> addrs
-
-        tryAddrs (addr1:rest@(_:_)) =
-                                      E.catch
-                                      (theBody addr1)
-                                      (\(_ :: IOException) -> tryAddrs rest)
-        tryAddrs (addr1:[])         = theBody addr1
-        tryAddrs _                  = error "bindPort: addrs is empty"
-        theBody addr =
-          bracketOnError
-          (NS.socket (NS.addrFamily addr) (NS.addrSocketType addr) (NS.addrProtocol addr))
-          NS.sClose
-          (\sock -> do
-              NS.setSocketOption sock NS.ReuseAddr 1
-              NS.bindSocket sock (NS.addrAddress addr)
-              NS.listen sock NS.maxListenQueue
-              return sock
-          )
-    tryAddrs addrs'
+    sock <- Utils.bindPort p s NS.Stream
+    NS.listen sock NS.maxListenQueue
+    return sock
