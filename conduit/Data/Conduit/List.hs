@@ -40,6 +40,7 @@ module Data.Conduit.List
     , filter
       -- ** Monadic
     , mapM
+    , iterM
     , mapMaybeM
     , concatMapM
     , concatMapAccumM
@@ -222,6 +223,15 @@ map f = awaitForever $ yield . f
 -- Since 0.3.0
 mapM :: Monad m => (a -> m b) -> GInfConduit a m b
 mapM f = awaitForever $ yield <=< lift . f
+
+-- | Apply a monadic action on all values in a stream.
+--
+-- This @Conduit@ can be used to perform a monadic side-effect for every
+-- value, whilst passing the value through the @Conduit@ as-is.
+--
+-- > iterM f = mapM (\a -> f a >>= \() -> return a)
+iterM :: Monad m => (a -> m ()) -> GInfConduit a m a
+iterM f = awaitForever $ \a -> lift (f a) >> yield a
 
 -- | Apply a transformation that may fail to all values in a stream, discarding
 -- the failures.
