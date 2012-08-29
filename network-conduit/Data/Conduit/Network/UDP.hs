@@ -91,3 +91,4 @@ sinkSocketHelper act socket = loop
     loop = awaitE >>= either
                         return
                         (\a -> lift (liftIO $ act socket a) >> loop)
+{-# INLINE sinkSocketHelper #-}
