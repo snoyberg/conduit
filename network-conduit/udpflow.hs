@@ -6,7 +6,8 @@ import Data.Conduit
 import Data.Conduit.Network.UDP
 import qualified Data.Conduit.List as CL
 
-import Control.Concurrent (forkIO, threadDelay)
+import Control.Concurrent (forkIO, killThread, threadDelay)
+import Control.Monad.IO.Class (liftIO)
 import Data.ByteString.Char8 ()
 import Network.Socket (addrAddress, connect, sClose)
 
@@ -24,19 +25,21 @@ receiver = runResourceT $ src $$ CL.mapM_ (\_ -> return ())
             (\sock -> sourceSocket sock 4096)
 
 sender :: IO ()
-sender = do
-    (sock, addr) <- getSocket localhost port
-    connect sock (addrAddress addr)
-
-    let sink = addCleanup
-                (const $ sClose sock)
-                (sinkSocket sock)
-
-    CL.sourceList (repeat "abc") $$ sink
+sender = runResourceT $ CL.sourceList (repeat "abc") $$ sink
+  where
+    sink = bracketP
+            (getSocket localhost port)
+            (sClose . fst)
+            (\(sock, addr) -> do
+                liftIO $ connect sock (addrAddress addr)
+                sinkSocket sock)
 
 main :: IO ()
 main = do
-    forkIO receiver
-    forkIO sender
+    rt <- forkIO receiver
+    st <- forkIO sender
 
     threadDelay $ 1000 * 1000 * 5
+
+    killThread st
+    killThread rt
