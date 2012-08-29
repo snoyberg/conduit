@@ -8,7 +8,7 @@ import qualified Data.Conduit.List as CL
 
 import Control.Concurrent (forkIO, threadDelay)
 import Data.ByteString.Char8 ()
-import Network.Socket (addrAddress, sClose)
+import Network.Socket (addrAddress, connect, sClose)
 
 localhost :: String
 localhost = "127.0.0.1"
@@ -26,12 +26,13 @@ receiver = runResourceT $ src $$ CL.mapM_ (\_ -> return ())
 sender :: IO ()
 sender = do
     (sock, addr) <- getSocket localhost port
+    connect sock (addrAddress addr)
 
     let sink = addCleanup
                 (const $ sClose sock)
                 (sinkSocket sock)
 
-    CL.sourceList (repeat ("abc", addrAddress addr)) $$ sink
+    CL.sourceList (repeat "abc") $$ sink
 
 main :: IO ()
 main = do
