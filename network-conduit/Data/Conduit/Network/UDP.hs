@@ -1,6 +1,6 @@
 module Data.Conduit.Network.UDP
     ( -- * UDP message representation
-      Message (msgData, msgSender)
+      Message (..)
       -- * Basic utilities
     , sourceSocket
     , sinkSocket
@@ -67,8 +67,8 @@ sinkAllSocket = sinkSocketHelper sendAll
 -- lost.
 --
 -- This function does /not/ automatically close the socket.
-sinkToSocket :: MonadIO m => Socket -> GInfSink (ByteString, SockAddr) m
-sinkToSocket = sinkSocketHelper (\sock (bs, addr) -> void $ sendTo sock bs addr)
+sinkToSocket :: MonadIO m => Socket -> GInfSink Message m
+sinkToSocket = sinkSocketHelper (\sock (Message bs addr) -> void $ sendTo sock bs addr)
 
 -- | Stream messages to the socket.
 --
@@ -77,8 +77,8 @@ sinkToSocket = sinkSocketHelper (\sock (bs, addr) -> void $ sendTo sock bs addr)
 -- multiple packets.
 --
 -- This function does /not/ automatically close the socket.
-sinkAllToSocket :: MonadIO m => Socket -> GInfSink (ByteString, SockAddr) m
-sinkAllToSocket = sinkSocketHelper $ uncurry . sendAllTo
+sinkAllToSocket :: MonadIO m => Socket -> GInfSink Message m
+sinkAllToSocket = sinkSocketHelper (\sock (Message bs addr) -> sendAllTo sock bs addr)
 
 -- | Attempt to connect to the given host/port.
 getSocket :: String -> Int -> IO (Socket, AddrInfo)
