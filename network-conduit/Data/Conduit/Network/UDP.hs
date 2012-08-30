@@ -1,6 +1,8 @@
 module Data.Conduit.Network.UDP
-    ( -- * Basic utilities
-      sourceSocket
+    ( -- * UDP message representation
+      Message (msgData, msgSender)
+      -- * Basic utilities
+    , sourceSocket
     , sinkSocket
     , sinkAllSocket
     , sinkToSocket
@@ -24,18 +26,23 @@ import Control.Monad.Trans.Class (lift)
 import Data.Conduit.Network.Utils (HostPreference)
 import qualified Data.Conduit.Network.Utils as Utils
 
+-- | Representation of a single message
+data Message = Message { msgData :: {-# UNPACK #-} !ByteString
+                       , msgSender :: !SockAddr
+                       }
+
 -- | Stream messages from the socket.
 --
 -- The given @len@ defines the maximum packet size. Every produced item
 -- contains the message payload and the origin address.
 --
 -- This function does /not/ automatically close the socket.
-sourceSocket :: MonadIO m => Socket -> Int -> GSource m (ByteString, SockAddr)
+sourceSocket :: MonadIO m => Socket -> Int -> GSource m Message
 sourceSocket socket len = loop
   where
     loop = do
-        p@(bs, _) <- lift $ liftIO $ recvFrom socket len
-        unless (S.null bs) $ yield p >> loop
+        (bs, addr) <- lift $ liftIO $ recvFrom socket len
+        unless (S.null bs) $ yield (Message bs addr) >> loop
 
 -- | Stream messages to the connected socket.
 --
