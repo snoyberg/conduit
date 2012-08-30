@@ -18,9 +18,8 @@ import Network.Socket (AddrInfo, SockAddr, Socket)
 import qualified Network.Socket as NS
 import Network.Socket.ByteString (recvFrom, send, sendAll, sendTo, sendAllTo)
 import Data.ByteString (ByteString)
-import qualified Data.ByteString as S
 import Control.Monad.IO.Class (MonadIO (liftIO))
-import Control.Monad (unless, void)
+import Control.Monad (void)
 import Control.Monad.Trans.Class (lift)
 
 import Data.Conduit.Network.Utils (HostPreference)
@@ -42,7 +41,7 @@ sourceSocket socket len = loop
   where
     loop = do
         (bs, addr) <- lift $ liftIO $ recvFrom socket len
-        unless (S.null bs) $ yield (Message bs addr) >> loop
+        yield (Message bs addr) >> loop
 
 -- | Stream messages to the connected socket.
 --
