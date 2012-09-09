@@ -6,7 +6,7 @@ License:             BSD3
 License-file:        LICENSE
 Author:              Michael Snoyman
 Maintainer:          michael@snoyman.com
-Category:            Data, Conduit
+Category:            Data, Conduit, Parsing
 Build-type:          Simple
 Cabal-version:       >=1.8
 Homepage:            http://github.com/snoyberg/conduit
