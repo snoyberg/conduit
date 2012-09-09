@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE RankNTypes #-}
 -- | Streaming compression and decompression using conduits.
 --
 -- Parts of this code were taken from zlib-enum and adapted for conduits.

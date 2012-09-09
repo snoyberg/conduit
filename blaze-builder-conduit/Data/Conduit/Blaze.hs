@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE RankNTypes #-}
 -- | Convert a stream of blaze-builder @Builder@s into a stream of @ByteString@s.
 --
 -- Adapted from blaze-builder-enumerator, written by myself and Simon Meier.

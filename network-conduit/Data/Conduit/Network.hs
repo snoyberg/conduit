@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE RankNTypes #-}
 module Data.Conduit.Network
     ( -- * Basic utilities
       sourceSocket

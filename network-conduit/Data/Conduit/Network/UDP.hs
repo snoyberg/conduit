@@ -1,3 +1,4 @@
+{-# LANGUAGE RankNTypes #-}
 module Data.Conduit.Network.UDP
     ( -- * UDP message representation
       Message (..)
