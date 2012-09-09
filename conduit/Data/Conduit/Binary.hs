@@ -1,4 +1,4 @@
-{-# LANGUAGE CPP #-}
+{-# LANGUAGE CPP, RankNTypes #-}
 -- | Functions for interacting with bytes.
 module Data.Conduit.Binary
     ( -- * Files and @Handle@s
