@@ -154,18 +154,18 @@ sinkParserPos pos0 =
                 y = take' (length' c - length' lo) c
                 pos'' = addLinesCols y pos'
             unless (isNull lo) $ leftover lo
-            return (pos'', x)
+            pos'' `seq` return (pos'', x)
         go end c (A.Fail rest contexts msg) =
             let x = take' (length' c - length' rest) c
                 pos'
                     | end       = pos
                     | otherwise = addLinesCols prev pos
                 pos'' = addLinesCols x pos'
-             in lift $ monadThrow $ ParseError contexts msg pos''
+             in pos'' `seq` lift (monadThrow $ ParseError contexts msg pos'')
         go end c (A.Partial parser')
             | end       = lift $ monadThrow DivergentParser
             | otherwise =
-                sink c pos' parser'
+                pos' `seq` sink c pos' parser'
               where
                 pos' = addLinesCols prev pos
 
