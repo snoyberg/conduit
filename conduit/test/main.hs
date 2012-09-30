@@ -27,7 +27,8 @@ import Control.Monad.Trans.Resource (runExceptionT_, allocate, resourceForkIO)
 import Control.Concurrent (threadDelay, killThread)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Trans.Class (lift)
-import Control.Monad.Trans.Writer (execWriter, tell)
+import Control.Monad.Trans.Writer (execWriter, tell, runWriterT)
+import Control.Monad.Trans.State (evalStateT, get, put)
 import Control.Applicative (pure, (<$>), (<*>))
 import Data.Functor.Identity (runIdentity)
 import Control.Monad (forever)
@@ -794,6 +795,25 @@ main = hspec $ do
         it "conduit" $ do
             let run p = execWriter $ src C.$$ p C.=$ printer
             run ((p3 C.=$= p2) C.=$= p1) `shouldBe` run (p3 C.=$= (p2 C.=$= p1))
+    describe "monad transformer laws" $ do
+        it "transPipe" $ do
+            let source = CL.sourceList $ replicate 10 ()
+            let tell' x = tell [x :: Int]
+
+            let replaceNum1 = C.awaitForever $ \() -> do
+                    i <- lift get
+                    lift $ (put $ i + 1) >> (get >>= lift . tell')
+                    C.yield i
+
+            let replaceNum2 = C.awaitForever $ \() -> do
+                    i <- lift get
+                    lift $ put $ i + 1
+                    lift $ get >>= lift . tell'
+                    C.yield i
+
+            x <- runWriterT $ source C.$$ C.transPipe (`evalStateT` 1) replaceNum1 C.=$ CL.consume
+            y <- runWriterT $ source C.$$ C.transPipe (`evalStateT` 1) replaceNum2 C.=$ CL.consume
+            x `shouldBe` y
 
 it' :: String -> IO () -> Spec
 it' = it

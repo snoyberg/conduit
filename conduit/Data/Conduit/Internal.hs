@@ -440,7 +440,20 @@ transPipe :: Monad m => (forall a. m a -> n a) -> Pipe l i o u m r -> Pipe l i o
 transPipe f (HaveOutput p c o) = HaveOutput (transPipe f p) (f c) o
 transPipe f (NeedInput p c) = NeedInput (transPipe f . p) (transPipe f . c)
 transPipe _ (Done r) = Done r
-transPipe f (PipeM mp) = PipeM (f $ liftM (transPipe f) mp)
+transPipe f (PipeM mp) =
+    PipeM (f $ liftM (transPipe f) $ collapse mp)
+  where
+    -- Combine a series of monadic actions into a single action.  Since we
+    -- throw away side effects between different actions, an arbitrary break
+    -- between actions will lead to a violation of the monad transformer laws.
+    -- Example available at:
+    --
+    -- http://hpaste.org/75520
+    collapse mpipe = do
+        pipe <- mpipe
+        case pipe of
+            PipeM mpipe' -> collapse mpipe'
+            _ -> return pipe
 transPipe f (Leftover p i) = Leftover (transPipe f p) i
 
 -- | Apply a function to all the output values of a @Pipe@.
