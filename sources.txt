@@ -5,4 +5,5 @@
 ./filesystem-conduit
 ./zlib-conduit
 ./network-conduit
+./network-conduit-tls
 ./imagesize-conduit
