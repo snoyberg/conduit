@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 module Data.Conduit.Network
     ( -- * Basic utilities
       sourceSocket
@@ -16,8 +17,10 @@ module Data.Conduit.Network
     , HostPreference (..)
     , bindPort
     , getSocket
+    , acceptSafe
     ) where
 
+import Prelude hiding (catch)
 import Data.Conduit
 import qualified Network.Socket as NS
 import Network.Socket (Socket)
@@ -25,11 +28,11 @@ import Network.Socket.ByteString (sendAll, recv)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as S
 import Control.Monad.IO.Class (MonadIO (liftIO))
-import Control.Exception (throwIO, SomeException, try, finally, bracket)
+import Control.Exception (throwIO, SomeException, try, finally, bracket, IOException, catch)
 import Control.Monad (forever)
 import Control.Monad.Trans.Control (MonadBaseControl, control)
 import Control.Monad.Trans.Class (lift)
-import Control.Concurrent (forkIO)
+import Control.Concurrent (forkIO, threadDelay)
 
 import Data.Conduit.Network.Utils (HostPreference)
 import qualified Data.Conduit.Network.Utils as Utils
@@ -90,7 +93,7 @@ runTCPServer (ServerSettings port host) app = control $ \run -> bracket
     (run . forever . serve)
   where
     serve lsocket = do
-        (socket, _addr) <- liftIO $ NS.accept lsocket
+        (socket, _addr) <- liftIO $ acceptSafe lsocket
         let src = sourceSocket socket
             sink = sinkSocket socket
             app' run = run (app src sink) >> return ()
@@ -138,3 +141,19 @@ bindPort p s = do
     sock <- Utils.bindPort p s NS.Stream
     NS.listen sock NS.maxListenQueue
     return sock
+
+-- | Try to accept a connection, recovering automatically from exceptions.
+--
+-- As reported by Kazu against Warp, "resource exhausted (Too many open files)"
+-- may be thrown by accept(). This function will catch that exception, wait a
+-- second, and then try again.
+--
+-- Since 0.5.1
+acceptSafe :: Socket -> IO (Socket, NS.SockAddr)
+acceptSafe socket =
+    loop
+  where
+    loop =
+        NS.accept socket `catch` \(_ :: IOException) -> do
+            threadDelay 1000000
+            loop
