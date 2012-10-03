@@ -18,6 +18,7 @@ import qualified Data.PEM as PEM
 import qualified Network.TLS as TLS
 import qualified Data.Certificate.X509 as X509
 import Data.Conduit.Network (HostPreference, Application, bindPort, sinkSocket, acceptSafe)
+import Data.Conduit.Network.Internal (AppData (..))
 import Data.Conduit (($$), yield)
 import qualified Data.Conduit.List as CL
 import Data.Either (rights)
@@ -46,11 +47,11 @@ runTCPServerTLS TLSConfig{..} app = do
         (forever . serve certs key)
   where
     serve certs key lsocket = do
-        (socket, _addr) <- acceptSafe lsocket
-        _ <- forkIO $ handle socket
+        (socket, addr) <- acceptSafe lsocket
+        _ <- forkIO $ handle socket addr
         return ()
       where
-        handle socket = do
+        handle socket addr = do
             gen <- newGenIO
             ctx <- TLS.serverWith
                 params
@@ -62,10 +63,16 @@ runTCPServerTLS TLSConfig{..} app = do
 
             TLS.handshake ctx
 
-            let src = lift (TLS.recvData ctx) >>= yield >> src
-                sink = CL.mapM_ $ TLS.sendData ctx . L.fromChunks . return
+            let ad = AppData
+                    { adSource =
+                        let src = lift (TLS.recvData ctx) >>= yield >> src
+                         in src
+                    , adSink = CL.mapM_ $ TLS.sendData ctx . L.fromChunks . return
+                    , adSockAddr = addr
+                    }
 
-            app src sink `finally` sClose socket
+
+            app ad `finally` sClose socket
 
         params = TLS.defaultParams
             { TLS.pWantClientCert = False

@@ -18,6 +18,7 @@ flag network-bytestring
 Library
   Exposed-modules:     Data.Conduit.Network
                      , Data.Conduit.Network.UDP
+                     , Data.Conduit.Network.Internal
   other-modules:       Data.Conduit.Network.Utils
   Build-depends:       base                     >= 4            && < 5
                      , transformers             >= 0.2.2        && < 0.4

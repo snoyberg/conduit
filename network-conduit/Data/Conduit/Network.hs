@@ -1,7 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE KindSignatures #-}
 module Data.Conduit.Network
     ( -- * Basic utilities
       sourceSocket
@@ -47,17 +46,9 @@ import Control.Monad.Trans.Control (MonadBaseControl, control)
 import Control.Monad.Trans.Class (lift)
 import Control.Concurrent (forkIO, threadDelay)
 
+import Data.Conduit.Network.Internal
 import Data.Conduit.Network.Utils (HostPreference)
 import qualified Data.Conduit.Network.Utils as Utils
-
--- | The data passed to an @Application@.
---
--- Since 0.6.0
-data AppData m = AppData
-    { adSource :: Source m ByteString
-    , adSink :: Sink ByteString m ()
-    , adSockAddr :: NS.SockAddr
-    }
 
 -- | Stream data from the socket.
 --
@@ -89,16 +80,6 @@ sinkSocket socket =
 --
 -- Since 0.6.0
 type Application m = AppData m -> m ()
-
--- | Settings for a TCP server. It takes a port to listen on, and an optional
--- hostname to bind to.
---
--- Since 0.6.0
-data ServerSettings m = ServerSettings
-    { serverPort :: Int
-    , serverHost :: HostPreference
-    , serverAfterBind :: Socket -> m ()
-    }
 
 -- | Smart constructor.
 --
@@ -136,14 +117,6 @@ runTCPServer (ServerSettings port host afterBind) app = control $ \run -> bracke
             app' run = run (app ad) >> return ()
             appClose run = app' run `finally` NS.sClose socket
         control $ \run -> forkIO (appClose run) >> run (return ())
-
--- | Settings for a TCP client, specifying how to connect to the server.
---
--- Since 0.6.0
-data ClientSettings (m :: * -> *) = ClientSettings
-    { clientPort :: Int
-    , clientHost :: ByteString
-    }
 
 -- | Smart constructor.
 --

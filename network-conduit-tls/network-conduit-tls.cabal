@@ -21,7 +21,7 @@ library
                     , certificate     >= 1.2
                     , pem             >= 0.1
                     , tls             >= 0.9
-                    , network-conduit >= 0.5
+                    , network-conduit >= 0.6
                     , conduit         >= 0.5
                     , network
                     , transformers
