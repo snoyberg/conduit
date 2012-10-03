@@ -64,11 +64,11 @@ runTCPServerTLS TLSConfig{..} app = do
             TLS.handshake ctx
 
             let ad = AppData
-                    { adSource =
+                    { appSource =
                         let src = lift (TLS.recvData ctx) >>= yield >> src
                          in src
-                    , adSink = CL.mapM_ $ TLS.sendData ctx . L.fromChunks . return
-                    , adSockAddr = addr
+                    , appSink = CL.mapM_ $ TLS.sendData ctx . L.fromChunks . return
+                    , appSockAddr = addr
                     }
 
 

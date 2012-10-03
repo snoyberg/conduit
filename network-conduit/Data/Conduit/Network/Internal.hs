@@ -15,9 +15,9 @@ import Data.Conduit.Network.Utils (HostPreference)
 --
 -- Since 0.6.0
 data AppData m = AppData
-    { adSource :: Source m ByteString
-    , adSink :: Sink ByteString m ()
-    , adSockAddr :: SockAddr
+    { appSource :: Source m ByteString
+    , appSink :: Sink ByteString m ()
+    , appSockAddr :: SockAddr
     }
 
 -- | Settings for a TCP server. It takes a port to listen on, and an optional

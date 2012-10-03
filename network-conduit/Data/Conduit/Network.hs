@@ -8,9 +8,9 @@ module Data.Conduit.Network
       -- * Simple TCP server/client interface.
     , Application
     , AppData
-    , adSource
-    , adSink
-    , adSockAddr
+    , appSource
+    , appSink
+    , appSockAddr
       -- ** Server
     , ServerSettings
     , serverSettings
@@ -110,9 +110,9 @@ runTCPServer (ServerSettings port host afterBind) app = control $ \run -> bracke
     serve lsocket = do
         (socket, addr) <- liftIO $ acceptSafe lsocket
         let ad = AppData
-                { adSource = sourceSocket socket
-                , adSink = sinkSocket socket
-                , adSockAddr = addr
+                { appSource = sourceSocket socket
+                , appSink = sinkSocket socket
+                , appSockAddr = addr
                 }
             app' run = run (app ad) >> return ()
             appClose run = app' run `finally` NS.sClose socket
@@ -138,9 +138,9 @@ runTCPClient (ClientSettings port host) app = control $ \run -> bracket
     (getSocket host port)
     (NS.sClose . fst)
     (\(s, address) -> run $ app AppData
-        { adSource = sourceSocket s
-        , adSink = sinkSocket s
-        , adSockAddr = address
+        { appSource = sourceSocket s
+        , appSink = sinkSocket s
+        , appSockAddr = address
         })
 
 -- | Attempt to connect to the given host/port.
