@@ -1,17 +1,29 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE KindSignatures #-}
 module Data.Conduit.Network
     ( -- * Basic utilities
       sourceSocket
     , sinkSocket
       -- * Simple TCP server/client interface.
     , Application
+    , AppData
+    , adSource
+    , adSink
+    , adSockAddr
       -- ** Server
-    , ServerSettings (..)
+    , ServerSettings
+    , serverSettings
+    , serverPort
+    , serverHost
+    , serverAfterBind
     , runTCPServer
       -- ** Client
-    , ClientSettings (..)
+    , ClientSettings
+    , clientSettings
+    , clientPort
+    , clientHost
     , runTCPClient
       -- * Helper utilities
     , HostPreference (..)
@@ -27,6 +39,7 @@ import Network.Socket (Socket)
 import Network.Socket.ByteString (sendAll, recv)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as S
+import qualified Data.ByteString.Char8 as S8
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Exception (throwIO, SomeException, try, finally, bracket, IOException, catch)
 import Control.Monad (forever)
@@ -36,6 +49,15 @@ import Control.Concurrent (forkIO, threadDelay)
 
 import Data.Conduit.Network.Utils (HostPreference)
 import qualified Data.Conduit.Network.Utils as Utils
+
+-- | The data passed to an @Application@.
+--
+-- Since 0.6.0
+data AppData m = AppData
+    { adSource :: Source m ByteString
+    , adSink :: Sink ByteString m ()
+    , adSockAddr :: NS.SockAddr
+    }
 
 -- | Stream data from the socket.
 --
@@ -63,71 +85,101 @@ sinkSocket socket =
   where
     loop = awaitE >>= either return (\bs -> lift (liftIO $ sendAll socket bs) >> loop)
 
--- | A simple TCP application. It takes two arguments: the @Source@ to read
--- input data from, and the @Sink@ to send output data to.
+-- | A simple TCP application.
 --
--- Since 0.3.0
-type Application m = Source m ByteString
-                  -> Sink ByteString m ()
-                  -> m ()
+-- Since 0.6.0
+type Application m = AppData m -> m ()
 
 -- | Settings for a TCP server. It takes a port to listen on, and an optional
 -- hostname to bind to.
 --
--- Since 0.3.0
-data ServerSettings = ServerSettings
+-- Since 0.6.0
+data ServerSettings m = ServerSettings
     { serverPort :: Int
     , serverHost :: HostPreference
+    , serverAfterBind :: Socket -> m ()
     }
-      deriving (Eq, Show, Read)
+
+-- | Smart constructor.
+--
+-- Since 0.6.0
+serverSettings :: Monad m
+               => Int -- ^ port to bind to
+               -> HostPreference -- ^ host binding preferences
+               -> ServerSettings m
+serverSettings port host = ServerSettings
+    { serverPort = port
+    , serverHost = host
+    , serverAfterBind = const $ return ()
+    }
 
 -- | Run an @Application@ with the given settings. This function will create a
 -- new listening socket, accept connections on it, and spawn a new thread for
 -- each connection.
 --
--- Since 0.3.0
-runTCPServer :: (MonadIO m, MonadBaseControl IO m) => ServerSettings -> Application m -> m ()
-runTCPServer (ServerSettings port host) app = control $ \run -> bracket
+-- Since 0.6.0
+runTCPServer :: (MonadIO m, MonadBaseControl IO m) => ServerSettings m -> Application m -> m ()
+runTCPServer (ServerSettings port host afterBind) app = control $ \run -> bracket
     (liftIO $ bindPort port host)
     (liftIO . NS.sClose)
-    (run . forever . serve)
+    (\socket -> run $ do
+        afterBind socket
+        forever $ serve socket)
   where
     serve lsocket = do
-        (socket, _addr) <- liftIO $ acceptSafe lsocket
-        let src = sourceSocket socket
-            sink = sinkSocket socket
-            app' run = run (app src sink) >> return ()
+        (socket, addr) <- liftIO $ acceptSafe lsocket
+        let ad = AppData
+                { adSource = sourceSocket socket
+                , adSink = sinkSocket socket
+                , adSockAddr = addr
+                }
+            app' run = run (app ad) >> return ()
             appClose run = app' run `finally` NS.sClose socket
         control $ \run -> forkIO (appClose run) >> run (return ())
 
 -- | Settings for a TCP client, specifying how to connect to the server.
 --
--- Since 0.2.1
-data ClientSettings = ClientSettings
+-- Since 0.6.0
+data ClientSettings (m :: * -> *) = ClientSettings
     { clientPort :: Int
-    , clientHost :: String
+    , clientHost :: ByteString
     }
-      deriving (Eq, Show, Read)
+
+-- | Smart constructor.
+--
+-- Since 0.6.0
+clientSettings :: Monad m
+               => Int -- ^ port to connect to
+               -> ByteString -- ^ host to connect to
+               -> ClientSettings m
+clientSettings port host = ClientSettings
+    { clientPort = port
+    , clientHost = host
+    }
 
 -- | Run an @Application@ by connecting to the specified server.
 --
--- Since 0.2.1
-runTCPClient :: (MonadIO m, MonadBaseControl IO m) => ClientSettings -> Application m -> m ()
+-- Since 0.6.0
+runTCPClient :: (MonadIO m, MonadBaseControl IO m) => ClientSettings m -> Application m -> m ()
 runTCPClient (ClientSettings port host) app = control $ \run -> bracket
     (getSocket host port)
-    NS.sClose
-    (\s -> run $ app (sourceSocket s) (sinkSocket s))
+    (NS.sClose . fst)
+    (\(s, address) -> run $ app AppData
+        { adSource = sourceSocket s
+        , adSink = sinkSocket s
+        , adSockAddr = address
+        })
 
 -- | Attempt to connect to the given host/port.
 --
--- Since 0.2.1
-getSocket :: String -> Int -> IO NS.Socket
+-- Since 0.6.0
+getSocket :: ByteString -> Int -> IO (NS.Socket, NS.SockAddr)
 getSocket host' port' = do
-    (sock, addr) <- Utils.getSocket host' port' NS.Stream
+    (sock, addr) <- Utils.getSocket (S8.unpack host') port' NS.Stream
     ee <- try' $ NS.connect sock (NS.addrAddress addr)
     case ee of
         Left e -> NS.sClose sock >> throwIO e
-        Right () -> return sock
+        Right () -> return (sock, NS.addrAddress addr)
   where
     try' :: IO a -> IO (Either SomeException a)
     try' = try
@@ -148,7 +200,7 @@ bindPort p s = do
 -- may be thrown by accept(). This function will catch that exception, wait a
 -- second, and then try again.
 --
--- Since 0.5.1
+-- Since 0.6.0
 acceptSafe :: Socket -> IO (Socket, NS.SockAddr)
 acceptSafe socket =
     loop
