@@ -12,7 +12,7 @@ main = do
         $ runTCPClient (clientSettings 4000 "localhost") doNothing
 
 echo :: Application IO
-echo ad = adSource ad $$ adSink ad
+echo ad = appSource ad $$ appSink ad
 
 doNothing :: Application IO
 doNothing _ = return ()
