@@ -22,7 +22,7 @@ import Data.Conduit.Network.Internal (AppData (..))
 import Data.Conduit (($$), yield)
 import qualified Data.Conduit.List as CL
 import Data.Either (rights)
-import Network.Socket (sClose)
+import Network.Socket (sClose, getSocketName)
 import Network.Socket.ByteString (recv)
 import Control.Exception (bracket, finally)
 import Control.Concurrent (forkIO)
@@ -35,6 +35,7 @@ data TLSConfig = TLSConfig
     , tlsPort :: Int
     , tlsCertificate :: FilePath
     , tlsKey :: FilePath
+    , tlsNeedLocalAddr :: Bool
     }
 
 runTCPServerTLS :: TLSConfig -> Application IO -> IO ()
@@ -48,10 +49,13 @@ runTCPServerTLS TLSConfig{..} app = do
   where
     serve certs key lsocket = do
         (socket, addr) <- acceptSafe lsocket
-        _ <- forkIO $ handle socket addr
+        mlocal <- if tlsNeedLocalAddr
+                    then fmap Just $ getSocketName socket
+                    else return Nothing
+        _ <- forkIO $ handle socket addr mlocal
         return ()
       where
-        handle socket addr = do
+        handle socket addr mlocal = do
             gen <- newGenIO
             ctx <- TLS.serverWith
                 params
@@ -69,7 +73,7 @@ runTCPServerTLS TLSConfig{..} app = do
                          in src
                     , appSink = CL.mapM_ $ TLS.sendData ctx . L.fromChunks . return
                     , appSockAddr = addr
-                    , appLocalAddr = Nothing
+                    , appLocalAddr = mlocal
                     }
 
 
