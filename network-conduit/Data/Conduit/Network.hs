@@ -89,13 +89,12 @@ type Application m = AppData m -> m ()
 serverSettings :: Monad m
                => Int -- ^ port to bind to
                -> HostPreference -- ^ host binding preferences
-               -> Bool
                -> ServerSettings m
-serverSettings port host needLocalAddr = ServerSettings
+serverSettings port host = ServerSettings
     { serverPort = port
     , serverHost = host
     , serverAfterBind = const $ return ()
-    , serverNeedLocalAddr = needLocalAddr
+    , serverNeedLocalAddr = False
     }
 
 -- | Run an @Application@ with the given settings. This function will create a
