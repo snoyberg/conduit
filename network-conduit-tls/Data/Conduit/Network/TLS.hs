@@ -1,7 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 module Data.Conduit.Network.TLS
-    ( tlsConfig
+    ( TLSConfig
+    , tlsConfig
     , tlsHost
     , tlsPort
     , tlsCertificate
