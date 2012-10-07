@@ -69,6 +69,7 @@ runTCPServerTLS TLSConfig{..} app = do
                          in src
                     , appSink = CL.mapM_ $ TLS.sendData ctx . L.fromChunks . return
                     , appSockAddr = addr
+                    , appLocalAddr = Nothing
                     }
 
 
