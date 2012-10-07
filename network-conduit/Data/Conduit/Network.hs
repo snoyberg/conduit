@@ -11,12 +11,14 @@ module Data.Conduit.Network
     , appSource
     , appSink
     , appSockAddr
+    , appLocalAddr
       -- ** Server
     , ServerSettings
     , serverSettings
     , serverPort
     , serverHost
     , serverAfterBind
+    , serverNeedLocalAddr
     , runTCPServer
       -- ** Client
     , ClientSettings
@@ -92,6 +94,7 @@ serverSettings port host = ServerSettings
     { serverPort = port
     , serverHost = host
     , serverAfterBind = const $ return ()
+    , serverNeedLocalAddr = False
     }
 
 -- | Run an @Application@ with the given settings. This function will create a
@@ -100,7 +103,7 @@ serverSettings port host = ServerSettings
 --
 -- Since 0.6.0
 runTCPServer :: (MonadIO m, MonadBaseControl IO m) => ServerSettings m -> Application m -> m ()
-runTCPServer (ServerSettings port host afterBind) app = control $ \run -> bracket
+runTCPServer (ServerSettings port host afterBind needLocalAddr) app = control $ \run -> bracket
     (liftIO $ bindPort port host)
     (liftIO . NS.sClose)
     (\socket -> run $ do
@@ -109,10 +112,14 @@ runTCPServer (ServerSettings port host afterBind) app = control $ \run -> bracke
   where
     serve lsocket = do
         (socket, addr) <- liftIO $ acceptSafe lsocket
+        mlocal <- if needLocalAddr
+                    then fmap Just $ liftIO (NS.getSocketName socket)
+                    else return Nothing
         let ad = AppData
                 { appSource = sourceSocket socket
                 , appSink = sinkSocket socket
                 , appSockAddr = addr
+                , appLocalAddr = mlocal
                 }
             app' run = run (app ad) >> return ()
             appClose run = app' run `finally` NS.sClose socket
@@ -141,6 +148,7 @@ runTCPClient (ClientSettings port host) app = control $ \run -> bracket
         { appSource = sourceSocket s
         , appSink = sinkSocket s
         , appSockAddr = address
+        , appLocalAddr = Nothing
         })
 
 -- | Attempt to connect to the given host/port.
