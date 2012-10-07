@@ -1,7 +1,12 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 module Data.Conduit.Network.TLS
-    ( TLSConfig (..)
+    ( tlsConfig
+    , tlsHost
+    , tlsPort
+    , tlsCertificate
+    , tlsKey
+    , tlsNeedLocalAddr
     , runTCPServerTLS
     ) where
 
@@ -19,6 +24,7 @@ import qualified Network.TLS as TLS
 import qualified Data.Certificate.X509 as X509
 import Data.Conduit.Network (HostPreference, Application, bindPort, sinkSocket, acceptSafe)
 import Data.Conduit.Network.Internal (AppData (..))
+import Data.Conduit.Network.TLS.Internal
 import Data.Conduit (($$), yield)
 import qualified Data.Conduit.List as CL
 import Data.Either (rights)
@@ -30,13 +36,12 @@ import Control.Monad.Trans.Class (lift)
 import qualified Network.TLS.Extra as TLSExtra
 import Crypto.Random (newGenIO, SystemRandom)
 
-data TLSConfig = TLSConfig
-    { tlsHost :: HostPreference
-    , tlsPort :: Int
-    , tlsCertificate :: FilePath
-    , tlsKey :: FilePath
-    , tlsNeedLocalAddr :: Bool
-    }
+tlsConfig :: HostPreference
+          -> Int -- ^ port
+          -> FilePath -- ^ certificate
+          -> FilePath -- ^ key
+          -> TLSConfig
+tlsConfig a b c d = TLSConfig a b c d False
 
 runTCPServerTLS :: TLSConfig -> Application IO -> IO ()
 runTCPServerTLS TLSConfig{..} app = do

@@ -13,6 +13,7 @@ cabal-version:       >=1.8
 
 library
   exposed-modules:    Data.Conduit.Network.TLS
+                      Data.Conduit.Network.TLS.Internal
   build-depends:      base            >= 4        && < 5
                     , yaml            >= 0.8
                     , system-filepath >= 0.4
