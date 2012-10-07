@@ -18,6 +18,7 @@ data AppData m = AppData
     { appSource :: Source m ByteString
     , appSink :: Sink ByteString m ()
     , appSockAddr :: SockAddr
+    , appLocalAddr :: Maybe SockAddr
     }
 
 -- | Settings for a TCP server. It takes a port to listen on, and an optional
@@ -28,6 +29,7 @@ data ServerSettings m = ServerSettings
     { serverPort :: Int
     , serverHost :: HostPreference
     , serverAfterBind :: Socket -> m ()
+    , serverNeedLocalAddr :: Bool
     }
 
 -- | Settings for a TCP client, specifying how to connect to the server.
