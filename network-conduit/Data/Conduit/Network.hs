@@ -167,12 +167,15 @@ getSocket host' port' = do
 
 -- | Attempt to bind a listening @Socket@ on the given host/port. If no host is
 -- given, will use the first address available.
+-- 'maxListenQueue' is topically 128 which is too short for
+-- high performance servers. So, we specify 'max 2048 maxListenQueue' to
+-- the listen queue.
 --
 -- Since 0.3.0
 bindPort :: Int -> HostPreference -> IO Socket
 bindPort p s = do
     sock <- Utils.bindPort p s NS.Stream
-    NS.listen sock NS.maxListenQueue
+    NS.listen sock (max 2048 NS.maxListenQueue)
     return sock
 
 -- | Try to accept a connection, recovering automatically from exceptions.
