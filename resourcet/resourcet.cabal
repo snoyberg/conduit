@@ -1,5 +1,5 @@
 Name:                resourcet
-Version:             0.4.0.1
+Version:             0.4.0.2
 Synopsis:            Deterministic allocation and freeing of scarce resources.
 Description:
 	This package was originally included with the conduit package, and has since been split off. For more information, please see <http://www.yesodweb.com/book/conduits>.
@@ -15,7 +15,7 @@ Homepage:            http://github.com/snoyberg/conduit
 Library
   Exposed-modules:     Control.Monad.Trans.Resource
   Build-depends:       base                     >= 4.3          && < 5
-                     , lifted-base              >= 0.1          && < 0.2
+                     , lifted-base              >= 0.1
                      , transformers-base        >= 0.4.1        && < 0.5
                      , monad-control            >= 0.3.1        && < 0.4
                      , containers
