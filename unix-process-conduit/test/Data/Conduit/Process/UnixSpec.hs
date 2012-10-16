@@ -9,9 +9,10 @@ import qualified Data.ByteString.Lazy as L
 import Data.ByteString (ByteString)
 import qualified Data.IORef as I
 import qualified Data.Conduit.List as CL
-import System.Exit (ExitCode (ExitSuccess))
+import System.Exit (ExitCode (ExitSuccess, ExitFailure))
 import Control.Monad.Trans.Class (lift)
 import Control.Concurrent (threadDelay)
+import System.Posix.Signals (sigKILL, sigTERM)
 
 iorefSink :: IO (Sink ByteString IO (), IO L.ByteString)
 iorefSink = do
@@ -33,7 +34,6 @@ spec = describe "unix-process-conduit" $ do
         (sink, getLBS) <- iorefSink
         pid <- forkExecuteFile
             "cat"
-            True
             []
             Nothing
             Nothing
@@ -42,13 +42,25 @@ spec = describe "unix-process-conduit" $ do
             Nothing
         res <- waitForProcess pid
         lbs <- getLBS
-        res `shouldBe` Exited ExitSuccess
+        res `shouldBe` ExitSuccess
         lbs `shouldBe` expected
+    it "terminateProcess works" $ do
+        let src = lift (threadDelay 1000000) >> src
+        pid <- forkExecuteFile
+            "cat"
+            []
+            Nothing
+            Nothing
+            (Just src)
+            Nothing
+            Nothing
+        terminateProcess pid
+        res <- waitForProcess pid
+        res `shouldBe` ExitFailure (fromIntegral sigTERM)
     it "killProcess works" $ do
         let src = lift (threadDelay 1000000) >> src
         pid <- forkExecuteFile
             "cat"
-            True
             []
             Nothing
             Nothing
@@ -57,12 +69,11 @@ spec = describe "unix-process-conduit" $ do
             Nothing
         killProcess pid
         res <- waitForProcess pid
-        res `shouldBe` Terminated 9
+        res `shouldBe` ExitFailure (fromIntegral sigKILL)
     it "environment is set" $ do
         (sink, getLBS) <- iorefSink
         pid <- forkExecuteFile
             "env"
-            True
             []
             (Just [("foo", S.take (read "3") $ "barbarbar")])
             Nothing
@@ -71,5 +82,5 @@ spec = describe "unix-process-conduit" $ do
             Nothing
         res <- waitForProcess pid
         lbs <- getLBS
-        res `shouldBe` Exited ExitSuccess
+        res `shouldBe` ExitSuccess
         lbs `shouldBe` L.fromChunks ["foo=bar\n"]

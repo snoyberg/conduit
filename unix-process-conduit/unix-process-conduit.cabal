@@ -2,7 +2,7 @@
 --  documentation, see http://haskell.org/cabal/users-guide/
 
 name:                unix-process-conduit
-version:             0.1.0.1
+version:             0.2.0
 synopsis:            Run processes on Unix systems, with a conduit interface
 description:         This library allows you to provide @conduit@ datatypes for the input and output streams. Note that you must compile your programs with @-threaded@.
 homepage:            https://github.com/snoyberg/conduit
@@ -21,7 +21,7 @@ library
                      , bytestring
                      , conduit           >= 0.5       && < 0.6
                      , unix              >= 2.5
-  c-sources: cbits/forkExecute.c
+                     , process           >= 1.1
 
 test-suite test
     hs-source-dirs: test
@@ -34,6 +34,7 @@ test-suite test
                    , conduit
                    , bytestring
                    , hspec >= 1.3
+                   , unix
     ghc-options:     -Wall -threaded
 
 source-repository head

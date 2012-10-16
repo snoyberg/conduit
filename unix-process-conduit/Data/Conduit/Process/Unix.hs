@@ -1,20 +1,27 @@
-{-# LANGUAGE ForeignFunctionInterface, OverloadedStrings #-}
+{-# LANGUAGE ForeignFunctionInterface, OverloadedStrings, ScopedTypeVariables #-}
 module Data.Conduit.Process.Unix
     ( forkExecuteFile
     , killProcess
+    , terminateProcess
     , waitForProcess
     , ProcessStatus (..)
+    , signalProcessHandle
+    , signalProcessHandleGroup
     ) where
 
+import           Control.Applicative               ((<$>), (<*>))
+import           Control.Arrow                     ((***))
 import           Control.Concurrent                (forkIO)
-import           Control.Exception                 (finally, mask, onException)
+import           Control.Exception                 (finally, mask, onException, handle, SomeException)
 import           Control.Monad                     (unless, void, zipWithM_, when)
 import           Control.Monad.Trans.Class         (lift)
 import           Data.ByteString                   (ByteString, null, concat, append, singleton)
+import qualified Data.ByteString.Char8             as S8
 import           Data.ByteString.Unsafe            (unsafePackCStringFinalizer,
                                                     unsafeUseAsCStringLen,
                                                     unsafeUseAsCString)
 import           Data.Conduit                      (Sink, Source, yield, ($$))
+import           Data.Conduit.Binary               (sinkHandle, sourceHandle)
 import           Data.Conduit.List                 (mapM_)
 import           Foreign.Marshal.Alloc             (free, mallocBytes, allocaBytes)
 import           Foreign.Ptr                       (castPtr, Ptr, nullPtr)
@@ -23,33 +30,48 @@ import           Prelude                           (Bool (..), IO, Maybe (..),
                                                     Monad (..), flip,
                                                     fromIntegral, fst, maybe,
                                                     snd, ($), (.), (==), error, id, length, (*),
-                                                    head, map)
+                                                    head, map, const, fmap)
 import           System.Posix.Types                (Fd)
 import           System.Posix.IO.ByteString        (closeFd, createPipe,
                                                     fdReadBuf, fdWriteBuf,
                                                     setFdOption, FdOption (CloseOnExec))
 import           System.Posix.Process.ByteString   (ProcessStatus (..),
-                                                    getProcessStatus)
-import           System.Posix.Signals              (sigKILL, signalProcess)
+                                                    getProcessStatus, getProcessGroupIDOf)
+import           System.Posix.Signals              (sigKILL, signalProcess, Signal, signalProcessGroup)
 import           System.Posix.Types                (ProcessID)
+import System.IO (hClose)
 import Foreign.C.Types
 import Foreign.C.String
+import System.Process
+import System.Process.Internals
 
 -- | Kill a process by sending it the KILL (9) signal.
 --
 -- Since 0.1.0
-killProcess :: ProcessID -> IO ()
-killProcess = signalProcess sigKILL
+killProcess :: ProcessHandle -> IO ()
+killProcess ph = withProcessHandle_ ph $ \p_ ->
+    case p_ of
+        ClosedHandle _ -> return p_
+        OpenHandle h -> do
+            signalProcess sigKILL h
+            return p_
 
-foreign import ccall "forkExecuteFile"
-    c_forkExecuteFile :: Ptr CString
-                      -> CInt
-                      -> CString
-                      -> Ptr CString
-                      -> CInt
-                      -> CInt
-                      -> CInt
-                      -> IO CInt
+signalProcessHandle :: Signal -> ProcessHandle -> IO ()
+signalProcessHandle signal ph = withProcessHandle_ ph $ \p_ ->
+    case p_ of
+        ClosedHandle _ -> return p_
+        OpenHandle h -> do
+            signalProcess signal h
+            return p_
+
+signalProcessHandleGroup :: Signal -> ProcessHandle -> IO ()
+signalProcessHandleGroup signal ph = withProcessHandle_ ph $ \p_ ->
+    case p_ of
+        ClosedHandle _ -> return p_
+        OpenHandle h -> do
+            pgid <- getProcessGroupIDOf h
+            signalProcessGroup signal pgid
+            return p_
 
 -- | Fork a new process and execute the given command.
 --
@@ -64,60 +86,40 @@ foreign import ccall "forkExecuteFile"
 --
 -- Since 0.1.0
 forkExecuteFile :: ByteString -- ^ command
-                -> Bool -- ^ search on PATH?
                 -> [ByteString] -- ^ args
                 -> Maybe [(ByteString, ByteString)] -- ^ environment
                 -> Maybe ByteString -- ^ working directory
                 -> Maybe (Source IO ByteString) -- ^ stdin
                 -> Maybe (Sink ByteString IO ()) -- ^ stdout
                 -> Maybe (Sink ByteString IO ()) -- ^ stderr
-                -> IO ProcessID
-forkExecuteFile cmd path args menv mwdir mstdin mstdout mstderr = do
-    min  <- withIn  mstdin
-    mout <- withOut mstdout
-    merr <- withOut mstderr
-
-    maybe (return ()) (closeOnExec . snd) min
-    maybe (return ()) (closeOnExec . fst) mout
-    maybe (return ()) (closeOnExec . fst) merr
-
-    pid <- withArgs (cmd : args) $ \args' ->
-           withMString mwdir $ \mwdir' ->
-           withEnv menv $ \menv' ->
-           c_forkExecuteFile
-                args'
-                (if path then 1 else 0)
-                mwdir'
-                menv'
-                (maybe (-1) (fromIntegral . fst) min)
-                (maybe (-1) (fromIntegral . snd) mout)
-                (maybe (-1) (fromIntegral . snd) merr)
-    when (pid == -1) $ error "Failure with forkExecuteFile"
-    maybe (return ()) (closeFd . fst) min
-    maybe (return ()) (closeFd . snd) mout
-    maybe (return ()) (closeFd . snd) merr
-    return $ fromIntegral pid
+                -> IO ProcessHandle
+forkExecuteFile cmd args menv mwdir mstdin mstdout mstderr = do
+    (min, mout, merr, ph) <- createProcess cp
+    case (,) <$> mstdin <*> min of
+        Just (source, h) -> void $ forkIO $ ignoreExceptions $
+            (source $$ sinkHandle h) `finally` hClose h
+        Nothing -> return ()
+    case (,) <$> mstdout <*> mout of
+        Just (sink, h) -> void $ forkIO $ ignoreExceptions $
+            (sourceHandle h $$ sink) `finally` hClose h
+        Nothing -> return ()
+    case (,) <$> mstderr <*> merr of
+        Just (sink, h) -> void $ forkIO $ ignoreExceptions $
+            (sourceHandle h $$ sink) `finally` hClose h
+        Nothing -> return ()
+    return ph
   where
-    withIn Nothing = return Nothing
-    withIn (Just src) = do
-        (fdRead, fdWrite) <- createPipe
-        let sink = mapM_ $ flip unsafeUseAsCStringLen $ \(ptr, size) -> void $ fdWriteBuf fdWrite (castPtr ptr) (fromIntegral size)
-        void $ forkIO $ (src $$ sink) `finally` closeFd fdWrite
-        return $ Just (fdRead, fdWrite)
-    withOut Nothing = return Nothing
-    withOut (Just sink) = do
-        (fdRead, fdWrite) <- createPipe
-        let buffSize = 4096
-        let src = do
-                bs <- lift $ mask $ \restore -> do
-                    ptr <- mallocBytes buffSize
-                    bytesRead <- restore (fdReadBuf fdRead ptr $ fromIntegral buffSize) `onException` free ptr
-                    unsafePackCStringFinalizer ptr (fromIntegral bytesRead) (free ptr)
-                unless (null bs) $ do
-                    yield bs
-                    src
-        void $ forkIO $ (src $$ sink) `finally` closeFd fdRead
-        return $ Just (fdRead, fdWrite)
+    ignoreExceptions = handle (\(_ :: SomeException) -> return ())
+    cp = CreateProcess
+        { cmdspec = RawCommand (S8.unpack cmd) (map S8.unpack args)
+        , cwd = S8.unpack <$> mwdir
+        , env = map (S8.unpack *** S8.unpack) <$> menv
+        , std_in = maybe Inherit (const CreatePipe) mstdin
+        , std_out = maybe Inherit (const CreatePipe) mstdout
+        , std_err = maybe Inherit (const CreatePipe) mstderr
+        , close_fds = True
+        , create_group = True
+        }
 
 closeOnExec :: Fd -> IO ()
 closeOnExec fd = setFdOption fd CloseOnExec True
@@ -144,12 +146,3 @@ withArgs bss0 f =
 
     run ptrs = allocaBytes (length ptrs * sizeOf (head ptrs)) $ \res ->
         zipWithM_ (pokeElemOff res) [0..] ptrs >> f res
-
--- | Wait until the given process has died, and return its @ProcessStatus@.
---
--- Since 0.1.0
-waitForProcess :: ProcessID -> IO ProcessStatus
-waitForProcess pid =
-    loop
-  where
-    loop = getProcessStatus True False pid >>= maybe loop return
