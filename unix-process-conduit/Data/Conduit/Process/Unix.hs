@@ -10,7 +10,7 @@ import           Control.Concurrent                (forkIO)
 import           Control.Exception                 (finally, mask, onException)
 import           Control.Monad                     (unless, void, zipWithM_, when)
 import           Control.Monad.Trans.Class         (lift)
-import           Data.ByteString                   (ByteString, null, concat)
+import           Data.ByteString                   (ByteString, null, concat, append, singleton)
 import           Data.ByteString.Unsafe            (unsafePackCStringFinalizer,
                                                     unsafeUseAsCStringLen,
                                                     unsafeUseAsCString)
@@ -124,7 +124,7 @@ closeOnExec fd = setFdOption fd CloseOnExec True
 
 withMString :: Maybe ByteString -> (CString -> IO a) -> IO a
 withMString Nothing f = f nullPtr
-withMString (Just bs) f = unsafeUseAsCString bs f
+withMString (Just bs) f = unsafeUseAsCString (bs `append` singleton 0) f
 
 withEnv :: Maybe [(ByteString, ByteString)] -> (Ptr CString -> IO a) -> IO a
 withEnv Nothing f = f nullPtr
@@ -139,7 +139,7 @@ withArgs bss0 f =
   where
     loop [] front = run (front [nullPtr])
     loop (bs:bss) front =
-        unsafeUseAsCString bs $ \ptr ->
+        unsafeUseAsCString (bs `append` singleton 0) $ \ptr ->
         loop bss (front . (ptr:))
 
     run ptrs = allocaBytes (length ptrs * sizeOf (head ptrs)) $ \res ->

@@ -4,6 +4,7 @@ module Data.Conduit.Process.UnixSpec where
 import Test.Hspec (describe, it, shouldBe, Spec)
 import Data.Conduit.Process.Unix
 import Data.Conduit
+import qualified Data.ByteString as S
 import qualified Data.ByteString.Lazy as L
 import Data.ByteString (ByteString)
 import qualified Data.IORef as I
@@ -57,3 +58,18 @@ spec = describe "unix-process-conduit" $ do
         killProcess pid
         res <- waitForProcess pid
         res `shouldBe` Terminated 9
+    it "environment is set" $ do
+        (sink, getLBS) <- iorefSink
+        pid <- forkExecuteFile
+            "env"
+            True
+            []
+            (Just [("foo", S.take (read "3") $ "barbarbar")])
+            Nothing
+            Nothing
+            (Just sink)
+            Nothing
+        res <- waitForProcess pid
+        lbs <- getLBS
+        res `shouldBe` Exited ExitSuccess
+        lbs `shouldBe` L.fromChunks ["foo=bar\n"]
