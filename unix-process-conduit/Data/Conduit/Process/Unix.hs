@@ -1,3 +1,4 @@
+{-# LANGUAGE ForeignFunctionInterface, OverloadedStrings #-}
 module Data.Conduit.Process.Unix
     ( forkExecuteFile
     , killProcess
@@ -7,35 +8,48 @@ module Data.Conduit.Process.Unix
 
 import           Control.Concurrent                (forkIO)
 import           Control.Exception                 (finally, mask, onException)
-import           Control.Monad                     (unless, void)
+import           Control.Monad                     (unless, void, zipWithM_, when)
 import           Control.Monad.Trans.Class         (lift)
-import           Data.ByteString                   (ByteString, null)
+import           Data.ByteString                   (ByteString, null, concat)
 import           Data.ByteString.Unsafe            (unsafePackCStringFinalizer,
-                                                    unsafeUseAsCStringLen)
+                                                    unsafeUseAsCStringLen,
+                                                    unsafeUseAsCString)
 import           Data.Conduit                      (Sink, Source, yield, ($$))
 import           Data.Conduit.List                 (mapM_)
-import           Foreign.Marshal.Alloc             (free, mallocBytes)
-import           Foreign.Ptr                       (castPtr)
+import           Foreign.Marshal.Alloc             (free, mallocBytes, allocaBytes)
+import           Foreign.Ptr                       (castPtr, Ptr, nullPtr)
+import           Foreign.Storable                  (sizeOf, pokeElemOff)
 import           Prelude                           (Bool (..), IO, Maybe (..),
                                                     Monad (..), flip,
                                                     fromIntegral, fst, maybe,
-                                                    snd, ($), (.))
-import           System.Posix.Directory.ByteString (changeWorkingDirectory)
-import           System.Posix.IO.ByteString        (closeFd, createPipe, dupTo,
+                                                    snd, ($), (.), (==), error, id, length, (*),
+                                                    head, map)
+import           System.Posix.Types                (Fd)
+import           System.Posix.IO.ByteString        (closeFd, createPipe,
                                                     fdReadBuf, fdWriteBuf,
-                                                    stdError, stdInput,
-                                                    stdOutput)
+                                                    setFdOption, FdOption (CloseOnExec))
 import           System.Posix.Process.ByteString   (ProcessStatus (..),
-                                                    executeFile, forkProcess,
                                                     getProcessStatus)
 import           System.Posix.Signals              (sigKILL, signalProcess)
 import           System.Posix.Types                (ProcessID)
+import Foreign.C.Types
+import Foreign.C.String
 
 -- | Kill a process by sending it the KILL (9) signal.
 --
 -- Since 0.1.0
 killProcess :: ProcessID -> IO ()
 killProcess = signalProcess sigKILL
+
+foreign import ccall "forkExecuteFile"
+    c_forkExecuteFile :: Ptr CString
+                      -> CInt
+                      -> CString
+                      -> Ptr CString
+                      -> CInt
+                      -> CInt
+                      -> CInt
+                      -> IO CInt
 
 -- | Fork a new process and execute the given command.
 --
@@ -62,24 +76,27 @@ forkExecuteFile cmd path args menv mwdir mstdin mstdout mstderr = do
     min  <- withIn  mstdin
     mout <- withOut mstdout
     merr <- withOut mstderr
-    pid <- forkProcess $ do
-        maybe (return ()) changeWorkingDirectory mwdir
-        case min of
-            Nothing -> return ()
-            Just (fdRead, fdWrite) -> do
-                closeFd fdWrite
-                void $ dupTo fdRead stdInput
-        let goOut Nothing _ = return ()
-            goOut (Just (fdRead, fdWrite)) dest = do
-                closeFd fdRead
-                void $ dupTo fdWrite dest
-        goOut mout stdOutput
-        goOut merr stdError
-        executeFile cmd path args menv
+
+    maybe (return ()) (closeOnExec . snd) min
+    maybe (return ()) (closeOnExec . fst) mout
+    maybe (return ()) (closeOnExec . fst) merr
+
+    pid <- withArgs (cmd : args) $ \args' ->
+           withMString mwdir $ \mwdir' ->
+           withEnv menv $ \menv' ->
+           c_forkExecuteFile
+                args'
+                (if path then 1 else 0)
+                mwdir'
+                menv'
+                (maybe (-1) (fromIntegral . fst) min)
+                (maybe (-1) (fromIntegral . snd) mout)
+                (maybe (-1) (fromIntegral . snd) merr)
+    when (pid == -1) $ error "Failure with forkExecuteFile"
     maybe (return ()) (closeFd . fst) min
     maybe (return ()) (closeFd . snd) mout
     maybe (return ()) (closeFd . snd) merr
-    return pid
+    return $ fromIntegral pid
   where
     withIn Nothing = return Nothing
     withIn (Just src) = do
@@ -101,6 +118,32 @@ forkExecuteFile cmd path args menv mwdir mstdin mstdout mstderr = do
                     src
         void $ forkIO $ (src $$ sink) `finally` closeFd fdRead
         return $ Just (fdRead, fdWrite)
+
+closeOnExec :: Fd -> IO ()
+closeOnExec fd = setFdOption fd CloseOnExec True
+
+withMString :: Maybe ByteString -> (CString -> IO a) -> IO a
+withMString Nothing f = f nullPtr
+withMString (Just bs) f = unsafeUseAsCString bs f
+
+withEnv :: Maybe [(ByteString, ByteString)] -> (Ptr CString -> IO a) -> IO a
+withEnv Nothing f = f nullPtr
+withEnv (Just pairs) f =
+    withArgs (map toBS pairs) f
+  where
+    toBS (x, y) = concat [x, "=", y]
+
+withArgs :: [ByteString] -> (Ptr CString -> IO a) -> IO a
+withArgs bss0 f =
+    loop bss0 id
+  where
+    loop [] front = run (front [nullPtr])
+    loop (bs:bss) front =
+        unsafeUseAsCString bs $ \ptr ->
+        loop bss (front . (ptr:))
+
+    run ptrs = allocaBytes (length ptrs * sizeOf (head ptrs)) $ \res ->
+        zipWithM_ (pokeElemOff res) [0..] ptrs >> f res
 
 -- | Wait until the given process has died, and return its @ProcessStatus@.
 --

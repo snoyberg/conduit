@@ -34,6 +34,7 @@ test-suite test
                    , bytestring
                    , hspec >= 1.3
     ghc-options:     -Wall -threaded
+    c-sources: cbits/forkExecute.c
 
 source-repository head
   type:     git
