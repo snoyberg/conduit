@@ -123,6 +123,7 @@ decode codec =
 -- Since 0.3.0
 data TextException = DecodeException Codec Word8
                    | EncodeException Codec Char
+                   | TextException Exc.SomeException
     deriving (Show, Typeable)
 instance Exc.Exception TextException
 
@@ -146,7 +147,7 @@ splitSlowly dec bytes = valid where
     decFirst (a, b) = case tryDec a of
         Left _ -> Nothing
         Right text -> Just (text, case tryDec b of
-            Left exc -> Left (exc, b)
+            Left exc -> Left (TextException exc, b)
 
             -- this case shouldn't occur, since splitSlowly
             -- is only called when parsing failed somewhere
@@ -313,7 +314,7 @@ iso8859_1 = Codec name enc dec where
 
     dec bytes = (T.pack (B8.unpack bytes), Right B.empty)
 
-tryEvaluate :: a -> Either TextException a
+tryEvaluate :: a -> Either Exc.SomeException a
 tryEvaluate = unsafePerformIO . Exc.try . Exc.evaluate
 
 maybeDecode :: (a, b) -> Maybe (a, b)

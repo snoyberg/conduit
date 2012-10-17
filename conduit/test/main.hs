@@ -23,7 +23,7 @@ import Data.ByteString.Lazy.Char8 ()
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Encoding as TLE
-import Control.Monad.Trans.Resource (runExceptionT_, allocate, resourceForkIO)
+import Control.Monad.Trans.Resource (runExceptionT, runExceptionT_, allocate, resourceForkIO)
 import Control.Concurrent (threadDelay, killThread)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Trans.Class (lift)
@@ -814,6 +814,12 @@ main = hspec $ do
             x <- runWriterT $ source C.$$ C.transPipe (`evalStateT` 1) replaceNum1 C.=$ CL.consume
             y <- runWriterT $ source C.$$ C.transPipe (`evalStateT` 1) replaceNum2 C.=$ CL.consume
             x `shouldBe` y
+    describe "text decode" $ do
+        it' "doesn't throw runtime exceptions" $ do
+            let x = runIdentity $ runExceptionT $ C.yield "\x89\x243" C.$$ CT.decode CT.utf8 C.=$ CL.consume
+            case x of
+                Left _ -> return ()
+                Right t -> error $ "This should have failed: " ++ show t
 
 it' :: String -> IO () -> Spec
 it' = it
