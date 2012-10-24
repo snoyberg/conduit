@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE CPP #-}
 module Data.Conduit.Network.TLS
     ( TLSConfig
     , tlsConfig
@@ -30,7 +31,7 @@ import Data.Conduit (($$), yield)
 import qualified Data.Conduit.List as CL
 import Data.Either (rights)
 import Network.Socket (sClose, getSocketName)
-import Network.Socket.ByteString (recv)
+import Network.Socket.ByteString (recv, sendAll)
 import Control.Exception (bracket, finally)
 import Control.Concurrent (forkIO)
 import Control.Monad.Trans.Class (lift)
@@ -63,6 +64,22 @@ runTCPServerTLS TLSConfig{..} app = do
       where
         handle socket addr mlocal = do
             gen <- newGenIO
+#if MIN_VERSION_tls(1, 0, 0)
+            ctx <- TLS.contextNew
+                TLS.Backend
+                    { TLS.backendFlush = return ()
+                    , TLS.backendClose = return ()
+                    , TLS.backendSend = \bs -> do
+                        print bs
+                        sendAll socket bs
+                    , TLS.backendRecv = \i -> do
+                        bs <- recv socket i
+                        print bs
+                        return bs
+                    }
+                params
+                (gen :: SystemRandom)
+#else
             ctx <- TLS.serverWith
                 params
                 (gen :: SystemRandom)
@@ -70,6 +87,7 @@ runTCPServerTLS TLSConfig{..} app = do
                 (return ()) -- flush
                 (\bs -> yield bs $$ sinkSocket socket)
                 (recv socket)
+#endif
 
             TLS.handshake ctx
 
@@ -85,12 +103,23 @@ runTCPServerTLS TLSConfig{..} app = do
 
             app ad `finally` sClose socket
 
-        params = TLS.defaultParams
+        params =
+#if MIN_VERSION_tls(1, 0, 0)
+          TLS.updateServerParams
+                (\sp -> sp { TLS.serverWantClientCert = False }) $
+          TLS.defaultParamsServer
+            { TLS.pAllowedVersions = [TLS.SSL3,TLS.TLS10,TLS.TLS11,TLS.TLS12]
+            , TLS.pCiphers         = ciphers
+            , TLS.pCertificates    = zip certs $ Just key : repeat Nothing
+            }
+#else
+          TLS.defaultParams
             { TLS.pWantClientCert = False
             , TLS.pAllowedVersions = [TLS.SSL3,TLS.TLS10,TLS.TLS11,TLS.TLS12]
             , TLS.pCiphers         = ciphers
             , TLS.pCertificates    = zip certs $ Just key : repeat Nothing
             }
+#endif
 
 -- taken from stunnel example in tls-extra
 ciphers :: [TLS.Cipher]
