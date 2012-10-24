@@ -69,13 +69,8 @@ runTCPServerTLS TLSConfig{..} app = do
                 TLS.Backend
                     { TLS.backendFlush = return ()
                     , TLS.backendClose = return ()
-                    , TLS.backendSend = \bs -> do
-                        print bs
-                        sendAll socket bs
-                    , TLS.backendRecv = \i -> do
-                        bs <- recv socket i
-                        print bs
-                        return bs
+                    , TLS.backendSend = sendAll socket
+                    , TLS.backendRecv = recv socket
                     }
                 params
                 (gen :: SystemRandom)
