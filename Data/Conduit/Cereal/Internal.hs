@@ -1,62 +1,67 @@
-module Data.Conduit.Cereal.Internal 
-  ( ErrorHandler
-  , TerminationHandler
+{-# LANGUAGE Rank2Types #-}
+
+module Data.Conduit.Cereal.Internal
+  ( ConduitErrorHandler
+  , SinkErrorHandler
+  , SinkTerminationHandler
 
   , mkConduitGet
   , mkSinkGet
   ) where
 
+import           Control.Monad (when)
 import qualified Data.ByteString as BS
 import qualified Data.Conduit as C
 import           Data.Serialize hiding (get, put)
-import           Data.Void 
+import Debug.Trace
 
 -- | What should we do if the Get fails?
-type ErrorHandler i o m r = String -> Maybe BS.ByteString -> C.Pipe i o m r
+type ConduitErrorHandler m o = String -> C.GLConduit BS.ByteString m o
+type SinkErrorHandler m r = String -> C.GLSink BS.ByteString m r
 
 -- | What should we do if the stream is done before the Get is done?
-type TerminationHandler i o m r = (BS.ByteString -> Result r) -> Maybe BS.ByteString -> C.Pipe i o m r
+type SinkTerminationHandler m r = (BS.ByteString -> Result r) -> C.GLSink BS.ByteString m r
 
 -- | Construct a conduitGet with the specified 'ErrorHandler'
-mkConduitGet :: Monad m 
-             => ErrorHandler BS.ByteString o m ()
+mkConduitGet :: C.MonadThrow m
+             => ConduitErrorHandler m o
              -> Get o
-             -> C.Conduit BS.ByteString m o
-mkConduitGet errorHandler get = consume True (runGetPartial get) [] BS.empty 
-  where push f b s | BS.null s = C.NeedInput (push f b) (close b)
-                   | otherwise = consume False f b s
+             -> C.GLConduit BS.ByteString m o
+mkConduitGet errorHandler get = consume True (runGetPartial get) [] BS.empty
+  where pull f b s
+          | BS.null s = trace "s null" $ C.await >>= \ x -> case x of
+                          Nothing -> trace (show b) $ when (not $ null b) (C.leftover $ BS.concat $ reverse b)
+                          Just a -> trace ("pulled " ++ (show a)) $ pull f b a
+          | otherwise = trace ("pulled' " ++ (show s)) $ consume False f b s
         consume initial f b s = case f s of
-          Fail msg  -> errorHandler msg (chunkedStreamToMaybe consumed)
-          Partial p -> C.NeedInput (push p consumed) (close consumed)
+          Fail msg  -> do
+            when (not $ null b) (C.leftover $ BS.concat $ reverse consumed)
+            errorHandler msg
+          Partial p -> trace "Partial" $ pull p consumed BS.empty
           Done a s' -> case initial of
-                         True  -> infiniteSequence a
-                         False -> C.HaveOutput (push (runGetPartial get) [] s') (return ()) a
+                         -- this only works because the Get will either _always_ consume no input, or _never_ consume no input.
+                         True  -> sequence_ $ repeat $ C.yield a
+                         False -> trace "done" $ C.yield a >> trace "after done" (pull (runGetPartial get) [] s')
           where consumed = s : b
-                infiniteSequence r = C.HaveOutput (infiniteSequence r) (return ()) r
-                -- infinteSequence only works because the Get will either _always_ consume no input, or _never_ consume no input.
-        close b = C.Done (chunkedStreamToMaybe b) ()
 
 -- | Construct a sinkGet with the specified 'ErrorHandler' and 'TerminationHandler'
-mkSinkGet :: Monad m 
-          => ErrorHandler BS.ByteString Void m r
-          -> TerminationHandler BS.ByteString Void m r 
+mkSinkGet :: Monad m
+          => SinkErrorHandler m r
+          -> SinkTerminationHandler m r
           -> Get r
-          -> C.Sink BS.ByteString m r
+          -> C.GLSink BS.ByteString m r
 mkSinkGet errorHandler terminationHandler get = consume (runGetPartial get) [] BS.empty
-  where push f b s
-          | BS.null s = C.NeedInput (push f b) (close f b)
+  where pull f b s
+          | BS.null s = C.await >>= \ x -> case x of
+                          Nothing -> do
+                            when (not $ null b) (C.leftover $ BS.concat $ reverse b)
+                            terminationHandler f
+                          Just a -> pull f b a
           | otherwise = consume f b s
         consume f b s = case f s of
-          Fail msg  -> errorHandler msg (chunkedStreamToMaybe consumed)
-          Partial p -> C.NeedInput (push p consumed) (close p consumed)
-          Done r s' -> C.Done (streamToMaybe s') r
+          Fail msg  -> do
+            when (not $ null b) (C.leftover $ BS.concat $ reverse consumed)
+            errorHandler msg
+          Partial p -> pull p consumed BS.empty
+          Done r s' -> when (not $ BS.null s') (C.leftover s') >> return r
           where consumed = s : b
-        close f = terminationHandler f . chunkedStreamToMaybe
-
-chunkedStreamToMaybe :: [BS.ByteString] -> Maybe BS.ByteString
-chunkedStreamToMaybe = streamToMaybe . BS.concat . reverse
-
-streamToMaybe :: BS.ByteString -> Maybe BS.ByteString
-streamToMaybe s = if BS.null s
-                    then Nothing
-                    else Just s

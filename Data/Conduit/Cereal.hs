@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE NoMonomorphismRestriction #-}
 
 -- | Turn a 'Get' into a 'Sink' and a 'Put' into a 'Source'
 -- These functions are built upno the Data.Conduit.Cereal.Internal functions with default
@@ -15,6 +16,7 @@ module Data.Conduit.Cereal ( GetException
                            ) where
 
 import           Control.Exception.Base
+import           Control.Monad.Trans.Class (MonadTrans, lift)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.Conduit as C
@@ -30,26 +32,26 @@ data GetException = GetException String
 instance Exception GetException
 
 -- | Run a 'Get' repeatedly on the input stream, producing an output stream of whatever the 'Get' outputs.
-conduitGet :: C.MonadThrow m => Get output -> C.Conduit BS.ByteString m output
-conduitGet = mkConduitGet errorHandler 
-  where errorHandler msg _ = pipeError $ GetException msg 
+conduitGet :: C.MonadThrow m => Get o -> C.GLConduit BS.ByteString m o
+conduitGet = mkConduitGet errorHandler
+  where errorHandler msg = pipeError $ GetException msg
 
 -- | Convert a 'Get' into a 'Sink'. The 'Get' will be streamed bytes until it returns 'Done' or 'Fail'.
 --
 -- If 'Get' succeed it will return the data read and unconsumed part of the input stream.
 -- If the 'Get' fails due to deserialization error or early termination of the input stream it raise an error.
-sinkGet :: C.MonadThrow m => Get r -> C.Sink BS.ByteString m r
-sinkGet = mkSinkGet errorHandler terminationHandler 
-  where errorHandler msg _ = pipeError $ GetException msg 
-        terminationHandler f _ = let Fail msg = f BS.empty in pipeError $ GetException msg 
+sinkGet :: C.MonadThrow m => Get r -> C.GLSink BS.ByteString m r
+sinkGet = mkSinkGet errorHandler terminationHandler
+  where errorHandler msg = pipeError $ GetException msg
+        terminationHandler f = let Fail msg = f BS.empty in pipeError $ GetException msg 
 
-pipeError :: (C.MonadThrow m, Exception e) => e -> C.Pipe i o m r
-pipeError e = C.PipeM (C.monadThrow e) undefined 
+pipeError :: (C.MonadThrow m, MonadTrans t, Exception e) => e -> t m a
+pipeError e = lift $ C.monadThrow e
 
 -- | Convert a 'Put' into a 'Source'. Runs in constant memory.
-sourcePut :: Monad m => Put -> C.Source m BS.ByteString
+sourcePut :: Monad m => Put -> C.GSource m BS.ByteString
 sourcePut put = CL.sourceList $ LBS.toChunks $ runPutLazy put
 
 -- | Run a 'Putter' repeatedly on the input stream, producing a concatenated 'ByteString' stream.
-conduitPut :: Monad m => Putter input -> C.Conduit input m BS.ByteString
+conduitPut :: Monad m => Putter a -> C.GInfConduit a m BS.ByteString
 conduitPut p = CL.map $ runPut . p

@@ -70,20 +70,18 @@ sinktest6 = TestCase (assertEqual "Leftover input works"
 -- Current sink implementation will terminate the pipe in case of error. 
 -- One may need non-terminating version like one defined below to get access to Leftovers
 
-sinkGetMaybe :: Monad m => Get output -> C.Sink BS.ByteString m (Maybe output)
-sinkGetMaybe = mkSinkGet errorHandler terminationHandler . fmap Just
-  where errorHandler     msg s = C.Done s Nothing
-        terminationHandler f s = C.Done s Nothing
+sinkGetMaybe :: Get Word8 -> C.GLSink BS.ByteString (ExceptionT Identity) Word8
+sinkGetMaybe = mkSinkGet errorHandler terminationHandler
+  where errorHandler     msg = return 34
+        terminationHandler f = return 0
 
 sinktest7 :: Test
-sinktest7 = TestCase (assertBool "Leftover input with failure works"
-  (case runIdentity $ do
-     (CL.sourceList [BS.pack [1, 2]]) C.$$ (do
-       output <- sinkGetMaybe (getWord8 >> fail "" :: Get Word8)
-       output' <- CL.consume
-       return (output, BS.concat output')) of
-     (Nothing, bs) -> bs == BS.pack [1, 2]
-     otherwise -> False))
+sinktest7 = TestCase (assertEqual "Leftover input with failure works"
+  (Right (34, BS.pack [1, 2]))
+  (runIdentity $ runExceptionT $ (CL.sourceList [BS.pack [1, 2]]) C.$$ (do
+    output <- sinkGetMaybe (getWord8 >> fail "" :: Get Word8)
+    output' <- CL.consume
+    return (output, BS.concat output'))))
 
 conduittest1 :: Test
 conduittest1 = TestCase (assertEqual "Handles starting with empty bytestring"
@@ -148,7 +146,8 @@ conduittest12 = TestCase (assertBool "Immediate failure with empty input works"
     Left _ -> True
     Right _ -> False))
 
--- This test CAN'T work because of the type of HaveOutput.
+-- This test won't work because of auto-termination. As soon as the conduit yields the "12" value,
+-- it is stopped before it has a chance to run 'leftover'
 conduittest13 :: Test
 conduittest13 = TestCase (assertEqual "Leftover success conduit input works"
   (Right ([12], BS.pack [3, 4, 5]))
