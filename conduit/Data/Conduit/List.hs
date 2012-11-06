@@ -62,7 +62,7 @@ import Prelude
     )
 import Data.Monoid (Monoid, mempty, mappend)
 import Data.Conduit hiding (Source, Sink, Conduit, Pipe)
-import Data.Conduit.Internal (sourceList)
+import Data.Conduit.Internal (sourceList, pipeL, pipe)
 import Control.Monad (when, (<=<))
 import Control.Monad.Trans.Class (lift)
 
@@ -213,6 +213,28 @@ peek = await >>= maybe (return Nothing) (\x -> leftover x >> return (Just x))
 -- Since 0.3.0
 map :: Monad m => (a -> b) -> GInfConduit a m b
 map f = awaitForever $ yield . f
+
+{-
+
+It might be nice to include these rewrite rules, but they may have subtle
+differences based on leftovers.
+
+{-# RULES "map-to-mapOutput pipeL" forall f src. pipeL src (map f) = mapOutput f src #-}
+{-# RULES "map-to-mapOutput $=" forall f src. src $= (map f) = mapOutput f src #-}
+{-# RULES "map-to-mapOutput pipe" forall f src. pipe src (map f) = mapOutput f src #-}
+{-# RULES "map-to-mapOutput >+>" forall f src. src >+> (map f) = mapOutput f src #-}
+
+{-# RULES "map-to-mapInput pipeL" forall f sink. pipeL (map f) sink = mapInput f (Prelude.const Prelude.Nothing) sink #-}
+{-# RULES "map-to-mapInput =$" forall f sink. map f =$ sink = mapInput f (Prelude.const Prelude.Nothing) sink #-}
+{-# RULES "map-to-mapInput pipe" forall f sink. pipe (map f) sink = mapInput f (Prelude.const Prelude.Nothing) sink #-}
+{-# RULES "map-to-mapInput >+>" forall f sink. map f >+> sink = mapInput f (Prelude.const Prelude.Nothing) sink #-}
+
+{-# RULES "map-to-mapOutput =$=" forall f con. con =$= map f = mapOutput f con #-}
+{-# RULES "map-to-mapInput =$=" forall f con. map f =$= con = mapInput f (Prelude.const Prelude.Nothing) con #-}
+
+{-# INLINE [1] map #-}
+
+-}
 
 -- | Apply a monadic transformation to all values in a stream.
 --

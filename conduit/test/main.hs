@@ -197,6 +197,13 @@ main = hspec $ do
                     C.$$ CL.fold (+) 0
             x `shouldBe` 2 * sum [1..10 :: Int]
 
+        it "map, left >+>" $ do
+            x <- runResourceT $
+                CL.sourceList [1..10]
+                    C.>+> CL.map (* 2)
+                    C.$$ CL.fold (+) 0
+            x `shouldBe` 2 * sum [1..10 :: Int]
+
         it "map, right" $ do
             x <- runResourceT $
                 CL.sourceList [1..10]
