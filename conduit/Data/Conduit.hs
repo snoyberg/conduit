@@ -69,6 +69,7 @@ module Data.Conduit
     , runResourceT
     , ExceptionT (..)
     , runExceptionT_
+    , MonadBaseControl
     ) where
 
 import Control.Monad.Trans.Resource
