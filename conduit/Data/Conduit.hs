@@ -67,6 +67,8 @@ module Data.Conduit
     , MonadThrow (..)
     , MonadUnsafeIO (..)
     , runResourceT
+    , ExceptionT (..)
+    , runExceptionT_
     ) where
 
 import Control.Monad.Trans.Resource
