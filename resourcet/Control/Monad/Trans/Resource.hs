@@ -455,6 +455,39 @@ instance MonadBaseControl b m => MonadBaseControl b (ExceptionT m) where
     liftBaseWith = defaultLiftBaseWith StE
     restoreM = defaultRestoreM unStE
 
+instance MonadCont m => MonadCont (ExceptionT m) where
+  callCC f = ExceptionT $
+    callCC $ \c ->
+    runExceptionT (f (\a -> ExceptionT $ c (Right a)))
+
+instance MonadError e m => MonadError e (ExceptionT m) where
+  throwError = lift . throwError
+  catchError r h = ExceptionT $ runExceptionT r `catchError` (runExceptionT . h)
+
+instance MonadRWS r w s m => MonadRWS r w s (ExceptionT m)
+
+instance MonadReader r m => MonadReader r (ExceptionT m) where
+  ask = lift ask
+  local = mapExceptionT . local
+
+mapExceptionT :: (m (Either SomeException a) -> n (Either SomeException b)) -> ExceptionT m a -> ExceptionT n b
+mapExceptionT f = ExceptionT . f . runExceptionT
+
+instance MonadState s m => MonadState s (ExceptionT m) where
+  get = lift get
+  put = lift . put
+
+instance MonadWriter w m => MonadWriter w (ExceptionT m) where
+  tell   = lift . tell
+  listen = mapExceptionT $ \ m -> do
+    (a, w) <- listen m
+    return $! fmap (\ r -> (r, w)) a
+  pass   = mapExceptionT $ \ m -> pass $ do
+    a <- m
+    return $! case a of
+        Left  l      -> (Left  l, id)
+        Right (r, f) -> (Right r, f)
+
 -- | A @Monad@ which can throw exceptions. Note that this does not work in a
 -- vanilla @ST@ or @Identity@ monad. Instead, you should use the 'ExceptionT'
 -- transformer in your stack if you are dealing with a non-@IO@ base monad.
