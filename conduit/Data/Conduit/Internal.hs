@@ -450,10 +450,10 @@ transPipe f (PipeM mp) =
     --
     -- http://hpaste.org/75520
     collapse mpipe = do
-        pipe <- mpipe
-        case pipe of
+        pipe' <- mpipe
+        case pipe' of
             PipeM mpipe' -> collapse mpipe'
-            _ -> return pipe
+            _ -> return pipe'
 transPipe f (Leftover p i) = Leftover (transPipe f p) i
 
 -- | Apply a function to all the output values of a @Pipe@.
