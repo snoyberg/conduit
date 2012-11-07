@@ -30,6 +30,8 @@ module Control.Monad.Trans.Resource
       -- * A specific Exception transformer
     , ExceptionT (..)
     , runExceptionT_
+    , runException
+    , runException_
       -- * Registering/releasing
     , allocate
     , register
@@ -105,7 +107,7 @@ import qualified Control.Monad.ST.Lazy as LazyUnsafe
 
 import qualified Control.Monad.ST.Lazy as Lazy
 
-import Data.Functor.Identity (Identity)
+import Data.Functor.Identity (Identity, runIdentity)
 
 -- | A lookup key for a specific release action. This value is returned by
 -- 'register' and 'allocate', and is passed to 'release'.
@@ -421,6 +423,18 @@ newtype ExceptionT m a = ExceptionT { runExceptionT :: m (Either SomeException a
 -- Since 0.3.0
 runExceptionT_ :: Monad m => ExceptionT m a -> m a
 runExceptionT_ = liftM (either E.throw id) . runExceptionT
+
+-- | Run an @ExceptionT Identity@ stack.
+--
+-- Since 0.4.2
+runException :: ExceptionT Identity a -> Either SomeException a
+runException = runIdentity . runExceptionT
+
+-- | Run an @ExceptionT Identity@ stack, but immediately 'E.throw' any exception returned.
+--
+-- Since 0.4.2
+runException_ :: ExceptionT Identity a -> a
+runException_ = runIdentity . runExceptionT_
 
 instance Monad m => Functor (ExceptionT m) where
     fmap f = ExceptionT . (liftM . fmap) f . runExceptionT

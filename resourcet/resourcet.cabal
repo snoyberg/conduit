@@ -1,5 +1,5 @@
 Name:                resourcet
-Version:             0.4.1
+Version:             0.4.2
 Synopsis:            Deterministic allocation and freeing of scarce resources.
 Description:
 	This package was originally included with the conduit package, and has since been split off. For more information, please see <http://www.yesodweb.com/book/conduits>.
