@@ -69,6 +69,8 @@ module Data.Conduit
     , runResourceT
     , ExceptionT (..)
     , runExceptionT_
+    , runException
+    , runException_
     , MonadBaseControl
     ) where
 
