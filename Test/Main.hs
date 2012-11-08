@@ -26,6 +26,13 @@ twoItemGet = do
   y <- getWord8
   return $ x + y
 
+threeItemGet :: Get Word8
+threeItemGet = do
+  x <- getWord8
+  y <- getWord8
+  z <- getWord8
+  return $ x + y + z
+
 putter :: Putter Char
 putter c = put x >> put (x + 1)
   where x = (fromIntegral $ (fromEnum c) - (fromEnum 'a') :: Word8)
@@ -156,7 +163,16 @@ conduittest13 = TestCase (assertEqual "Leftover success conduit input works"
           where recurse = C.await >>= maybe (return ()) (\ x -> C.yield (Left x) >> recurse)
 
 conduittest14 :: Test
-conduittest14 = TestCase (assertEqual "Leftover failure conduit input works"
+conduittest14 = TestCase (assertEqual "Leftover coercing works"
+  (Right [Left (BS.pack [10, 2])])
+  (runIdentity $ runExceptionT $ (CL.sourceList [BS.pack [10], BS.pack [2]]) C.$= fancyConduit C.$$ CL.consume))
+  where fancyConduit = do
+          conduitGet threeItemGet C.>+> CL.map (\ x -> Right x)
+          recurse
+          where recurse = C.await >>= maybe (return ()) (\ x -> C.yield (Left x) >> recurse)
+
+conduittest15 :: Test
+conduittest15 = TestCase (assertEqual "Leftover failure conduit input works"
   (Right ([], BS.singleton 1))
   (runIdentity $ runExceptionT $ (CL.sourceList [BS.singleton 1]) C.$$ (do
     output <- (conduitGet twoItemGet) C.=$ (CL.take 1)
@@ -201,6 +217,7 @@ conduittests = TestList [ conduittest1
                         , conduittest12
                         , conduittest13
                         , conduittest14
+                        , conduittest15
                         ]
 
 puttests = TestList [ puttest1

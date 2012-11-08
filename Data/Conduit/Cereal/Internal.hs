@@ -41,6 +41,7 @@ mkConduitGet errorHandler get = consume True (runGetPartial get) [] BS.empty
                          -- this only works because the Get will either _always_ consume no input, or _never_ consume no input.
                          True  -> sequence_ $ repeat $ C.yield a
                          False -> C.yield a >> pull (runGetPartial get) [] s'
+--                         False -> C.yield a >> C.leftover s' >> mkConduitGet errorHandler get
           where consumed = s : b
 
 -- | Construct a sinkGet with the specified 'ErrorHandler' and 'TerminationHandler'
