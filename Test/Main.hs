@@ -146,15 +146,14 @@ conduittest12 = TestCase (assertBool "Immediate failure with empty input works"
     Left _ -> True
     Right _ -> False))
 
--- This test won't work because of auto-termination. As soon as the conduit yields the "12" value,
--- it is stopped before it has a chance to run 'leftover'
 conduittest13 :: Test
 conduittest13 = TestCase (assertEqual "Leftover success conduit input works"
-  (Right ([12], BS.pack [3, 4, 5]))
-  (runIdentity $ runExceptionT $ (CL.sourceList [BS.pack [10, 2, 3], BS.pack [4, 5]]) C.$$ (do
-    output <- (conduitGet twoItemGet) C.=$ (CL.take 1)
-    output' <- CL.consume
-    return (output, BS.concat output'))))
+  (Right [Right 12, Right 7, Left (BS.pack [5])])
+  (runIdentity $ runExceptionT $ (CL.sourceList [BS.pack [10, 2, 3], BS.pack [4, 5]]) C.$= fancyConduit C.$$ CL.consume))
+  where fancyConduit = do
+          conduitGet twoItemGet C.>+> CL.map (\ x -> Right x)
+          recurse
+          where recurse = C.await >>= maybe (return ()) (\ x -> C.yield (Left x) >> recurse)
 
 conduittest14 :: Test
 conduittest14 = TestCase (assertEqual "Leftover failure conduit input works"
@@ -200,7 +199,7 @@ conduittests = TestList [ conduittest1
                         , conduittest10
                         , conduittest11
                         , conduittest12
-                        --, conduittest13
+                        , conduittest13
                         , conduittest14
                         ]
 
