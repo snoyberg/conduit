@@ -5,9 +5,10 @@ different trade-offs based on real-world experience with enumerators.
 Current Documentation
 ===========================
 
-The most up-to-date documentation is available as an appendix of the Yesod
-book, at:
-[http://www.yesodweb.com/book/conduits](http://www.yesodweb.com/book/conduits).
+The most up-to-date documentation is available in the `Data.Conduit` module
+itself, which is [available for reading on
+Hackage](http://hackage.haskell.org/packages/archive/conduit/latest/doc/html/Data-Conduit.html).
+
 The remainder of the contents of this page are kept for historical reasons, to
 give an idea of the original driving factors behind conduit. Note that plenty
 of the descriptions of the current state of the package are inaccurate.
