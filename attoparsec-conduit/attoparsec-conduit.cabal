@@ -29,7 +29,7 @@ test-suite test
     cpp-options:   -DTEST
     build-depends:   conduit
                    , base
-                   , hspec == 1.3.*
+                   , hspec >= 1.3
                    , text
                    , resourcet
                    , attoparsec
