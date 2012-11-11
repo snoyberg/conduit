@@ -513,6 +513,13 @@ class Monad m => MonadThrow m where
 instance MonadThrow IO where
     monadThrow = E.throwIO
 
+instance MonadThrow Maybe where
+    monadThrow _ = Nothing
+instance MonadThrow (Either SomeException) where
+    monadThrow = Left . E.toException
+instance MonadThrow [] where
+    monadThrow _ = []
+
 #define GO(T) instance (MonadThrow m) => MonadThrow (T m) where monadThrow = lift . monadThrow
 #define GOX(X, T) instance (X, MonadThrow m) => MonadThrow (T m) where monadThrow = lift . monadThrow
 GO(IdentityT)
