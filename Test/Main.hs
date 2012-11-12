@@ -1,4 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE Rank2Types #-}
 
 import           Control.Exception.Base
 import           Control.Monad.Identity
