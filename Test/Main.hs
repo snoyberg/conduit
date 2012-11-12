@@ -79,14 +79,22 @@ sinktest6 = TestCase (assertEqual "Leftover input works"
 
 sinkGetMaybe :: Get Word8 -> C.GLSink BS.ByteString (ExceptionT Identity) Word8
 sinkGetMaybe = mkSinkGet errorHandler terminationHandler
-  where errorHandler     msg = return 34
-        terminationHandler f = return 0
+  where errorHandler       _ = return 34
+        terminationHandler _ = return 114
 
 sinktest7 :: Test
 sinktest7 = TestCase (assertEqual "Leftover input with failure works"
   (Right (34, BS.pack [1, 2]))
   (runIdentity $ runExceptionT $ (CL.sourceList [BS.pack [1, 2]]) C.$$ (do
     output <- sinkGetMaybe (getWord8 >> fail "" :: Get Word8)
+    output' <- CL.consume
+    return (output, BS.concat output'))))
+
+sinktest8 :: Test
+sinktest8 = TestCase (assertEqual "Leftover with incomplete input works"
+  (Right (114, BS.singleton 1))
+  (runIdentity $ runExceptionT $ (CL.sourceList [BS.singleton 1]) C.$$ (do
+    output <- sinkGetMaybe twoItemGet
     output' <- CL.consume
     return (output, BS.concat output'))))
 
@@ -158,7 +166,7 @@ conduittest13 = TestCase (assertEqual "Leftover success conduit input works"
   (Right [Right 12, Right 7, Left (BS.pack [5])])
   (runIdentity $ runExceptionT $ (CL.sourceList [BS.pack [10, 2, 3], BS.pack [4, 5]]) C.$= fancyConduit C.$$ CL.consume))
   where fancyConduit = do
-          conduitGet twoItemGet C.>+> CL.map (\ x -> Right x)
+          conduitGet twoItemGet C.=$= CL.map (\ x -> Right x)
           recurse
           where recurse = C.await >>= maybe (return ()) (\ x -> C.yield (Left x) >> recurse)
 
@@ -167,17 +175,35 @@ conduittest14 = TestCase (assertEqual "Leftover coercing works"
   (Right [Left (BS.pack [10, 2])])
   (runIdentity $ runExceptionT $ (CL.sourceList [BS.pack [10], BS.pack [2]]) C.$= fancyConduit C.$$ CL.consume))
   where fancyConduit = do
-          conduitGet threeItemGet C.>+> CL.map (\ x -> Right x)
+          conduitGet threeItemGet C.=$= CL.map (\ x -> Right x)
           recurse
           where recurse = C.await >>= maybe (return ()) (\ x -> C.yield (Left x) >> recurse)
 
 conduittest15 :: Test
-conduittest15 = TestCase (assertEqual "Leftover failure conduit input works"
+conduittest15 = TestCase (assertEqual "Leftover premature end conduit input works"
   (Right ([], BS.singleton 1))
   (runIdentity $ runExceptionT $ (CL.sourceList [BS.singleton 1]) C.$$ (do
     output <- (conduitGet twoItemGet) C.=$ (CL.take 1)
     output' <- CL.consume
     return (output, BS.concat output'))))
+
+conduittest16 :: Test
+conduittest16 = TestCase (assertEqual "Leftover failure conduit input works"
+  (Right [Left $ BS.pack [10, 11], Left $ BS.singleton 2])
+  (runIdentity $ runExceptionT $ (CL.sourceList [BS.pack [10, 11], BS.pack [2]]) C.$= fancyConduit C.$$ CL.consume))
+  where fancyConduit = do
+          mkConduitGet (const $ return ()) (getWord8 >> fail "asdf" :: Get Word8) C.=$= CL.map (\ x -> Right x)
+          recurse
+          where recurse = C.await >>= maybe (return ()) (\ x -> C.yield (Left x) >> recurse)
+
+conduittest17 :: Test
+conduittest17 = TestCase (assertEqual "Leftover failure conduit with broken input works"
+  (Right [Left $ BS.pack [10, 11], Left $ BS.singleton 12])
+  (runIdentity $ runExceptionT $ (CL.sourceList [BS.singleton 10, BS.singleton 11, BS.singleton 12]) C.$= fancyConduit C.$$ CL.consume))
+  where fancyConduit = do
+          mkConduitGet (const $ return ()) (twoItemGet >> fail "asdf" :: Get Word8) C.=$= CL.map (\ x -> Right x)
+          recurse
+          where recurse = C.await >>= maybe (return ()) (\ x -> C.yield (Left x) >> recurse)
 
 puttest1 :: Test
 puttest1 = TestCase (assertEqual "conduitPut works"
@@ -201,6 +227,7 @@ sinktests = TestList [ sinktest1
                      , sinktest5
                      , sinktest6
                      , sinktest7
+                     , sinktest8
                      ]
 
 conduittests = TestList [ conduittest1
@@ -218,6 +245,8 @@ conduittests = TestList [ conduittest1
                         , conduittest13
                         , conduittest14
                         , conduittest15
+                        , conduittest16
+                        , conduittest17
                         ]
 
 puttests = TestList [ puttest1

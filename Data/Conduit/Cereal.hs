@@ -1,6 +1,8 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
+{-# LANGUAGE Rank2Types #-}
+{-# LANGUAGE RankNTypes #-}
 
 -- | Turn a 'Get' into a 'Sink' and a 'Put' into a 'Source'
 -- These functions are built upno the Data.Conduit.Cereal.Internal functions with default
