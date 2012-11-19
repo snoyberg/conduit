@@ -43,8 +43,8 @@ module Data.Conduit.Blaze
     ) where
 
 import Data.Conduit hiding (Source, Conduit, Sink, Pipe)
-import Control.Monad (unless)
-import Control.Monad.Trans.Class (lift)
+import Control.Monad (unless, liftM)
+import Control.Monad.Trans.Class (lift, MonadTrans)
 
 import qualified Data.ByteString                   as S
 
@@ -86,10 +86,10 @@ builderToByteStringWith :: MonadUnsafeIO m
                         => BufferAllocStrategy
                         -> GInfConduit Builder m S.ByteString
 builderToByteStringWith =
-    mapOutputMaybe unChunk . mapInput Chunk unChunk . builderToByteStringWithFlush
+    helper (liftM (fmap Chunk) awaitE) yield'
   where
-    unChunk Flush = Nothing
-    unChunk (Chunk y) = Just y
+    yield' Flush = return ()
+    yield' (Chunk bs) = yield bs
 
 -- |
 --
@@ -98,18 +98,25 @@ builderToByteStringWithFlush
     :: MonadUnsafeIO m
     => BufferAllocStrategy
     -> GInfConduit (Flush Builder) m (Flush S.ByteString)
-builderToByteStringWithFlush (ioBufInit, nextBuf) =
+builderToByteStringWithFlush = helper awaitE yield
+
+helper :: (MonadUnsafeIO m, Monad (t m), MonadTrans t)
+       => t m (Either term (Flush Builder))
+       -> (Flush S.ByteString -> t m ())
+       -> BufferAllocStrategy
+       -> t m term
+helper awaitE' yield' (ioBufInit, nextBuf) =
     loop ioBufInit
   where
     loop ioBuf = do
-        awaitE >>= either (close ioBuf) (cont' ioBuf)
+        awaitE' >>= either (close ioBuf) (cont' ioBuf)
 
-    cont' ioBuf Flush = push ioBuf flush $ \ioBuf' -> yield Flush >> loop ioBuf'
+    cont' ioBuf Flush = push ioBuf flush $ \ioBuf' -> yield' Flush >> loop ioBuf'
     cont' ioBuf (Chunk builder) = push ioBuf builder loop
 
     close ioBuf r = do
         buf <- lift $ unsafeLiftIO $ ioBuf
-        maybe (return ()) (yield . Chunk) (unsafeFreezeNonEmptyBuffer buf)
+        maybe (return ()) (yield' . Chunk) (unsafeFreezeNonEmptyBuffer buf)
         return r
 
     push ioBuf0 x continue = do
@@ -133,12 +140,12 @@ builderToByteStringWithFlush (ioBufInit, nextBuf) =
                             go bStep' ioBuf'
                     case unsafeFreezeNonEmptyBuffer buf' of
                         Nothing -> return ()
-                        Just bs -> yield (Chunk bs)
+                        Just bs -> yield' (Chunk bs)
                     cont
                 InsertByteString op' bs bStep' -> do
                     let buf' = updateEndOfSlice buf op'
                     case unsafeFreezeNonEmptyBuffer buf' of
                         Nothing -> return ()
-                        Just bs' -> yield $ Chunk bs'
-                    unless (S.null bs) $ yield $ Chunk bs
+                        Just bs' -> yield' $ Chunk bs'
+                    unless (S.null bs) $ yield' $ Chunk bs
                     lift (unsafeLiftIO $ nextBuf 1 buf') >>= go bStep'

@@ -18,8 +18,8 @@ import qualified Data.Conduit as C (unsafeLiftIO)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as S
 import Control.Exception (try)
-import Control.Monad ((<=<), unless)
-import Control.Monad.Trans.Class (lift)
+import Control.Monad ((<=<), unless, liftM)
+import Control.Monad.Trans.Class (lift, MonadTrans)
 
 -- | Gzip compression with default parameters.
 gzip :: (MonadThrow m, MonadUnsafeIO m) => GInfConduit ByteString m ByteString
@@ -46,33 +46,37 @@ decompress
     => WindowBits -- ^ Zlib parameter (see the zlib-bindings package as well as the zlib C library)
     -> GInfConduit ByteString m ByteString
 decompress =
-    mapOutput unChunk . mapInput Chunk unChunk' . decompressFlush
+    helperDecompress (liftM (fmap Chunk) awaitE) yield'
   where
-    unChunk Flush = S.empty
-    unChunk (Chunk bs) = bs
-
-    unChunk' Flush = Nothing
-    unChunk' (Chunk bs) = Just bs
+    yield' Flush = return ()
+    yield' (Chunk bs) = yield bs
 
 -- | Same as 'decompress', but allows you to explicitly flush the stream.
 decompressFlush
     :: (MonadUnsafeIO m, MonadThrow m)
     => WindowBits -- ^ Zlib parameter (see the zlib-bindings package as well as the zlib C library)
     -> GInfConduit (Flush ByteString) m (Flush ByteString)
-decompressFlush config =
-    awaitE >>= either return start
+decompressFlush = helperDecompress awaitE yield
+
+helperDecompress :: (Monad (t m), MonadUnsafeIO m, MonadThrow m, MonadTrans t)
+                 => t m (Either term (Flush ByteString))
+                 -> (Flush ByteString -> t m ())
+                 -> WindowBits
+                 -> t m term
+helperDecompress awaitE' yield' config =
+    awaitE' >>= either return start
   where
     start input = do
         inf <- lift $ unsafeLiftIO $ initInflate config
         push inf input
 
-    continue inf = awaitE >>= either (close inf) (push inf)
+    continue inf = awaitE' >>= either (close inf) (push inf)
 
     goPopper popper = do
         mbs <- lift $ unsafeLiftIO popper
         case mbs of
             Nothing -> return ()
-            Just bs -> yield (Chunk bs) >> goPopper popper
+            Just bs -> yield' (Chunk bs) >> goPopper popper
 
     push inf (Chunk x) = do
         popper <- lift $ unsafeLiftIO $ feedInflate inf x
@@ -81,13 +85,13 @@ decompressFlush config =
 
     push inf Flush = do
         chunk <- lift $ unsafeLiftIO $ flushInflate inf
-        unless (S.null chunk) $ yield $ Chunk chunk
-        yield Flush
+        unless (S.null chunk) $ yield' $ Chunk chunk
+        yield' Flush
         continue inf
 
     close inf ret = do
         chunk <- lift $ unsafeLiftIO $ finishInflate inf
-        unless (S.null chunk) $ yield $ Chunk chunk
+        unless (S.null chunk) $ yield' $ Chunk chunk
         return ret
 
 -- |
@@ -99,14 +103,11 @@ compress
     => Int         -- ^ Compression level
     -> WindowBits  -- ^ Zlib parameter (see the zlib-bindings package as well as the zlib C library)
     -> GInfConduit ByteString m ByteString
-compress level =
-    mapOutput unChunk . mapInput Chunk unChunk' . compressFlush level
+compress =
+    helperCompress (liftM (fmap Chunk) awaitE) yield'
   where
-    unChunk Flush = S.empty
-    unChunk (Chunk bs) = bs
-
-    unChunk' Flush = Nothing
-    unChunk' (Chunk bs) = Just bs
+    yield' Flush = return ()
+    yield' (Chunk bs) = yield bs
 
 -- | Same as 'compress', but allows you to explicitly flush the stream.
 compressFlush
@@ -114,20 +115,28 @@ compressFlush
     => Int         -- ^ Compression level
     -> WindowBits  -- ^ Zlib parameter (see the zlib-bindings package as well as the zlib C library)
     -> GInfConduit (Flush ByteString) m (Flush ByteString)
-compressFlush level config =
-    awaitE >>= either return start
+compressFlush = helperCompress awaitE yield
+
+helperCompress :: (Monad (t m), MonadUnsafeIO m, MonadThrow m, MonadTrans t)
+               => t m (Either term (Flush ByteString))
+               -> (Flush ByteString -> t m ())
+               -> Int
+               -> WindowBits
+               -> t m term
+helperCompress awaitE' yield' level config =
+    awaitE' >>= either return start
   where
     start input = do
         def <- lift $ unsafeLiftIO $ initDeflate level config
         push def input
 
-    continue def = awaitE >>= either (close def) (push def)
+    continue def = awaitE' >>= either (close def) (push def)
 
     goPopper popper = do
         mbs <- lift $ unsafeLiftIO popper
         case mbs of
             Nothing -> return ()
-            Just bs -> yield (Chunk bs) >> goPopper popper
+            Just bs -> yield' (Chunk bs) >> goPopper popper
 
     push def (Chunk x) = do
         popper <- lift $ unsafeLiftIO $ feedDeflate def x
@@ -136,12 +145,12 @@ compressFlush level config =
 
     push def Flush = do
         mchunk <- lift $ unsafeLiftIO $ flushDeflate def
-        maybe (return ()) (yield . Chunk) mchunk
-        yield Flush
+        maybe (return ()) (yield' . Chunk) mchunk
+        yield' Flush
         continue def
 
     close def ret = do
         mchunk <- lift $ unsafeLiftIO $ finishDeflate def
         case mchunk of
             Nothing -> return ret
-            Just chunk -> yield (Chunk chunk) >> close def ret
+            Just chunk -> yield' (Chunk chunk) >> close def ret
