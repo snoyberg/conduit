@@ -13,7 +13,7 @@ module Data.Conduit.Network.TLS
     ) where
 
 import Prelude hiding (FilePath, readFile)
-import Data.Yaml (FromJSON (parseJSON), (.:), (.:?), (.!=), Value (Object))
+import Data.Aeson (FromJSON (parseJSON), (.:), (.:?), (.!=), Value (Object))
 import Control.Applicative ((<$>), (<*>))
 import Control.Monad (mzero, forever)
 import Data.String (fromString)
