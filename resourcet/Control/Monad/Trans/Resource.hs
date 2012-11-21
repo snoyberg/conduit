@@ -404,11 +404,17 @@ instance MonadTransControl ResourceT where
     {-# INLINE liftWith #-}
     {-# INLINE restoreT #-}
 
-instance MonadBaseControl b m => MonadBaseControl b (ResourceT m) where
+instance MonadBaseControl IO m => MonadBaseControl IO (ResourceT m) where
      newtype StM (ResourceT m) a = StMT (StM m a)
-     liftBaseWith f = ResourceT $ \reader ->
-         liftBaseWith $ \runInBase ->
-             f $ liftM StMT . runInBase . (\(ResourceT r) -> r reader)
+     liftBaseWith f = ResourceT $ \istate ->
+         liftBaseWith $ \runInBase -> L.mask $ \restore ->
+            bracket_
+                (stateAlloc istate)
+                (return ())
+                (f $ liftM StMT . (\(ResourceT r) -> E.bracket_
+                    (return ())
+                    (stateCleanup istate)
+                    (restore $ runInBase $ r istate)))
      restoreM (StMT base) = ResourceT $ const $ restoreM base
 instance Monad m => MonadThrow (ExceptionT m) where
     monadThrow = ExceptionT . return . Left . E.toException
