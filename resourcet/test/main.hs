@@ -28,7 +28,7 @@ main = hspec $ do
                 liftIO $ y `shouldBe` 1
     describe "forking" $ do
         forkHelper "resourceForkIO" resourceForkIO
-        forkHelper "lifted fork" fork
+        --forkHelper "lifted fork" fork
 
 forkHelper s fork' = describe s $ do
     it "waits for all threads" $ do
