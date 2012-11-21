@@ -113,7 +113,7 @@ import Data.Functor.Identity (Identity, runIdentity)
 -- 'register' and 'allocate', and is passed to 'release'.
 --
 -- Since 0.3.0
-newtype ReleaseKey = ReleaseKey Int
+data ReleaseKey = ReleaseKey !(I.IORef ReleaseMap) !Int
     deriving Typeable
 
 type RefCount = Word
@@ -207,8 +207,8 @@ register = liftResourceT . registerRIO
 -- actions to be performed.
 --
 -- Since 0.3.0
-release :: MonadResource m => ReleaseKey -> m ()
-release = liftResourceT . releaseRIO
+release :: MonadIO m => ReleaseKey -> m ()
+release (ReleaseKey istate rk) = liftIO $ release' istate rk
 
 -- | Perform some allocation, and automatically register a cleanup action.
 --
@@ -244,9 +244,6 @@ allocateRIO acquire rel = ResourceT $ \istate -> liftIO $ E.mask $ \restore -> d
 registerRIO :: IO () -> ResourceT IO ReleaseKey
 registerRIO rel = ResourceT $ \istate -> liftIO $ register' istate rel
 
-releaseRIO :: ReleaseKey -> ResourceT IO ()
-releaseRIO rk = ResourceT $ \istate -> liftIO $ release' istate rk
-
 resourceMaskRIO :: ((forall a. ResourceT IO a -> ResourceT IO a) -> ResourceT IO b) -> ResourceT IO b
 resourceMaskRIO f = ResourceT $ \istate -> liftIO $ E.mask $ \restore ->
     let ResourceT f' = f (go restore)
@@ -279,7 +276,7 @@ register' istate rel = I.atomicModifyIORef istate $ \rm ->
     case rm of
         ReleaseMap key rf m ->
             ( ReleaseMap (key - 1) rf (IntMap.insert key rel m)
-            , ReleaseKey key
+            , ReleaseKey istate key
             )
         ReleaseMapClosed -> throw $ InvalidAccess "register'"
 
@@ -300,9 +297,9 @@ instance Show InvalidAccess where
 instance Exception InvalidAccess
 
 release' :: I.IORef ReleaseMap
-         -> ReleaseKey
+         -> Int
          -> IO ()
-release' istate (ReleaseKey key) = E.mask $ \restore -> key `seq` do
+release' istate key = E.mask $ \restore -> key `seq` do
     maction <- I.atomicModifyIORef istate lookupAction
     maybe (return ()) restore maction
   where
@@ -313,7 +310,12 @@ release' istate (ReleaseKey key) = E.mask $ \restore -> key `seq` do
                 ( ReleaseMap next rf $ IntMap.delete key m
                 , Just action
                 )
-    lookupAction ReleaseMapClosed = throw $ InvalidAccess "release'"
+    -- We tried to call release, but since the state is already closed, we
+    -- can assume that the release action was already called. Previously,
+    -- this threw an exception, though given that @release@ can be called
+    -- from outside the context of a @ResourceT@ starting with version
+    -- 0.4.4, it's no longer a library misuse or a library bug.
+    lookupAction ReleaseMapClosed = (ReleaseMapClosed, Nothing)
 
 stateAlloc :: I.IORef ReleaseMap -> IO ()
 stateAlloc istate = do
