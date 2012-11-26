@@ -1,8 +1,7 @@
 language: haskell
 
 install:
-    - cabal update
-    - cabal install mega-sdist hspec cabal-meta cabal-src
+    - cabal install mega-sdist hspec doctest cabal-meta cabal-src
     - cabal-meta install --force-reinstalls
 
 script: mega-sdist --test

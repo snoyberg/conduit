@@ -81,6 +81,13 @@ test-suite test
                    , void
     ghc-options:     -Wall
 
+test-suite doctests
+    hs-source-dirs: test
+    main-is: doctests.hs
+    type: exitcode-stdio-1.0
+    ghc-options: -threaded
+    build-depends: base, directory, doctest >= 0.8
+
 source-repository head
   type:     git
   location: git://github.com/snoyberg/conduit.git
