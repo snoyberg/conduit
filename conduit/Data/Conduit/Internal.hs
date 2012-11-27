@@ -127,9 +127,6 @@ instance MonadTrans (Pipe l i o u) where
 instance MonadIO m => MonadIO (Pipe l i o u m) where
     liftIO = lift . liftIO
 
-instance MonadUnsafeIO m => MonadUnsafeIO (Pipe l i o u m) where
-    unsafeLiftIO = lift . unsafeLiftIO
-
 instance MonadThrow m => MonadThrow (Pipe l i o u m) where
     monadThrow = lift . monadThrow
 
@@ -139,6 +136,9 @@ instance MonadActive m => MonadActive (Pipe l i o u m) where
 instance Monad m => Monoid (Pipe l i o u m ()) where
     mempty = return ()
     mappend = (>>)
+
+instance MonadResource m => MonadResource (Pipe l i o u m) where
+    liftResourceT = lift . liftResourceT
 
 -- | Provides a stream of output values, without consuming any input or
 -- producing a final result.
