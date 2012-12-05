@@ -95,6 +95,7 @@ bindPort p s sockettype = do
           NS.sClose
           (\sock -> do
               NS.setSocketOption sock NS.ReuseAddr 1
+              NS.setSocketOption sock NS.NoDelay 1
               NS.bindSocket sock (NS.addrAddress addr)
               return sock
           )
