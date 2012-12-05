@@ -7,3 +7,4 @@
 ./network-conduit
 ./network-conduit-tls
 ./imagesize-conduit
+./base64-conduit
