@@ -1,3 +1,5 @@
+{-# LANGUAGE RankNTypes #-}
+
 module Data.Conduit.Base64
     ( encode
     , decode
