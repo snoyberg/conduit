@@ -1,5 +1,5 @@
 Name:                base64-conduit
-Version:             0.5.0
+Version:             0.5.1
 Synopsis:            Base64-encode and decode streams of bytes.
 Description:         Base64-encode and decode streams of bytes.
 License:             BSD3
