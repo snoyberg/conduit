@@ -89,13 +89,18 @@ bindPort p s sockettype = do
                                       (\(_ :: IOException) -> tryAddrs rest)
         tryAddrs (addr1:[])         = theBody addr1
         tryAddrs _                  = error "bindPort: addrs is empty"
+
+        sockOpts =
+            case sockettype of
+                NS.Datagram -> [(NS.ReuseAddr,1)]
+                _           -> [(NS.NoDelay,1), (NS.ReuseAddr,1)]
+
         theBody addr =
           bracketOnError
           (NS.socket (NS.addrFamily addr) (NS.addrSocketType addr) (NS.addrProtocol addr))
           NS.sClose
           (\sock -> do
-              NS.setSocketOption sock NS.ReuseAddr 1
-              NS.setSocketOption sock NS.NoDelay 1
+              mapM_ (\(opt,v) -> NS.setSocketOption sock opt v) sockOpts
               NS.bindSocket sock (NS.addrAddress addr)
               return sock
           )
