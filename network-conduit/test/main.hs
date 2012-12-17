@@ -6,10 +6,10 @@ import Control.Monad (replicateM_)
 
 main :: IO ()
 main = do
-    _ <- forkIO $ runTCPServer (serverSettings 4000 "*4") echo
+    _ <- forkIO $ runTCPServer (serverSettings 4009 "*4") echo
     threadDelay 1000000
     replicateM_ 10000
-        $ runTCPClient (clientSettings 4000 "localhost") doNothing
+        $ runTCPClient (clientSettings 4009 "localhost") doNothing
 
 echo :: Application IO
 echo ad = appSource ad $$ appSink ad
