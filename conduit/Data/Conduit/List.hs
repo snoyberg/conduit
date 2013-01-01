@@ -252,6 +252,8 @@ mapM f = awaitForever $ yield <=< lift . f
 -- value, whilst passing the value through the @Conduit@ as-is.
 --
 -- > iterM f = mapM (\a -> f a >>= \() -> return a)
+--
+-- Since 0.5.6
 iterM :: Monad m => (a -> m ()) -> GInfConduit a m a
 iterM f = awaitForever $ \a -> lift (f a) >> yield a
 

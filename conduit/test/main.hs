@@ -2,6 +2,7 @@
 {-# LANGUAGE CPP #-}
 import Test.Hspec
 import Test.Hspec.QuickCheck (prop)
+import Test.QuickCheck.Monadic (assert, monadicIO, run)
 
 import qualified Data.Conduit as C
 import qualified Data.Conduit.Util as C
@@ -33,6 +34,7 @@ import Control.Applicative (pure, (<$>), (<*>))
 import Data.Functor.Identity (runIdentity)
 import Control.Monad (forever)
 import Data.Void (Void)
+import qualified Control.Concurrent.MVar as M
 
 (@=?) :: (Eq a, Show a) => a -> a -> IO ()
 (@=?) = flip shouldBe
@@ -827,6 +829,30 @@ main = hspec $ do
             case x of
                 Left _ -> return ()
                 Right t -> error $ "This should have failed: " ++ show t
+    describe "iterM" $ do
+        prop "behavior" $ \l -> monadicIO $ do
+            let counter ref = CL.iterM (const $ liftIO $ M.modifyMVar_ ref (\i -> return $! i + 1))
+            v <- run $ do
+                ref <- M.newMVar 0
+                CL.sourceList l C.$= counter ref C.$$ CL.mapM_ (const $ return ())
+                M.readMVar ref
+
+            assert $ v == length (l :: [Int])
+        prop "mapM_ equivalence" $ \l -> monadicIO $ do
+            let runTest h = run $ do
+                    ref <- M.newMVar (0 :: Int)
+                    let f = action ref
+                    s <- CL.sourceList (l :: [Int]) C.$= h f C.$$ CL.fold (+) 0
+                    c <- M.readMVar ref
+
+                    return (c, s)
+
+                action ref = const $ liftIO $ M.modifyMVar_ ref (\i -> return $! i + 1)
+            (c1, s1) <- runTest CL.iterM
+            (c2, s2) <- runTest (\f -> CL.mapM (\a -> f a >>= \() -> return a))
+
+            assert $ c1 == c2
+            assert $ s1 == s2
 
 it' :: String -> IO () -> Spec
 it' = it
