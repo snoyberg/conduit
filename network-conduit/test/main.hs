@@ -9,7 +9,7 @@ main = do
     _ <- forkIO $ runTCPServer (serverSettings 4009 "*4") echo
     threadDelay 1000000
     replicateM_ 10000
-        $ runTCPClient (clientSettings 4009 "localhost") doNothing
+        $ runTCPClient (clientSettings 4009 "127.0.0.1") doNothing
 
 echo :: Application IO
 echo ad = appSource ad $$ appSink ad
