@@ -36,7 +36,11 @@ import Control.Exception (bracket, finally)
 import Control.Concurrent (forkIO)
 import Control.Monad.Trans.Class (lift)
 import qualified Network.TLS.Extra as TLSExtra
+#if MIN_VERSION_tls(1, 1, 0)
+import Crypto.Random.API (getSystemRandomGen, SystemRandom)
+#else
 import Crypto.Random (newGenIO, SystemRandom)
+#endif
 
 tlsConfig :: HostPreference
           -> Int -- ^ port
@@ -63,7 +67,12 @@ runTCPServerTLS TLSConfig{..} app = do
         return ()
       where
         handle socket addr mlocal = do
+#if MIN_VERSION_tls(1, 1, 0)
+            gen <- getSystemRandomGen
+#else
             gen <- newGenIO
+#endif
+
 #if MIN_VERSION_tls(1, 0, 0)
             ctx <- TLS.contextNew
                 TLS.Backend
