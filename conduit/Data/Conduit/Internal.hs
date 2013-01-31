@@ -150,6 +150,7 @@ type Source m o = Pipe () () o () m ()
 --
 -- Since 0.5.0
 type GSource m o = forall l i u. Pipe l i o u m ()
+{-# DEPRECATED GSource "Use IsPipe" #-}
 
 -- | Consumes a stream of input values and produces a final result, without
 -- producing any output.
@@ -161,21 +162,25 @@ type Sink i m r = Pipe i i Void () m r
 --
 -- Since 0.5.0
 type GSink i m r = forall l o u. Pipe l i o u m r
+{-# DEPRECATED GSink "Use IsPipe" #-}
 
 -- | Generalized 'Sink' with leftovers.
 --
 -- Since 0.5.0
 type GLSink i m r = forall o u. Pipe i i o u m r
+{-# DEPRECATED GLSink "Use IsPipe" #-}
 
 -- | Generalized 'Sink' without leftovers returning upstream result.
 --
 -- Since 0.5.0
 type GInfSink i m = forall l o r. Pipe l i o r m r
+{-# DEPRECATED GInfSink "Use IsPipe" #-}
 
 -- | Generalized 'Sink' with leftovers returning upstream result.
 --
 -- Since 0.5.0
 type GLInfSink i m = forall o r. Pipe i i o r m r
+{-# DEPRECATED GLInfSink "Use IsPipe" #-}
 
 -- | Consumes a stream of input values and produces a stream of output values,
 -- without producing a final result.
@@ -187,21 +192,25 @@ type Conduit i m o = Pipe i i o () m ()
 --
 -- Since 0.5.0
 type GConduit i m o = forall l u. Pipe l i o u m ()
+{-# DEPRECATED GConduit "Use IsPipe" #-}
 
 -- | Generalized conduit with leftovers.
 --
 -- Since 0.5.0
 type GLConduit i m o = forall u. Pipe i i o u m ()
+{-# DEPRECATED GLConduit "Use IsPipe" #-}
 
 -- | Generalized conduit without leftovers returning upstream result.
 --
 -- Since 0.5.0
 type GInfConduit i m o = forall l r. Pipe l i o r m r
+{-# DEPRECATED GInfConduit "Use IsPipe" #-}
 
 -- | Generalized conduit with leftovers returning upstream result.
 --
 -- Since 0.5.0
 type GLInfConduit i m o = forall r. Pipe i i o r m r
+{-# DEPRECATED GLInfConduit "Use IsPipe" #-}
 
 -- | A @Source@ which has been started, but has not yet completed.
 --

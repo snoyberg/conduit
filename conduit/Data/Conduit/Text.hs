@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveDataTypeable, RankNTypes #-}
+{-# LANGUAGE TypeFamilies #-}
 -- |
 -- Copyright: 2011 Michael Snoyman, 2010-2011 John Millikin
 -- License: MIT
@@ -40,9 +41,8 @@ import           Data.Word (Word8, Word16)
 import           System.IO.Unsafe (unsafePerformIO)
 import           Data.Typeable (Typeable)
 
-import Data.Conduit hiding (Source, Conduit, Sink, Pipe)
-import qualified Data.Conduit.List as CL
-import Control.Monad.Trans.Class (lift)
+import Data.Conduit (MonadThrow (monadThrow))
+import Data.Conduit.Class
 import Control.Monad (unless)
 
 -- | A specific character encoding.
@@ -67,7 +67,7 @@ instance Show Codec where
 -- | Emit each line separately
 --
 -- Since 0.4.1
-lines :: Monad m => GInfConduit T.Text m T.Text
+lines :: (IsPipe m, PipeInput m ~ T.Text, PipeOutput m ~ T.Text) => m (PipeTerm m)
 lines =
     loop id
   where
@@ -90,17 +90,17 @@ lines =
 -- not capable of representing an input character, an exception will be thrown.
 --
 -- Since 0.3.0
-encode :: MonadThrow m => Codec -> GInfConduit T.Text m B.ByteString
-encode codec = CL.mapM $ \t -> do
+encode :: (PipeInput m ~ T.Text, MonadThrow m, IsPipe m, PipeOutput m ~ B8.ByteString) => Codec -> m (PipeTerm m)
+encode codec = awaitForever $ \t -> do
     let (bs, mexc) = codecEncode codec t
-    maybe (return bs) (monadThrow . fst) mexc
+    maybe (yield bs) (monadThrow . fst) mexc
 
 
 -- | Convert bytes into text, using the provided codec. If the codec is
 -- not capable of decoding an input byte sequence, an exception will be thrown.
 --
 -- Since 0.3.0
-decode :: MonadThrow m => Codec -> GInfConduit B.ByteString m T.Text
+decode :: (MonadThrow m, IsPipe m, PipeInput m ~ B8.ByteString, PipeOutput m ~ T.Text) => Codec -> m (PipeTerm m)
 decode codec =
     loop id
   where
@@ -109,11 +109,11 @@ decode codec =
     finish front r =
         case B.uncons $ front B.empty of
             Nothing -> return r
-            Just (w, _) -> lift $ monadThrow $ DecodeException codec w
+            Just (w, _) -> monadThrow $ DecodeException codec w
 
     go front bs' =
         case extra of
-            Left (exc, _) -> lift $ monadThrow exc
+            Left (exc, _) -> monadThrow exc
             Right bs'' -> yield text >> loop (B.append bs'')
       where
         (text, extra) = codecDecode codec bs

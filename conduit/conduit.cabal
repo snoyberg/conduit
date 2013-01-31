@@ -1,5 +1,5 @@
 Name:                conduit
-Version:             0.5.6
+Version:             0.5.7
 Synopsis:            Streaming data processing library.
 Description:
     @conduit@ is a solution to the streaming data problem, allowing for production, transformation, and consumption of streams of data in constant memory. It is an alternative to lazy I\/O which guarantees deterministic resource handling, and fits in the same general solution space as @enumerator@/@iteratee@ and @pipes@. For a brief tutorial, please see the "Data.Conduit" module.
@@ -43,6 +43,7 @@ Library
       cpp-options: -DNO_HANDLES
   Exposed-modules:     Data.Conduit
                        Data.Conduit.Binary
+                       Data.Conduit.Class
                        Data.Conduit.Text
                        Data.Conduit.List
                        Data.Conduit.Lazy
@@ -87,6 +88,7 @@ test-suite doctests
     type: exitcode-stdio-1.0
     ghc-options: -threaded
     build-depends: base, directory, doctest >= 0.8
+    buildable: False
 
 source-repository head
   type:     git
