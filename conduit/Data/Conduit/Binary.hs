@@ -52,7 +52,7 @@ import qualified System.PosixFile as F
 -- | Stream the contents of a file as binary data.
 --
 -- Since 0.3.0
-sourceFile :: (ResourcePipe m, PipeOutput m ~ S.ByteString)
+sourceFile :: (ResourcePipe m, Downstream m ~ S.ByteString)
            => FilePath
            -> m ()
 sourceFile fp =
@@ -72,7 +72,7 @@ sourceFile fp =
 -- completes, since it did not acquire the @Handle@ in the first place.
 --
 -- Since 0.3.0
-sourceHandle :: (IsPipe m, MonadIO m, PipeOutput m ~ S.ByteString)
+sourceHandle :: (MonadStream m, MonadIO m, Downstream m ~ S.ByteString)
              => IO.Handle
              -> m ()
 sourceHandle h =
@@ -90,7 +90,7 @@ sourceHandle h =
 -- and closed it as soon as possible.
 --
 -- Since 0.3.0
-sourceIOHandle :: (ResourcePipe m, PipeOutput m ~ S.ByteString)
+sourceIOHandle :: (ResourcePipe m, Downstream m ~ S.ByteString)
                => IO IO.Handle
                -> m ()
 sourceIOHandle alloc = bracketP alloc IO.hClose sourceHandle
@@ -99,9 +99,9 @@ sourceIOHandle alloc = bracketP alloc IO.hClose sourceHandle
 -- will /not/ automatically close the @Handle@ when processing completes.
 --
 -- Since 0.3.0
-sinkHandle :: (IsPipe m, MonadIO m, PipeInput m ~ S.ByteString)
+sinkHandle :: (MonadStream m, MonadIO m, Upstream m ~ S.ByteString)
            => IO.Handle
-           -> m (PipeTerm m)
+           -> m (StreamTerm m)
 sinkHandle h = awaitForever $ liftIO . S.hPut h
 
 -- | An alternative to 'sinkHandle'.
@@ -110,16 +110,16 @@ sinkHandle h = awaitForever $ liftIO . S.hPut h
 -- and close it as soon as possible.
 --
 -- Since 0.3.0
-sinkIOHandle :: (ResourcePipe m, PipeInput m ~ S.ByteString)
+sinkIOHandle :: (ResourcePipe m, Upstream m ~ S.ByteString)
              => IO IO.Handle
-             -> m (PipeTerm m)
+             -> m (StreamTerm m)
 sinkIOHandle alloc = bracketP alloc IO.hClose sinkHandle
 
 -- | Stream the contents of a file as binary data, starting from a certain
 -- offset and only consuming up to a certain number of bytes.
 --
 -- Since 0.3.0
-sourceFileRange :: (ResourcePipe m, PipeOutput m ~ S.ByteString)
+sourceFileRange :: (ResourcePipe m, Downstream m ~ S.ByteString)
                 => FilePath
                 -> Maybe Integer -- ^ Offset
                 -> Maybe Integer -- ^ Maximum count
@@ -158,18 +158,18 @@ sourceFileRange fp offset count = bracketP
 -- | Stream all incoming data to the given file.
 --
 -- Since 0.3.0
-sinkFile :: (ResourcePipe m, PipeInput m ~ S.ByteString)
+sinkFile :: (ResourcePipe m, Upstream m ~ S.ByteString)
          => FilePath
-         -> m (PipeTerm m)
+         -> m (StreamTerm m)
 sinkFile fp = sinkIOHandle (IO.openBinaryFile fp IO.WriteMode)
 
 -- | Stream the contents of the input to a file, and also send it along the
 -- pipeline. Similar in concept to the Unix command @tee@.
 --
 -- Since 0.3.0
-conduitFile :: (ResourcePipe m, PipeOutput m ~ S.ByteString, PipeInput m ~ S.ByteString)
+conduitFile :: (ResourcePipe m, Downstream m ~ S.ByteString, Upstream m ~ S.ByteString)
             => FilePath
-            -> m (PipeTerm m)
+            -> m (StreamTerm m)
 conduitFile fp = bracketP
     (IO.openBinaryFile fp IO.WriteMode)
     IO.hClose
@@ -182,7 +182,7 @@ conduitFile fp = bracketP
 -- consumed.
 --
 -- Since 0.3.0
-isolate :: (IsPipe m, PipeInput m ~ S.ByteString, PipeLeftover m ~ S.ByteString, PipeOutput m ~ S.ByteString)
+isolate :: (MonadStream m, Upstream m ~ S.ByteString, Leftover m ~ S.ByteString, Downstream m ~ S.ByteString)
         => Int
         -> m ()
 isolate =
@@ -204,7 +204,7 @@ isolate =
 -- | Return the next byte from the stream, if available.
 --
 -- Since 0.3.0
-head :: (IsPipe m, PipeInput m ~ S.ByteString, PipeLeftover m ~ S.ByteString) => m (Maybe Word8)
+head :: (MonadStream m, Upstream m ~ S.ByteString, Leftover m ~ S.ByteString) => m (Maybe Word8)
 head = do
     mbs <- await
     case mbs of
@@ -217,7 +217,7 @@ head = do
 -- | Return all bytes while the predicate returns @True@.
 --
 -- Since 0.3.0
-takeWhile :: (PipeOutput m ~ S.ByteString, IsPipe m, PipeLeftover m ~ S.ByteString, PipeInput m ~ S.ByteString) => (Word8 -> Bool) -> m ()
+takeWhile :: (Downstream m ~ S.ByteString, MonadStream m, Leftover m ~ S.ByteString, Upstream m ~ S.ByteString) => (Word8 -> Bool) -> m ()
 takeWhile p =
     loop
   where
@@ -233,7 +233,7 @@ takeWhile p =
 -- | Ignore all bytes while the predicate returns @True@.
 --
 -- Since 0.3.0
-dropWhile :: (IsPipe m, PipeLeftover m ~ S.ByteString, PipeInput m ~ S.ByteString) => (Word8 -> Bool) -> m ()
+dropWhile :: (MonadStream m, Leftover m ~ S.ByteString, Upstream m ~ S.ByteString) => (Word8 -> Bool) -> m ()
 dropWhile p =
     loop
   where
@@ -248,7 +248,7 @@ dropWhile p =
 -- | Take the given number of bytes, if available.
 --
 -- Since 0.3.0
-take :: (IsPipe m, PipeInput m ~ S.ByteString, PipeLeftover m ~ S.ByteString) => Int -> m L.ByteString
+take :: (MonadStream m, Upstream m ~ S.ByteString, Leftover m ~ S.ByteString) => Int -> m L.ByteString
 take n0 =
     go n0 id
   where
@@ -266,7 +266,7 @@ take n0 =
 -- | Drop up to the given number of bytes.
 --
 -- Since 0.5.0
-drop :: (IsPipe m, PipeInput m ~ S.ByteString, PipeLeftover m ~ S.ByteString) => Int -> m ()
+drop :: (MonadStream m, Upstream m ~ S.ByteString, Leftover m ~ S.ByteString) => Int -> m ()
 drop =
     go
   where
@@ -285,7 +285,7 @@ drop =
 -- (10), and strip it from the output.
 --
 -- Since 0.3.0
-lines :: (IsPipe m, PipeOutput m ~ S.ByteString, PipeInput m ~ S.ByteString, PipeLeftover m ~ S.ByteString) => m (PipeTerm m)
+lines :: (MonadStream m, Downstream m ~ S.ByteString, Upstream m ~ S.ByteString, Leftover m ~ S.ByteString) => m (StreamTerm m)
 lines =
     loop id
   where
@@ -307,5 +307,5 @@ lines =
 -- | Stream the chunks from a lazy bytestring.
 --
 -- Since 0.5.0
-sourceLbs :: (IsPipe m, PipeOutput m ~ S.ByteString) => L.ByteString -> m ()
+sourceLbs :: (MonadStream m, Downstream m ~ S.ByteString) => L.ByteString -> m ()
 sourceLbs = sourceList . L.toChunks

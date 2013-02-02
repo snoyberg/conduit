@@ -64,14 +64,14 @@ import Prelude
     , either
     )
 import Data.Monoid (Monoid, mempty, mappend)
-import Data.Conduit.Class (IsPipe (..), awaitForever, sourceList)
+import Data.Conduit.Class (MonadStream (..), awaitForever, sourceList)
 import Control.Monad (when, (<=<))
 
 -- | Generate a source from a seed value.
 --
 -- Since 0.4.2
-unfold :: IsPipe m
-       => (b -> Maybe (PipeOutput m, b))
+unfold :: MonadStream m
+       => (b -> Maybe (Downstream m, b))
        -> b
        -> m ()
 unfold f =
@@ -89,9 +89,9 @@ unfold f =
 -- structures.
 --
 -- Since 0.4.2
-enumFromTo :: (Enum (PipeOutput m), Eq (PipeOutput m), IsPipe m)
-           => PipeOutput m
-           -> PipeOutput m
+enumFromTo :: (Enum (Downstream m), Eq (Downstream m), MonadStream m)
+           => Downstream m
+           -> Downstream m
            -> m ()
 enumFromTo start stop =
     go start
@@ -101,7 +101,7 @@ enumFromTo start stop =
         | otherwise = yield i >> go (succ i)
 
 -- | Produces an infinite stream of repeated applications of f to x.
-iterate :: (IsPipe m, a ~ PipeOutput m) => (a -> a) -> a -> m b
+iterate :: (MonadStream m, a ~ Downstream m) => (a -> a) -> a -> m b
 iterate f =
     go
   where
@@ -110,8 +110,8 @@ iterate f =
 -- | A strict left fold.
 --
 -- Since 0.3.0
-fold :: IsPipe m
-     => (b -> PipeInput m -> b)
+fold :: MonadStream m
+     => (b -> Upstream m -> b)
      -> b
      -> m b
 fold f =
@@ -127,8 +127,8 @@ fold f =
 -- | A monadic strict left fold.
 --
 -- Since 0.3.0
-foldM :: IsPipe m
-      => (b -> PipeInput m -> PipeMonad m b)
+foldM :: MonadStream m
+      => (b -> Upstream m -> StreamMonad m b)
       -> b
       -> m b
 foldM f =
@@ -138,14 +138,14 @@ foldM f =
         await >>= maybe (return accum) go
       where
         go a = do
-            accum' <- liftPipeMonad $ f accum a
+            accum' <- liftStreamMonad $ f accum a
             accum' `seq` loop accum'
 
 -- | A monoidal strict left fold.
 --
 -- Since 0.5.3
-foldMap :: (IsPipe m, Monoid b)
-        => (PipeInput m -> b)
+foldMap :: (MonadStream m, Monoid b)
+        => (Upstream m -> b)
         -> m b
 foldMap f =
     fold combiner mempty
@@ -155,10 +155,10 @@ foldMap f =
 -- | Apply the action to all values in the stream.
 --
 -- Since 0.3.0
-mapM_ :: IsPipe m
-      => (PipeInput m -> PipeMonad m ())
-      -> m (PipeTerm m)
-mapM_ f = awaitForever $ liftPipeMonad . f
+mapM_ :: MonadStream m
+      => (Upstream m -> StreamMonad m ())
+      -> m (StreamTerm m)
+mapM_ f = awaitForever $ liftStreamMonad . f
 
 -- | Ignore a certain number of values in the stream. This function is
 -- semantically equivalent to:
@@ -169,7 +169,7 @@ mapM_ f = awaitForever $ liftPipeMonad . f
 -- memory.
 --
 -- Since 0.3.0
-drop :: IsPipe m
+drop :: MonadStream m
      => Int
      -> m ()
 drop =
@@ -185,9 +185,9 @@ drop =
 -- > take i = isolate i =$ consume
 --
 -- Since 0.3.0
-take :: IsPipe m
+take :: MonadStream m
      => Int
-     -> m [PipeInput m]
+     -> m [Upstream m]
 take =
     loop id
   where
@@ -199,20 +199,20 @@ take =
 -- | Take a single value from the stream, if available.
 --
 -- Since 0.3.0
-head :: IsPipe m => m (Maybe (PipeInput m))
+head :: MonadStream m => m (Maybe (Upstream m))
 head = await
 
 -- | Look at the next value in the stream, if available. This function will not
 -- change the state of the stream.
 --
 -- Since 0.3.0
-peek :: (IsPipe m, PipeLeftover m ~ PipeInput m) => m (Maybe (PipeInput m))
+peek :: (MonadStream m, Leftover m ~ Upstream m) => m (Maybe (Upstream m))
 peek = await >>= maybe (return Nothing) (\x -> leftover x >> return (Just x))
 
 -- | Apply a transformation to all values in a stream.
 --
 -- Since 0.3.0
-map :: IsPipe m => (PipeInput m -> PipeOutput m) -> m (PipeTerm m)
+map :: MonadStream m => (Upstream m -> Downstream m) -> m (StreamTerm m)
 map f = awaitForever $ yield . f
 
 {-
@@ -243,8 +243,8 @@ differences based on leftovers.
 -- side-effects of running the action, see 'mapM_'.
 --
 -- Since 0.3.0
-mapM :: IsPipe m => (PipeInput m -> PipeMonad m (PipeOutput m)) -> m (PipeTerm m)
-mapM f = awaitForever $ yield <=< liftPipeMonad . f
+mapM :: MonadStream m => (Upstream m -> StreamMonad m (Downstream m)) -> m (StreamTerm m)
+mapM f = awaitForever $ yield <=< liftStreamMonad . f
 
 -- | Apply a monadic action on all values in a stream.
 --
@@ -254,59 +254,59 @@ mapM f = awaitForever $ yield <=< liftPipeMonad . f
 -- > iterM f = mapM (\a -> f a >>= \() -> return a)
 --
 -- Since 0.5.6
-iterM :: (IsPipe m, PipeInput m ~ PipeOutput m) => (PipeInput m -> PipeMonad m ()) -> m (PipeTerm m)
-iterM f = awaitForever $ \a -> liftPipeMonad (f a) >> yield a
+iterM :: (MonadStream m, Upstream m ~ Downstream m) => (Upstream m -> StreamMonad m ()) -> m (StreamTerm m)
+iterM f = awaitForever $ \a -> liftStreamMonad (f a) >> yield a
 
 -- | Apply a transformation that may fail to all values in a stream, discarding
 -- the failures.
 --
 -- Since 0.5.1
-mapMaybe :: IsPipe m
-         => (PipeInput m -> Maybe (PipeOutput m))
-         -> m (PipeTerm m)
+mapMaybe :: MonadStream m
+         => (Upstream m -> Maybe (Downstream m))
+         -> m (StreamTerm m)
 mapMaybe f = awaitForever $ maybe (return ()) yield . f
 
 -- | Apply a monadic transformation that may fail to all values in a stream,
 -- discarding the failures.
 --
 -- Since 0.5.1
-mapMaybeM :: IsPipe m
-          => (PipeInput m -> PipeMonad m (Maybe (PipeOutput m)))
-          -> m (PipeTerm m)
-mapMaybeM f = awaitForever $ maybe (return ()) yield <=< liftPipeMonad . f
+mapMaybeM :: MonadStream m
+          => (Upstream m -> StreamMonad m (Maybe (Downstream m)))
+          -> m (StreamTerm m)
+mapMaybeM f = awaitForever $ maybe (return ()) yield <=< liftStreamMonad . f
 
 -- | Filter the @Just@ values from a stream, discarding the @Nothing@  values.
 --
 -- Since 0.5.1
-catMaybes :: (IsPipe m, PipeInput m ~ Maybe (PipeOutput m))
-          => m (PipeTerm m)
+catMaybes :: (MonadStream m, Upstream m ~ Maybe (Downstream m))
+          => m (StreamTerm m)
 catMaybes = awaitForever $ maybe (return ()) yield
 
 -- | Apply a transformation to all values in a stream, concatenating the output
 -- values.
 --
 -- Since 0.3.0
-concatMap :: IsPipe m
-          => (PipeInput m -> [PipeOutput m])
-          -> m (PipeTerm m)
+concatMap :: MonadStream m
+          => (Upstream m -> [Downstream m])
+          -> m (StreamTerm m)
 concatMap f = awaitForever $ sourceList . f
 
 -- | Apply a monadic transformation to all values in a stream, concatenating
 -- the output values.
 --
 -- Since 0.3.0
-concatMapM :: IsPipe m
-           => (PipeInput m -> PipeMonad m [PipeOutput m])
-           -> m (PipeTerm m)
-concatMapM f = awaitForever $ sourceList <=< liftPipeMonad . f
+concatMapM :: MonadStream m
+           => (Upstream m -> StreamMonad m [Downstream m])
+           -> m (StreamTerm m)
+concatMapM f = awaitForever $ sourceList <=< liftStreamMonad . f
 
 -- | 'concatMap' with an accumulator.
 --
 -- Since 0.3.0
-concatMapAccum :: IsPipe m
-               => (PipeInput m -> accum -> (accum, [PipeOutput m]))
+concatMapAccum :: MonadStream m
+               => (Upstream m -> accum -> (accum, [Downstream m]))
                -> accum
-               -> m (PipeTerm m)
+               -> m (StreamTerm m)
 concatMapAccum f =
     loop
   where
@@ -321,10 +321,10 @@ concatMapAccum f =
 -- | 'concatMapM' with an accumulator.
 --
 -- Since 0.3.0
-concatMapAccumM :: IsPipe m
-                => (PipeInput m -> accum -> PipeMonad m (accum, [PipeOutput m]))
+concatMapAccumM :: MonadStream m
+                => (Upstream m -> accum -> StreamMonad m (accum, [Downstream m]))
                 -> accum
-                -> m (PipeTerm m)
+                -> m (StreamTerm m)
 concatMapAccumM f =
     loop
   where
@@ -332,7 +332,7 @@ concatMapAccumM f =
         awaitE >>= either return go
       where
         go a = do
-            (accum', bs) <- liftPipeMonad $ f a accum
+            (accum', bs) <- liftStreamMonad $ f a accum
             Prelude.mapM_ yield bs
             loop accum'
 
@@ -341,7 +341,7 @@ concatMapAccumM f =
 -- "Data.Conduit.Lazy".
 --
 -- Since 0.3.0
-consume :: IsPipe m => m [PipeInput m]
+consume :: MonadStream m => m [Upstream m]
 consume =
     loop id
   where
@@ -350,9 +350,9 @@ consume =
 -- | Grouping input according to an equality function.
 --
 -- Since 0.3.0
-groupBy :: (a ~ PipeInput m, [a] ~ PipeOutput m, IsPipe m)
+groupBy :: (a ~ Upstream m, [a] ~ Downstream m, MonadStream m)
         => (a -> a -> Bool)
-        -> m (PipeTerm m)
+        -> m (StreamTerm m)
 groupBy f =
     start
   where
@@ -378,7 +378,7 @@ groupBy f =
 -- >     ...
 --
 -- Since 0.3.0
-isolate :: (IsPipe m, PipeInput m ~ PipeOutput m) => Int -> m ()
+isolate :: (MonadStream m, Upstream m ~ Downstream m) => Int -> m ()
 isolate =
     loop
   where
@@ -388,16 +388,16 @@ isolate =
 -- | Keep only values in the stream passing a given predicate.
 --
 -- Since 0.3.0
-filter :: (IsPipe m, PipeInput m ~ PipeOutput m)
-       => (PipeOutput m -> Bool)
-       -> m (PipeTerm m)
+filter :: (MonadStream m, Upstream m ~ Downstream m)
+       => (Downstream m -> Bool)
+       -> m (StreamTerm m)
 filter f = awaitForever $ \i -> when (f i) (yield i)
 
 -- | Ignore the remainder of values in the source. Particularly useful when
 -- combined with 'isolate'.
 --
 -- Since 0.3.0
-sinkNull :: IsPipe m => m (PipeTerm m)
+sinkNull :: MonadStream m => m (StreamTerm m)
 sinkNull = awaitForever $ \_ -> return ()
 
 -- | A source that outputs no values. Note that this is just a type-restricted
@@ -411,9 +411,9 @@ sourceNull = return ()
 -- when no more input is available from upstream.
 --
 -- Since 0.5.0
-sequence :: (IsPipe m, PipeLeftover m ~ PipeInput m)
-         => m (PipeOutput m) -- ^ @Pipe@ to run repeatedly
-         -> m (PipeTerm m)
+sequence :: (MonadStream m, Leftover m ~ Upstream m)
+         => m (Downstream m) -- ^ @Pipe@ to run repeatedly
+         -> m (StreamTerm m)
 sequence sink =
     self
   where

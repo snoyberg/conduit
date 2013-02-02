@@ -67,7 +67,7 @@ instance Show Codec where
 -- | Emit each line separately
 --
 -- Since 0.4.1
-lines :: (IsPipe m, PipeInput m ~ T.Text, PipeOutput m ~ T.Text) => m (PipeTerm m)
+lines :: (MonadStream m, Upstream m ~ T.Text, Downstream m ~ T.Text) => m (StreamTerm m)
 lines =
     loop id
   where
@@ -90,7 +90,7 @@ lines =
 -- not capable of representing an input character, an exception will be thrown.
 --
 -- Since 0.3.0
-encode :: (PipeInput m ~ T.Text, MonadThrow m, IsPipe m, PipeOutput m ~ B8.ByteString) => Codec -> m (PipeTerm m)
+encode :: (Upstream m ~ T.Text, MonadThrow m, MonadStream m, Downstream m ~ B8.ByteString) => Codec -> m (StreamTerm m)
 encode codec = awaitForever $ \t -> do
     let (bs, mexc) = codecEncode codec t
     maybe (yield bs) (monadThrow . fst) mexc
@@ -100,7 +100,7 @@ encode codec = awaitForever $ \t -> do
 -- not capable of decoding an input byte sequence, an exception will be thrown.
 --
 -- Since 0.3.0
-decode :: (MonadThrow m, IsPipe m, PipeInput m ~ B8.ByteString, PipeOutput m ~ T.Text) => Codec -> m (PipeTerm m)
+decode :: (MonadThrow m, MonadStream m, Upstream m ~ B8.ByteString, Downstream m ~ T.Text) => Codec -> m (StreamTerm m)
 decode codec =
     loop id
   where
