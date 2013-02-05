@@ -1,6 +1,10 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE UndecidableInstances #-}
 -- | Higher-level functions to interact with the elements of a stream. Most of
 -- these are based on list functions.
 --
@@ -64,16 +68,15 @@ import Prelude
     , either
     )
 import Data.Monoid (Monoid, mempty, mappend)
-import Data.Conduit.Class (MonadStream (..), awaitForever, sourceList)
+import Data.Conduit.Class (MonadStream (..), awaitForever, sourceList, MonadSource, MonadConduit, MonadSink)
 import Control.Monad (when, (<=<))
 
 -- | Generate a source from a seed value.
 --
 -- Since 0.4.2
-unfold :: MonadStream m
-       => (b -> Maybe (Downstream m, b))
+unfold :: (b -> Maybe (a, b))
        -> b
-       -> m ()
+       -> MonadSource m a
 unfold f =
     go
   where
@@ -89,10 +92,10 @@ unfold f =
 -- structures.
 --
 -- Since 0.4.2
-enumFromTo :: (Enum (Downstream m), Eq (Downstream m), MonadStream m)
-           => Downstream m
-           -> Downstream m
-           -> m ()
+enumFromTo :: (Enum a, Eq a)
+           => a
+           -> a
+           -> MonadSource m a
 enumFromTo start stop =
     go start
   where
@@ -101,7 +104,7 @@ enumFromTo start stop =
         | otherwise = yield i >> go (succ i)
 
 -- | Produces an infinite stream of repeated applications of f to x.
-iterate :: (MonadStream m, a ~ Downstream m) => (a -> a) -> a -> m b
+iterate :: (a -> a) -> a -> MonadSource m a
 iterate f =
     go
   where
@@ -110,10 +113,9 @@ iterate f =
 -- | A strict left fold.
 --
 -- Since 0.3.0
-fold :: MonadStream m
-     => (b -> Upstream m -> b)
+fold :: (b -> a -> b)
      -> b
-     -> m b
+     -> MonadSink a m b
 fold f =
     loop
   where
@@ -127,10 +129,9 @@ fold f =
 -- | A monadic strict left fold.
 --
 -- Since 0.3.0
-foldM :: MonadStream m
-      => (b -> Upstream m -> StreamMonad m b)
+foldM :: (b -> a -> m b)
       -> b
-      -> m b
+      -> MonadSink a m b
 foldM f =
     loop
   where
@@ -144,9 +145,9 @@ foldM f =
 -- | A monoidal strict left fold.
 --
 -- Since 0.5.3
-foldMap :: (MonadStream m, Monoid b)
-        => (Upstream m -> b)
-        -> m b
+foldMap :: Monoid b
+        => (a -> b)
+        -> MonadSink a m b
 foldMap f =
     fold combiner mempty
   where

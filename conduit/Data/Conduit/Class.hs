@@ -7,6 +7,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE RankNTypes #-}
 -- | Note: This module is experimental, and might be modified at any time.
 -- Caveat emptor!
 module Data.Conduit.Class
@@ -330,3 +331,7 @@ rsrc $$+- Sink sink = rsrc C.$$+- sink
 sourceList :: MonadStream m => [Downstream m] -> m ()
 sourceList = mapM_ yield
 {-# INLINE sourceList #-}
+
+type MonadSource m a = forall source. (MonadStream source, a ~ Downstream source, StreamMonad source ~ m) => source ()
+type MonadConduit a m b = forall conduit. (MonadStream conduit, a ~ Upstream conduit, b ~ Downstream conduit, StreamMonad conduit ~ m) => conduit ()
+type MonadSink a m b = forall sink. (MonadStream sink, a ~ Upstream sink, StreamMonad sink ~ m) => sink b
