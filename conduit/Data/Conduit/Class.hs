@@ -19,7 +19,7 @@ module Data.Conduit.Class
     , C.unwrapResumable
     ) where
 
-import Prelude (Monad (..), Functor (..), ($), const, IO, Maybe, Either, Bool, (.), either, mapM_)
+import Prelude (Monad (..), Functor (..), ($), const, IO, Maybe, Either, Bool, (.), either, mapM_, maybe)
 import Data.Void (Void)
 import Control.Applicative (Applicative (..))
 import qualified Data.Conduit as C
@@ -50,7 +50,7 @@ import qualified Control.Monad.Trans.Writer.Strict as Strict ( WriterT )
 type Source m o = SourceM o m ()
 
 newtype SourceM o m r = SourceM { unSourceM :: Pipe () () o () m r }
-    deriving (Functor, Applicative, Monad, MonadTrans, MonadIO, ResourcePipe, MonadThrow)
+    deriving (Functor, Applicative, Monad, MonadTrans, MonadIO, MonadResourceStream, MonadThrow)
 
 instance Monad m => Monoid (SourceM o m ()) where
     mempty = return ()
@@ -63,7 +63,7 @@ instance Monad m => Monoid (SourceM o m ()) where
 type Conduit i m o = ConduitM i o m ()
 
 newtype ConduitM i o m r = ConduitM { unConduitM :: Pipe i i o () m r }
-    deriving (Functor, Applicative, Monad, MonadTrans, MonadIO, ResourcePipe, MonadThrow)
+    deriving (Functor, Applicative, Monad, MonadTrans, MonadIO, MonadResourceStream, MonadThrow)
 
 instance Monad m => Monoid (ConduitM i o m ()) where
     mempty = return ()
@@ -74,7 +74,7 @@ instance Monad m => Monoid (ConduitM i o m ()) where
 --
 -- Since 0.6.0
 newtype Sink i m r = Sink { unSink :: Pipe i i Void () m r }
-    deriving (Functor, Applicative, Monad, MonadTrans, MonadIO, ResourcePipe, MonadThrow)
+    deriving (Functor, Applicative, Monad, MonadTrans, MonadIO, MonadResourceStream, MonadThrow)
 
 instance Monad m => Monoid (Sink i m ()) where
     mempty = return ()
@@ -82,22 +82,14 @@ instance Monad m => Monoid (Sink i m ()) where
 
 class (Monad m, Monad (StreamMonad m)) => MonadStream m where
     type Upstream m
-    type StreamTerm m -- FIXME remove in the future
     type Downstream m
     type StreamMonad m :: * -> *
-    type Leftover m -- FIXME remove in the future
 
     -- | Wait for a single input value from upstream, terminating immediately if no
     -- data is available.
     --
     -- Since 0.5.0
     await :: m (Maybe (Upstream m))
-
-    -- | This is similar to @await@, but will return the upstream result value as
-    -- @Left@ if available.
-    --
-    -- Since 0.5.0
-    awaitE :: m (Either (StreamTerm m) (Upstream m))
 
     -- | Provide a single piece of leftover input to be consumed by the next pipe
     -- in the current monadic binding.
@@ -106,7 +98,7 @@ class (Monad m, Monad (StreamMonad m)) => MonadStream m where
     -- already consumed from upstream.
     --
     -- Since 0.5.0
-    leftover :: Leftover m -> m ()
+    leftover :: Upstream m -> m ()
 
     -- | Send a single output value downstream. If the downstream @Pipe@
     -- terminates, this @Pipe@ will terminate as well.
@@ -129,18 +121,13 @@ class (Monad m, Monad (StreamMonad m)) => MonadStream m where
                -> m r
                -> m r
 
-instance Monad m => MonadStream (Pipe l i o u m) where
+instance (Monad m, l ~ i) => MonadStream (Pipe l i o u m) where
     type Upstream (Pipe l i o u m) = i
-    type StreamTerm (Pipe l i o u m) = u
     type Downstream (Pipe l i o u m) = o
     type StreamMonad (Pipe l i o u m) = m
-    type Leftover (Pipe l i o u m) = l
 
     await = C.await
     {-# INLINE [1] await #-}
-
-    awaitE = C.awaitE
-    {-# INLINE [1] awaitE #-}
 
     leftover = C.leftover
     {-# INLINE [1] leftover #-}
@@ -157,16 +144,11 @@ instance Monad m => MonadStream (Pipe l i o u m) where
 
 instance Monad m => MonadStream (SourceM o m) where
     type Upstream (SourceM o m) = ()
-    type StreamTerm (SourceM o m) = ()
     type Downstream (SourceM o m) = o
     type StreamMonad (SourceM o m) = m
-    type Leftover (SourceM o m) = ()
 
     await = SourceM await
     {-# INLINE await #-}
-
-    awaitE = SourceM awaitE
-    {-# INLINE awaitE #-}
 
     leftover = SourceM . leftover
     {-# INLINE leftover #-}
@@ -185,16 +167,11 @@ instance Monad m => MonadStream (SourceM o m) where
 
 instance Monad m => MonadStream (ConduitM i o m) where
     type Upstream (ConduitM i o m) = i
-    type StreamTerm (ConduitM i o m) = ()
     type Downstream (ConduitM i o m) = o
     type StreamMonad (ConduitM i o m) = m
-    type Leftover (ConduitM i o m) = i
 
     await = ConduitM await
     {-# INLINE await #-}
-
-    awaitE = ConduitM awaitE
-    {-# INLINE awaitE #-}
 
     leftover = ConduitM . leftover
     {-# INLINE leftover #-}
@@ -213,16 +190,11 @@ instance Monad m => MonadStream (ConduitM i o m) where
 
 instance Monad m => MonadStream (Sink i m) where
     type Upstream (Sink i m) = i
-    type StreamTerm (Sink i m) = ()
     type Downstream (Sink i m) = Void
     type StreamMonad (Sink i m) = m
-    type Leftover (Sink i m) = i
 
     await = Sink await
     {-# INLINE await #-}
-
-    awaitE = Sink awaitE
-    {-# INLINE awaitE #-}
 
     leftover = Sink . leftover
     {-# INLINE leftover #-}
@@ -239,7 +211,7 @@ instance Monad m => MonadStream (Sink i m) where
     addCleanup c (Sink p) = Sink (addCleanup c p)
     {-# INLINE addCleanup #-}
 
-class (MonadStream m, MonadResource (StreamMonad m), MonadIO m) => ResourcePipe m where
+class (MonadStream m, MonadResource (StreamMonad m), MonadIO m) => MonadResourceStream m where
     -- | Perform some allocation and run an inner @Pipe@. Two guarantees are given
     -- about resource finalization:
     --
@@ -251,14 +223,14 @@ class (MonadStream m, MonadResource (StreamMonad m), MonadIO m) => ResourcePipe 
     -- Since 0.5.0
     bracketP :: IO a -> (a -> IO ()) -> (a -> m r) -> m r
 
-instance MonadResource m => ResourcePipe (Pipe l i o u m) where
+instance (MonadResource m, l ~ i) => MonadResourceStream (Pipe l i o u m) where
     bracketP alloc free inside = PipeM $ do
         (key, seed) <- allocate alloc free
         return $ addCleanup (const $ release key) (inside seed)
 
-#define GOALL(C, C2, T) instance C => MonadStream (T) where { type Upstream (T) = Upstream m; type StreamMonad (T) = StreamMonad m; type StreamTerm (T) = StreamTerm m; type Downstream (T) = Downstream m; type Leftover (T) = Leftover m; await = lift await; awaitE = lift awaitE; leftover = lift . leftover; yield = lift . yield; yieldOr a = lift . yieldOr a; liftStreamMonad = lift . liftStreamMonad; addCleanup c r = liftWith (\run -> run $ addCleanup c r) >>= restoreT . return}; instance C2 => ResourcePipe (T) where { bracketP = controlBracketP }
-#define GO(T) GOALL(MonadStream m, ResourcePipe m, T m)
-#define GOX(X, T) GOALL((MonadStream m, X), (ResourcePipe m, X), T m)
+#define GOALL(C, C2, T) instance C => MonadStream (T) where { type Upstream (T) = Upstream m; type StreamMonad (T) = StreamMonad m; type Downstream (T) = Downstream m; await = lift await; leftover = lift . leftover; yield = lift . yield; yieldOr a = lift . yieldOr a; liftStreamMonad = lift . liftStreamMonad; addCleanup c r = liftWith (\run -> run $ addCleanup c r) >>= restoreT . return}; instance C2 => MonadResourceStream (T) where { bracketP = controlBracketP }
+#define GO(T) GOALL(MonadStream m, MonadResourceStream m, T m)
+#define GOX(X, T) GOALL((MonadStream m, X), (MonadResourceStream m, X), T m)
 GO(IdentityT)
 GO(ListT)
 GO(MaybeT)
@@ -275,21 +247,19 @@ GO(ResourceT)
 #undef GOX
 #undef GOALL
 
-controlBracketP :: (ResourcePipe m, Monad (t m), MonadTransControl t)
+controlBracketP :: (MonadResourceStream m, Monad (t m), MonadTransControl t)
                 => IO a -> (a -> IO ()) -> (a -> t m r) -> t m r
 controlBracketP alloc free inside = liftWith (\run -> bracketP alloc free (run . inside)) >>= restoreT . return
 
 -- | Wait for input forever, calling the given inner @Pipe@ for each piece of
--- new input. Returns the upstream result type.
+-- new input.
 --
 -- Since 0.5.0
-awaitForever :: MonadStream m
-             => (Upstream m -> m r')
-             -> m (StreamTerm m)
+awaitForever :: MonadStream m => (Upstream m -> m r') -> m ()
 awaitForever inner =
     self
   where
-    self = awaitE >>= either return (\i -> inner i >> self)
+    self = await >>= maybe (return ()) (\i -> inner i >> self)
 {-# INLINE [1] awaitForever #-}
 
 infixr 0 $$
@@ -335,3 +305,7 @@ sourceList = mapM_ yield
 type MonadSource m a = forall source. (MonadStream source, a ~ Downstream source, StreamMonad source ~ m) => source ()
 type MonadConduit a m b = forall conduit. (MonadStream conduit, a ~ Upstream conduit, b ~ Downstream conduit, StreamMonad conduit ~ m) => conduit ()
 type MonadSink a m b = forall sink. (MonadStream sink, a ~ Upstream sink, StreamMonad sink ~ m) => sink b
+
+type MonadResourceSource m a = forall source. (MonadResourceStream source, a ~ Downstream source, StreamMonad source ~ m) => source ()
+type MonadResourceConduit a m b = forall conduit. (MonadResourceStream conduit, a ~ Upstream conduit, b ~ Downstream conduit, StreamMonad conduit ~ m) => conduit ()
+type MonadResourceSink a m b = forall sink. (MonadResourceStream sink, a ~ Upstream sink, StreamMonad sink ~ m) => sink b

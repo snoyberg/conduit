@@ -67,15 +67,15 @@ instance Show Codec where
 -- | Emit each line separately
 --
 -- Since 0.4.1
-lines :: (MonadStream m, Upstream m ~ T.Text, Downstream m ~ T.Text) => m (StreamTerm m)
+lines :: MonadConduit T.Text m T.Text
 lines =
     loop id
   where
-    loop front = awaitE >>= either (finish front) (go front)
+    loop front = await >>= maybe (finish front) (go front)
 
-    finish front r =
+    finish front =
         let final = front T.empty
-         in unless (T.null final) (yield final) >> return r
+         in unless (T.null final) (yield final)
 
     go sofar more =
         case T.uncons second of
@@ -90,30 +90,30 @@ lines =
 -- not capable of representing an input character, an exception will be thrown.
 --
 -- Since 0.3.0
-encode :: (Upstream m ~ T.Text, MonadThrow m, MonadStream m, Downstream m ~ B8.ByteString) => Codec -> m (StreamTerm m)
+encode :: MonadThrow m => Codec -> MonadConduit T.Text m B8.ByteString
 encode codec = awaitForever $ \t -> do
     let (bs, mexc) = codecEncode codec t
-    maybe (yield bs) (monadThrow . fst) mexc
+    maybe (yield bs) (liftStreamMonad . monadThrow . fst) mexc
 
 
 -- | Convert bytes into text, using the provided codec. If the codec is
 -- not capable of decoding an input byte sequence, an exception will be thrown.
 --
 -- Since 0.3.0
-decode :: (MonadThrow m, MonadStream m, Upstream m ~ B8.ByteString, Downstream m ~ T.Text) => Codec -> m (StreamTerm m)
+decode :: MonadThrow m => Codec -> MonadConduit B8.ByteString m T.Text
 decode codec =
     loop id
   where
-    loop front = awaitE >>= either (finish front) (go front)
+    loop front = await >>= maybe (finish front) (go front)
 
-    finish front r =
+    finish front =
         case B.uncons $ front B.empty of
-            Nothing -> return r
-            Just (w, _) -> monadThrow $ DecodeException codec w
+            Nothing -> return ()
+            Just (w, _) -> liftStreamMonad $ monadThrow $ DecodeException codec w
 
     go front bs' =
         case extra of
-            Left (exc, _) -> monadThrow exc
+            Left (exc, _) -> liftStreamMonad $ monadThrow exc
             Right bs'' -> yield text >> loop (B.append bs'')
       where
         (text, extra) = codecDecode codec bs

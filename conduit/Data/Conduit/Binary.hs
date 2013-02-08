@@ -52,9 +52,7 @@ import qualified System.PosixFile as F
 -- | Stream the contents of a file as binary data.
 --
 -- Since 0.3.0
-sourceFile :: (ResourcePipe m, Downstream m ~ S.ByteString)
-           => FilePath
-           -> m ()
+sourceFile :: FilePath -> MonadResourceSource m S.ByteString
 sourceFile fp =
 #if CABAL_OS_WINDOWS || NO_HANDLES
     bracketP
@@ -90,18 +88,14 @@ sourceHandle h =
 -- and closed it as soon as possible.
 --
 -- Since 0.3.0
-sourceIOHandle :: (ResourcePipe m, Downstream m ~ S.ByteString)
-               => IO IO.Handle
-               -> m ()
+sourceIOHandle :: IO IO.Handle -> MonadResourceSource m S.ByteString
 sourceIOHandle alloc = bracketP alloc IO.hClose sourceHandle
 
 -- | Stream all incoming data to the given 'IO.Handle'. Note that this function
 -- will /not/ automatically close the @Handle@ when processing completes.
 --
 -- Since 0.3.0
-sinkHandle :: (MonadStream m, MonadIO m, Upstream m ~ S.ByteString)
-           => IO.Handle
-           -> m (StreamTerm m)
+sinkHandle :: IO.Handle -> MonadResourceSink S.ByteString m ()
 sinkHandle h = awaitForever $ liftIO . S.hPut h
 
 -- | An alternative to 'sinkHandle'.
@@ -110,20 +104,17 @@ sinkHandle h = awaitForever $ liftIO . S.hPut h
 -- and close it as soon as possible.
 --
 -- Since 0.3.0
-sinkIOHandle :: (ResourcePipe m, Upstream m ~ S.ByteString)
-             => IO IO.Handle
-             -> m (StreamTerm m)
+sinkIOHandle :: IO IO.Handle -> MonadResourceSink S.ByteString m ()
 sinkIOHandle alloc = bracketP alloc IO.hClose sinkHandle
 
 -- | Stream the contents of a file as binary data, starting from a certain
 -- offset and only consuming up to a certain number of bytes.
 --
 -- Since 0.3.0
-sourceFileRange :: (ResourcePipe m, Downstream m ~ S.ByteString)
-                => FilePath
+sourceFileRange :: FilePath
                 -> Maybe Integer -- ^ Offset
                 -> Maybe Integer -- ^ Maximum count
-                -> m ()
+                -> MonadResourceSource m S.ByteString
 sourceFileRange fp offset count = bracketP
     (IO.openBinaryFile fp IO.ReadMode)
     IO.hClose
@@ -158,18 +149,14 @@ sourceFileRange fp offset count = bracketP
 -- | Stream all incoming data to the given file.
 --
 -- Since 0.3.0
-sinkFile :: (ResourcePipe m, Upstream m ~ S.ByteString)
-         => FilePath
-         -> m (StreamTerm m)
+sinkFile :: FilePath -> MonadResourceSink S.ByteString m ()
 sinkFile fp = sinkIOHandle (IO.openBinaryFile fp IO.WriteMode)
 
 -- | Stream the contents of the input to a file, and also send it along the
 -- pipeline. Similar in concept to the Unix command @tee@.
 --
 -- Since 0.3.0
-conduitFile :: (ResourcePipe m, Downstream m ~ S.ByteString, Upstream m ~ S.ByteString)
-            => FilePath
-            -> m (StreamTerm m)
+conduitFile :: FilePath -> MonadResourceConduit S.ByteString m S.ByteString
 conduitFile fp = bracketP
     (IO.openBinaryFile fp IO.WriteMode)
     IO.hClose
@@ -182,9 +169,7 @@ conduitFile fp = bracketP
 -- consumed.
 --
 -- Since 0.3.0
-isolate :: (MonadStream m, Upstream m ~ S.ByteString, Leftover m ~ S.ByteString, Downstream m ~ S.ByteString)
-        => Int
-        -> m ()
+isolate :: Int -> MonadConduit S.ByteString m S.ByteString
 isolate =
     loop
   where
@@ -204,7 +189,7 @@ isolate =
 -- | Return the next byte from the stream, if available.
 --
 -- Since 0.3.0
-head :: (MonadStream m, Upstream m ~ S.ByteString, Leftover m ~ S.ByteString) => m (Maybe Word8)
+head :: MonadSink S.ByteString m (Maybe Word8)
 head = do
     mbs <- await
     case mbs of
@@ -217,7 +202,7 @@ head = do
 -- | Return all bytes while the predicate returns @True@.
 --
 -- Since 0.3.0
-takeWhile :: (Downstream m ~ S.ByteString, MonadStream m, Leftover m ~ S.ByteString, Upstream m ~ S.ByteString) => (Word8 -> Bool) -> m ()
+takeWhile :: (Word8 -> Bool) -> MonadConduit S.ByteString m S.ByteString
 takeWhile p =
     loop
   where
@@ -233,7 +218,7 @@ takeWhile p =
 -- | Ignore all bytes while the predicate returns @True@.
 --
 -- Since 0.3.0
-dropWhile :: (MonadStream m, Leftover m ~ S.ByteString, Upstream m ~ S.ByteString) => (Word8 -> Bool) -> m ()
+dropWhile :: (Word8 -> Bool) -> MonadSink S.ByteString m ()
 dropWhile p =
     loop
   where
@@ -248,7 +233,7 @@ dropWhile p =
 -- | Take the given number of bytes, if available.
 --
 -- Since 0.3.0
-take :: (MonadStream m, Upstream m ~ S.ByteString, Leftover m ~ S.ByteString) => Int -> m L.ByteString
+take :: Int -> MonadSink S.ByteString m L.ByteString
 take n0 =
     go n0 id
   where
@@ -266,7 +251,7 @@ take n0 =
 -- | Drop up to the given number of bytes.
 --
 -- Since 0.5.0
-drop :: (MonadStream m, Upstream m ~ S.ByteString, Leftover m ~ S.ByteString) => Int -> m ()
+drop :: Int -> MonadSink S.ByteString m ()
 drop =
     go
   where
@@ -285,15 +270,15 @@ drop =
 -- (10), and strip it from the output.
 --
 -- Since 0.3.0
-lines :: (MonadStream m, Downstream m ~ S.ByteString, Upstream m ~ S.ByteString, Leftover m ~ S.ByteString) => m (StreamTerm m)
+lines :: MonadConduit S.ByteString m S.ByteString
 lines =
     loop id
   where
-    loop front = awaitE >>= either (finish front) (go front)
+    loop front = await >>= maybe (finish front) (go front)
 
-    finish front r =
+    finish front =
         let final = front S.empty
-         in unless (S.null final) (yield final) >> return r
+         in unless (S.null final) (yield final) >> return ()
 
     go sofar more =
         case S.uncons second of

@@ -1,10 +1,11 @@
 Name:                conduit
-Version:             0.5.7
+Version:             0.6.0
 Synopsis:            Streaming data processing library.
 Description:
     @conduit@ is a solution to the streaming data problem, allowing for production, transformation, and consumption of streams of data in constant memory. It is an alternative to lazy I\/O which guarantees deterministic resource handling, and fits in the same general solution space as @enumerator@/@iteratee@ and @pipes@. For a brief tutorial, please see the "Data.Conduit" module.
 	.
 	Release history:
+    [0.6] Reverted to simplified interface based on Source/Conduit/Sink exclusively, with MonadSource/MonadConduit/MonadSink synonyms for generalization as necessary.
     .
     [0.5] The internals of the package are now separated to the .Internal module, leaving only the higher-level interface in the advertised API. Internally, switched to a @Leftover@ constructor and slightly tweaked the finalization semantics.
     .

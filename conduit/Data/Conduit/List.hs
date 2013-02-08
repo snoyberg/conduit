@@ -68,7 +68,7 @@ import Prelude
     , either
     )
 import Data.Monoid (Monoid, mempty, mappend)
-import Data.Conduit.Class (MonadStream (..), awaitForever, sourceList, MonadSource, MonadConduit, MonadSink)
+import Data.Conduit.Class (yield, await, leftover, liftStreamMonad, awaitForever, sourceList, MonadSource, MonadConduit, MonadSink)
 import Control.Monad (when, (<=<))
 
 -- | Generate a source from a seed value.
@@ -156,9 +156,7 @@ foldMap f =
 -- | Apply the action to all values in the stream.
 --
 -- Since 0.3.0
-mapM_ :: MonadStream m
-      => (Upstream m -> StreamMonad m ())
-      -> m (StreamTerm m)
+mapM_ :: (a -> m ()) -> MonadSink a m ()
 mapM_ f = awaitForever $ liftStreamMonad . f
 
 -- | Ignore a certain number of values in the stream. This function is
@@ -170,9 +168,7 @@ mapM_ f = awaitForever $ liftStreamMonad . f
 -- memory.
 --
 -- Since 0.3.0
-drop :: MonadStream m
-     => Int
-     -> m ()
+drop :: Int -> MonadSink a m ()
 drop =
     loop
   where
@@ -186,9 +182,7 @@ drop =
 -- > take i = isolate i =$ consume
 --
 -- Since 0.3.0
-take :: MonadStream m
-     => Int
-     -> m [Upstream m]
+take :: Int -> MonadSink a m [a]
 take =
     loop id
   where
@@ -200,20 +194,20 @@ take =
 -- | Take a single value from the stream, if available.
 --
 -- Since 0.3.0
-head :: MonadStream m => m (Maybe (Upstream m))
+head :: MonadSink a m (Maybe a)
 head = await
 
 -- | Look at the next value in the stream, if available. This function will not
 -- change the state of the stream.
 --
 -- Since 0.3.0
-peek :: (MonadStream m, Leftover m ~ Upstream m) => m (Maybe (Upstream m))
+peek :: MonadSink a m (Maybe a)
 peek = await >>= maybe (return Nothing) (\x -> leftover x >> return (Just x))
 
 -- | Apply a transformation to all values in a stream.
 --
 -- Since 0.3.0
-map :: MonadStream m => (Upstream m -> Downstream m) -> m (StreamTerm m)
+map :: (a -> b) -> MonadConduit a m b
 map f = awaitForever $ yield . f
 
 {-
@@ -244,7 +238,7 @@ differences based on leftovers.
 -- side-effects of running the action, see 'mapM_'.
 --
 -- Since 0.3.0
-mapM :: MonadStream m => (Upstream m -> StreamMonad m (Downstream m)) -> m (StreamTerm m)
+mapM :: (a -> m b) -> MonadConduit a m b
 mapM f = awaitForever $ yield <=< liftStreamMonad . f
 
 -- | Apply a monadic action on all values in a stream.
@@ -255,64 +249,52 @@ mapM f = awaitForever $ yield <=< liftStreamMonad . f
 -- > iterM f = mapM (\a -> f a >>= \() -> return a)
 --
 -- Since 0.5.6
-iterM :: (MonadStream m, Upstream m ~ Downstream m) => (Upstream m -> StreamMonad m ()) -> m (StreamTerm m)
+iterM :: (a -> m ()) -> MonadConduit a m a
 iterM f = awaitForever $ \a -> liftStreamMonad (f a) >> yield a
 
 -- | Apply a transformation that may fail to all values in a stream, discarding
 -- the failures.
 --
 -- Since 0.5.1
-mapMaybe :: MonadStream m
-         => (Upstream m -> Maybe (Downstream m))
-         -> m (StreamTerm m)
+mapMaybe :: (a -> Maybe b) -> MonadConduit a m b
 mapMaybe f = awaitForever $ maybe (return ()) yield . f
 
 -- | Apply a monadic transformation that may fail to all values in a stream,
 -- discarding the failures.
 --
 -- Since 0.5.1
-mapMaybeM :: MonadStream m
-          => (Upstream m -> StreamMonad m (Maybe (Downstream m)))
-          -> m (StreamTerm m)
+mapMaybeM :: (a -> m (Maybe b)) -> MonadConduit a m b
 mapMaybeM f = awaitForever $ maybe (return ()) yield <=< liftStreamMonad . f
 
 -- | Filter the @Just@ values from a stream, discarding the @Nothing@  values.
 --
 -- Since 0.5.1
-catMaybes :: (MonadStream m, Upstream m ~ Maybe (Downstream m))
-          => m (StreamTerm m)
+catMaybes :: MonadConduit (Maybe a) m a
 catMaybes = awaitForever $ maybe (return ()) yield
 
 -- | Apply a transformation to all values in a stream, concatenating the output
 -- values.
 --
 -- Since 0.3.0
-concatMap :: MonadStream m
-          => (Upstream m -> [Downstream m])
-          -> m (StreamTerm m)
+concatMap :: (a -> [b]) -> MonadConduit a m b
 concatMap f = awaitForever $ sourceList . f
 
 -- | Apply a monadic transformation to all values in a stream, concatenating
 -- the output values.
 --
 -- Since 0.3.0
-concatMapM :: MonadStream m
-           => (Upstream m -> StreamMonad m [Downstream m])
-           -> m (StreamTerm m)
+concatMapM :: (a -> m [b]) -> MonadConduit a m b
 concatMapM f = awaitForever $ sourceList <=< liftStreamMonad . f
 
 -- | 'concatMap' with an accumulator.
 --
 -- Since 0.3.0
-concatMapAccum :: MonadStream m
-               => (Upstream m -> accum -> (accum, [Downstream m]))
-               -> accum
-               -> m (StreamTerm m)
+concatMapAccum :: (a -> accum -> (accum, [b])) -> accum -> MonadConduit a m b
 concatMapAccum f =
     loop
   where
     loop accum =
-        awaitE >>= either return go
+        await >>= maybe (return ()) go
       where
         go a = do
             let (accum', bs) = f a accum
@@ -322,15 +304,12 @@ concatMapAccum f =
 -- | 'concatMapM' with an accumulator.
 --
 -- Since 0.3.0
-concatMapAccumM :: MonadStream m
-                => (Upstream m -> accum -> StreamMonad m (accum, [Downstream m]))
-                -> accum
-                -> m (StreamTerm m)
+concatMapAccumM :: (a -> accum -> m (accum, [b])) -> accum -> MonadConduit a m b
 concatMapAccumM f =
     loop
   where
     loop accum = do
-        awaitE >>= either return go
+        await >>= maybe (return ()) go
       where
         go a = do
             (accum', bs) <- liftStreamMonad $ f a accum
@@ -342,7 +321,7 @@ concatMapAccumM f =
 -- "Data.Conduit.Lazy".
 --
 -- Since 0.3.0
-consume :: MonadStream m => m [Upstream m]
+consume :: MonadSink a m [a]
 consume =
     loop id
   where
@@ -351,16 +330,14 @@ consume =
 -- | Grouping input according to an equality function.
 --
 -- Since 0.3.0
-groupBy :: (a ~ Upstream m, [a] ~ Downstream m, MonadStream m)
-        => (a -> a -> Bool)
-        -> m (StreamTerm m)
+groupBy :: (a -> a -> Bool) -> MonadConduit a m [a]
 groupBy f =
     start
   where
-    start = awaitE >>= either return (loop id)
+    start = await >>= maybe (return ()) (loop id)
 
     loop rest x =
-        awaitE >>= either (\r -> yield (x : rest []) >> return r) go
+        await >>= maybe (yield (x : rest [])) go
       where
         go y
             | f x y     = loop (rest . (y:)) x
@@ -379,7 +356,7 @@ groupBy f =
 -- >     ...
 --
 -- Since 0.3.0
-isolate :: (MonadStream m, Upstream m ~ Downstream m) => Int -> m ()
+isolate :: Int -> MonadConduit a m a
 isolate =
     loop
   where
@@ -389,32 +366,29 @@ isolate =
 -- | Keep only values in the stream passing a given predicate.
 --
 -- Since 0.3.0
-filter :: (MonadStream m, Upstream m ~ Downstream m)
-       => (Downstream m -> Bool)
-       -> m (StreamTerm m)
+filter :: (a -> Bool) -> MonadConduit a m a
 filter f = awaitForever $ \i -> when (f i) (yield i)
 
 -- | Ignore the remainder of values in the source. Particularly useful when
 -- combined with 'isolate'.
 --
 -- Since 0.3.0
-sinkNull :: MonadStream m => m (StreamTerm m)
+sinkNull :: MonadSink a m ()
 sinkNull = awaitForever $ \_ -> return ()
 
 -- | A source that outputs no values. Note that this is just a type-restricted
 -- synonym for 'mempty'.
 --
 -- Since 0.3.0
-sourceNull :: Monad m => m ()
+sourceNull :: MonadSource m a
 sourceNull = return ()
 
 -- | Run a @Pipe@ repeatedly, and output its result value downstream. Stops
 -- when no more input is available from upstream.
 --
 -- Since 0.5.0
-sequence :: (MonadStream m, Leftover m ~ Upstream m)
-         => m (Downstream m) -- ^ @Pipe@ to run repeatedly
-         -> m (StreamTerm m)
+sequence :: MonadSink a m b -- ^ @Sink@ to run repeatedly
+         -> MonadConduit a m b
 sequence sink =
     self
   where

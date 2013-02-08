@@ -16,6 +16,7 @@ import Data.Conduit (runResourceT)
 import Data.Maybe (fromMaybe)
 import qualified Data.List as DL
 import Control.Monad.ST (runST)
+import Control.Monad (liftM)
 import Data.Monoid
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Char8 as S8
@@ -202,8 +203,8 @@ main = hspec $ do
 
         it "map, left >+>" $ do
             x <- runResourceT $
-                CL.sourceList [1..10]
-                    C.>+> CL.map (* 2)
+                C.injectLeftovers (CL.sourceList [1..10])
+                    C.>+> C.injectLeftovers (CL.map (* 2))
                     C.$$ CL.fold (+) 0
             x `shouldBe` 2 * sum [1..10 :: Int]
 
@@ -326,24 +327,24 @@ main = hspec $ do
                     ma <- CL.head
                     case ma of
                         Nothing -> return 0
-                        Just a  -> (+a) . fromMaybe 0 <$> CL.head
+                        Just a  -> liftM ((+a) . fromMaybe 0) CL.head
 
             res <- runResourceT $ CL.sourceList [1..11 :: Int]
                              C.$= CL.sequence sumSink
                              C.$$ CL.consume
-            res `shouldBe` [3, 7, 11, 15, 19, 11]
+            res `shouldBe` [3, 7, 11, 15, 19, 11 :: Int]
 
         it "sink with unpull behaviour" $ do
             let sumSink = do
                     ma <- CL.head
                     case ma of
                         Nothing -> return 0
-                        Just a  -> (+a) . fromMaybe 0 <$> CL.peek
+                        Just a  -> liftM ((+a) . fromMaybe 0) CL.peek
 
             res <- runResourceT $ CL.sourceList [1..11 :: Int]
                              C.$= CL.sequence sumSink
                              C.$$ CL.consume
-            res `shouldBe` [3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 11]
+            res `shouldBe` [3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 11 :: Int]
 
 
     describe "sequenceSink" $ do
@@ -661,7 +662,7 @@ main = hspec $ do
                 foldUp f b = C.awaitE >>= either (\u -> return (u, b)) (\a -> let b' = f b a in b' `seq` foldUp f b')
                 passFold :: (b -> a -> b) -> b -> C.Pipe l a a () IO b
                 passFold f b = C.await >>= maybe (return b) (\a -> let b' = f b a in b' `seq` C.yield a >> passFold f b')
-            (x, y) <- CI.runPipe $ CL.sourceList [1..10 :: Int] C.>+> passFold (+) 0 C.>+>  foldUp (*) 1
+            (x, y) <- CI.runPipe $ C.injectLeftovers (CL.sourceList [1..10 :: Int]) C.>+> passFold (+) 0 C.>+>  foldUp (*) 1
             (x, y) `shouldBe` (sum [1..10], product [1..10])
 
     describe "input/output mapping" $ do
@@ -688,8 +689,8 @@ main = hspec $ do
             y <- CL.sourceList [1..10 :: Int] C.$$ CL.fold (+) 0
             x `shouldBe` y
         it' "right identity" $ do
-            x <- CI.runPipe $ CL.sourceList [1..10 :: Int] C.>+> CL.fold (+) 0 C.>+> CI.idP
-            y <- CI.runPipe $ CL.sourceList [1..10 :: Int] C.>+> CL.fold (+) 0
+            x <- CI.runPipe $ C.injectLeftovers (CL.sourceList [1..10 :: Int]) C.>+> C.injectLeftovers (CL.fold (+) 0) C.>+> CI.idP
+            y <- CI.runPipe $ C.injectLeftovers (CL.sourceList [1..10 :: Int]) C.>+> C.injectLeftovers (CL.fold (+) 0)
             x `shouldBe` y
 
     describe "generalizing" $ do
@@ -704,7 +705,7 @@ main = hspec $ do
         it' "works" $ do
             let src = CL.sourceList [1..10 :: Int] >> return True
                 sink = C.withUpstream $ CL.fold (+) 0
-            res <- C.runPipe $ src C.>+> sink
+            res <- C.runPipe $ C.injectLeftovers src C.>+> C.injectLeftovers sink
             res `shouldBe` (True, sum [1..10])
 
     describe "iterate" $ do
@@ -800,7 +801,7 @@ main = hspec $ do
             printer = C.awaitForever $ lift . tell . return . show
             src = CL.sourceList [1 :: Int ..]
         it "pipe" $ do
-            let run p = execWriter $ C.runPipe $ printer C.<+< p C.<+< src
+            let run p = execWriter $ C.runPipe $ printer C.<+< p C.<+< C.injectLeftovers src
             run (p1 C.<+< (p2 C.<+< p3)) `shouldBe` run ((p1 C.<+< p2) C.<+< p3)
         it "conduit" $ do
             let run p = execWriter $ src C.$$ p C.=$ printer
