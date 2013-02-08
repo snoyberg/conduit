@@ -50,9 +50,6 @@ Library
                        Data.Conduit.Lazy
                        Data.Conduit.Internal
                        Data.Conduit.Util
-  Other-modules:       Data.Conduit.Util.Source
-                       Data.Conduit.Util.Sink
-                       Data.Conduit.Util.Conduit
   Build-depends:       base                     >= 4.3          && < 5
                      , resourcet                >= 0.4.3        && < 0.5
                      , lifted-base              >= 0.1

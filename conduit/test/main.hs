@@ -300,20 +300,19 @@ main = hspec $ do
     describe "lazy" $ do
         it' "works inside a ResourceT" $ runResourceT $ do
             counter <- liftIO $ I.newIORef 0
-            let incr i = C.sourceIO
-                    (liftIO $ I.newIORef $ C.IOOpen (i :: Int))
-                    (const $ return ())
-                    (\istate -> do
-                        res <- liftIO $ I.atomicModifyIORef istate
-                            (\state -> (C.IOClosed, state))
-                        case res of
-                            C.IOClosed -> return ()
-                            _ -> do
-                                count <- liftIO $ I.atomicModifyIORef counter
-                                    (\j -> (j + 1, j + 1))
-                                liftIO $ count `shouldBe` i
-                        return res
-                            )
+            let incr i = do
+                    istate <- liftIO $ I.newIORef $ Just (i :: Int)
+                    let loop = do
+                            res <- liftIO $ I.atomicModifyIORef istate ((,) Nothing)
+                            case res of
+                                Nothing -> return ()
+                                Just x -> do
+                                    count <- liftIO $ I.atomicModifyIORef counter
+                                        (\j -> (j + 1, j + 1))
+                                    liftIO $ count `shouldBe` i
+                                    C.yield x
+                                    loop
+                    loop
             nums <- CLazy.lazyConsume $ mconcat $ map incr [1..10]
             liftIO $ nums `shouldBe` [1..10]
 
@@ -346,35 +345,6 @@ main = hspec $ do
                              C.$$ CL.consume
             res `shouldBe` [3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 11 :: Int]
 
-
-    describe "sequenceSink" $ do
-        it "simple sink" $ do
-            let sink () = do
-                    _ <- CL.drop 2
-                    x <- CL.head
-                    return $ C.Emit () $ maybe [] return x
-            let conduit = C.sequenceSink () sink
-            res <- runResourceT $ CL.sourceList [1..10 :: Int]
-                           C.$= conduit
-                           C.$$ CL.consume
-            res `shouldBe` [3, 6, 9]
-        it "finishes on new state" $ do
-            let sink () = do
-                x <- CL.head
-                return $ C.Emit () $ maybe [] return x
-            let conduit = C.sequenceSink () sink
-            res <- runResourceT $ CL.sourceList [1..10 :: Int]
-                        C.$= conduit C.$$ CL.consume
-            res `shouldBe` [1..10]
-        it "switch to a conduit" $ do
-            let sink () = do
-                _ <- CL.drop 4
-                return $ C.StartConduit $ CL.filter even
-            let conduit = C.sequenceSink () sink
-            res <- runResourceT $ CL.sourceList [1..10 :: Int]
-                            C.$= conduit
-                            C.$$ CL.consume
-            res `shouldBe` [6, 8, 10]
 #endif
 
     describe "peek" $ do
