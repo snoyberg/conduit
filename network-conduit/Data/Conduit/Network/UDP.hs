@@ -1,4 +1,5 @@
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TypeFamilies #-}
 module Data.Conduit.Network.UDP
     ( -- * UDP message representation
       Message (..)
@@ -19,9 +20,8 @@ import Network.Socket (AddrInfo, SockAddr, Socket)
 import qualified Network.Socket as NS
 import Network.Socket.ByteString (recvFrom, send, sendAll, sendTo, sendAllTo)
 import Data.ByteString (ByteString)
-import Control.Monad.IO.Class (MonadIO (liftIO))
+import Control.Monad.IO.Class (MonadIO)
 import Control.Monad (void)
-import Control.Monad.Trans.Class (lift)
 
 import Data.Conduit.Network.Utils (HostPreference)
 import qualified Data.Conduit.Network.Utils as Utils
@@ -37,11 +37,11 @@ data Message = Message { msgData :: {-# UNPACK #-} !ByteString
 -- contains the message payload and the origin address.
 --
 -- This function does /not/ automatically close the socket.
-sourceSocket :: MonadIO m => Socket -> Int -> GSource m Message
+sourceSocket :: MonadIO m => Socket -> Int -> MonadSource m Message
 sourceSocket socket len = loop
   where
     loop = do
-        (bs, addr) <- lift $ liftIO $ recvFrom socket len
+        (bs, addr) <- liftStreamIO $ recvFrom socket len
         yield (Message bs addr) >> loop
 
 -- | Stream messages to the connected socket.
@@ -49,7 +49,7 @@ sourceSocket socket len = loop
 -- The payload is sent using @send@, so some of it might be lost.
 --
 -- This function does /not/ automatically close the socket.
-sinkSocket :: MonadIO m => Socket -> GInfSink ByteString m
+sinkSocket :: MonadIO m => Socket -> MonadSink ByteString m ()
 sinkSocket = sinkSocketHelper (\sock bs -> void $ send sock bs)
 
 -- | Stream messages to the connected socket.
@@ -57,7 +57,7 @@ sinkSocket = sinkSocketHelper (\sock bs -> void $ send sock bs)
 -- The payload is sent using @sendAll@, so it might end up in multiple packets.
 --
 -- This function does /not/ automatically close the socket.
-sinkAllSocket :: MonadIO m => Socket -> GInfSink ByteString m
+sinkAllSocket :: MonadIO m => Socket -> MonadSink ByteString m ()
 sinkAllSocket = sinkSocketHelper sendAll
 
 -- | Stream messages to the socket.
@@ -67,7 +67,7 @@ sinkAllSocket = sinkSocketHelper sendAll
 -- lost.
 --
 -- This function does /not/ automatically close the socket.
-sinkToSocket :: MonadIO m => Socket -> GInfSink Message m
+sinkToSocket :: MonadIO m => Socket -> MonadSink Message m ()
 sinkToSocket = sinkSocketHelper (\sock (Message bs addr) -> void $ sendTo sock bs addr)
 
 -- | Stream messages to the socket.
@@ -77,7 +77,7 @@ sinkToSocket = sinkSocketHelper (\sock (Message bs addr) -> void $ sendTo sock b
 -- multiple packets.
 --
 -- This function does /not/ automatically close the socket.
-sinkAllToSocket :: MonadIO m => Socket -> GInfSink Message m
+sinkAllToSocket :: MonadIO m => Socket -> MonadSink Message m ()
 sinkAllToSocket = sinkSocketHelper (\sock (Message bs addr) -> sendAllTo sock bs addr)
 
 -- | Attempt to connect to the given host/port.
@@ -92,10 +92,10 @@ bindPort p s = Utils.bindPort p s NS.Datagram
 -- Internal
 sinkSocketHelper :: MonadIO m => (Socket -> a -> IO ())
                               -> Socket
-                              -> GInfSink a m
+                              -> MonadSink a m ()
 sinkSocketHelper act socket = loop
   where
-    loop = awaitE >>= either
-                        return
-                        (\a -> lift (liftIO $ act socket a) >> loop)
+    loop = await >>= maybe
+                        (return ())
+                        (\a -> (liftStreamIO $ act socket a) >> loop)
 {-# INLINE sinkSocketHelper #-}

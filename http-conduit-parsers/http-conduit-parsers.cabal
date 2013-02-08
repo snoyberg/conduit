@@ -14,7 +14,7 @@ Homepage:            http://github.com/snoyberg/conduit
 Library
   Exposed-modules:     Data.Conduit.HTTP
   Build-depends:       base                     >= 4            && < 5
-                     , conduit                  >= 0.5          && < 0.6
+                     , conduit                  >= 0.5          && < 0.7
                      , bytestring               >= 0.9
                      , transformers
   ghc-options:     -Wall

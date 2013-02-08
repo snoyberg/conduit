@@ -19,7 +19,7 @@ library
   build-depends:       base              >= 4         && < 5
                      , transformers
                      , bytestring
-                     , conduit           >= 0.5       && < 0.6
+                     , conduit           >= 0.5       && < 0.7
                      , unix              >= 2.5
                      , process           >= 1.1
 

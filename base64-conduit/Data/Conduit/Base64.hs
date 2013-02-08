@@ -1,4 +1,5 @@
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module Data.Conduit.Base64
     ( encode
@@ -17,27 +18,27 @@ import qualified Data.ByteString.Base64.URL as B64U
 
 import Data.Conduit
 
-encode :: Monad m => GInfConduit ByteString m ByteString
+encode :: MonadConduit ByteString m ByteString
 encode = codeWith 3 B64.encode
 
-decode :: Monad m => GInfConduit ByteString m ByteString
+decode :: MonadConduit ByteString m ByteString
 decode = codeWith 4 B64.decodeLenient
 
-encodeURL :: Monad m => GInfConduit ByteString m ByteString
+encodeURL :: MonadConduit ByteString m ByteString
 encodeURL = codeWith 3 B64U.encode
 
-decodeURL :: Monad m => GInfConduit ByteString m ByteString
+decodeURL :: MonadConduit ByteString m ByteString
 decodeURL = codeWith 4 B64U.decodeLenient
 
-codeWith :: Monad m => Int -> (ByteString -> ByteString) -> GInfConduit ByteString m ByteString
+codeWith :: Int -> (ByteString -> ByteString) -> MonadConduit ByteString m ByteString
 codeWith size f =
     loop
   where
-    loop = awaitE >>= either return push
+    loop = await >>= maybe (return ()) push
 
     loopWith bs
         | S.null bs = loop
-        | otherwise = awaitE >>= either (\r -> yield (f bs) >> return r) (pushWith bs)
+        | otherwise = await >>= maybe (yield $ f bs) (pushWith bs)
 
     push bs = do
         let (x, y) = S.splitAt (len - (len `mod` size)) bs

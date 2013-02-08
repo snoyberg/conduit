@@ -1,5 +1,6 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TypeFamilies #-}
 
 -- |
 -- Copyright: 2011 John Millikin
@@ -21,7 +22,7 @@ module Data.Conduit.Filesystem
 
 import           Prelude hiding (FilePath)
 
-import           Control.Monad.IO.Class (MonadIO, liftIO)
+import           Control.Monad.IO.Class (MonadIO)
 import           Data.Conduit
 import qualified Data.Conduit.Binary as CB
 import           Filesystem
@@ -42,20 +43,20 @@ import qualified System.Posix as Posix
 traverse :: MonadIO m
          => Bool -- ^ Follow directory symlinks (only used on POSIX platforms)
          -> FilePath -- ^ Root directory
-         -> GSource m FilePath
+         -> MonadSource m FilePath
 traverse _followSymlinks root =
-    liftIO (listDirectory root) >>= pull
+    liftStreamIO (listDirectory root) >>= pull
   where
     pull [] = return ()
     pull (p:ps) = do
-        isFile' <- liftIO $ isFile p
+        isFile' <- liftStreamIO $ isFile p
         if isFile'
             then yield p >> pull ps
             else do
-                follow' <- liftIO $ follow p
+                follow' <- liftStreamIO $ follow p
                 if follow'
                     then do
-                        ps' <- liftIO $ listDirectory p
+                        ps' <- liftStreamIO $ listDirectory p
                         pull ps
                         pull ps'
                     else pull ps
@@ -75,11 +76,11 @@ traverse _followSymlinks root =
 -- | Same as 'CB.sourceFile', but uses system-filepath\'s @FilePath@ type.
 sourceFile :: MonadResource m
            => FilePath
-           -> GSource m S.ByteString
+           -> MonadSource m S.ByteString
 sourceFile = CB.sourceFile . encodeString
 
 -- | Same as 'CB.sinkFile', but uses system-filepath\'s @FilePath@ type.
 sinkFile :: MonadResource m
          => FilePath
-         -> GInfSink S.ByteString m
+         -> MonadSink S.ByteString m ()
 sinkFile = CB.sinkFile . encodeString

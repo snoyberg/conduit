@@ -1,6 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeFamilies #-}
 module Data.Conduit.Network
     ( -- * Basic utilities
       sourceSocket
@@ -44,8 +45,7 @@ import qualified Data.ByteString.Char8 as S8
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Exception (throwIO, SomeException, try, finally, bracket, IOException, catch)
 import Control.Monad (forever)
-import Control.Monad.Trans.Control (MonadBaseControl, control)
-import Control.Monad.Trans.Class (lift)
+import Control.Monad.Trans.Control (control)
 import Control.Concurrent (forkIO, threadDelay)
 
 import Data.Conduit.Network.Internal
@@ -57,12 +57,12 @@ import qualified Data.Conduit.Network.Utils as Utils
 -- This function does /not/ automatically close the socket.
 --
 -- Since 0.0.0
-sourceSocket :: MonadIO m => Socket -> GSource m ByteString
+sourceSocket :: MonadIO m => Socket -> MonadSource m ByteString
 sourceSocket socket =
     loop
   where
     loop = do
-        bs <- lift $ liftIO $ recv socket 4096
+        bs <- liftStreamIO $ recv socket 4096
         if S.null bs
             then return ()
             else yield bs >> loop
@@ -72,11 +72,11 @@ sourceSocket socket =
 -- This function does /not/ automatically close the socket.
 --
 -- Since 0.0.0
-sinkSocket :: MonadIO m => Socket -> GInfSink ByteString m
+sinkSocket :: MonadIO m => Socket -> MonadSink ByteString m ()
 sinkSocket socket =
     loop
   where
-    loop = awaitE >>= either return (\bs -> lift (liftIO $ sendAll socket bs) >> loop)
+    loop = await >>= maybe (return ()) (\bs -> (liftStreamIO $ sendAll socket bs) >> loop)
 
 -- | A simple TCP application.
 --

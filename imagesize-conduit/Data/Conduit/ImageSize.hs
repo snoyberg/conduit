@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeFamilies #-}
 module Data.Conduit.ImageSize
     ( sinkImageSize
     , Size (..)
@@ -13,6 +14,7 @@ import qualified Data.ByteString as S
 import Data.ByteString.Char8 ()
 import Data.ByteString.Lazy.Char8 ()
 import Control.Applicative ((<$>), (<*>))
+import Control.Monad (liftM)
 
 data Size = Size { width :: Int, height :: Int }
     deriving (Show, Eq, Ord, Read)
@@ -22,14 +24,14 @@ data FileFormat = GIF | PNG | JPG
 
 -- | Specialized version of 'sinkImageInfo' that returns only the
 -- image size.
-sinkImageSize :: Monad m => GLSink S.ByteString m (Maybe Size)
-sinkImageSize = fmap (fmap fst) sinkImageInfo
+sinkImageSize :: MonadSink S.ByteString m (Maybe Size)
+sinkImageSize = liftM (fmap fst) sinkImageInfo
 
 -- | Find out the size of an image.  Also returns the file format
 -- that parsed correctly.  Note that this function does not
 -- verify that the file is indeed in the format that it returns,
 -- since it looks only at a small part of the header.
-sinkImageInfo :: Monad m => GLSink S.ByteString m (Maybe (Size, FileFormat))
+sinkImageInfo :: MonadSink S.ByteString m (Maybe (Size, FileFormat))
 sinkImageInfo =
     start id
   where
@@ -89,10 +91,10 @@ sinkImageInfo =
                     Nothing -> return Nothing
             _ -> return Nothing
 
-getInt :: (Monad m, Integral i)
+getInt :: Integral i
        => Int
        -> i
-       -> Pipe S.ByteString S.ByteString o u m (Maybe i)
+       -> MonadSink S.ByteString m (Maybe i)
 getInt 0 i = return $ Just i
 getInt len i = do
     mx <- CB.head

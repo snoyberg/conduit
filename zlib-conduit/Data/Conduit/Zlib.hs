@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TypeFamilies #-}
 -- | Streaming compression and decompression using conduits.
 --
 -- Parts of this code were taken from zlib-enum and adapted for conduits.
@@ -13,20 +14,20 @@ module Data.Conduit.Zlib (
 ) where
 
 import Codec.Zlib
-import Data.Conduit hiding (unsafeLiftIO, Source, Sink, Conduit, Pipe)
+import Data.Conduit hiding (unsafeLiftIO, Source, Sink, Conduit)
+import Data.Conduit.Class (MonadStream, StreamMonad)
 import qualified Data.Conduit as C (unsafeLiftIO)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as S
 import Control.Exception (try)
 import Control.Monad ((<=<), unless, liftM)
-import Control.Monad.Trans.Class (lift, MonadTrans)
 
 -- | Gzip compression with default parameters.
-gzip :: (MonadThrow m, MonadUnsafeIO m) => GInfConduit ByteString m ByteString
+gzip :: (MonadThrow m, MonadUnsafeIO m) => MonadConduit ByteString m ByteString
 gzip = compress 1 (WindowBits 31)
 
 -- | Gzip decompression with default parameters.
-ungzip :: (MonadUnsafeIO m, MonadThrow m) => GInfConduit ByteString m ByteString
+ungzip :: (MonadUnsafeIO m, MonadThrow m) => MonadConduit ByteString m ByteString
 ungzip = decompress (WindowBits 31)
 
 unsafeLiftIO :: (MonadUnsafeIO m, MonadThrow m) => IO a -> m a
@@ -44,9 +45,9 @@ unsafeLiftIO =
 decompress
     :: (MonadUnsafeIO m, MonadThrow m)
     => WindowBits -- ^ Zlib parameter (see the zlib-bindings package as well as the zlib C library)
-    -> GInfConduit ByteString m ByteString
+    -> MonadConduit ByteString m ByteString
 decompress =
-    helperDecompress (liftM (fmap Chunk) awaitE) yield'
+    helperDecompress (liftM (fmap Chunk) await) yield'
   where
     yield' Flush = return ()
     yield' (Chunk bs) = yield bs
@@ -55,44 +56,43 @@ decompress =
 decompressFlush
     :: (MonadUnsafeIO m, MonadThrow m)
     => WindowBits -- ^ Zlib parameter (see the zlib-bindings package as well as the zlib C library)
-    -> GInfConduit (Flush ByteString) m (Flush ByteString)
-decompressFlush = helperDecompress awaitE yield
+    -> MonadConduit (Flush ByteString) m (Flush ByteString)
+decompressFlush = helperDecompress await yield
 
-helperDecompress :: (Monad (t m), MonadUnsafeIO m, MonadThrow m, MonadTrans t)
-                 => t m (Either term (Flush ByteString))
-                 -> (Flush ByteString -> t m ())
+helperDecompress :: (MonadUnsafeIO (StreamMonad m), MonadThrow (StreamMonad m), MonadStream m)
+                 => m (Maybe (Flush ByteString))
+                 -> (Flush ByteString -> m ())
                  -> WindowBits
-                 -> t m term
-helperDecompress awaitE' yield' config =
-    awaitE' >>= either return start
+                 -> m ()
+helperDecompress await' yield' config =
+    await' >>= maybe (return ()) start
   where
     start input = do
-        inf <- lift $ unsafeLiftIO $ initInflate config
+        inf <- liftStreamMonad $ unsafeLiftIO $ initInflate config
         push inf input
 
-    continue inf = awaitE' >>= either (close inf) (push inf)
+    continue inf = await' >>= maybe (close inf) (push inf)
 
     goPopper popper = do
-        mbs <- lift $ unsafeLiftIO popper
+        mbs <- liftStreamMonad $ unsafeLiftIO popper
         case mbs of
             Nothing -> return ()
             Just bs -> yield' (Chunk bs) >> goPopper popper
 
     push inf (Chunk x) = do
-        popper <- lift $ unsafeLiftIO $ feedInflate inf x
+        popper <- liftStreamMonad $ unsafeLiftIO $ feedInflate inf x
         goPopper popper
         continue inf
 
     push inf Flush = do
-        chunk <- lift $ unsafeLiftIO $ flushInflate inf
+        chunk <- liftStreamMonad $ unsafeLiftIO $ flushInflate inf
         unless (S.null chunk) $ yield' $ Chunk chunk
         yield' Flush
         continue inf
 
-    close inf ret = do
-        chunk <- lift $ unsafeLiftIO $ finishInflate inf
+    close inf = do
+        chunk <- liftStreamMonad $ unsafeLiftIO $ finishInflate inf
         unless (S.null chunk) $ yield' $ Chunk chunk
-        return ret
 
 -- |
 -- Compress (deflate) a stream of 'ByteString's. The 'WindowBits' also control
@@ -102,9 +102,9 @@ compress
     :: (MonadUnsafeIO m, MonadThrow m)
     => Int         -- ^ Compression level
     -> WindowBits  -- ^ Zlib parameter (see the zlib-bindings package as well as the zlib C library)
-    -> GInfConduit ByteString m ByteString
+    -> MonadConduit ByteString m ByteString
 compress =
-    helperCompress (liftM (fmap Chunk) awaitE) yield'
+    helperCompress (liftM (fmap Chunk) await) yield'
   where
     yield' Flush = return ()
     yield' (Chunk bs) = yield bs
@@ -114,43 +114,43 @@ compressFlush
     :: (MonadUnsafeIO m, MonadThrow m)
     => Int         -- ^ Compression level
     -> WindowBits  -- ^ Zlib parameter (see the zlib-bindings package as well as the zlib C library)
-    -> GInfConduit (Flush ByteString) m (Flush ByteString)
-compressFlush = helperCompress awaitE yield
+    -> MonadConduit (Flush ByteString) m (Flush ByteString)
+compressFlush = helperCompress await yield
 
-helperCompress :: (Monad (t m), MonadUnsafeIO m, MonadThrow m, MonadTrans t)
-               => t m (Either term (Flush ByteString))
-               -> (Flush ByteString -> t m ())
+helperCompress :: (MonadUnsafeIO (StreamMonad m), MonadThrow (StreamMonad m), MonadStream m)
+               => m (Maybe (Flush ByteString))
+               -> (Flush ByteString -> m ())
                -> Int
                -> WindowBits
-               -> t m term
-helperCompress awaitE' yield' level config =
-    awaitE' >>= either return start
+               -> m ()
+helperCompress await' yield' level config =
+    await' >>= maybe (return ()) start
   where
     start input = do
-        def <- lift $ unsafeLiftIO $ initDeflate level config
+        def <- liftStreamMonad $ unsafeLiftIO $ initDeflate level config
         push def input
 
-    continue def = awaitE' >>= either (close def) (push def)
+    continue def = await' >>= maybe (close def) (push def)
 
     goPopper popper = do
-        mbs <- lift $ unsafeLiftIO popper
+        mbs <- liftStreamMonad $ unsafeLiftIO popper
         case mbs of
             Nothing -> return ()
             Just bs -> yield' (Chunk bs) >> goPopper popper
 
     push def (Chunk x) = do
-        popper <- lift $ unsafeLiftIO $ feedDeflate def x
+        popper <- liftStreamMonad $ unsafeLiftIO $ feedDeflate def x
         goPopper popper
         continue def
 
     push def Flush = do
-        mchunk <- lift $ unsafeLiftIO $ flushDeflate def
+        mchunk <- liftStreamMonad $ unsafeLiftIO $ flushDeflate def
         maybe (return ()) (yield' . Chunk) mchunk
         yield' Flush
         continue def
 
-    close def ret = do
-        mchunk <- lift $ unsafeLiftIO $ finishDeflate def
+    close def = do
+        mchunk <- liftStreamMonad $ unsafeLiftIO $ finishDeflate def
         case mchunk of
-            Nothing -> return ret
-            Just chunk -> yield' (Chunk chunk) >> close def ret
+            Nothing -> return ()
+            Just chunk -> yield' (Chunk chunk) >> close def
