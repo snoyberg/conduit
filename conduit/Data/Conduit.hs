@@ -423,6 +423,3 @@ data Flush a = Chunk a | Flush
 instance Functor Flush where
     fmap _ Flush = Flush
     fmap f (Chunk a) = Chunk (f a)
-
-liftStreamIO :: (MonadIO (StreamMonad m), MonadStream m) => IO a -> m a
-liftStreamIO = liftStreamMonad . liftIO

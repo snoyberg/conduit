@@ -1,5 +1,6 @@
 {-# LANGUAGE CPP, RankNTypes #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE FlexibleContexts #-}
 -- | Functions for interacting with bytes.
 module Data.Conduit.Binary
     ( -- * Files and @Handle@s

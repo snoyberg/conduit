@@ -26,6 +26,7 @@ module Data.Conduit.Class
     , unwrapResumable
     , SourceM (..)
     , ConduitM (..)
+    , liftStreamIO
     , ($$)
     , ($=)
     , (=$)
@@ -241,8 +242,8 @@ instance Monad m => MonadStream (Sink i m) where
 bracketP :: (MonadStream m, MonadResource (StreamMonad m))
          => IO a -- ^ allocate
          -> (a -> IO ()) -- ^ free
-         -> (a -> m ()) -- ^ inside
-         -> m ()
+         -> (a -> m r) -- ^ inside
+         -> m r
 bracketP alloc free inside = do
     (key, seed) <- liftStreamMonad $ allocate alloc free
     addCleanup (const $ release key) (inside seed)
@@ -403,3 +404,6 @@ unwrapResumable (ResumableSource src final) = do
             x <- liftIO $ I.readIORef ref
             when x final
     return (liftIO (I.writeIORef ref False) >> SourceM src, final')
+
+liftStreamIO :: (MonadStream m, MonadIO (StreamMonad m)) => IO a -> m a
+liftStreamIO = liftStreamMonad . liftIO
