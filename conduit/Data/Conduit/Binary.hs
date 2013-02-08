@@ -1,5 +1,6 @@
 {-# LANGUAGE CPP, RankNTypes #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE FlexibleContexts #-}
 -- | Functions for interacting with bytes.
 module Data.Conduit.Binary
     ( -- * Files and @Handle@s
@@ -40,6 +41,7 @@ import Data.Conduit.Class
 import Control.Exception (assert)
 import Control.Monad (unless)
 import Control.Monad.IO.Class (liftIO, MonadIO)
+import Control.Monad.Trans.Resource (MonadResource)
 import qualified System.IO as IO
 import Data.Word (Word8)
 import Control.Applicative ((<$>))
@@ -52,7 +54,7 @@ import qualified System.PosixFile as F
 -- | Stream the contents of a file as binary data.
 --
 -- Since 0.3.0
-sourceFile :: (ResourcePipe m, Downstream m ~ S.ByteString)
+sourceFile :: (MonadStream m, MonadResource (StreamMonad m), Downstream m ~ S.ByteString)
            => FilePath
            -> m ()
 sourceFile fp =
@@ -62,7 +64,7 @@ sourceFile fp =
          F.close
          loop
   where
-    loop h = liftIO (F.read h) >>= maybe (return ()) (\bs -> yield bs >> loop h)
+    loop h = liftStreamIO (F.read h) >>= maybe (return ()) (\bs -> yield bs >> loop h)
 #else
     sourceIOHandle (IO.openBinaryFile fp IO.ReadMode)
 #endif
@@ -72,14 +74,14 @@ sourceFile fp =
 -- completes, since it did not acquire the @Handle@ in the first place.
 --
 -- Since 0.3.0
-sourceHandle :: (MonadStream m, MonadIO m, Downstream m ~ S.ByteString)
+sourceHandle :: (MonadStream m, MonadIO (StreamMonad m), Downstream m ~ S.ByteString)
              => IO.Handle
              -> m ()
 sourceHandle h =
     loop
   where
     loop = do
-        bs <- liftIO (S.hGetSome h 4096)
+        bs <- liftStreamIO (S.hGetSome h 4096)
         if S.null bs
             then return ()
             else yield bs >> loop
@@ -90,7 +92,7 @@ sourceHandle h =
 -- and closed it as soon as possible.
 --
 -- Since 0.3.0
-sourceIOHandle :: (ResourcePipe m, Downstream m ~ S.ByteString)
+sourceIOHandle :: (MonadStream m, MonadResource (StreamMonad m), Downstream m ~ S.ByteString)
                => IO IO.Handle
                -> m ()
 sourceIOHandle alloc = bracketP alloc IO.hClose sourceHandle
@@ -99,10 +101,10 @@ sourceIOHandle alloc = bracketP alloc IO.hClose sourceHandle
 -- will /not/ automatically close the @Handle@ when processing completes.
 --
 -- Since 0.3.0
-sinkHandle :: (MonadStream m, MonadIO m, Upstream m ~ S.ByteString)
+sinkHandle :: (MonadStream m, MonadIO (StreamMonad m), Upstream m ~ S.ByteString)
            => IO.Handle
            -> m (StreamTerm m)
-sinkHandle h = awaitForever $ liftIO . S.hPut h
+sinkHandle h = awaitForever $ liftStreamIO . S.hPut h
 
 -- | An alternative to 'sinkHandle'.
 -- Instead of taking a pre-opened 'IO.Handle', it takes an action that opens
@@ -110,7 +112,7 @@ sinkHandle h = awaitForever $ liftIO . S.hPut h
 -- and close it as soon as possible.
 --
 -- Since 0.3.0
-sinkIOHandle :: (ResourcePipe m, Upstream m ~ S.ByteString)
+sinkIOHandle :: (MonadStream m, MonadResource (StreamMonad m), Upstream m ~ S.ByteString)
              => IO IO.Handle
              -> m (StreamTerm m)
 sinkIOHandle alloc = bracketP alloc IO.hClose sinkHandle
@@ -119,7 +121,7 @@ sinkIOHandle alloc = bracketP alloc IO.hClose sinkHandle
 -- offset and only consuming up to a certain number of bytes.
 --
 -- Since 0.3.0
-sourceFileRange :: (ResourcePipe m, Downstream m ~ S.ByteString)
+sourceFileRange :: (MonadStream m, MonadResource (StreamMonad m), Downstream m ~ S.ByteString)
                 => FilePath
                 -> Maybe Integer -- ^ Offset
                 -> Maybe Integer -- ^ Maximum count
@@ -132,13 +134,13 @@ sourceFileRange fp offset count = bracketP
     start handle = do
         case offset of
             Nothing -> return ()
-            Just off -> liftIO $ IO.hSeek handle IO.AbsoluteSeek off
+            Just off -> liftStreamIO $ IO.hSeek handle IO.AbsoluteSeek off
         case count of
             Nothing -> pullUnlimited handle
             Just c -> pullLimited (fromInteger c) handle
 
     pullUnlimited handle = do
-        bs <- liftIO $ S.hGetSome handle 4096
+        bs <- liftStreamIO $ S.hGetSome handle 4096
         if S.null bs
             then return ()
             else do
@@ -146,7 +148,7 @@ sourceFileRange fp offset count = bracketP
                 pullUnlimited handle
 
     pullLimited c handle = do
-        bs <- liftIO $ S.hGetSome handle (min c 4096)
+        bs <- liftStreamIO $ S.hGetSome handle (min c 4096)
         let c' = c - S.length bs
         assert (c' >= 0) $
             if S.null bs
@@ -158,7 +160,7 @@ sourceFileRange fp offset count = bracketP
 -- | Stream all incoming data to the given file.
 --
 -- Since 0.3.0
-sinkFile :: (ResourcePipe m, Upstream m ~ S.ByteString)
+sinkFile :: (MonadStream m, MonadResource (StreamMonad m), Upstream m ~ S.ByteString)
          => FilePath
          -> m (StreamTerm m)
 sinkFile fp = sinkIOHandle (IO.openBinaryFile fp IO.WriteMode)
@@ -167,7 +169,7 @@ sinkFile fp = sinkIOHandle (IO.openBinaryFile fp IO.WriteMode)
 -- pipeline. Similar in concept to the Unix command @tee@.
 --
 -- Since 0.3.0
-conduitFile :: (ResourcePipe m, Downstream m ~ S.ByteString, Upstream m ~ S.ByteString)
+conduitFile :: (MonadStream m, MonadResource (StreamMonad m), Downstream m ~ S.ByteString, Upstream m ~ S.ByteString)
             => FilePath
             -> m (StreamTerm m)
 conduitFile fp = bracketP
@@ -175,7 +177,7 @@ conduitFile fp = bracketP
     IO.hClose
     go
   where
-    go h = awaitForever $ \bs -> liftIO (S.hPut h bs) >> yield bs
+    go h = awaitForever $ \bs -> liftStreamIO (S.hPut h bs) >> yield bs
 
 -- | Ensure that only up to the given number of bytes are consume by the inner
 -- sink. Note that this does /not/ ensure that all of those bytes are in fact
