@@ -11,18 +11,9 @@ module Data.Conduit
     , (=$)
     , (=$=)
 
-      -- * Pipe interface
-      -- $pipeInterface
-    , Pipe
-    , (>+>)
-    , (<+<)
-    , runPipe
-    , injectLeftovers
-
       -- * Primitives
       -- $primitives
     , await
-    , awaitE
     , awaitForever
     , yield
     , yieldOr
@@ -40,26 +31,18 @@ module Data.Conduit
     , unwrapResumable
 
       -- * Utility functions
-    , transPipe
-    , mapOutput
-    , mapOutputMaybe
-    , mapInput
-    , withUpstream
-
-      -- * Generalized conduit types
-      -- $generalizedConduitTypes
-    , GSource
-    , GSink
-    , GLSink
-    , GInfSink
-    , GLInfSink
-    , GConduit
-    , GLConduit
-    , GInfConduit
-    , GLInfConduit
+    , MFunctor (..)
 
       -- * Flushing
     , Flush (..)
+
+      -- * Generalizing
+    , MonadSource
+    , MonadConduit
+    , MonadSink
+    , MonadResourceSource
+    , MonadResourceConduit
+    , MonadResourceSink
 
       -- * Convenience re-exports
     , ResourceT
@@ -75,8 +58,7 @@ module Data.Conduit
     ) where
 
 import Control.Monad.Trans.Resource
-import Data.Conduit.Internal
-import Data.Void (Void)
+import Data.Conduit.Class
 
 {- $conduitInterface
 
@@ -427,123 +409,6 @@ provide some generalized conduit types. They follow a simple naming convention:
   result, we add @Inf@ to indicate /infinite consumption/.
 
 -}
-
--- Define fixity of all our operators
-infixr 0 $$
-infixl 1 $=
-infixr 2 =$
-infixr 2 =$=
-infixr 9 <+<
-infixl 9 >+>
-infixr 0 $$+
-infixr 0 $$++
-infixr 0 $$+-
-
--- | The connect operator, which pulls data from a source and pushes to a sink.
--- When either side closes, the other side will immediately be closed as well.
--- If you would like to keep the @Source@ open to be used for another
--- operations, use the connect-and-resume operator '$$+'.
---
--- Since 0.4.0
-($$) :: Monad m => Source m a -> Sink a m b -> m b
-src $$ sink = do
-    (rsrc, res) <- src $$+ sink
-    rsrc $$+- return ()
-    return res
-{-# INLINE ($$) #-}
-
--- | Left fuse, combining a source and a conduit together into a new source.
---
--- Both the @Source@ and @Conduit@ will be closed when the newly-created
--- @Source@ is closed.
---
--- Leftover data from the @Conduit@ will be discarded.
---
--- Since 0.4.0
-($=) :: Monad m => Source m a -> Conduit a m b -> Source m b
-($=) = pipeL
-{-# INLINE ($=) #-}
-
--- | Right fuse, combining a conduit and a sink together into a new sink.
---
--- Both the @Conduit@ and @Sink@ will be closed when the newly-created @Sink@
--- is closed.
---
--- Leftover data returned from the @Sink@ will be discarded.
---
--- Since 0.4.0
-(=$) :: Monad m => Conduit a m b -> Sink b m c -> Sink a m c
-(=$) = pipeL
-{-# INLINE (=$) #-}
-
--- | Fusion operator, combining two @Conduit@s together into a new @Conduit@.
---
--- Both @Conduit@s will be closed when the newly-created @Conduit@ is closed.
---
--- Leftover data returned from the right @Conduit@ will be discarded.
---
--- Since 0.4.0
-(=$=) :: Monad m => Conduit a m b -> Conduit b m c -> Conduit a m c
-(=$=) = pipeL
-{-# INLINE (=$=) #-}
-
-
--- | Fuse together two @Pipe@s, connecting the output from the left to the
--- input of the right.
---
--- Notice that the /leftover/ parameter for the @Pipe@s must be @Void@. This
--- ensures that there is no accidental data loss of leftovers during fusion. If
--- you have a @Pipe@ with leftovers, you must first call 'injectLeftovers'. For
--- example:
---
--- >>> :load Data.Conduit.List
--- >>> :set -XNoMonomorphismRestriction
--- >>> let pipe = peek >>= \x -> fold (Prelude.+) 0 >>= \y -> return (x, y)
--- >>> runPipe $ sourceList [1..10] >+> injectLeftovers pipe
--- (Just 1,55)
---
--- Since 0.5.0
-(>+>) :: Monad m => Pipe l a b r0 m r1 -> Pipe Void b c r1 m r2 -> Pipe l a c r0 m r2
-(>+>) = pipe
-{-# INLINE (>+>) #-}
-
--- | Same as '>+>', but reverse the order of the arguments.
---
--- Since 0.5.0
-(<+<) :: Monad m => Pipe Void b c r1 m r2 -> Pipe l a b r0 m r1 -> Pipe l a c r0 m r2
-(<+<) = flip pipe
-{-# INLINE (<+<) #-}
-
--- | The connect-and-resume operator. This does not close the @Source@, but
--- instead returns it to be used again. This allows a @Source@ to be used
--- incrementally in a large program, without forcing the entire program to live
--- in the @Sink@ monad.
---
--- Mnemonic: connect + do more.
---
--- Since 0.5.0
-($$+) :: Monad m => Source m a -> Sink a m b -> m (ResumableSource m a, b)
-src $$+ sink = connectResume (ResumableSource src (return ())) sink
-{-# INLINE ($$+) #-}
-
--- | Continue processing after usage of @$$+@.
---
--- Since 0.5.0
-($$++) :: Monad m => ResumableSource m a -> Sink a m b -> m (ResumableSource m a, b)
-($$++) = connectResume
-{-# INLINE ($$++) #-}
-
--- | Complete processing of a @ResumableSource@. This will run the finalizer
--- associated with the @ResumableSource@. In order to guarantee process resource
--- finalization, you /must/ use this operator after using @$$+@ and @$$++@.
---
--- Since 0.5.0
-($$+-) :: Monad m => ResumableSource m a -> Sink a m b -> m b
-rsrc $$+- sink = do
-    (ResumableSource _ final, res) <- connectResume rsrc sink
-    final
-    return res
-{-# INLINE ($$+-) #-}
 
 -- | Provide for a stream of data that can be flushed.
 --

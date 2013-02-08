@@ -7,18 +7,6 @@
 module Data.Conduit.Internal
     ( -- * Types
       Pipe (..)
-    , Source
-    , GSource
-    , Sink
-    , GSink
-    , GLSink
-    , GInfSink
-    , GLInfSink
-    , Conduit
-    , GConduit
-    , GLConduit
-    , GInfConduit
-    , GLInfConduit
     , ResumableSource (..)
       -- * Primitives
     , await
@@ -37,6 +25,8 @@ module Data.Conduit.Internal
     , connectResume
     , runPipe
     , injectLeftovers
+    , (>+>)
+    , (<+<)
       -- * Generalizing
     , sourceToPipe
     , sinkToPipe
@@ -48,7 +38,6 @@ module Data.Conduit.Internal
     , mapInput
     , sourceList
     , withUpstream
-    , unwrapResumable
     ) where
 
 import Control.Applicative (Applicative (..))
@@ -146,71 +135,17 @@ instance MonadResource m => MonadResource (Pipe l i o u m) where
 -- Since 0.5.0
 type Source m o = Pipe () () o () m ()
 
--- | Generalized 'Source'.
---
--- Since 0.5.0
-type GSource m o = forall l i u. Pipe l i o u m ()
-{-# DEPRECATED GSource "Use IsPipe" #-}
-
 -- | Consumes a stream of input values and produces a final result, without
 -- producing any output.
 --
 -- Since 0.5.0
 type Sink i m r = Pipe i i Void () m r
 
--- | Generalized 'Sink' without leftovers.
---
--- Since 0.5.0
-type GSink i m r = forall l o u. Pipe l i o u m r
-{-# DEPRECATED GSink "Use IsPipe" #-}
-
--- | Generalized 'Sink' with leftovers.
---
--- Since 0.5.0
-type GLSink i m r = forall o u. Pipe i i o u m r
-{-# DEPRECATED GLSink "Use IsPipe" #-}
-
--- | Generalized 'Sink' without leftovers returning upstream result.
---
--- Since 0.5.0
-type GInfSink i m = forall l o r. Pipe l i o r m r
-{-# DEPRECATED GInfSink "Use IsPipe" #-}
-
--- | Generalized 'Sink' with leftovers returning upstream result.
---
--- Since 0.5.0
-type GLInfSink i m = forall o r. Pipe i i o r m r
-{-# DEPRECATED GLInfSink "Use IsPipe" #-}
-
 -- | Consumes a stream of input values and produces a stream of output values,
 -- without producing a final result.
 --
 -- Since 0.5.0
 type Conduit i m o = Pipe i i o () m ()
-
--- | Generalized conduit without leftovers.
---
--- Since 0.5.0
-type GConduit i m o = forall l u. Pipe l i o u m ()
-{-# DEPRECATED GConduit "Use IsPipe" #-}
-
--- | Generalized conduit with leftovers.
---
--- Since 0.5.0
-type GLConduit i m o = forall u. Pipe i i o u m ()
-{-# DEPRECATED GLConduit "Use IsPipe" #-}
-
--- | Generalized conduit without leftovers returning upstream result.
---
--- Since 0.5.0
-type GInfConduit i m o = forall l r. Pipe l i o r m r
-{-# DEPRECATED GInfConduit "Use IsPipe" #-}
-
--- | Generalized conduit with leftovers returning upstream result.
---
--- Since 0.5.0
-type GLInfConduit i m o = forall r. Pipe i i o r m r
-{-# DEPRECATED GLInfConduit "Use IsPipe" #-}
 
 -- | A @Source@ which has been started, but has not yet completed.
 --
@@ -574,25 +509,31 @@ withUpstream down =
       where
         loop = awaitE >>= either (\u -> return (u, r)) (\_ -> loop)
 
--- | Unwraps a @ResumableSource@ into a @Source@ and a finalizer.
+infixr 9 <+<
+infixl 9 >+>
+
+-- | Fuse together two @Pipe@s, connecting the output from the left to the
+-- input of the right.
 --
--- A @ResumableSource@ represents a @Source@ which has already been run, and
--- therefore has a finalizer registered. As a result, if we want to turn it
--- into a regular @Source@, we need to ensure that the finalizer will be run
--- appropriately. By appropriately, I mean:
+-- Notice that the /leftover/ parameter for the @Pipe@s must be @Void@. This
+-- ensures that there is no accidental data loss of leftovers during fusion. If
+-- you have a @Pipe@ with leftovers, you must first call 'injectLeftovers'. For
+-- example:
 --
--- * If a new finalizer is registered, the old one should not be called.
--- * If the old one is called, it should not be called again.
+-- >>> :load Data.Conduit.List
+-- >>> :set -XNoMonomorphismRestriction
+-- >>> let pipe = peek >>= \x -> fold (Prelude.+) 0 >>= \y -> return (x, y)
+-- >>> runPipe $ sourceList [1..10] >+> injectLeftovers pipe
+-- (Just 1,55)
 --
--- This function returns both a @Source@ and a finalizer which ensures that the
--- above two conditions hold. Once you call that finalizer, the @Source@ is
--- invalidated and cannot be used.
+-- Since 0.5.0
+(>+>) :: Monad m => Pipe l a b r0 m r1 -> Pipe Void b c r1 m r2 -> Pipe l a c r0 m r2
+(>+>) = pipe
+{-# INLINE (>+>) #-}
+
+-- | Same as '>+>', but reverse the order of the arguments.
 --
--- Since 0.5.2
-unwrapResumable :: MonadIO m => ResumableSource m o -> m (Source m o, m ())
-unwrapResumable (ResumableSource src final) = do
-    ref <- liftIO $ I.newIORef True
-    let final' = do
-            x <- liftIO $ I.readIORef ref
-            when x final
-    return (liftIO (I.writeIORef ref False) >> src, final')
+-- Since 0.5.0
+(<+<) :: Monad m => Pipe Void b c r1 m r2 -> Pipe l a b r0 m r1 -> Pipe l a c r0 m r2
+(<+<) = flip pipe
+{-# INLINE (<+<) #-}

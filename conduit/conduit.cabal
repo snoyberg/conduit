@@ -44,12 +44,12 @@ Library
       cpp-options: -DNO_HANDLES
   Exposed-modules:     Data.Conduit
                        Data.Conduit.Binary
-                       Data.Conduit.Class
                        Data.Conduit.Text
                        Data.Conduit.List
                        Data.Conduit.Lazy
                        Data.Conduit.Internal
                        Data.Conduit.Util
+                       Data.Conduit.Class
   Build-depends:       base                     >= 4.3          && < 5
                      , resourcet                >= 0.4.3        && < 0.5
                      , lifted-base              >= 0.1

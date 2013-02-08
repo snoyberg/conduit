@@ -11,24 +11,45 @@
 -- | Note: This module is experimental, and might be modified at any time.
 -- Caveat emptor!
 module Data.Conduit.Class
-    ( module Data.Conduit.Class
-    , C.ResumableSource
-    , C.runResourceT
-    , C.Flush (..)
-    , C.ResourceT
-    , C.unwrapResumable
+    ( MFunctor (..)
+    , MonadStream (..)
+    , sourceList
+    , MonadResourceStream (..)
+    , Source
+    , Sink (..)
+    , Conduit
+    , MonadSource
+    , MonadSink
+    , MonadConduit
+    , MonadResourceSource
+    , MonadResourceSink
+    , MonadResourceConduit
+    , awaitForever
+    , ResumableSource
+    , unwrapResumable
+    , SourceM (..)
+    , ConduitM (..)
+    , ($$)
+    , ($=)
+    , (=$)
+    , (=$=)
+    , ($$+)
+    , ($$++)
+    , ($$+-)
     ) where
 
-import Prelude (Monad (..), Functor (..), ($), const, IO, Maybe, Either, Bool, (.), either, mapM_, maybe)
+import Prelude (Monad (..), Functor (..), ($), const, IO, Maybe, Either, Bool (..), (.), either, mapM_, maybe)
 import Data.Void (Void)
 import Control.Applicative (Applicative (..))
-import qualified Data.Conduit as C
-import Data.Conduit.Internal (Pipe (PipeM))
+import qualified Data.Conduit.Internal as CI
+import Data.Conduit.Internal (Pipe (PipeM), transPipe, pipeL, connectResume, ResumableSource (..))
 import Control.Monad.Trans.Class (MonadTrans (..))
 import Control.Monad.Trans.Resource (allocate, release, MonadThrow, MonadResource, ResourceT)
 import Control.Monad.Trans.Control (liftWith, restoreT, MonadTransControl)
-import Control.Monad.IO.Class (MonadIO)
+import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Monoid (Monoid (..))
+import Control.Monad (when)
+import qualified Data.IORef as I
 
 import Control.Monad.Trans.Identity ( IdentityT)
 import Control.Monad.Trans.List     ( ListT    )
@@ -50,7 +71,7 @@ import qualified Control.Monad.Trans.Writer.Strict as Strict ( WriterT )
 type Source m o = SourceM o m ()
 
 newtype SourceM o m r = SourceM { unSourceM :: Pipe () () o () m r }
-    deriving (Functor, Applicative, Monad, MonadTrans, MonadIO, MonadResourceStream, MonadThrow)
+    deriving (Functor, Applicative, Monad, MonadTrans, MonadIO, MonadResourceStream, MonadThrow, MFunctor)
 
 instance Monad m => Monoid (SourceM o m ()) where
     mempty = return ()
@@ -63,7 +84,7 @@ instance Monad m => Monoid (SourceM o m ()) where
 type Conduit i m o = ConduitM i o m ()
 
 newtype ConduitM i o m r = ConduitM { unConduitM :: Pipe i i o () m r }
-    deriving (Functor, Applicative, Monad, MonadTrans, MonadIO, MonadResourceStream, MonadThrow)
+    deriving (Functor, Applicative, Monad, MonadTrans, MonadIO, MonadResourceStream, MonadThrow, MFunctor)
 
 instance Monad m => Monoid (ConduitM i o m ()) where
     mempty = return ()
@@ -74,7 +95,7 @@ instance Monad m => Monoid (ConduitM i o m ()) where
 --
 -- Since 0.6.0
 newtype Sink i m r = Sink { unSink :: Pipe i i Void () m r }
-    deriving (Functor, Applicative, Monad, MonadTrans, MonadIO, MonadResourceStream, MonadThrow)
+    deriving (Functor, Applicative, Monad, MonadTrans, MonadIO, MonadResourceStream, MonadThrow, MFunctor)
 
 instance Monad m => Monoid (Sink i m ()) where
     mempty = return ()
@@ -126,21 +147,21 @@ instance (Monad m, l ~ i) => MonadStream (Pipe l i o u m) where
     type Downstream (Pipe l i o u m) = o
     type StreamMonad (Pipe l i o u m) = m
 
-    await = C.await
+    await = CI.await
     {-# INLINE [1] await #-}
 
-    leftover = C.leftover
+    leftover = CI.leftover
     {-# INLINE [1] leftover #-}
 
-    yield = C.yield
+    yield = CI.yield
     {-# INLINE yield #-}
 
-    yieldOr = C.yieldOr
+    yieldOr = CI.yieldOr
     {-# INLINE yieldOr #-}
 
     liftStreamMonad = lift
 
-    addCleanup = C.addCleanup
+    addCleanup = CI.addCleanup
 
 instance Monad m => MonadStream (SourceM o m) where
     type Upstream (SourceM o m) = ()
@@ -270,32 +291,83 @@ infixr 0 $$+
 infixr 0 $$++
 infixr 0 $$+-
 
+-- | The connect operator, which pulls data from a source and pushes to a sink.
+-- When either side closes, the other side will immediately be closed as well.
+-- If you would like to keep the @Source@ open to be used for another
+-- operations, use the connect-and-resume operator '$$+'.
+--
+-- Since 0.4.0
 ($$) :: Monad m => Source m a -> Sink a m b -> m b
-SourceM src $$ Sink sink = src C.$$ sink
+src $$ sink = do
+    (rsrc, res) <- src $$+ sink
+    rsrc $$+- return ()
+    return res
 {-# INLINE ($$) #-}
 
+-- | Left fuse, combining a source and a conduit together into a new source.
+--
+-- Both the @Source@ and @Conduit@ will be closed when the newly-created
+-- @Source@ is closed.
+--
+-- Leftover data from the @Conduit@ will be discarded.
+--
+-- Since 0.4.0
 ($=) :: Monad m => Source m a -> Conduit a m b -> Source m b
-SourceM src $= ConduitM con = SourceM $ src C.$= con
+SourceM src $= ConduitM con = SourceM $ src `pipeL` con
 {-# INLINE ($=) #-}
 
+-- | Fusion operator, combining two @Conduit@s together into a new @Conduit@.
+--
+-- Both @Conduit@s will be closed when the newly-created @Conduit@ is closed.
+--
+-- Leftover data returned from the right @Conduit@ will be discarded.
+--
+-- Since 0.4.0
 (=$=) :: Monad m => Conduit a m b -> Conduit b m c -> Conduit a m c
-ConduitM l =$= ConduitM r = ConduitM $ l C.=$= r
+ConduitM l =$= ConduitM r = ConduitM $ l `pipeL` r
 {-# INLINE (=$=) #-}
 
+-- | Right fuse, combining a conduit and a sink together into a new sink.
+--
+-- Both the @Conduit@ and @Sink@ will be closed when the newly-created @Sink@
+-- is closed.
+--
+-- Leftover data returned from the @Sink@ will be discarded.
+--
+-- Since 0.4.0
 (=$) :: Monad m => Conduit a m b -> Sink b m c -> Sink a m c
-ConduitM l =$ Sink r = Sink $ l C.=$ r
+ConduitM l =$ Sink r = Sink $ l `pipeL` r
 {-# INLINE (=$) #-}
 
-($$+) :: Monad m => Source m a -> Sink a m b -> m (C.ResumableSource m a, b)
-SourceM src $$+ Sink sink = src C.$$+ sink
+-- | The connect-and-resume operator. This does not close the @Source@, but
+-- instead returns it to be used again. This allows a @Source@ to be used
+-- incrementally in a large program, without forcing the entire program to live
+-- in the @Sink@ monad.
+--
+-- Mnemonic: connect + do more.
+--
+-- Since 0.5.0
+($$+) :: Monad m => Source m a -> Sink a m b -> m (ResumableSource m a, b)
+SourceM src $$+ Sink sink = connectResume (ResumableSource src (return ())) sink
 {-# INLINE ($$+) #-}
 
-($$++) :: Monad m => C.ResumableSource m a -> Sink a m b -> m (C.ResumableSource m a, b)
-rsrc $$++ Sink sink = rsrc C.$$++ sink
+-- | Continue processing after usage of @$$+@.
+--
+-- Since 0.5.0
+($$++) :: Monad m => ResumableSource m a -> Sink a m b -> m (ResumableSource m a, b)
+rsrc $$++ Sink sink = rsrc `connectResume` sink
 {-# INLINE ($$++) #-}
 
-($$+-) :: Monad m => C.ResumableSource m a -> Sink a m b -> m b
-rsrc $$+- Sink sink = rsrc C.$$+- sink
+-- | Complete processing of a @ResumableSource@. This will run the finalizer
+-- associated with the @ResumableSource@. In order to guarantee process resource
+-- finalization, you /must/ use this operator after using @$$+@ and @$$++@.
+--
+-- Since 0.5.0
+($$+-) :: Monad m => ResumableSource m a -> Sink a m b -> m b
+rsrc $$+- Sink sink = do
+    (ResumableSource _ final, res) <- connectResume rsrc sink
+    final
+    return res
 {-# INLINE ($$+-) #-}
 
 sourceList :: MonadStream m => [Downstream m] -> m ()
@@ -309,3 +381,35 @@ type MonadSink a m b = forall sink. (MonadStream sink, a ~ Upstream sink, Stream
 type MonadResourceSource m a = forall source. (MonadResourceStream source, a ~ Downstream source, StreamMonad source ~ m) => source ()
 type MonadResourceConduit a m b = forall conduit. (MonadResourceStream conduit, a ~ Upstream conduit, b ~ Downstream conduit, StreamMonad conduit ~ m) => conduit ()
 type MonadResourceSink a m b = forall sink. (MonadResourceStream sink, a ~ Upstream sink, StreamMonad sink ~ m) => sink b
+
+-- | Borrowed from pipes, hopefully will be released separately.
+class MFunctor t where
+    hoist :: Monad m
+          => (forall a. m a -> n a)
+          -> t m b
+          -> t n b
+instance MFunctor (Pipe l i o u) where
+    hoist = transPipe
+
+-- | Unwraps a @ResumableSource@ into a @Source@ and a finalizer.
+--
+-- A @ResumableSource@ represents a @Source@ which has already been run, and
+-- therefore has a finalizer registered. As a result, if we want to turn it
+-- into a regular @Source@, we need to ensure that the finalizer will be run
+-- appropriately. By appropriately, I mean:
+--
+-- * If a new finalizer is registered, the old one should not be called.
+-- * If the old one is called, it should not be called again.
+--
+-- This function returns both a @Source@ and a finalizer which ensures that the
+-- above two conditions hold. Once you call that finalizer, the @Source@ is
+-- invalidated and cannot be used.
+--
+-- Since 0.5.2
+unwrapResumable :: MonadIO m => ResumableSource m o -> m (Source m o, m ())
+unwrapResumable (ResumableSource src final) = do
+    ref <- liftIO $ I.newIORef True
+    let final' = do
+            x <- liftIO $ I.readIORef ref
+            when x final
+    return (liftIO (I.writeIORef ref False) >> SourceM src, final')

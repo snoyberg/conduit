@@ -6,6 +6,7 @@ import Test.Hspec.QuickCheck (prop)
 import Test.QuickCheck.Monadic (assert, monadicIO, run)
 
 import qualified Data.Conduit as C
+import qualified Data.Conduit.Class as CC
 import qualified Data.Conduit.Util as C
 import qualified Data.Conduit.Internal as CI
 import qualified Data.Conduit.List as CL
@@ -30,7 +31,7 @@ import Control.Monad.Trans.Resource (runExceptionT, runExceptionT_, allocate, re
 import Control.Concurrent (threadDelay, killThread)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Trans.Class (lift)
-import Control.Monad.Trans.Writer (execWriter, tell, runWriterT)
+import Control.Monad.Trans.Writer (execWriter, tell, runWriterT, Writer)
 import Control.Monad.Trans.State (evalStateT, get, put)
 import Control.Applicative (pure, (<$>), (<*>))
 import Data.Functor.Identity (runIdentity)
@@ -203,8 +204,9 @@ main = hspec $ do
 
         it "map, left >+>" $ do
             x <- runResourceT $
-                C.injectLeftovers (CL.sourceList [1..10])
-                    C.>+> C.injectLeftovers (CL.map (* 2))
+                CC.SourceM (
+                CI.injectLeftovers (CC.unSourceM $ CL.sourceList [1..10])
+                    CI.>+> CI.injectLeftovers (CC.unConduitM $ CL.map (* 2)))
                     C.$$ CL.fold (+) 0
             x `shouldBe` 2 * sum [1..10 :: Int]
 
@@ -541,24 +543,24 @@ main = hspec $ do
     describe "termination" $ do
         it "terminates early" $ do
             let src = forever $ CI.yield ()
-            x <- src C.$$ CL.head
+            x <- CC.SourceM src C.$$ CL.head
             x `shouldBe` Just ()
         it "bracket" $ do
             ref <- I.newIORef (0 :: Int)
-            let src = CI.bracketP
+            let src = C.bracketP
                     (I.modifyIORef ref (+ 1))
                     (\() -> I.modifyIORef ref (+ 2))
-                    (\() -> forever $ CI.yield (1 :: Int))
+                    (\() -> forever $ C.yield (1 :: Int))
             val <- C.runResourceT $ src C.$$ CL.isolate 10 C.=$ CL.fold (+) 0
             val `shouldBe` 10
             i <- I.readIORef ref
             i `shouldBe` 3
         it "bracket skipped if not needed" $ do
             ref <- I.newIORef (0 :: Int)
-            let src = CI.bracketP
+            let src = C.bracketP
                     (I.modifyIORef ref (+ 1))
                     (\() -> I.modifyIORef ref (+ 2))
-                    (\() -> forever $ CI.yield (1 :: Int))
+                    (\() -> forever $ C.yield (1 :: Int))
                 src' = CL.sourceList $ repeat 1
             val <- C.runResourceT $ (src' >> src) C.$$ CL.isolate 10 C.=$ CL.fold (+) 0
             val `shouldBe` 10
@@ -566,20 +568,20 @@ main = hspec $ do
             i `shouldBe` 0
         it "bracket + toPipe" $ do
             ref <- I.newIORef (0 :: Int)
-            let src = CI.bracketP
+            let src = C.bracketP
                     (I.modifyIORef ref (+ 1))
                     (\() -> I.modifyIORef ref (+ 2))
-                    (\() -> forever $ CI.yield (1 :: Int))
+                    (\() -> forever $ C.yield (1 :: Int))
             val <- C.runResourceT $ src C.$$ CL.isolate 10 C.=$ CL.fold (+) 0
             val `shouldBe` 10
             i <- I.readIORef ref
             i `shouldBe` 3
         it "bracket skipped if not needed" $ do
             ref <- I.newIORef (0 :: Int)
-            let src = CI.bracketP
+            let src = C.bracketP
                     (I.modifyIORef ref (+ 1))
                     (\() -> I.modifyIORef ref (+ 2))
-                    (\() -> forever $ CI.yield (1 :: Int))
+                    (\() -> forever $ C.yield (1 :: Int))
                 src' = CL.sourceList $ repeat 1
             val <- C.runResourceT $ (src' >> src) C.$$ CL.isolate 10 C.=$ CL.fold (+) 0
             val `shouldBe` 10
@@ -591,19 +593,19 @@ main = hspec $ do
             ref <- I.newIORef []
             let add x = I.modifyIORef ref (x:)
                 adder = CI.NeedInput (\a -> liftIO (add a) >> adder) return
-                residue x = CI.Leftover (CI.Done ()) x
+                residue = C.leftover
 
-            _ <- CI.yield 1 C.$$ adder
+            _ <- C.yield 1 C.$$ CC.Sink adder
             x <- I.readIORef ref
             x `shouldBe` [1 :: Int]
             I.writeIORef ref []
 
-            _ <- CI.yield 1 C.$$ (residue 2 >> residue 3) >> adder
+            _ <- C.yield 1 C.$$ (residue 2 >> residue 3) >> CC.Sink adder
             y <- I.readIORef ref
             y `shouldBe` [1, 2, 3]
             I.writeIORef ref []
 
-            _ <- CI.yield 1 C.$$ residue 2 >> (residue 3 >> adder)
+            _ <- C.yield 1 C.$$ residue 2 >> (residue 3 >> CC.Sink adder)
             z <- I.readIORef ref
             z `shouldBe` [1, 2, 3]
             I.writeIORef ref []
@@ -612,12 +614,12 @@ main = hspec $ do
         it' "yield terminates" $ do
             let is = [1..10] ++ undefined
                 src [] = return ()
-                src (x:xs) = CI.yield x >> src xs
+                src (x:xs) = C.yield x >> src xs
             x <- src is C.$$ CL.take 10
             x `shouldBe` [1..10 :: Int]
         it' "yield terminates (2)" $ do
             let is = [1..10] ++ undefined
-            x <- mapM_ CI.yield is C.$$ CL.take 10
+            x <- mapM_ C.yield is C.$$ CL.take 10
             x `shouldBe` [1..10 :: Int]
         it' "yieldOr finalizer called" $ do
             iref <- I.newIORef (0 :: Int)
@@ -628,26 +630,26 @@ main = hspec $ do
 
     describe "upstream results" $ do
         it' "works" $ do
-            let foldUp :: (b -> a -> b) -> b -> C.Pipe l a Void u IO (u, b)
-                foldUp f b = C.awaitE >>= either (\u -> return (u, b)) (\a -> let b' = f b a in b' `seq` foldUp f b')
-                passFold :: (b -> a -> b) -> b -> C.Pipe l a a () IO b
-                passFold f b = C.await >>= maybe (return b) (\a -> let b' = f b a in b' `seq` C.yield a >> passFold f b')
-            (x, y) <- CI.runPipe $ C.injectLeftovers (CL.sourceList [1..10 :: Int]) C.>+> passFold (+) 0 C.>+>  foldUp (*) 1
+            let foldUp :: (b -> a -> b) -> b -> CI.Pipe l a Void u IO (u, b)
+                foldUp f b = CI.awaitE >>= either (\u -> return (u, b)) (\a -> let b' = f b a in b' `seq` foldUp f b')
+                passFold :: (b -> a -> b) -> b -> CI.Pipe l a a () IO b
+                passFold f b = CI.injectLeftovers $ C.await >>= maybe (return b) (\a -> let b' = f b a in b' `seq` C.yield a >> passFold f b')
+            (x, y) <- CI.runPipe $ CI.injectLeftovers (CL.sourceList [1..10 :: Int]) CI.>+> passFold (+) 0 CI.>+>  foldUp (*) 1
             (x, y) `shouldBe` (sum [1..10], product [1..10])
 
     describe "input/output mapping" $ do
         it' "mapOutput" $ do
-            x <- CI.mapOutput (+ 1) (CL.sourceList [1..10 :: Int]) C.$$ CL.fold (+) 0
+            x <- CC.SourceM (CI.mapOutput (+ 1) (CL.sourceList [1..10 :: Int])) C.$$ CL.fold (+) 0
             x `shouldBe` sum [2..11]
         it' "mapOutputMaybe" $ do
-            x <- CI.mapOutputMaybe (\i -> if even i then Just i else Nothing) (CL.sourceList [1..10 :: Int]) C.$$ CL.fold (+) 0
+            x <- CC.SourceM (CI.mapOutputMaybe (\i -> if even i then Just i else Nothing) (CL.sourceList [1..10 :: Int])) C.$$ CL.fold (+) 0
             x `shouldBe` sum [2, 4..10]
         it' "mapInput" $ do
-            xyz <- (CL.sourceList $ map show [1..10 :: Int]) C.$$ do
-                (x, y) <- CI.mapInput read (Just . show) $ ((do
-                    x <- CL.isolate 5 C.=$ CL.fold (+) 0
+            xyz <- CL.sourceList (map show [1..10 :: Int]) C.$$ do
+                (x, y) <- CC.Sink $ CI.mapInput read (Just . show) $ do
+                    x <- CC.unSink $ CL.isolate 5 C.=$ CL.fold (+) 0
                     y <- CL.peek
-                    return (x :: Int, y :: Maybe Int)) :: C.Sink Int IO (Int, Maybe Int))
+                    return (x :: Int, y :: Maybe Int)
                 z <- CL.consume
                 return (x, y, concat z)
 
@@ -655,27 +657,27 @@ main = hspec $ do
 
     describe "left/right identity" $ do
         it' "left identity" $ do
-            x <- CL.sourceList [1..10 :: Int] C.$$ CI.idP C.=$ CL.fold (+) 0
+            x <- CL.sourceList [1..10 :: Int] C.$$ CC.ConduitM CI.idP C.=$ CL.fold (+) 0
             y <- CL.sourceList [1..10 :: Int] C.$$ CL.fold (+) 0
             x `shouldBe` y
         it' "right identity" $ do
-            x <- CI.runPipe $ C.injectLeftovers (CL.sourceList [1..10 :: Int]) C.>+> C.injectLeftovers (CL.fold (+) 0) C.>+> CI.idP
-            y <- CI.runPipe $ C.injectLeftovers (CL.sourceList [1..10 :: Int]) C.>+> C.injectLeftovers (CL.fold (+) 0)
+            x <- CI.runPipe $ CI.injectLeftovers (CL.sourceList [1..10 :: Int]) CI.>+> CI.injectLeftovers (CL.fold (+) 0) CI.>+> CI.idP
+            y <- CI.runPipe $ CI.injectLeftovers (CL.sourceList [1..10 :: Int]) CI.>+> CI.injectLeftovers (CL.fold (+) 0)
             x `shouldBe` y
 
     describe "generalizing" $ do
         it' "works" $ do
-            x <-     C.runPipe
+            x <-     CI.runPipe
                    $ CI.sourceToPipe  (CL.sourceList [1..10 :: Int])
-               C.>+> CI.conduitToPipe (CL.map (+ 1))
-               C.>+> CI.sinkToPipe    (CL.fold (+) 0)
+               CI.>+> CI.conduitToPipe (CL.map (+ 1))
+               CI.>+> CI.sinkToPipe    (CL.fold (+) 0)
             x `shouldBe` sum [2..11]
 
     describe "withUpstream" $ do
         it' "works" $ do
             let src = CL.sourceList [1..10 :: Int] >> return True
-                sink = C.withUpstream $ CL.fold (+) 0
-            res <- C.runPipe $ C.injectLeftovers src C.>+> C.injectLeftovers sink
+                sink = CI.withUpstream $ CL.fold (+) 0
+            res <- CI.runPipe $ CI.injectLeftovers src CI.>+> CI.injectLeftovers sink
             res `shouldBe` (True, sum [1..10])
 
     describe "iterate" $ do
@@ -761,23 +763,29 @@ main = hspec $ do
                     js <- CL.take 2
                     mapM_ C.leftover $ reverse js
                     C.yield i
-            res <- (src C.>+> C.injectLeftovers conduit) C.$$ CL.consume
+            res <- CC.SourceM (CC.unSourceM src CI.>+> CI.injectLeftovers conduit) C.$$ CL.consume
             res `shouldBe` [1..10]
     describe "up-upstream finalizers" $ do
-        let p1 = C.await >>= maybe (return ()) C.yield
+        let p1 :: CI.Pipe l o o () (Writer [String]) ()
+            p1 = CI.injectLeftovers $ C.await >>= maybe (return ()) C.yield
+            p2 :: CI.Pipe l o o () (Writer [String]) ()
             p2 = idMsg "p2-final"
+            p3 :: CI.Pipe l o o () (Writer [String]) ()
             p3 = idMsg "p3-final"
-            idMsg msg = C.addCleanup (const $ tell [msg]) $ C.awaitForever C.yield
-            printer = C.awaitForever $ lift . tell . return . show
+            idMsg :: String -> CI.Pipe l o o () (Writer [String]) ()
+            idMsg msg = CI.injectLeftovers $ C.addCleanup (const $ tell [msg]) $ C.awaitForever C.yield
+            printer :: Show i => CI.Pipe l i o u (Writer [String]) u
+            printer = CI.awaitForever $ lift . tell . return . show
             src = CL.sourceList [1 :: Int ..]
         it "pipe" $ do
-            let run p = execWriter $ C.runPipe $ printer C.<+< p C.<+< C.injectLeftovers src
-            run (p1 C.<+< (p2 C.<+< p3)) `shouldBe` run ((p1 C.<+< p2) C.<+< p3)
+            let run p = execWriter $ CI.runPipe $ printer CI.<+< p CI.<+< CI.injectLeftovers src
+            run (p1 CI.<+< (p2 CI.<+< p3)) `shouldBe` run ((p1 CI.<+< p2) CI.<+< p3)
         it "conduit" $ do
-            let run p = execWriter $ src C.$$ p C.=$ printer
-            run ((p3 C.=$= p2) C.=$= p1) `shouldBe` run (p3 C.=$= (p2 C.=$= p1))
+            let run p = execWriter $ CC.SourceM src C.$$ p C.=$ CC.Sink printer
+            run ((CC.ConduitM p3 C.=$= CC.ConduitM p2) C.=$= CC.ConduitM p1)
+                `shouldBe` run (CC.ConduitM p3 C.=$= (CC.ConduitM p2 C.=$= CC.ConduitM p1))
     describe "monad transformer laws" $ do
-        it "transPipe" $ do
+        it "hoist" $ do
             let source = CL.sourceList $ replicate 10 ()
             let tell' x = tell [x :: Int]
 
@@ -792,8 +800,8 @@ main = hspec $ do
                     lift $ get >>= lift . tell'
                     C.yield i
 
-            x <- runWriterT $ source C.$$ C.transPipe (`evalStateT` 1) replaceNum1 C.=$ CL.consume
-            y <- runWriterT $ source C.$$ C.transPipe (`evalStateT` 1) replaceNum2 C.=$ CL.consume
+            x <- runWriterT $ source C.$$ C.hoist (`evalStateT` 1) replaceNum1 C.=$ CL.consume
+            y <- runWriterT $ source C.$$ C.hoist (`evalStateT` 1) replaceNum2 C.=$ CL.consume
             x `shouldBe` y
     describe "text decode" $ do
         it' "doesn't throw runtime exceptions" $ do
