@@ -41,8 +41,7 @@ import           Data.Word (Word8, Word16)
 import           System.IO.Unsafe (unsafePerformIO)
 import           Data.Typeable (Typeable)
 
-import Data.Conduit (MonadThrow (monadThrow))
-import Data.Conduit.Class
+import Data.Conduit
 import Control.Monad (unless)
 
 -- | A specific character encoding.

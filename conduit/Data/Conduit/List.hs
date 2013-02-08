@@ -68,7 +68,8 @@ import Prelude
     , either
     )
 import Data.Monoid (Monoid, mempty, mappend)
-import Data.Conduit.Class (yield, await, leftover, liftStreamMonad, awaitForever, sourceList, MonadSource, MonadConduit, MonadSink)
+import Data.Conduit (yield, await, leftover, liftStreamMonad, awaitForever, MonadSource, MonadConduit, MonadSink)
+import Data.Conduit.Class (sourceList)
 import Control.Monad (when, (<=<))
 
 -- | Generate a source from a seed value.

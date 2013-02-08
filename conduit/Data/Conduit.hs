@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 module Data.Conduit
     ( -- * Conduit interface
       -- $conduitInterface
@@ -18,6 +19,8 @@ module Data.Conduit
     , yield
     , yieldOr
     , leftover
+    , liftStreamMonad
+    , liftStreamIO
       -- ** Finalization
     , bracketP
     , addCleanup
@@ -40,9 +43,6 @@ module Data.Conduit
     , MonadSource
     , MonadConduit
     , MonadSink
-    , MonadResourceSource
-    , MonadResourceConduit
-    , MonadResourceSink
 
       -- * Convenience re-exports
     , ResourceT
@@ -58,6 +58,7 @@ module Data.Conduit
     ) where
 
 import Control.Monad.Trans.Resource
+import Control.Monad.IO.Class (MonadIO (liftIO))
 import Data.Conduit.Class
 
 {- $conduitInterface
@@ -422,3 +423,6 @@ data Flush a = Chunk a | Flush
 instance Functor Flush where
     fmap _ Flush = Flush
     fmap f (Chunk a) = Chunk (f a)
+
+liftStreamIO :: (MonadIO (StreamMonad m), MonadStream m) => IO a -> m a
+liftStreamIO = liftStreamMonad . liftIO
