@@ -6,7 +6,7 @@ import Test.Hspec.QuickCheck (prop)
 import Test.QuickCheck.Monadic (assert, monadicIO, run)
 
 import qualified Data.Conduit as C
-import qualified Data.Conduit.Class as CC
+import qualified Data.Conduit.Internal as CC
 import qualified Data.Conduit.Util as C
 import qualified Data.Conduit.Internal as CI
 import qualified Data.Conduit.List as CL
@@ -774,8 +774,8 @@ main = hspec $ do
             p3 = idMsg "p3-final"
             idMsg :: String -> CI.Pipe l o o () (Writer [String]) ()
             idMsg msg = CI.injectLeftovers $ C.addCleanup (const $ tell [msg]) $ C.awaitForever C.yield
-            printer :: Show i => CI.Pipe l i o u (Writer [String]) u
-            printer = CI.awaitForever $ lift . tell . return . show
+            printer :: Show i => CI.Pipe l i o () (Writer [String]) ()
+            printer = CI.injectLeftovers $ CI.awaitForever $ lift . tell . return . show
             src = CL.sourceList [1 :: Int ..]
         it "pipe" $ do
             let run p = execWriter $ CI.runPipe $ printer CI.<+< p CI.<+< CI.injectLeftovers src

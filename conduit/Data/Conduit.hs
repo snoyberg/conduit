@@ -58,8 +58,7 @@ module Data.Conduit
     ) where
 
 import Control.Monad.Trans.Resource
-import Control.Monad.IO.Class (MonadIO (liftIO))
-import Data.Conduit.Class
+import Data.Conduit.Internal
 
 {- $conduitInterface
 

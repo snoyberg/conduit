@@ -9,7 +9,7 @@ module Data.Conduit.Util
 import Prelude hiding (zip)
 import Control.Monad (liftM, liftM2)
 import Data.Conduit.Internal (Pipe (..), injectLeftovers)
-import Data.Conduit.Class (Source, Sink (Sink), SourceM (SourceM))
+import Data.Conduit.Internal (Source, Sink (Sink), SourceM (SourceM))
 import Data.Void (Void, absurd)
 
 -- | Combines two sources. The new source will stop producing once either
