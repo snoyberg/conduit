@@ -15,7 +15,7 @@ module Data.Conduit.Zlib (
 
 import Codec.Zlib
 import Data.Conduit hiding (unsafeLiftIO, Source, Sink, Conduit)
-import Data.Conduit.Class (MonadStream, StreamMonad)
+import Data.Conduit.Internal (MonadStream, StreamMonad)
 import qualified Data.Conduit as C (unsafeLiftIO)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as S

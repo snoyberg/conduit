@@ -168,7 +168,7 @@ instance MonadResource m => MonadResource (Pipe l i o u m) where
 -- to be run to close it.
 --
 -- Since 0.5.0
-data ResumableSource m o = ResumableSource (Pipe () () o () m ()) (m ())
+data ResumableSource m o = ResumableSource (Source m o) (m ())
 
 -- | Wait for a single input value from upstream, terminating immediately if no
 -- data is available.
@@ -317,12 +317,12 @@ connectResume :: Monad m
               => ResumableSource m o
               -> Pipe o o Void () m r
               -> m (ResumableSource m o, r)
-connectResume (ResumableSource left0 leftFinal0) =
+connectResume (ResumableSource (SourceM left0) leftFinal0) =
     go leftFinal0 left0
   where
     go leftFinal left right =
         case right of
-            Done r2 -> return (ResumableSource left leftFinal, r2)
+            Done r2 -> return (ResumableSource (SourceM left) leftFinal, r2)
             PipeM mp -> mp >>= go leftFinal left
             HaveOutput _ _ o -> absurd o
             Leftover p i -> go leftFinal (HaveOutput left leftFinal i) p
@@ -518,6 +518,8 @@ type Source m o = SourceM o m ()
 
 newtype SourceM o m r = SourceM { unSourceM :: Pipe () () o () m r }
     deriving (Functor, Applicative, Monad, MonadTrans, MonadIO, MonadThrow, MFunctor)
+instance MonadBase base m => MonadBase base (SourceM o m) where
+    liftBase = lift . liftBase
 
 instance Monad m => Monoid (SourceM o m ()) where
     mempty = return ()
@@ -532,6 +534,9 @@ type Conduit i m o = ConduitM i o m ()
 newtype ConduitM i o m r = ConduitM { unConduitM :: Pipe i i o () m r }
     deriving (Functor, Applicative, Monad, MonadTrans, MonadIO, MonadThrow, MFunctor)
 
+instance MonadBase base m => MonadBase base (ConduitM i o m) where
+    liftBase = lift . liftBase
+
 instance Monad m => Monoid (ConduitM i o m ()) where
     mempty = return ()
     mappend = (>>)
@@ -542,6 +547,9 @@ instance Monad m => Monoid (ConduitM i o m ()) where
 -- Since 0.6.0
 newtype Sink i m r = Sink { unSink :: Pipe i i Void () m r }
     deriving (Functor, Applicative, Monad, MonadTrans, MonadIO, MonadThrow, MFunctor)
+
+instance MonadBase base m => MonadBase base (Sink i m) where
+    liftBase = lift . liftBase
 
 instance Monad m => Monoid (Sink i m ()) where
     mempty = return ()
@@ -588,7 +596,10 @@ class (Monad m, Monad (StreamMonad m)) => MonadStream m where
                -> m r
                -> m r
 
-instance (Monad m, l ~ i) => MonadStream (Pipe l i o u m) where
+    streamFromPipe :: Pipe (Upstream m) (Upstream m) (Downstream m) () (StreamMonad m) r
+                   -> m r
+
+instance (Monad m, l ~ i, u ~ ()) => MonadStream (Pipe l i o u m) where
     type Upstream (Pipe l i o u m) = i
     type Downstream (Pipe l i o u m) = o
     type StreamMonad (Pipe l i o u m) = m
@@ -611,6 +622,8 @@ instance (Monad m, l ~ i) => MonadStream (Pipe l i o u m) where
     --
     -- Since 0.4.1
     addCleanup = addCleanupPipe
+
+    streamFromPipe = id
 
 instance Monad m => MonadStream (SourceM o m) where
     type Upstream (SourceM o m) = ()
@@ -635,6 +648,8 @@ instance Monad m => MonadStream (SourceM o m) where
     addCleanup c (SourceM p) = SourceM (addCleanup c p)
     {-# INLINE addCleanup #-}
 
+    streamFromPipe = SourceM
+
 instance Monad m => MonadStream (ConduitM i o m) where
     type Upstream (ConduitM i o m) = i
     type Downstream (ConduitM i o m) = o
@@ -657,6 +672,8 @@ instance Monad m => MonadStream (ConduitM i o m) where
 
     addCleanup c (ConduitM p) = ConduitM (addCleanup c p)
     {-# INLINE addCleanup #-}
+
+    streamFromPipe = ConduitM
 
 instance Monad m => MonadStream (Sink i m) where
     type Upstream (Sink i m) = i
@@ -681,6 +698,8 @@ instance Monad m => MonadStream (Sink i m) where
     addCleanup c (Sink p) = Sink (addCleanup c p)
     {-# INLINE addCleanup #-}
 
+    streamFromPipe = Sink
+
 -- | Perform some allocation and run an inner @Pipe@. Two guarantees are given
 -- about resource finalization:
 --
@@ -699,7 +718,7 @@ bracketP alloc free inside = do
     (key, seed) <- liftStreamMonad $ allocate alloc free
     addCleanup (const $ release key) (inside seed)
 
-#define GOALL(C, T) instance C => MonadStream (T) where { type Upstream (T) = Upstream m; type StreamMonad (T) = StreamMonad m; type Downstream (T) = Downstream m; await = lift await; leftover = lift . leftover; yield = lift . yield; yieldOr a = lift . yieldOr a; liftStreamMonad = lift . liftStreamMonad; addCleanup c r = liftWith (\run -> run $ addCleanup c r) >>= restoreT . return}
+#define GOALL(C, T) instance C => MonadStream (T) where { type Upstream (T) = Upstream m; type StreamMonad (T) = StreamMonad m; type Downstream (T) = Downstream m; await = lift await; leftover = lift . leftover; yield = lift . yield; yieldOr a = lift . yieldOr a; liftStreamMonad = lift . liftStreamMonad; addCleanup c r = liftWith (\run -> run $ addCleanup c r) >>= restoreT . return; streamFromPipe = lift . streamFromPipe }
 #define GO(T) GOALL(MonadStream m, T m)
 #define GOX(X, T) GOALL((MonadStream m, X), T m)
 GO(IdentityT)
@@ -794,7 +813,7 @@ ConduitM l =$ Sink r = Sink $ l `pipeL` r
 --
 -- Since 0.5.0
 ($$+) :: Monad m => Source m a -> Sink a m b -> m (ResumableSource m a, b)
-SourceM src $$+ Sink sink = connectResume (ResumableSource src (return ())) sink
+src $$+ Sink sink = connectResume (ResumableSource src (return ())) sink
 {-# INLINE ($$+) #-}
 
 -- | Continue processing after usage of @$$+@.
@@ -854,7 +873,7 @@ unwrapResumable (ResumableSource src final) = do
     let final' = do
             x <- liftIO $ I.readIORef ref
             when x final
-    return (liftIO (I.writeIORef ref False) >> SourceM src, final')
+    return (liftIO (I.writeIORef ref False) >> src, final')
 
 liftStreamIO :: (MonadStream m, MonadIO (StreamMonad m)) => IO a -> m a
 liftStreamIO = liftStreamMonad . liftIO

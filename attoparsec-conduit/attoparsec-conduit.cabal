@@ -1,5 +1,5 @@
 Name:                attoparsec-conduit
-Version:             0.6.0
+Version:             1.0.0
 Synopsis:            Consume attoparsec parsers via conduit.
 Description:         Consume attoparsec parsers via conduit.
 License:             BSD3
@@ -19,7 +19,7 @@ Library
                      , bytestring               >= 0.9
                      , attoparsec               >= 0.10
                      , text                     >= 0.11
-                     , conduit                  >= 0.6          && < 0.7
+                     , conduit                  >= 1.0          && < 1.1
   ghc-options:     -Wall
 
 test-suite test

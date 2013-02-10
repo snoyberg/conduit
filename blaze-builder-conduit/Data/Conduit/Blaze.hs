@@ -44,7 +44,7 @@ module Data.Conduit.Blaze
     ) where
 
 import Data.Conduit hiding (Source, Conduit, Sink)
-import Data.Conduit.Class (StreamMonad, MonadStream)
+import Data.Conduit.Internal (StreamMonad, MonadStream)
 import Control.Monad (unless, liftM)
 
 import qualified Data.ByteString                   as S
