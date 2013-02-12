@@ -2,14 +2,8 @@
 -- considered deprecated, as there are now easier ways to handle their use
 -- cases. This module is provided solely for backwards compatibility.
 module Data.Conduit.Util
-    ( -- * Source
-      module Data.Conduit.Util.Source
-      -- * Sink
-    , module Data.Conduit.Util.Sink
-      -- * Conduit
-    , module Data.Conduit.Util.Conduit
-      -- * Misc
-    , zip
+    ( -- * Misc
+      zip
     , zipSinks
     ) where
 
@@ -17,9 +11,6 @@ import Prelude hiding (zip)
 import Control.Monad (liftM, liftM2)
 import Data.Conduit.Internal (Pipe (..), Source, Sink, injectLeftovers)
 import Data.Void (Void, absurd)
-import Data.Conduit.Util.Source
-import Data.Conduit.Util.Sink
-import Data.Conduit.Util.Conduit
 
 -- | Combines two sources. The new source will stop producing once either
 --   source has been exhausted.
