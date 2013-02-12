@@ -9,7 +9,7 @@ module Data.Conduit.Util
 
 import Prelude hiding (zip)
 import Control.Monad (liftM, liftM2)
-import Data.Conduit.Internal (Pipe (..), Source, Sink, injectLeftovers)
+import Data.Conduit.Internal (Pipe (..), Source, Sink, injectLeftovers, ConduitM (..))
 import Data.Void (Void, absurd)
 
 -- | Combines two sources. The new source will stop producing once either
@@ -17,19 +17,22 @@ import Data.Void (Void, absurd)
 --
 -- Since 0.3.0
 zip :: Monad m => Source m a -> Source m b -> Source m (a, b)
-zip (Leftover left ()) right = zip left right
-zip left (Leftover right ())  = zip left right
-zip (Done ()) (Done ()) = Done ()
-zip (Done ()) (HaveOutput _ close _) = PipeM (close >> return (Done ()))
-zip (HaveOutput _ close _) (Done ()) = PipeM (close >> return (Done ()))
-zip (Done ()) (PipeM _) = Done ()
-zip (PipeM _) (Done ()) = Done ()
-zip (PipeM mx) (PipeM my) = PipeM (liftM2 zip mx my)
-zip (PipeM mx) y@HaveOutput{} = PipeM (liftM (\x -> zip x y) mx)
-zip x@HaveOutput{} (PipeM my) = PipeM (liftM (zip x) my)
-zip (HaveOutput srcx closex x) (HaveOutput srcy closey y) = HaveOutput (zip srcx srcy) (closex >> closey) (x, y)
-zip (NeedInput _ c) right = zip (c ()) right
-zip left (NeedInput _ c) = zip left (c ())
+zip (ConduitM left0) (ConduitM right0) =
+    ConduitM $ go left0 right0
+  where
+    go (Leftover left ()) right = go left right
+    go left (Leftover right ())  = go left right
+    go (Done ()) (Done ()) = Done ()
+    go (Done ()) (HaveOutput _ close _) = PipeM (close >> return (Done ()))
+    go (HaveOutput _ close _) (Done ()) = PipeM (close >> return (Done ()))
+    go (Done ()) (PipeM _) = Done ()
+    go (PipeM _) (Done ()) = Done ()
+    go (PipeM mx) (PipeM my) = PipeM (liftM2 go mx my)
+    go (PipeM mx) y@HaveOutput{} = PipeM (liftM (\x -> go x y) mx)
+    go x@HaveOutput{} (PipeM my) = PipeM (liftM (go x) my)
+    go (HaveOutput srcx closex x) (HaveOutput srcy closey y) = HaveOutput (go srcx srcy) (closex >> closey) (x, y)
+    go (NeedInput _ c) right = go (c ()) right
+    go left (NeedInput _ c) = go left (c ())
 
 -- | Combines two sinks. The new sink will complete when both input sinks have
 --   completed.
@@ -38,10 +41,10 @@ zip left (NeedInput _ c) = zip left (c ())
 --
 -- Since 0.4.1
 zipSinks :: Monad m => Sink i m r -> Sink i m r' -> Sink i m (r, r')
-zipSinks x0 y0 =
-    injectLeftovers x0 >< injectLeftovers y0
+zipSinks (ConduitM x0) (ConduitM y0) =
+    ConduitM $ injectLeftovers x0 >< injectLeftovers y0
   where
-    (><) :: Monad m => Pipe Void i Void () m r1 -> Pipe Void i Void () m r2 -> Sink i m (r1, r2)
+    (><) :: Monad m => Pipe Void i Void () m r1 -> Pipe Void i Void () m r2 -> Pipe l i o () m (r1, r2)
 
     Leftover _  i    >< _                = absurd i
     _                >< Leftover _  i    = absurd i

@@ -4,21 +4,17 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 module Data.Conduit.Internal
     ( -- * Types
       Pipe (..)
+    , ConduitM (..)
     , Source
     , GSource
     , Sink
     , GSink
-    , GLSink
-    , GInfSink
-    , GLInfSink
     , Conduit
     , GConduit
-    , GLConduit
-    , GInfConduit
-    , GLInfConduit
     , ResumableSource (..)
       -- * Primitives
     , await
@@ -37,6 +33,8 @@ module Data.Conduit.Internal
     , connectResume
     , runPipe
     , injectLeftovers
+    , (>+>)
+    , (<+<)
       -- * Generalizing
     , sourceToPipe
     , sinkToPipe
@@ -140,68 +138,46 @@ instance Monad m => Monoid (Pipe l i o u m ()) where
 instance MonadResource m => MonadResource (Pipe l i o u m) where
     liftResourceT = lift . liftResourceT
 
+newtype ConduitM i o m r = ConduitM { unConduitM :: Pipe i i o () m r }
+    deriving (Functor, Applicative, Monad, MonadIO, MonadTrans, MonadThrow, MonadActive, MonadResource)
+instance MonadBase base m => MonadBase base (ConduitM i o m) where
+    liftBase = lift . liftBase
+instance Monad m => Monoid (ConduitM i o m ()) where
+    mempty = return ()
+    mappend = (>>)
+
 -- | Provides a stream of output values, without consuming any input or
 -- producing a final result.
 --
 -- Since 0.5.0
-type Source m o = Pipe () () o () m ()
+type Source m o = ConduitM () o m ()
 
 -- | Generalized 'Source'.
 --
 -- Since 0.5.0
-type GSource m o = forall l i u. Pipe l i o u m ()
+type GSource m o = forall i. ConduitM i o m ()
 
 -- | Consumes a stream of input values and produces a final result, without
 -- producing any output.
 --
 -- Since 0.5.0
-type Sink i m r = Pipe i i Void () m r
+type Sink i m r = ConduitM i Void m r
 
 -- | Generalized 'Sink' without leftovers.
 --
 -- Since 0.5.0
-type GSink i m r = forall l o u. Pipe l i o u m r
-
--- | Generalized 'Sink' with leftovers.
---
--- Since 0.5.0
-type GLSink i m r = forall o u. Pipe i i o u m r
-
--- | Generalized 'Sink' without leftovers returning upstream result.
---
--- Since 0.5.0
-type GInfSink i m = forall l o r. Pipe l i o r m r
-
--- | Generalized 'Sink' with leftovers returning upstream result.
---
--- Since 0.5.0
-type GLInfSink i m = forall o r. Pipe i i o r m r
+type GSink i m r = forall o. ConduitM i o m r
 
 -- | Consumes a stream of input values and produces a stream of output values,
 -- without producing a final result.
 --
 -- Since 0.5.0
-type Conduit i m o = Pipe i i o () m ()
+type Conduit i m o = ConduitM i o m ()
 
 -- | Generalized conduit without leftovers.
 --
 -- Since 0.5.0
-type GConduit i m o = forall l u. Pipe l i o u m ()
-
--- | Generalized conduit with leftovers.
---
--- Since 0.5.0
-type GLConduit i m o = forall u. Pipe i i o u m ()
-
--- | Generalized conduit without leftovers returning upstream result.
---
--- Since 0.5.0
-type GInfConduit i m o = forall l r. Pipe l i o r m r
-
--- | Generalized conduit with leftovers returning upstream result.
---
--- Since 0.5.0
-type GLInfConduit i m o = forall r. Pipe i i o r m r
+type GConduit i m o = Conduit i m o
 
 -- | A @Source@ which has been started, but has not yet completed.
 --
@@ -390,12 +366,12 @@ connectResume :: Monad m
               => ResumableSource m o
               -> Sink o m r
               -> m (ResumableSource m o, r)
-connectResume (ResumableSource left0 leftFinal0) =
-    go leftFinal0 left0
+connectResume (ResumableSource (ConduitM left0) leftFinal0) =
+    go leftFinal0 left0 . unConduitM
   where
     go leftFinal left right =
         case right of
-            Done r2 -> return (ResumableSource left leftFinal, r2)
+            Done r2 -> return (ResumableSource (ConduitM left) leftFinal, r2)
             PipeM mp -> mp >>= go leftFinal left
             HaveOutput _ _ o -> absurd o
             Leftover p i -> go leftFinal (HaveOutput left leftFinal i) p
@@ -524,15 +500,18 @@ build g = g (\o p -> HaveOutput p (return ()) o) (return ())
   #-}
 
 sourceToPipe :: Monad m => Source m o -> Pipe l i o u m ()
-sourceToPipe (Done ()) = Done ()
-sourceToPipe (PipeM mp) = PipeM (liftM sourceToPipe mp)
-sourceToPipe (NeedInput _ c) = sourceToPipe $ c ()
-sourceToPipe (HaveOutput p c o) = HaveOutput (sourceToPipe p) c o
-sourceToPipe (Leftover p ()) = sourceToPipe p
+sourceToPipe =
+    go . unConduitM
+  where
+    go (Done ()) = Done ()
+    go (PipeM mp) = PipeM (liftM go mp)
+    go (NeedInput _ c) = go $ c ()
+    go (HaveOutput p c o) = HaveOutput (go p) c o
+    go (Leftover p ()) = go p
 
 sinkToPipe :: Monad m => Sink i m r -> Pipe l i o u m r
 sinkToPipe =
-    go . injectLeftovers
+    go . injectLeftovers . unConduitM
   where
     go (Done r) = Done r
     go (PipeM mp) = PipeM (liftM go mp)
@@ -542,7 +521,7 @@ sinkToPipe =
 
 conduitToPipe :: Monad m => Conduit i m o -> Pipe l i o u m ()
 conduitToPipe =
-    go . injectLeftovers
+    go . injectLeftovers . unConduitM
   where
     go (Done ()) = Done ()
     go (PipeM mp) = PipeM (liftM go mp)
@@ -587,3 +566,31 @@ unwrapResumable (ResumableSource src final) = do
             x <- liftIO $ I.readIORef ref
             when x final
     return (liftIO (I.writeIORef ref False) >> src, final')
+infixr 9 <+<
+infixl 9 >+>
+
+-- | Fuse together two @Pipe@s, connecting the output from the left to the
+-- input of the right.
+--
+-- Notice that the /leftover/ parameter for the @Pipe@s must be @Void@. This
+-- ensures that there is no accidental data loss of leftovers during fusion. If
+-- you have a @Pipe@ with leftovers, you must first call 'injectLeftovers'. For
+-- example:
+--
+-- >>> :load Data.Conduit.List
+-- >>> :set -XNoMonomorphismRestriction
+-- >>> let pipe = peek >>= \x -> fold (Prelude.+) 0 >>= \y -> return (x, y)
+-- >>> runPipe $ sourceList [1..10] >+> injectLeftovers pipe
+-- (Just 1,55)
+--
+-- Since 0.5.0
+(>+>) :: Monad m => Pipe l a b r0 m r1 -> Pipe Void b c r1 m r2 -> Pipe l a c r0 m r2
+(>+>) = pipe
+{-# INLINE (>+>) #-}
+
+-- | Same as '>+>', but reverse the order of the arguments.
+--
+-- Since 0.5.0
+(<+<) :: Monad m => Pipe Void b c r1 m r2 -> Pipe l a b r0 m r1 -> Pipe l a c r0 m r2
+(<+<) = flip pipe
+{-# INLINE (<+<) #-}
