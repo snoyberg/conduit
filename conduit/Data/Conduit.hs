@@ -465,7 +465,7 @@ ConduitM con =$ ConduitM sink = ConduitM $ pipeL con sink
 -- Leftover data returned from the right @Conduit@ will be discarded.
 --
 -- Since 0.4.0
-(=$=) :: Monad m => Conduit a m b -> Conduit b m c -> Conduit a m c
+(=$=) :: Monad m => Conduit a m b -> ConduitM b c m r -> ConduitM a c m r
 ConduitM left =$= ConduitM right = ConduitM $ pipeL left right
 {-# INLINE (=$=) #-}
 
