@@ -79,6 +79,7 @@ test-suite test
     ghc-options:     -Wall
 
 test-suite doctests
+    buildable: False
     hs-source-dirs: test
     main-is: doctests.hs
     type: exitcode-stdio-1.0

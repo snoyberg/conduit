@@ -1,5 +1,6 @@
 {-# OPTIONS_HADDOCK not-home #-}
 {-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE RankNTypes #-}
 module Data.Conduit.Network.Internal
     ( AppData (..)
     , ServerSettings (..)
