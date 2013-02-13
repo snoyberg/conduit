@@ -5,16 +5,14 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE ImpredicativeTypes #-}
 module Data.Conduit.Internal
     ( -- * Types
       Pipe (..)
     , ConduitM (..)
     , Source
-    , GSource
     , Sink
-    , GSink
     , Conduit
-    , GConduit
     , ResumableSource (..)
       -- * Primitives
     , await
@@ -150,23 +148,13 @@ instance Monad m => Monoid (ConduitM i o m ()) where
 -- producing a final result.
 --
 -- Since 0.5.0
-type Source m o = ConduitM () o m ()
-
--- | Generalized 'Source'.
---
--- Since 0.5.0
-type GSource m o = forall i. ConduitM i o m ()
+type Source m o = forall i. ConduitM i o m ()
 
 -- | Consumes a stream of input values and produces a final result, without
 -- producing any output.
 --
 -- Since 0.5.0
-type Sink i m r = ConduitM i Void m r
-
--- | Generalized 'Sink' without leftovers.
---
--- Since 0.5.0
-type GSink i m r = forall o. ConduitM i o m r
+type Sink i m r = forall o. ConduitM i o m r
 
 -- | Consumes a stream of input values and produces a stream of output values,
 -- without producing a final result.
@@ -174,18 +162,13 @@ type GSink i m r = forall o. ConduitM i o m r
 -- Since 0.5.0
 type Conduit i m o = ConduitM i o m ()
 
--- | Generalized conduit without leftovers.
---
--- Since 0.5.0
-type GConduit i m o = Conduit i m o
-
 -- | A @Source@ which has been started, but has not yet completed.
 --
 -- This type contains both the current state of the @Source@, and the finalizer
 -- to be run to close it.
 --
 -- Since 0.5.0
-data ResumableSource m o = ResumableSource (Source m o) (m ())
+data ResumableSource m o = ResumableSource (ConduitM () o m ()) (m ())
 
 -- | Wait for a single input value from upstream, terminating immediately if no
 -- data is available.
@@ -366,8 +349,8 @@ connectResume :: Monad m
               => ResumableSource m o
               -> Sink o m r
               -> m (ResumableSource m o, r)
-connectResume (ResumableSource (ConduitM left0) leftFinal0) =
-    go leftFinal0 left0 . unConduitM
+connectResume (ResumableSource (ConduitM left0) leftFinal0) (ConduitM right0) =
+    go leftFinal0 left0 right0
   where
     go leftFinal left right =
         case right of
@@ -500,8 +483,8 @@ build g = g (\o p -> HaveOutput p (return ()) o) (return ())
   #-}
 
 sourceToPipe :: Monad m => Source m o -> Pipe l i o u m ()
-sourceToPipe =
-    go . unConduitM
+sourceToPipe (ConduitM src0) =
+    go src0
   where
     go (Done ()) = Done ()
     go (PipeM mp) = PipeM (liftM go mp)
@@ -510,8 +493,8 @@ sourceToPipe =
     go (Leftover p ()) = go p
 
 sinkToPipe :: Monad m => Sink i m r -> Pipe l i o u m r
-sinkToPipe =
-    go . injectLeftovers . unConduitM
+sinkToPipe (ConduitM sink0) =
+    go $ injectLeftovers sink0
   where
     go (Done r) = Done r
     go (PipeM mp) = PipeM (liftM go mp)
@@ -560,12 +543,14 @@ withUpstream down =
 --
 -- Since 0.5.2
 unwrapResumable :: MonadIO m => ResumableSource m o -> m (Source m o, m ())
-unwrapResumable (ResumableSource src final) = do
+unwrapResumable (ResumableSource (ConduitM src) final) = do
     ref <- liftIO $ I.newIORef True
     let final' = do
             x <- liftIO $ I.readIORef ref
             when x final
-    return (liftIO (I.writeIORef ref False) >> src, final')
+    return (liftIO (I.writeIORef ref False) >> src', final')
+  where
+    src' = ConduitM $ pipeL (return ()) src
 infixr 9 <+<
 infixl 9 >+>
 
