@@ -34,7 +34,7 @@ import           Control.Monad (unless)
 import qualified Data.Attoparsec.ByteString
 import qualified Data.Attoparsec.Text
 import qualified Data.Attoparsec.Types as A
-import           Data.Conduit hiding (Pipe, Sink, Conduit, Source)
+import           Data.Conduit
 
 -- | The context and message from a 'A.Fail' value.
 data ParseError = ParseError
@@ -113,19 +113,19 @@ instance AttoparsecInput T.Text where
 -- If parsing fails, a 'ParseError' will be thrown with 'monadThrow'.
 --
 -- Since 0.5.0
-sinkParser :: (AttoparsecInput a, MonadThrow m) => A.Parser a b -> GLSink a m b
+sinkParser :: (AttoparsecInput a, MonadThrow m) => A.Parser a b -> Consumer a m b
 sinkParser = fmap snd . sinkParserPos (Position 1 1)
 
 -- | Consume a stream of parsed tokens, returning both the token and the
 -- position it appears at.
 --
 -- Since 0.5.0
-conduitParser :: (AttoparsecInput a, MonadThrow m) => A.Parser a b -> GLInfConduit a m (PositionRange, b)
+conduitParser :: (AttoparsecInput a, MonadThrow m) => A.Parser a b -> Conduit a m (PositionRange, b)
 conduitParser parser =
     conduit $ Position 1 0
   where
     conduit pos =
-        awaitE >>= either return go
+        await >>= maybe (return ()) go
       where
         go x = do
             leftover x
@@ -133,7 +133,7 @@ conduitParser parser =
             yield (PositionRange pos pos', res)
             conduit pos'
 
-sinkParserPos :: (AttoparsecInput a, MonadThrow m) => Position -> A.Parser a b -> GLSink a m (Position, b)
+sinkParserPos :: (AttoparsecInput a, MonadThrow m) => Position -> A.Parser a b -> Consumer a m (Position, b)
 sinkParserPos pos0 =
     sink empty pos0 . parseA
   where

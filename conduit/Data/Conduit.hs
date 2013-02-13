@@ -39,9 +39,8 @@ module Data.Conduit
 
       -- * Generalized conduit types
       -- $generalizedConduitTypes
-    , GSource
-    , GSink
-    , GConduit
+    , Producer
+    , Consumer
 
       -- * Flushing
     , Flush (..)
@@ -62,7 +61,6 @@ module Data.Conduit
 import Control.Monad.Trans.Resource
 import Data.Conduit.Internal hiding (await, awaitForever, yield, yieldOr, leftover, bracketP, addCleanup, transPipe, mapOutput, mapOutputMaybe, mapInput)
 import qualified Data.Conduit.Internal as CI
-import Data.Void (Void)
 
 {- $conduitInterface
 
@@ -515,7 +513,7 @@ instance Functor Flush where
     fmap _ Flush = Flush
     fmap f (Chunk a) = Chunk (f a)
 
-await :: Monad m => GSink i m (Maybe i)
+await :: Monad m => Consumer i m (Maybe i)
 await = ConduitM CI.await
 
 mapOutput :: Monad m => (o1 -> o2) -> ConduitM i o1 m r -> ConduitM i o2 m r

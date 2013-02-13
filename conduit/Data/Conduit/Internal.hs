@@ -10,11 +10,10 @@ module Data.Conduit.Internal
       Pipe (..)
     , ConduitM (..)
     , Source
-    , GSource
+    , Producer
     , Sink
-    , GSink
+    , Consumer
     , Conduit
-    , GConduit
     , ResumableSource (..)
       -- * Primitives
     , await
@@ -155,7 +154,7 @@ type Source m o = ConduitM () o m ()
 -- | Generalized 'Source'.
 --
 -- Since 0.5.0
-type GSource m o = forall i. ConduitM i o m ()
+type Producer m o = forall i. ConduitM i o m ()
 
 -- | Consumes a stream of input values and produces a final result, without
 -- producing any output.
@@ -166,18 +165,13 @@ type Sink i m r = ConduitM i Void m r
 -- | Generalized 'Sink' without leftovers.
 --
 -- Since 0.5.0
-type GSink i m r = forall o. ConduitM i o m r
+type Consumer i m r = forall o. ConduitM i o m r
 
 -- | Consumes a stream of input values and produces a stream of output values,
 -- without producing a final result.
 --
 -- Since 0.5.0
 type Conduit i m o = ConduitM i o m ()
-
--- | Generalized conduit without leftovers.
---
--- Since 0.5.0
-type GConduit i m o = Conduit i m o
 
 -- | A @Source@ which has been started, but has not yet completed.
 --

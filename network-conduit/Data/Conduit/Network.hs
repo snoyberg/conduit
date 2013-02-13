@@ -57,7 +57,7 @@ import qualified Data.Conduit.Network.Utils as Utils
 -- This function does /not/ automatically close the socket.
 --
 -- Since 0.0.0
-sourceSocket :: MonadIO m => Socket -> GSource m ByteString
+sourceSocket :: MonadIO m => Socket -> Producer m ByteString
 sourceSocket socket =
     loop
   where
@@ -72,11 +72,11 @@ sourceSocket socket =
 -- This function does /not/ automatically close the socket.
 --
 -- Since 0.0.0
-sinkSocket :: MonadIO m => Socket -> GInfSink ByteString m
+sinkSocket :: MonadIO m => Socket -> Consumer ByteString m ()
 sinkSocket socket =
     loop
   where
-    loop = awaitE >>= either return (\bs -> lift (liftIO $ sendAll socket bs) >> loop)
+    loop = await >>= maybe (return ()) (\bs -> lift (liftIO $ sendAll socket bs) >> loop)
 
 -- | A simple TCP application.
 --

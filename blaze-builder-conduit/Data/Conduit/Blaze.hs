@@ -42,7 +42,7 @@ module Data.Conduit.Blaze
   , reuseBufferStrategy
     ) where
 
-import Data.Conduit hiding (Source, Conduit, Sink, Pipe)
+import Data.Conduit
 import Control.Monad (unless, liftM)
 import Control.Monad.Trans.Class (lift, MonadTrans)
 
@@ -54,14 +54,14 @@ import Blaze.ByteString.Builder.Internal.Buffer
 
 -- | Incrementally execute builders and pass on the filled chunks as
 -- bytestrings.
-builderToByteString :: MonadUnsafeIO m => GInfConduit Builder m S.ByteString
+builderToByteString :: MonadUnsafeIO m => Conduit Builder m S.ByteString
 builderToByteString =
   builderToByteStringWith (allNewBuffersStrategy defaultBufferSize)
 
 -- |
 --
 -- Since 0.0.2
-builderToByteStringFlush :: MonadUnsafeIO m => GInfConduit (Flush Builder) m (Flush S.ByteString)
+builderToByteStringFlush :: MonadUnsafeIO m => Conduit (Flush Builder) m (Flush S.ByteString)
 builderToByteStringFlush =
   builderToByteStringWithFlush (allNewBuffersStrategy defaultBufferSize)
 
@@ -74,7 +74,7 @@ builderToByteStringFlush =
 -- as control is returned from the inner sink!
 unsafeBuilderToByteString :: MonadUnsafeIO m
                           => IO Buffer  -- action yielding the inital buffer.
-                          -> GInfConduit Builder m S.ByteString
+                          -> Conduit Builder m S.ByteString
 unsafeBuilderToByteString = builderToByteStringWith . reuseBufferStrategy
 
 
@@ -84,9 +84,9 @@ unsafeBuilderToByteString = builderToByteStringWith . reuseBufferStrategy
 -- INV: All bytestrings passed to the inner sink are non-empty.
 builderToByteStringWith :: MonadUnsafeIO m
                         => BufferAllocStrategy
-                        -> GInfConduit Builder m S.ByteString
+                        -> Conduit Builder m S.ByteString
 builderToByteStringWith =
-    helper (liftM (fmap Chunk) awaitE) yield'
+    helper (liftM (fmap Chunk) await) yield'
   where
     yield' Flush = return ()
     yield' (Chunk bs) = yield bs
@@ -97,27 +97,26 @@ builderToByteStringWith =
 builderToByteStringWithFlush
     :: MonadUnsafeIO m
     => BufferAllocStrategy
-    -> GInfConduit (Flush Builder) m (Flush S.ByteString)
-builderToByteStringWithFlush = helper awaitE yield
+    -> Conduit (Flush Builder) m (Flush S.ByteString)
+builderToByteStringWithFlush = helper await yield
 
 helper :: (MonadUnsafeIO m, Monad (t m), MonadTrans t)
-       => t m (Either term (Flush Builder))
+       => t m (Maybe (Flush Builder))
        -> (Flush S.ByteString -> t m ())
        -> BufferAllocStrategy
-       -> t m term
-helper awaitE' yield' (ioBufInit, nextBuf) =
+       -> t m ()
+helper await' yield' (ioBufInit, nextBuf) =
     loop ioBufInit
   where
     loop ioBuf = do
-        awaitE' >>= either (close ioBuf) (cont' ioBuf)
+        await' >>= maybe (close ioBuf) (cont' ioBuf)
 
     cont' ioBuf Flush = push ioBuf flush $ \ioBuf' -> yield' Flush >> loop ioBuf'
     cont' ioBuf (Chunk builder) = push ioBuf builder loop
 
-    close ioBuf r = do
+    close ioBuf = do
         buf <- lift $ unsafeLiftIO $ ioBuf
         maybe (return ()) (yield' . Chunk) (unsafeFreezeNonEmptyBuffer buf)
-        return r
 
     push ioBuf0 x continue = do
         go (unBuilder x (buildStep finalStep)) ioBuf0
