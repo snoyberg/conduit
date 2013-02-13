@@ -1,5 +1,5 @@
 Name:                zlib-conduit
-Version:             0.5.0.3
+Version:             1.0.0
 Synopsis:            Streaming compression/decompression via conduits.
 Description:         Streaming compression/decompression via conduits.
 License:             BSD3
@@ -21,7 +21,7 @@ Library
                      , transformers             >= 0.2.2        && < 0.4
                      , bytestring               >= 0.9
                      , zlib-bindings            >= 0.1          && < 0.2
-                     , conduit                  >= 0.5          && < 0.6
+                     , conduit                  >= 1.0          && < 1.1
                      , void
   ghc-options:     -Wall
 
