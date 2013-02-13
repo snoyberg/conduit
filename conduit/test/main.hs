@@ -201,9 +201,9 @@ main = hspec $ do
 
         it "map, left >+>" $ do
             x <- runResourceT $
-                CI.ConduitM
-                    (CI.unConduitM (CL.sourceList [1..10])
-                    CI.>+> CI.injectLeftovers (CI.unConduitM $ CL.map (* 2)))
+                CI.Conduit
+                    (CI.unConduit (CL.sourceList [1..10])
+                    CI.>+> CI.injectLeftovers (CI.unConduit $ CL.map (* 2)))
                     C.$$ CL.fold (+) 0
             x `shouldBe` 2 * sum [1..10 :: Int]
 
@@ -590,8 +590,8 @@ main = hspec $ do
             ref <- I.newIORef []
             let add x = I.modifyIORef ref (x:)
                 adder' = CI.NeedInput (\a -> liftIO (add a) >> adder') return
-                adder = CI.ConduitM adder'
-                residue x = CI.ConduitM $ CI.Leftover (CI.Done ()) x
+                adder = CI.Conduit adder'
+                residue x = CI.Conduit $ CI.Leftover (CI.Done ()) x
 
             _ <- C.yield 1 C.$$ adder
             x <- I.readIORef ref
@@ -655,12 +655,12 @@ main = hspec $ do
 
     describe "left/right identity" $ do
         it' "left identity" $ do
-            x <- CL.sourceList [1..10 :: Int] C.$$ CI.ConduitM CI.idP C.=$ CL.fold (+) 0
+            x <- CL.sourceList [1..10 :: Int] C.$$ CI.Conduit CI.idP C.=$ CL.fold (+) 0
             y <- CL.sourceList [1..10 :: Int] C.$$ CL.fold (+) 0
             x `shouldBe` y
         it' "right identity" $ do
-            x <- CI.runPipe $ mapM_ CI.yield [1..10 :: Int] CI.>+> (CI.injectLeftovers $ CI.unConduitM $ CL.fold (+) 0) CI.>+> CI.idP
-            y <- CI.runPipe $ mapM_ CI.yield [1..10 :: Int] CI.>+> (CI.injectLeftovers $ CI.unConduitM $ CL.fold (+) 0)
+            x <- CI.runPipe $ mapM_ CI.yield [1..10 :: Int] CI.>+> (CI.injectLeftovers $ CI.unConduit $ CL.fold (+) 0) CI.>+> CI.idP
+            y <- CI.runPipe $ mapM_ CI.yield [1..10 :: Int] CI.>+> (CI.injectLeftovers $ CI.unConduit $ CL.fold (+) 0)
             x `shouldBe` y
 
     describe "generalizing" $ do
@@ -766,11 +766,11 @@ main = hspec $ do
     describe "injectLeftovers" $ do
         it "works" $ do
             let src = mapM_ CI.yield [1..10 :: Int]
-                conduit = CI.injectLeftovers $ CI.unConduitM $ C.awaitForever $ \i -> do
+                conduit = CI.injectLeftovers $ CI.unConduit $ C.awaitForever $ \i -> do
                     js <- CL.take 2
                     mapM_ C.leftover $ reverse js
                     C.yield i
-            res <- CI.ConduitM (src CI.>+> CI.injectLeftovers conduit) C.$$ CL.consume
+            res <- CI.Conduit (src CI.>+> CI.injectLeftovers conduit) C.$$ CL.consume
             res `shouldBe` [1..10]
     describe "up-upstream finalizers" $ do
         it "pipe" $ do

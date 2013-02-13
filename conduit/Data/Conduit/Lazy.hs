@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE RankNTypes #-}
 -- | Use lazy I\/O for consuming the contents of a source. Warning: All normal
 -- warnings of lazy I\/O apply. In particular, if you are using this with a
 -- @ResourceT@ transformer, you must force the list to be evaluated before
@@ -8,7 +9,7 @@ module Data.Conduit.Lazy
     ) where
 
 import Data.Conduit
-import Data.Conduit.Internal (Pipe (..), unConduitM)
+import Data.Conduit.Internal (Pipe (..), Conduit (Conduit))
 import System.IO.Unsafe (unsafeInterleaveIO)
 import Control.Monad.Trans.Control (liftBaseOp_)
 import Control.Monad.Trans.Resource (MonadActive (monadActive))
@@ -19,9 +20,9 @@ import Control.Monad.Trans.Resource (MonadActive (monadActive))
 -- state has been closed.
 --
 -- Since 0.3.0
-lazyConsume :: (MonadBaseControl IO m, MonadActive m) => Source m a -> m [a]
-lazyConsume =
-    go . unConduitM
+lazyConsume :: (MonadBaseControl IO m, MonadActive m) => Source a m () -> m [a]
+lazyConsume (Conduit src0) =
+    go src0
   where
     go (Done _) = return []
     go (HaveOutput src _ x) = do

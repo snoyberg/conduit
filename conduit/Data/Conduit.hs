@@ -37,12 +37,6 @@ module Data.Conduit
     , mapOutputMaybe
     , mapInput
 
-      -- * Generalized conduit types
-      -- $generalizedConduitTypes
-    , GSource
-    , GSink
-    , GConduit
-
       -- * Flushing
     , Flush (..)
 
@@ -429,7 +423,7 @@ infixr 0 $$+-
 -- operations, use the connect-and-resume operator '$$+'.
 --
 -- Since 0.4.0
-($$) :: Monad m => Source m a -> Sink a m b -> m b
+($$) :: Monad m => Source a m () -> Sink a m b -> m b
 src $$ sink = do
     (rsrc, res) <- src $$+ sink
     rsrc $$+- return ()
@@ -444,8 +438,8 @@ src $$ sink = do
 -- Leftover data from the @Conduit@ will be discarded.
 --
 -- Since 0.4.0
-($=) :: Monad m => Source m a -> Conduit a m b -> Source m b
-ConduitM src $= ConduitM con = ConduitM $ pipeL src con
+($=) :: Monad m => Source a m () -> Conduit a b m () -> Source b m ()
+Conduit src $= Conduit con = Conduit $ pipeL src con
 {-# INLINE ($=) #-}
 
 -- | Right fuse, combining a conduit and a sink together into a new sink.
@@ -456,8 +450,11 @@ ConduitM src $= ConduitM con = ConduitM $ pipeL src con
 -- Leftover data returned from the @Sink@ will be discarded.
 --
 -- Since 0.4.0
-(=$) :: Monad m => Conduit a m b -> Sink b m c -> Sink a m c
-ConduitM con =$ ConduitM sink = ConduitM $ pipeL con sink
+(=$) :: Monad m
+     => Conduit a b m ()
+     -> Sink b m c
+     -> Sink a m c
+Conduit con =$ Conduit sink = Conduit $ pipeL con sink
 {-# INLINE (=$) #-}
 
 -- | Fusion operator, combining two @Conduit@s together into a new @Conduit@.
@@ -467,8 +464,11 @@ ConduitM con =$ ConduitM sink = ConduitM $ pipeL con sink
 -- Leftover data returned from the right @Conduit@ will be discarded.
 --
 -- Since 0.4.0
-(=$=) :: Monad m => Conduit a m b -> Conduit b m c -> Conduit a m c
-ConduitM left =$= ConduitM right = ConduitM $ pipeL left right
+(=$=) :: Monad m
+      => Conduit a b m ()
+      -> Conduit b c m ()
+      -> Conduit a c m ()
+Conduit left =$= Conduit right = Conduit $ pipeL left right
 {-# INLINE (=$=) #-}
 
 -- | The connect-and-resume operator. This does not close the @Source@, but
@@ -479,7 +479,7 @@ ConduitM left =$= ConduitM right = ConduitM $ pipeL left right
 -- Mnemonic: connect + do more.
 --
 -- Since 0.5.0
-($$+) :: Monad m => Source m a -> Sink a m b -> m (ResumableSource m a, b)
+($$+) :: Monad m => Source a m () -> Sink a m b -> m (ResumableSource m a, b)
 src $$+ sink = connectResume (ResumableSource src (return ())) sink
 {-# INLINE ($$+) #-}
 
@@ -515,51 +515,51 @@ instance Functor Flush where
     fmap _ Flush = Flush
     fmap f (Chunk a) = Chunk (f a)
 
-await :: Monad m => GSink i m (Maybe i)
-await = ConduitM CI.await
+await :: Monad m => Sink i m (Maybe i)
+await = Conduit CI.await
 
-mapOutput :: Monad m => (o1 -> o2) -> ConduitM i o1 m r -> ConduitM i o2 m r
-mapOutput f (ConduitM p) = ConduitM $ CI.mapOutput f p
+mapOutput :: Monad m => (o1 -> o2) -> Conduit i o1 m r -> Conduit i o2 m r
+mapOutput f (Conduit p) = Conduit $ CI.mapOutput f p
 
-mapOutputMaybe :: Monad m => (o1 -> Maybe o2) -> ConduitM i o1 m r -> ConduitM i o2 m r
-mapOutputMaybe f (ConduitM p) = ConduitM $ CI.mapOutputMaybe f p
+mapOutputMaybe :: Monad m => (o1 -> Maybe o2) -> Conduit i o1 m r -> Conduit i o2 m r
+mapOutputMaybe f (Conduit p) = Conduit $ CI.mapOutputMaybe f p
 
 mapInput :: Monad m
          => (i1 -> i2) -- ^ map initial input to new input
          -> (i2 -> Maybe i1) -- ^ map new leftovers to initial leftovers
-         -> ConduitM i2 o m r
-         -> ConduitM i1 o m r
-mapInput f g (ConduitM p) = ConduitM $ CI.mapInput f g p
+         -> Conduit i2 o m r
+         -> Conduit i1 o m r
+mapInput f g (Conduit p) = Conduit $ CI.mapInput f g p
 
-transPipe :: Monad m => (forall a. m a -> n a) -> ConduitM i o m r -> ConduitM i o n r
-transPipe f = ConduitM . CI.transPipe f . unConduitM
+transPipe :: Monad m => (forall a. m a -> n a) -> Conduit i o m r -> Conduit i o n r
+transPipe f = Conduit . CI.transPipe f . unConduit
 
 addCleanup :: Monad m
            => (Bool -> m ()) -- ^ @True@ if @Pipe@ ran to completion, @False@ for early termination.
-           -> ConduitM i o m r
-           -> ConduitM i o m r
-addCleanup f = ConduitM . CI.addCleanup f . unConduitM
+           -> Conduit i o m r
+           -> Conduit i o m r
+addCleanup f = Conduit . CI.addCleanup f . unConduit
 
 bracketP :: MonadResource m
          => IO a
          -> (a -> IO ())
-         -> (a -> ConduitM i o m r)
-         -> ConduitM i o m r
-bracketP alloc free inside = ConduitM $ CI.bracketP alloc free $ unConduitM . inside
+         -> (a -> Conduit i o m r)
+         -> Conduit i o m r
+bracketP alloc free inside = Conduit $ CI.bracketP alloc free $ unConduit . inside
 
-leftover :: i -> ConduitM i o m ()
-leftover = ConduitM . CI.leftover
+leftover :: i -> Conduit i o m ()
+leftover = Conduit . CI.leftover
 
 yield :: Monad m
       => o -- ^ output value
-      -> ConduitM i o m ()
-yield = ConduitM . CI.yield
+      -> Conduit i o m ()
+yield = Conduit . CI.yield
 
 yieldOr :: Monad m
         => o
         -> m () -- ^ finalizer
-        -> ConduitM i o m ()
-yieldOr o m = ConduitM $ CI.yieldOr o m
+        -> Conduit i o m ()
+yieldOr o m = Conduit $ CI.yieldOr o m
 
-awaitForever :: Monad m => (i -> ConduitM i o m r) -> ConduitM i o m ()
-awaitForever f = ConduitM $ CI.awaitForever (unConduitM . f)
+awaitForever :: Monad m => (i -> Conduit i o m r) -> Conduit i o m ()
+awaitForever f = Conduit $ CI.awaitForever (unConduit . f)

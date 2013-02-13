@@ -40,7 +40,7 @@ import           Data.Word (Word8, Word16)
 import           System.IO.Unsafe (unsafePerformIO)
 import           Data.Typeable (Typeable)
 
-import Data.Conduit hiding (Source, Conduit, Sink)
+import Data.Conduit
 import qualified Data.Conduit.List as CL
 import Control.Monad.Trans.Class (lift)
 import Control.Monad (unless)
@@ -67,7 +67,7 @@ instance Show Codec where
 -- | Emit each line separately
 --
 -- Since 0.4.1
-lines :: Monad m => GConduit T.Text m T.Text
+lines :: Monad m => Conduit T.Text T.Text m ()
 lines =
     loop id
   where
@@ -90,7 +90,7 @@ lines =
 -- not capable of representing an input character, an exception will be thrown.
 --
 -- Since 0.3.0
-encode :: MonadThrow m => Codec -> GConduit T.Text m B.ByteString
+encode :: MonadThrow m => Codec -> Conduit T.Text B.ByteString m ()
 encode codec = CL.mapM $ \t -> do
     let (bs, mexc) = codecEncode codec t
     maybe (return bs) (monadThrow . fst) mexc
@@ -100,7 +100,7 @@ encode codec = CL.mapM $ \t -> do
 -- not capable of decoding an input byte sequence, an exception will be thrown.
 --
 -- Since 0.3.0
-decode :: MonadThrow m => Codec -> GConduit B.ByteString m T.Text
+decode :: MonadThrow m => Codec -> Conduit B.ByteString T.Text m ()
 decode codec =
     loop id
   where
