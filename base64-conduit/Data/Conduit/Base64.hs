@@ -17,27 +17,27 @@ import qualified Data.ByteString.Base64.URL as B64U
 
 import Data.Conduit
 
-encode :: Monad m => GInfConduit ByteString m ByteString
+encode :: Monad m => Conduit ByteString ByteString m ()
 encode = codeWith 3 B64.encode
 
-decode :: Monad m => GInfConduit ByteString m ByteString
+decode :: Monad m => Conduit ByteString ByteString m ()
 decode = codeWith 4 B64.decodeLenient
 
-encodeURL :: Monad m => GInfConduit ByteString m ByteString
+encodeURL :: Monad m => Conduit ByteString ByteString m ()
 encodeURL = codeWith 3 B64U.encode
 
-decodeURL :: Monad m => GInfConduit ByteString m ByteString
+decodeURL :: Monad m => Conduit ByteString ByteString m ()
 decodeURL = codeWith 4 B64U.decodeLenient
 
-codeWith :: Monad m => Int -> (ByteString -> ByteString) -> GInfConduit ByteString m ByteString
+codeWith :: Monad m => Int -> (ByteString -> ByteString) -> Conduit ByteString ByteString m ()
 codeWith size f =
     loop
   where
-    loop = awaitE >>= either return push
+    loop = await >>= maybe (return ()) push
 
     loopWith bs
         | S.null bs = loop
-        | otherwise = awaitE >>= either (\r -> yield (f bs) >> return r) (pushWith bs)
+        | otherwise = await >>= maybe (yield (f bs)) (pushWith bs)
 
     push bs = do
         let (x, y) = S.splitAt (len - (len `mod` size)) bs

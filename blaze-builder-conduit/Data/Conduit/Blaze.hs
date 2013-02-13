@@ -42,7 +42,7 @@ module Data.Conduit.Blaze
   , reuseBufferStrategy
     ) where
 
-import Data.Conduit hiding (Source, Conduit, Sink, Pipe)
+import Data.Conduit
 import Control.Monad (unless, liftM)
 import Control.Monad.Trans.Class (lift, MonadTrans)
 
@@ -54,7 +54,7 @@ import Blaze.ByteString.Builder.Internal.Buffer
 
 -- | Incrementally execute builders and pass on the filled chunks as
 -- bytestrings.
-builderToByteString :: MonadUnsafeIO m => GInfConduit Builder m S.ByteString
+builderToByteString :: MonadUnsafeIO m => Conduit Builder S.ByteString m ()
 builderToByteString =
   builderToByteStringWith (allNewBuffersStrategy defaultBufferSize)
 
