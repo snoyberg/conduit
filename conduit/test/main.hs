@@ -780,8 +780,8 @@ main = hspec $ do
                 idMsg msg = CI.addCleanup (const $ tell [msg]) $ CI.awaitForever CI.yield
                 printer = CI.awaitForever $ lift . tell . return . show
                 src = mapM_ CI.yield [1 :: Int ..]
-            let run p = execWriter $ CI.runPipe $ printer CI.<+< p CI.<+< src
-            run (p1 CI.<+< (p2 CI.<+< p3)) `shouldBe` run ((p1 CI.<+< p2) CI.<+< p3)
+            let run' p = execWriter $ CI.runPipe $ printer CI.<+< p CI.<+< src
+            run' (p1 CI.<+< (p2 CI.<+< p3)) `shouldBe` run' ((p1 CI.<+< p2) CI.<+< p3)
         it "conduit" $ do
             let p1 = C.await >>= maybe (return ()) C.yield
                 p2 = idMsg "p2-final"
@@ -789,8 +789,8 @@ main = hspec $ do
                 idMsg msg = C.addCleanup (const $ tell [msg]) $ C.awaitForever C.yield
                 printer = C.awaitForever $ lift . tell . return . show
                 src = CL.sourceList [1 :: Int ..]
-            let run p = execWriter $ src C.$$ p C.=$ printer
-            run ((p3 C.=$= p2) C.=$= p1) `shouldBe` run (p3 C.=$= (p2 C.=$= p1))
+            let run' p = execWriter $ src C.$$ p C.=$ printer
+            run' ((p3 C.=$= p2) C.=$= p1) `shouldBe` run' (p3 C.=$= (p2 C.=$= p1))
     describe "monad transformer laws" $ do
         it "transPipe" $ do
             let source = CL.sourceList $ replicate 10 ()

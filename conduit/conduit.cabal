@@ -6,7 +6,7 @@ Description:
 	.
 	Release history:
     .
-    [1.0] Simplified the user-facing interface back to the original Source, Sink, and Conduit types. Generic code need no longer deal with GSource, GInfConduit, etc, and the Pipe datatype is not part of the user-facing API, thus hiding the six-variable type. Updating generic code should be trivial, and most user code should be unaffected.
+    [1.0] Simplified the user-facing interface back to the Source, Sink, and Conduit types, with Producer and Consumer for generic code. Error messages have been simplified, and optional leftovers and upstream terminators have been removed from the external API. Some long-deprecated functions were finally removed.
     .
     [0.5] The internals of the package are now separated to the .Internal module, leaving only the higher-level interface in the advertised API. Internally, switched to a @Leftover@ constructor and slightly tweaked the finalization semantics.
     .
@@ -29,20 +29,17 @@ Cabal-version:       >=1.8
 Homepage:            http://github.com/snoyberg/conduit
 extra-source-files:  test/main.hs, test/random
 
-flag debug
-    default: True
-    description: Turn on some runtime check to ensure invariants are respected.
-
 flag nohandles
+    default: False
 
 Library
   if os(windows)
       cpp-options: -DCABAL_OS_WINDOWS
       other-modules: System.Win32File
   else
-      other-modules: System.PosixFile
-  if flag(nohandles)
-      cpp-options: -DNO_HANDLES
+      if flag(nohandles)
+          other-modules: System.PosixFile
+          cpp-options: -DNO_HANDLES
   Exposed-modules:     Data.Conduit
                        Data.Conduit.Binary
                        Data.Conduit.Text
@@ -61,8 +58,6 @@ Library
                      , text                     >= 0.11
                      , void                     >= 0.5.5        && < 0.6
   ghc-options:     -Wall
-  if flag(debug)
-    cpp-options: -DDEBUG
 
 test-suite test
     hs-source-dirs: test
@@ -81,7 +76,6 @@ test-suite test
     ghc-options:     -Wall
 
 test-suite doctests
-    buildable: False
     hs-source-dirs: test
     main-is: doctests.hs
     type: exitcode-stdio-1.0

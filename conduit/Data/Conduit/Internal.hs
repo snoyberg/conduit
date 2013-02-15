@@ -571,10 +571,10 @@ infixl 9 >+>
 -- you have a @Pipe@ with leftovers, you must first call 'injectLeftovers'. For
 -- example:
 --
--- >>> :load Data.Conduit.List
--- >>> :set -XNoMonomorphismRestriction
--- >>> let pipe = peek >>= \x -> fold (Prelude.+) 0 >>= \y -> return (x, y)
--- >>> runPipe $ sourceList [1..10] >+> injectLeftovers pipe
+-- > :load Data.Conduit.List
+-- > :set -XNoMonomorphismRestriction
+-- > let pipe = peek >>= \x -> fold (Prelude.+) 0 >>= \y -> return (x, y)
+-- > runPipe $ sourceList [1..10] >+> injectLeftovers pipe
 -- (Just 1,55)
 --
 -- Since 0.5.0
