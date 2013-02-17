@@ -841,5 +841,14 @@ main = hspec $ do
             assert $ c1 == c2
             assert $ s1 == s2
 
+    describe "generalizing" $ do
+        it "works" $ do
+            let src :: Int -> C.Source IO Int
+                src i = CL.sourceList [1..i]
+                sink :: C.Sink Int IO Int
+                sink = CL.fold (+) 0
+            res <- C.yield 10 C.$$ C.awaitForever (C.toProducer . src) C.=$ (C.toConsumer sink >>= C.yield) C.=$ C.await
+            res `shouldBe` Just (sum [1..10])
+
 it' :: String -> IO () -> Spec
 it' = it

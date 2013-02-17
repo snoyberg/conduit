@@ -38,6 +38,8 @@ module Data.Conduit.Internal
     , sourceToPipe
     , sinkToPipe
     , conduitToPipe
+    , toProducer
+    , toConsumer
       -- * Utilities
     , transPipe
     , mapOutput
@@ -588,3 +590,29 @@ infixl 9 >+>
 (<+<) :: Monad m => Pipe Void b c r1 m r2 -> Pipe l a b r0 m r1 -> Pipe l a c r0 m r2
 (<+<) = flip pipe
 {-# INLINE (<+<) #-}
+
+-- | Convert a 'Source' into a 'Producer'.
+--
+-- Since 1.0.0
+toProducer :: Monad m => Source m a -> Producer m a
+toProducer =
+    ConduitM . go . unConduitM
+  where
+    go (HaveOutput p c o) = HaveOutput (go p) c o
+    go (NeedInput _ c) = go (c ())
+    go (Done r) = Done r
+    go (PipeM mp) = PipeM (liftM go mp)
+    go (Leftover p ()) = go p
+
+-- | Convert a 'Sink' into a 'Consumer'.
+--
+-- Since 1.0.0
+toConsumer :: Monad m => Sink a m b -> Consumer a m b
+toConsumer =
+    ConduitM . go . unConduitM
+  where
+    go (HaveOutput _ _ o) = absurd o
+    go (NeedInput p c) = NeedInput (go . p) (go . c)
+    go (Done r) = Done r
+    go (PipeM mp) = PipeM (liftM go mp)
+    go (Leftover p l) = Leftover (go p) l
