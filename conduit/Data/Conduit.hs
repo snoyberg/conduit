@@ -121,6 +121,75 @@ ConduitM con =$ ConduitM sink = ConduitM $ pipeL con sink
 ConduitM left =$= ConduitM right = ConduitM $ pipeL left right
 {-# INLINE (=$=) #-}
 
+-- | Wait for a single input value from upstream. If no data is available,
+-- returns @Nothing@.
+--
+-- Since 0.5.0
+await :: Monad m => Consumer i m (Maybe i)
+await = ConduitM CI.await
+
+-- | Send a value downstream to the next component to consume. If the
+-- downstream component terminates, this call will never return control. If you
+-- would like to register a cleanup function, please use 'yieldOr' instead.
+--
+-- Since 0.5.0
+yield :: Monad m
+      => o -- ^ output value
+      -> ConduitM i o m ()
+yield = ConduitM . CI.yield
+
+-- | Provide a single piece of leftover input to be consumed by the next
+-- component in the current monadic binding.
+--
+-- /Note/: it is highly encouraged to only return leftover values from input
+-- already consumed from upstream.
+--
+-- Since 0.5.0
+leftover :: i -> ConduitM i o m ()
+leftover = ConduitM . CI.leftover
+
+-- | Perform some allocation and run an inner component. Two guarantees are
+-- given about resource finalization:
+--
+-- 1. It will be /prompt/. The finalization will be run as early as possible.
+--
+-- 2. It is exception safe. Due to usage of @resourcet@, the finalization will
+-- be run in the event of any exceptions.
+--
+-- Since 0.5.0
+bracketP :: MonadResource m
+         => IO a
+         -> (a -> IO ())
+         -> (a -> ConduitM i o m r)
+         -> ConduitM i o m r
+bracketP alloc free inside = ConduitM $ CI.bracketP alloc free $ unConduitM . inside
+
+-- | Add some code to be run when the given component cleans up.
+--
+-- The supplied cleanup function will be given a @True@ if the component ran to
+-- completion, or @False@ if it terminated early due to a downstream component
+-- terminating.
+--
+-- Note that this function is not exception safe. For that, please use
+-- 'bracketP'.
+--
+-- Since 0.4.1
+addCleanup :: Monad m
+           => (Bool -> m ())
+           -> ConduitM i o m r
+           -> ConduitM i o m r
+addCleanup f = ConduitM . CI.addCleanup f . unConduitM
+
+-- | Similar to 'yield', but additionally takes a finalizer to be run if the
+-- downstream component terminates.
+--
+-- Since 0.5.0
+yieldOr :: Monad m
+        => o
+        -> m () -- ^ finalizer
+        -> ConduitM i o m ()
+yieldOr o m = ConduitM $ CI.yieldOr o m
+
 -- | The connect-and-resume operator. This does not close the @Source@, but
 -- instead returns it to be used again. This allows a @Source@ to be used
 -- incrementally in a large program, without forcing the entire program to live
@@ -152,25 +221,27 @@ rsrc $$+- sink = do
     return res
 {-# INLINE ($$+-) #-}
 
--- | Provide for a stream of data that can be flushed.
+-- | Wait for input forever, calling the given inner component for each piece of
+-- new input. Returns the upstream result type.
 --
--- A number of @Conduit@s (e.g., zlib compression) need the ability to flush
--- the stream at some point. This provides a single wrapper datatype to be used
--- in all such circumstances.
---
--- Since 0.3.0
-data Flush a = Chunk a | Flush
-    deriving (Show, Eq, Ord)
-instance Functor Flush where
-    fmap _ Flush = Flush
-    fmap f (Chunk a) = Chunk (f a)
-
--- | Wait for a single input value from upstream. If no data is available,
--- returns @Nothing@.
+-- This function is provided as a convenience for the common pattern of
+-- @await@ing input, checking if it's @Just@ and then looping.
 --
 -- Since 0.5.0
-await :: Monad m => Consumer i m (Maybe i)
-await = ConduitM CI.await
+awaitForever :: Monad m => (i -> ConduitM i o m r) -> ConduitM i o m ()
+awaitForever f = ConduitM $ CI.awaitForever (unConduitM . f)
+
+-- | Transform the monad that a @ConduitM@ lives in.
+--
+-- Note that the monad transforming function will be run multiple times,
+-- resulting in unintuitive behavior in some cases. For a fuller treatment,
+-- please see:
+--
+-- <https://github.com/snoyberg/conduit/wiki/Dealing-with-monad-transformers>
+--
+-- Since 0.4.0
+transPipe :: Monad m => (forall a. m a -> n a) -> ConduitM i o m r -> ConduitM i o n r
+transPipe f = ConduitM . CI.transPipe f . unConduitM
 
 -- | Apply a function to all the output values of a @ConduitM@.
 --
@@ -198,86 +269,15 @@ mapInput :: Monad m
          -> ConduitM i1 o m r
 mapInput f g (ConduitM p) = ConduitM $ CI.mapInput f g p
 
--- | Transform the monad that a @ConduitM@ lives in.
+-- | Provide for a stream of data that can be flushed.
 --
--- Note that the monad transforming function will be run multiple times,
--- resulting in unintuitive behavior in some cases. For a fuller treatment,
--- please see:
+-- A number of @Conduit@s (e.g., zlib compression) need the ability to flush
+-- the stream at some point. This provides a single wrapper datatype to be used
+-- in all such circumstances.
 --
--- <https://github.com/snoyberg/conduit/wiki/Dealing-with-monad-transformers>
---
--- Since 0.4.0
-transPipe :: Monad m => (forall a. m a -> n a) -> ConduitM i o m r -> ConduitM i o n r
-transPipe f = ConduitM . CI.transPipe f . unConduitM
-
--- | Add some code to be run when the given component cleans up.
---
--- The supplied cleanup function will be given a @True@ if the component ran to
--- completion, or @False@ if it terminated early due to a downstream component
--- terminating.
---
--- Note that this function is not exception safe. For that, please use
--- 'bracketP'.
---
--- Since 0.4.1
-addCleanup :: Monad m
-           => (Bool -> m ())
-           -> ConduitM i o m r
-           -> ConduitM i o m r
-addCleanup f = ConduitM . CI.addCleanup f . unConduitM
-
--- | Perform some allocation and run an inner component. Two guarantees are
--- given about resource finalization:
---
--- 1. It will be /prompt/. The finalization will be run as early as possible.
---
--- 2. It is exception safe. Due to usage of @resourcet@, the finalization will
--- be run in the event of any exceptions.
---
--- Since 0.5.0
-bracketP :: MonadResource m
-         => IO a
-         -> (a -> IO ())
-         -> (a -> ConduitM i o m r)
-         -> ConduitM i o m r
-bracketP alloc free inside = ConduitM $ CI.bracketP alloc free $ unConduitM . inside
-
--- | Provide a single piece of leftover input to be consumed by the next
--- component in the current monadic binding.
---
--- /Note/: it is highly encouraged to only return leftover values from input
--- already consumed from upstream.
---
--- Since 0.5.0
-leftover :: i -> ConduitM i o m ()
-leftover = ConduitM . CI.leftover
-
--- | Send a value downstream to the next component to consume. If the
--- downstream component terminates, this call will never return control. If you
--- would like to register a cleanup function, please use 'yieldOr' instead.
---
--- Since 0.5.0
-yield :: Monad m
-      => o -- ^ output value
-      -> ConduitM i o m ()
-yield = ConduitM . CI.yield
-
--- | Similar to 'yield', but additionally takes a finalizer to be run if the
--- downstream component terminates.
---
--- Since 0.5.0
-yieldOr :: Monad m
-        => o
-        -> m () -- ^ finalizer
-        -> ConduitM i o m ()
-yieldOr o m = ConduitM $ CI.yieldOr o m
-
--- | Wait for input forever, calling the given inner component for each piece of
--- new input. Returns the upstream result type.
---
--- This function is provided as a convenience for the common pattern of
--- @await@ing input, checking if it's @Just@ and then looping.
---
--- Since 0.5.0
-awaitForever :: Monad m => (i -> ConduitM i o m r) -> ConduitM i o m ()
-awaitForever f = ConduitM $ CI.awaitForever (unConduitM . f)
+-- Since 0.3.0
+data Flush a = Chunk a | Flush
+    deriving (Show, Eq, Ord)
+instance Functor Flush where
+    fmap _ Flush = Flush
+    fmap f (Chunk a) = Chunk (f a)
