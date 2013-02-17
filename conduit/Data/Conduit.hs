@@ -1,68 +1,5 @@
 {-# LANGUAGE RankNTypes #-}
-module Data.Conduit
-    ( -- * Conduit interface
-      -- $conduitInterface
-      Source
-    , Conduit
-    , Sink
-      -- ** Connect/fuse
-      -- $lifecycle
-    , ($$)
-    , ($=)
-    , (=$)
-    , (=$=)
-
-      -- * Primitives
-      -- $primitives
-    , await
-    , awaitForever
-    , yield
-    , yieldOr
-    , leftover
-      -- ** Finalization
-    , bracketP
-    , addCleanup
-
-      -- * Connect-and-resume
-      -- $connectAndResume
-    , ResumableSource
-    , ($$+)
-    , ($$++)
-    , ($$+-)
-    , unwrapResumable
-
-      -- * Utility functions
-    , transPipe
-    , mapOutput
-    , mapOutputMaybe
-    , mapInput
-
-      -- * Generalized conduit types
-      -- $generalizedConduitTypes
-    , Producer
-    , Consumer
-
-      -- * Flushing
-    , Flush (..)
-
-      -- * Convenience re-exports
-    , ResourceT
-    , MonadResource
-    , MonadThrow (..)
-    , MonadUnsafeIO (..)
-    , runResourceT
-    , ExceptionT (..)
-    , runExceptionT_
-    , runException
-    , runException_
-    , MonadBaseControl
-    ) where
-
-import Control.Monad.Trans.Resource
-import Data.Conduit.Internal hiding (await, awaitForever, yield, yieldOr, leftover, bracketP, addCleanup, transPipe, mapOutput, mapOutputMaybe, mapInput)
-import qualified Data.Conduit.Internal as CI
-
-{- $conduitInterface
+{- |
 
 Let's start off with a few simple examples of @conduit@ usage. First, a file
 copy utility:
@@ -93,7 +30,7 @@ However, often times a @Sink@ will produce some result value. For example:
 @sourceList@ is a convenience function for turning a list into a @Source@.
 @fold@ implements a strict left fold for consuming the input stream.
 
-The next major aspect to the @conduit@ library: the @Conduit@ type.
+The next major aspect to the @conduit@ library is the @Conduit@ type.
 This type represents a stream /transformer/. In order to use a @Conduit@, we
 must /fuse/ it with either a @Source@ or @Sink@. For example:
 
@@ -141,6 +78,70 @@ are just type aliases. This will be explained later. Another important aspect
 is resource finalization, which will also be covered below.
 
 -}
+module Data.Conduit
+    ( -- * Conduit interface
+      Source
+    , Conduit
+    , Sink
+      -- ** Connect/fuse
+      -- $lifecycle
+    , ($$)
+    , ($=)
+    , (=$)
+    , (=$=)
+
+      -- * Primitives
+      -- $primitives
+    , await
+    , awaitForever
+    , yield
+    , yieldOr
+    , leftover
+      -- ** Finalization
+    , bracketP
+    , addCleanup
+
+      -- * Connect-and-resume
+      -- $connectAndResume
+    , ResumableSource
+    , ($$+)
+    , ($$++)
+    , ($$+-)
+    , unwrapResumable
+
+      -- * Utility functions
+    , transPipe
+    , mapOutput
+    , mapOutputMaybe
+    , mapInput
+
+      -- * Generalized conduit types
+      -- $generalizedConduitTypes
+    , Producer
+    , Consumer
+    , toProducer
+    , toConsumer
+
+      -- * Flushing
+    , Flush (..)
+
+      -- * Convenience re-exports
+    , ResourceT
+    , MonadResource
+    , MonadThrow (..)
+    , MonadUnsafeIO (..)
+    , runResourceT
+    , ExceptionT (..)
+    , runExceptionT_
+    , runException
+    , runException_
+    , MonadBaseControl
+    ) where
+
+import Control.Monad.Trans.Resource
+import Data.Conduit.Internal hiding (await, awaitForever, yield, yieldOr, leftover, bracketP, addCleanup, transPipe, mapOutput, mapOutputMaybe, mapInput)
+import qualified Data.Conduit.Internal as CI
+
 
 {- $lifecycle
 
