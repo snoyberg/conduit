@@ -139,6 +139,13 @@ instance Monad m => Monoid (Pipe l i o u m ()) where
 instance MonadResource m => MonadResource (Pipe l i o u m) where
     liftResourceT = lift . liftResourceT
 
+-- | Core datatype of the conduit package. This type represents a general
+-- component which can consume a stream of input values @i@, produce a stream
+-- of output values @o@, perform actions in the @m@ monad, and produce a final
+-- result @r@. The type synonyms provided here are simply wrappers around this
+-- type.
+--
+-- Since 1.0.0
 newtype ConduitM i o m r = ConduitM { unConduitM :: Pipe i i o () m r }
     deriving (Functor, Applicative, Monad, MonadIO, MonadTrans, MonadThrow, MonadActive, MonadResource)
 instance MonadBase base m => MonadBase base (ConduitM i o m) where
@@ -153,9 +160,11 @@ instance Monad m => Monoid (ConduitM i o m ()) where
 -- Since 0.5.0
 type Source m o = ConduitM () o m ()
 
--- | Generalized 'Source'.
+-- | A component which produces a stream of output values, regardless of the
+-- input stream. A @Producer@ is a generalization of a @Source@, and can be
+-- used as either a @Source@ or a @Conduit@.
 --
--- Since 0.5.0
+-- Since 1.0.0
 type Producer m o = forall i. ConduitM i o m ()
 
 -- | Consumes a stream of input values and produces a final result, without
@@ -164,9 +173,11 @@ type Producer m o = forall i. ConduitM i o m ()
 -- Since 0.5.0
 type Sink i m r = ConduitM i Void m r
 
--- | Generalized 'Sink' without leftovers.
+-- | A component which consumes a stream of input values and produces a final
+-- result, regardless of the output stream. A @Consumer@ is a generalization of
+-- a @Sink@, and can be used as either a @Sink@ or a @Conduit@.
 --
--- Since 0.5.0
+-- Since 1.0.0
 type Consumer i m r = forall o. ConduitM i o m r
 
 -- | Consumes a stream of input values and produces a stream of output values,
@@ -183,8 +194,7 @@ type Conduit i m o = ConduitM i o m ()
 -- Since 0.5.0
 data ResumableSource m o = ResumableSource (Source m o) (m ())
 
--- | Wait for a single input value from upstream, terminating immediately if no
--- data is available.
+-- | Wait for a single input value from upstream.
 --
 -- Since 0.5.0
 await :: Pipe l i o u m (Maybe i)
@@ -548,6 +558,7 @@ withUpstream down =
 -- appropriately. By appropriately, I mean:
 --
 -- * If a new finalizer is registered, the old one should not be called.
+--
 -- * If the old one is called, it should not be called again.
 --
 -- This function returns both a @Source@ and a finalizer which ensures that the
@@ -591,7 +602,7 @@ infixl 9 >+>
 (<+<) = flip pipe
 {-# INLINE (<+<) #-}
 
--- | Convert a 'Source' into a 'Producer'.
+-- | Generalize a 'Source' to a 'Producer'.
 --
 -- Since 1.0.0
 toProducer :: Monad m => Source m a -> Producer m a
@@ -604,7 +615,7 @@ toProducer =
     go (PipeM mp) = PipeM (liftM go mp)
     go (Leftover p ()) = go p
 
--- | Convert a 'Sink' into a 'Consumer'.
+-- | Generalize a 'Sink' to a 'Consumer'.
 --
 -- Since 1.0.0
 toConsumer :: Monad m => Sink a m b -> Consumer a m b
