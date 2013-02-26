@@ -13,17 +13,17 @@ import System.Exit (ExitCode (ExitSuccess, ExitFailure))
 import Control.Monad.Trans.Class (lift)
 import Control.Concurrent (threadDelay)
 import System.Posix.Signals (sigKILL, sigTERM)
+import qualified Control.Concurrent.MVar as M
 
 iorefSink :: IO (Sink ByteString IO (), IO L.ByteString)
 iorefSink = do
-    ref <- I.newIORef id
-    let sink = CL.mapM_ $ \bs -> do
-            !() <- I.atomicModifyIORef ref $ \front -> (front . (bs:), ())
-            return ()
-        getLBS = do
-            front <- I.readIORef ref
-            return $ L.fromChunks $ front []
-    return (sink, getLBS)
+    m <- M.newEmptyMVar
+    let sink front = do
+            mbs <- await
+            case mbs of
+                Nothing -> lift $ M.putMVar m $ L.fromChunks $ front []
+                Just bs -> sink $ front . (bs:)
+    return (sink id, M.takeMVar m)
 
 spec :: Spec
 spec = describe "unix-process-conduit" $ do
