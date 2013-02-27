@@ -10,7 +10,7 @@ module Data.Conduit.Cereal.Internal
   , mkSinkGet
   ) where
 
-import           Control.Monad (when)
+import           Control.Monad (forever, when)
 import qualified Data.ByteString as BS
 import qualified Data.Conduit as C
 import           Data.Serialize hiding (get, put)
@@ -38,7 +38,7 @@ mkConduitGet errorHandler get = consume True (runGetPartial get) [] BS.empty
           Partial p -> pull p consumed BS.empty
           Done a s' -> case initial of
                          -- this only works because the Get will either _always_ consume no input, or _never_ consume no input.
-                         True  -> sequence_ $ repeat $ C.yield a
+                         True  -> forever $ C.yield a
                          False -> C.yield a >> pull (runGetPartial get) [] s'
 --                         False -> C.yield a >> C.leftover s' >> mkConduitGet errorHandler get
           where consumed = s : b
