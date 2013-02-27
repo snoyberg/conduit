@@ -14,7 +14,7 @@ homepage:        https://github.com/litherum/cereal-conduit
 
 library
     build-depends: base         >= 4       && < 5
-                 , conduit      >= 0.5.0   && < 0.6.0
+                 , conduit      >= 1.0.0   && < 1.1
                  , cereal       >= 0.3.1.0
                  , bytestring
                  , transformers >= 0.2.0.0
@@ -25,15 +25,15 @@ library
 Test-Suite test-cereal-conduit
     type: exitcode-stdio-1.0
     main-is: Test/Main.hs
-    build-depends: base >= 4 && < 5
-                 , conduit >= 0.5.0 && < 0.6.0
-                 , cereal >= 0.3.1.0
+    build-depends: base
+                 , conduit
+                 , cereal
                  , bytestring
                  --, test-framework-hunit
                  , HUnit
                  , resourcet
                  , mtl
-                 , transformers >= 0.2.0.0
+                 , transformers
 
 source-repository head
   type:     git

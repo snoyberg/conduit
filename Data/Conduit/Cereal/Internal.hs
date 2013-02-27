@@ -16,17 +16,17 @@ import qualified Data.Conduit as C
 import           Data.Serialize hiding (get, put)
 
 -- | What should we do if the Get fails?
-type ConduitErrorHandler m o = String -> C.GLConduit BS.ByteString m o
-type SinkErrorHandler m r = String -> C.GLSink BS.ByteString m r
+type ConduitErrorHandler m o = String -> C.Conduit BS.ByteString m o
+type SinkErrorHandler m r = String -> C.Consumer BS.ByteString m r
 
 -- | What should we do if the stream is done before the Get is done?
-type SinkTerminationHandler m r = (BS.ByteString -> Result r) -> C.GLSink BS.ByteString m r
+type SinkTerminationHandler m r = (BS.ByteString -> Result r) -> C.Consumer BS.ByteString m r
 
 -- | Construct a conduitGet with the specified 'ErrorHandler'
-mkConduitGet :: C.MonadThrow m
+mkConduitGet :: Monad m
              => ConduitErrorHandler m o
              -> Get o
-             -> C.GLConduit BS.ByteString m o
+             -> C.Conduit BS.ByteString m o
 mkConduitGet errorHandler get = consume True (runGetPartial get) [] BS.empty
   where pull f b s
           | BS.null s = C.await >>= maybe (when (not $ null b) (C.leftover $ BS.concat $ reverse b)) (pull f b)
@@ -48,7 +48,7 @@ mkSinkGet :: Monad m
           => SinkErrorHandler m r
           -> SinkTerminationHandler m r
           -> Get r
-          -> C.GLSink BS.ByteString m r
+          -> C.Consumer BS.ByteString m r
 mkSinkGet errorHandler terminationHandler get = consume (runGetPartial get) [] BS.empty
   where pull f b s
           | BS.null s = C.await >>= \ x -> case x of
