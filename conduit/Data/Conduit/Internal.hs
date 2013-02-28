@@ -570,15 +570,7 @@ infixl 9 >+>
 --
 -- Notice that the /leftover/ parameter for the @Pipe@s must be @Void@. This
 -- ensures that there is no accidental data loss of leftovers during fusion. If
--- you have a @Pipe@ with leftovers, you must first call 'injectLeftovers'. For
--- example:
---
--- >>> import Data.Conduit.List
--- >>> import Data.Conduit.Internal
--- >>> :set -XNoMonomorphismRestriction
--- >>> let pipe = peek >>= \x -> fold (Prelude.+) 0 >>= \y -> return (x, y)
--- >>> runPipe $ sourceList [1..10] >+> injectLeftovers pipe
--- (Just 1,55)
+-- you have a @Pipe@ with leftovers, you must first call 'injectLeftovers'.
 --
 -- Since 0.5.0
 (>+>) :: Monad m => Pipe l a b r0 m r1 -> Pipe Void b c r1 m r2 -> Pipe l a c r0 m r2
