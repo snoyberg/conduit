@@ -319,6 +319,10 @@ main = hspec $ do
             bss <- runResourceT $ CLazy.lazyConsume $ CB.sourceFile "test/main.hs"
             bss `shouldBe` []
 
+        it' "works with pure sources" $ do
+            nums <- CLazy.lazyConsume $ forever $ C.yield 1
+            take 100 nums `shouldBe` replicate 100 (1 :: Int)
+
     describe "sequence" $ do
         it "simple sink" $ do
             let sumSink = do

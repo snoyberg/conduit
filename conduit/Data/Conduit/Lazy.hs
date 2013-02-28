@@ -25,7 +25,7 @@ lazyConsume =
   where
     go (Done _) = return []
     go (HaveOutput src _ x) = do
-        xs <- go src
+        xs <- liftBaseOp_ unsafeInterleaveIO $ go src
         return $ x : xs
     go (PipeM msrc) = liftBaseOp_ unsafeInterleaveIO $ do
         a <- monadActive
