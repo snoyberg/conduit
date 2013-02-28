@@ -1,20 +1,25 @@
 name:            cereal-conduit
-version:         0.6
+version:         0.7
 license:         BSD3
 license-file:    LICENSE
 author:          Myles C. Maxfield <myles.maxfield@gmail.com>
 maintainer:      Myles C. Maxfield <myles.maxfield@gmail.com>
 synopsis:        Turn Data.Serialize Gets and Puts into Sources, Sinks, and Conduits
-description:     Turn Data.Serialize Gets and Puts into Sources, Sinks, and Conduits
+description:
+    Turn Data.Serialize Gets and Puts into Sources, Sinks, and Conduits.
+    .
+    [0.7]
+        Upgrade to conduit 1.0.0
 category:        Conduit
 stability:       Experimental
 cabal-version:   >= 1.8
 build-type:      Simple
 homepage:        https://github.com/litherum/cereal-conduit
+bug-reports:     https://github.com/litherum/cereal-conduit/issues
 
 library
     build-depends: base         >= 4       && < 5
-                 , conduit      >= 0.5.0   && < 0.6.0
+                 , conduit      >= 1.0.0   && < 1.1
                  , cereal       >= 0.3.1.0
                  , bytestring
                  , transformers >= 0.2.0.0
@@ -25,15 +30,15 @@ library
 Test-Suite test-cereal-conduit
     type: exitcode-stdio-1.0
     main-is: Test/Main.hs
-    build-depends: base >= 4 && < 5
-                 , conduit >= 0.5.0 && < 0.6.0
-                 , cereal >= 0.3.1.0
+    build-depends: base
+                 , conduit
+                 , cereal
                  , bytestring
                  --, test-framework-hunit
                  , HUnit
                  , resourcet
                  , mtl
-                 , transformers >= 0.2.0.0
+                 , transformers
 
 source-repository head
   type:     git

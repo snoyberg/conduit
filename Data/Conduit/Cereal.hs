@@ -34,7 +34,7 @@ data GetException = GetException String
 instance Exception GetException
 
 -- | Run a 'Get' repeatedly on the input stream, producing an output stream of whatever the 'Get' outputs.
-conduitGet :: C.MonadThrow m => Get o -> C.GLConduit BS.ByteString m o
+conduitGet :: C.MonadThrow m => Get o -> C.Conduit BS.ByteString m o
 conduitGet = mkConduitGet errorHandler
   where errorHandler msg = pipeError $ GetException msg
 
@@ -42,7 +42,7 @@ conduitGet = mkConduitGet errorHandler
 --
 -- If 'Get' succeed it will return the data read and unconsumed part of the input stream.
 -- If the 'Get' fails due to deserialization error or early termination of the input stream it raise an error.
-sinkGet :: C.MonadThrow m => Get r -> C.GLSink BS.ByteString m r
+sinkGet :: C.MonadThrow m => Get r -> C.Consumer BS.ByteString m r
 sinkGet = mkSinkGet errorHandler terminationHandler
   where errorHandler msg = pipeError $ GetException msg
         terminationHandler f = let Fail msg = f BS.empty in pipeError $ GetException msg 
@@ -51,9 +51,9 @@ pipeError :: (C.MonadThrow m, MonadTrans t, Exception e) => e -> t m a
 pipeError e = lift $ C.monadThrow e
 
 -- | Convert a 'Put' into a 'Source'. Runs in constant memory.
-sourcePut :: Monad m => Put -> C.GSource m BS.ByteString
+sourcePut :: Monad m => Put -> C.Producer m BS.ByteString
 sourcePut put = CL.sourceList $ LBS.toChunks $ runPutLazy put
 
 -- | Run a 'Putter' repeatedly on the input stream, producing a concatenated 'ByteString' stream.
-conduitPut :: Monad m => Putter a -> C.GInfConduit a m BS.ByteString
+conduitPut :: Monad m => Putter a -> C.Conduit a m BS.ByteString
 conduitPut p = CL.map $ runPut . p

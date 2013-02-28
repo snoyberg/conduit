@@ -79,7 +79,7 @@ sinktest6 = TestCase (assertEqual "Leftover input works"
 -- Current sink implementation will terminate the pipe in case of error. 
 -- One may need non-terminating version like one defined below to get access to Leftovers
 
-sinkGetMaybe :: Get Word8 -> C.GLSink BS.ByteString (ExceptionT Identity) Word8
+sinkGetMaybe :: Get Word8 -> C.Consumer BS.ByteString (ExceptionT Identity) Word8
 sinkGetMaybe = mkSinkGet errorHandler terminationHandler
   where errorHandler       _ = return 34
         terminationHandler _ = return 114
