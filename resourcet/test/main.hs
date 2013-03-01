@@ -29,6 +29,14 @@ main = hspec $ do
     describe "forking" $ do
         forkHelper "resourceForkIO" resourceForkIO
         --forkHelper "lifted fork" fork
+    describe "unprotecting" $ do
+        it "unprotect keeps resource from being cleared" $ do
+            x <- newIORef 0
+            runResourceT $ do
+              key <- register $ writeIORef x 1
+              unprotect key
+            y <- readIORef x
+            y `shouldBe` 0
 
 forkHelper s fork' = describe s $ do
     it "waits for all threads" $ do

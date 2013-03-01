@@ -36,6 +36,7 @@ module Control.Monad.Trans.Resource
     , allocate
     , register
     , release
+    , unprotect 
     , resourceMask
       -- * Type class/associated types
     , MonadResource (..)
@@ -208,7 +209,17 @@ register = liftResourceT . registerRIO
 --
 -- Since 0.3.0
 release :: MonadIO m => ReleaseKey -> m ()
-release (ReleaseKey istate rk) = liftIO $ release' istate rk
+release (ReleaseKey istate rk) = liftIO $ release' istate rk  
+    (maybe (return ()) id)
+
+-- | Unprotect resource from cleanup actions, this allowes you to send
+-- resource into another resourcet process and reregister it there.
+-- It returns an release action that should be run in order to clean 
+-- resource or Nothing in case if resource is already freed.
+--
+-- Since 0.4.4
+unprotect :: MonadIO m => ReleaseKey -> m (Maybe (IO ()))
+unprotect (ReleaseKey istate rk) = liftIO $ release' istate rk return
 
 -- | Perform some allocation, and automatically register a cleanup action.
 --
@@ -298,10 +309,11 @@ instance Exception InvalidAccess
 
 release' :: I.IORef ReleaseMap
          -> Int
-         -> IO ()
-release' istate key = E.mask $ \restore -> do
+         -> (Maybe (IO ()) -> IO a)
+         -> IO a
+release' istate key act = E.mask $ \restore -> do
     maction <- I.atomicModifyIORef istate lookupAction
-    maybe (return ()) restore maction
+    restore (act maction)
   where
     lookupAction rm@(ReleaseMap next rf m) =
         case IntMap.lookup key m of
