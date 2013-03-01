@@ -21,7 +21,7 @@ module Data.Conduit.Text
     , ascii
     , iso8859_1
     , lines
-
+    , TextException (..)
     ) where
 
 import qualified Prelude
