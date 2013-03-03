@@ -43,7 +43,7 @@ import           Data.Typeable (Typeable)
 import Data.Conduit
 import qualified Data.Conduit.List as CL
 import Control.Monad.Trans.Class (lift)
-import Control.Monad (unless)
+import Control.Monad (unless,when)
 
 -- | A specific character encoding.
 --
@@ -63,6 +63,9 @@ data Codec = Codec
 instance Show Codec where
     showsPrec d c = showParen (d > 10) $
         showString "Codec " . shows (codecName c)
+
+
+
 
 -- | Emit each line separately
 --
@@ -85,6 +88,44 @@ lines =
                  in loop $ T.append rest
       where
         (first', second) = T.break (== '\n') more
+
+
+
+-- | Variant of the lines function with an integer parameter.
+-- The text length of any emitted line
+-- never exceeds the value of the paramater. Whenever
+-- this is about to happen a LengthExceeded exception
+-- is thrown. This function should be used instead
+-- of the lines function whenever we are dealing with
+-- user input (e.g. a file upload) because we can't be sure that
+-- user input won't have extraordinarily large lines which would
+-- require large amounts of memory if consumed. 
+linesBounded :: MonadThrow m => Int -> Conduit T.Text m T.Text
+linesBounded maxLineLen = 
+    loop id
+  where
+    loop front = await >>= maybe (finish front) (go front)
+
+    finish front =
+        let final = front T.empty
+         in when (T.length final > maxLineLen) 
+                (lift $ monadThrow (LengthExceeded maxLineLen))
+              >> unless (T.null final) (yield final)
+    go sofar more =
+        case T.uncons second of
+            Just (_, second') -> do
+                let toYield = sofar first'
+                when (T.length toYield > maxLineLen) 
+                    (lift $ monadThrow (LengthExceeded maxLineLen))
+                yield toYield 
+                go id second'
+            Nothing ->
+                let rest = sofar more
+                 in loop $ T.append rest
+      where
+        (first', second) = T.break (== '\n') more
+
+
 
 -- | Convert text into bytes, using the provided codec. If the codec is
 -- not capable of representing an input character, an exception will be thrown.
@@ -123,6 +164,7 @@ decode codec =
 -- Since 0.3.0
 data TextException = DecodeException Codec Word8
                    | EncodeException Codec Char
+                   | LengthExceeded Int
                    | TextException Exc.SomeException
     deriving (Show, Typeable)
 instance Exc.Exception TextException
@@ -321,3 +363,5 @@ maybeDecode :: (a, b) -> Maybe (a, b)
 maybeDecode (a, b) = case tryEvaluate a of
     Left _ -> Nothing
     Right _ -> Just (a, b)
+
+
