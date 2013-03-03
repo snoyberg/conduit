@@ -103,26 +103,27 @@ lines =
 -- require large amounts of memory if consumed.
 linesBounded :: MonadThrow m => Int -> Conduit T.Text m T.Text
 linesBounded maxLineLen =
-    loop id
+    loop 0 id
   where
-    loop front = await >>= maybe (finish front) (go front)
+    loop len front = await >>= maybe (finish front) (go len front)
 
     finish front =
         let final = front T.empty
-         in when (T.length final > maxLineLen)
-                (lift $ monadThrow (LengthExceeded maxLineLen))
-              >> unless (T.null final) (yield final)
-    go sofar more =
+         in unless (T.null final) (yield final)
+    go len sofar more =
         case T.uncons second of
             Just (_, second') -> do
                 let toYield = sofar first'
                 when (T.length toYield > maxLineLen)
                     (lift $ monadThrow (LengthExceeded maxLineLen))
                 yield toYield
-                go id second'
-            Nothing ->
+                go 0 id second'
+            Nothing -> do
+                let len' = len + T.length more
+                when (len' > maxLineLen) $
+                    (lift $ monadThrow (LengthExceeded maxLineLen))
                 let rest = sofar more
-                 in loop $ T.append rest
+                loop len' $ T.append rest
       where
         (first', second) = T.break (== '\n') more
 
