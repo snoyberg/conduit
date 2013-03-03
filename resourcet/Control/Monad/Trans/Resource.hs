@@ -217,7 +217,7 @@ release (ReleaseKey istate rk) = liftIO $ release' istate rk
 -- It returns an release action that should be run in order to clean 
 -- resource or Nothing in case if resource is already freed.
 --
--- Since 0.4.4
+-- Since 0.4.5
 unprotect :: MonadIO m => ReleaseKey -> m (Maybe (IO ()))
 unprotect (ReleaseKey istate rk) = liftIO $ release' istate rk return
 
