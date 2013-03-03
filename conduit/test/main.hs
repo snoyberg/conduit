@@ -401,6 +401,26 @@ main = hspec $ do
             x <- CL.sourceList ["foobarbaz", error "ignore me"] C.$$ CT.decode CT.utf8 C.=$ CL.head
             x `shouldBe` Just "foobarbaz"
 
+    describe "text lines bounded" $ do
+        it "works across split lines" $
+            (CL.sourceList [T.pack "abc", T.pack "d\nef"] C.$= CT.linesBounded 80 C.$$ CL.consume) ==
+                [[T.pack "abcd", T.pack "ef"]]
+        it "works with multiple lines in an item" $
+            (CL.sourceList [T.pack "ab\ncd\ne"] C.$= CT.linesBounded 80 C.$$ CL.consume) ==
+                [[T.pack "ab", T.pack "cd", T.pack "e"]]
+        it "works with ending on a newline" $
+            (CL.sourceList [T.pack "ab\n"] C.$= CT.linesBounded 80 C.$$ CL.consume) ==
+                [[T.pack "ab"]]
+        it "works with ending a middle item on a newline" $
+            (CL.sourceList [T.pack "ab\n", T.pack "cd\ne"] C.$= CT.linesBounded 80 C.$$ CL.consume) ==
+                [[T.pack "ab", T.pack "cd", T.pack "e"]]
+        it "is not too eager" $ do
+            x <- CL.sourceList ["foobarbaz", error "ignore me"] C.$$ CT.decode CT.utf8 C.=$ CL.head
+            x `shouldBe` Just "foobarbaz"
+        it "throws an exception when lines are too long" $ do
+            x <- C.runExceptionT $ CL.sourceList ["hello\nworld"] C.$$ CT.linesBounded 4 C.=$ CL.consume
+            show x `shouldBe` show (Left $ CT.LengthExceeded 4 :: Either CT.TextException ())
+
     describe "binary isolate" $ do
         it "works" $ do
             bss <- runResourceT $ CL.sourceList (replicate 1000 "X")

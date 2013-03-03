@@ -21,6 +21,7 @@ module Data.Conduit.Text
     , ascii
     , iso8859_1
     , lines
+    , linesBounded
     , TextException (..)
     ) where
 
