@@ -114,7 +114,8 @@ linesBounded maxLineLen =
         case T.uncons second of
             Just (_, second') -> do
                 let toYield = sofar first'
-                when (T.length toYield > maxLineLen)
+                    len' = len + T.length first'
+                when (len' > maxLineLen)
                     (lift $ monadThrow (LengthExceeded maxLineLen))
                 yield toYield
                 go 0 id second'
