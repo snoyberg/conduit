@@ -100,25 +100,25 @@ lines =
 -- of the lines function whenever we are dealing with
 -- user input (e.g. a file upload) because we can't be sure that
 -- user input won't have extraordinarily large lines which would
--- require large amounts of memory if consumed. 
+-- require large amounts of memory if consumed.
 linesBounded :: MonadThrow m => Int -> Conduit T.Text m T.Text
-linesBounded maxLineLen = 
+linesBounded maxLineLen =
     loop id
   where
     loop front = await >>= maybe (finish front) (go front)
 
     finish front =
         let final = front T.empty
-         in when (T.length final > maxLineLen) 
+         in when (T.length final > maxLineLen)
                 (lift $ monadThrow (LengthExceeded maxLineLen))
               >> unless (T.null final) (yield final)
     go sofar more =
         case T.uncons second of
             Just (_, second') -> do
                 let toYield = sofar first'
-                when (T.length toYield > maxLineLen) 
+                when (T.length toYield > maxLineLen)
                     (lift $ monadThrow (LengthExceeded maxLineLen))
-                yield toYield 
+                yield toYield
                 go id second'
             Nothing ->
                 let rest = sofar more
@@ -364,5 +364,3 @@ maybeDecode :: (a, b) -> Maybe (a, b)
 maybeDecode (a, b) = case tryEvaluate a of
     Left _ -> Nothing
     Right _ -> Just (a, b)
-
-
