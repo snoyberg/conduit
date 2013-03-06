@@ -33,6 +33,9 @@ module Data.Conduit
 
       -- * Utility functions
     , awaitForever
+    , awaitWhile
+    , awaitFold
+    , awaitFoldE
     , transPipe
     , mapOutput
     , mapOutputMaybe
@@ -61,8 +64,9 @@ module Data.Conduit
     , MonadBaseControl
     ) where
 
+import Control.Monad (liftM)
 import Control.Monad.Trans.Resource
-import Data.Conduit.Internal hiding (await, awaitForever, yield, yieldOr, leftover, bracketP, addCleanup, transPipe, mapOutput, mapOutputMaybe, mapInput)
+import Data.Conduit.Internal hiding (await, awaitForever, awaitWhile, awaitFold, awaitFoldE, yield, yieldOr, leftover, bracketP, addCleanup, transPipe, mapOutput, mapOutputMaybe, mapInput)
 import qualified Data.Conduit.Internal as CI
 
 -- Define fixity of all our operators
@@ -199,6 +203,25 @@ yieldOr o m = ConduitM $ CI.yieldOr o m
 -- Since 0.5.0
 awaitForever :: Monad m => (i -> ConduitM i o m r) -> ConduitM i o m ()
 awaitForever f = ConduitM $ CI.awaitForever (unConduitM . f)
+
+-- | Similar to 'awaitForever'. In addition, allows early termination of the
+-- loop.
+awaitWhile :: Monad m => (i -> ConduitM i o m Bool) -> ConduitM i o m ()
+awaitWhile f = ConduitM $ CI.awaitWhile (unConduitM . liftM toMaybe . f)
+  where
+    toMaybe True    = Nothing
+    toMaybe False   = Just ()
+
+
+-- | Similar to 'awaitForever', but passes an intermediate result to each next
+-- repetition.
+awaitFold :: Monad m => (r -> i -> ConduitM i o m r) -> r -> ConduitM i o m ()
+awaitFold f = ConduitM . CI.awaitFold ((unConduitM .) . f)
+
+-- | Similar to 'awaitFold'. In addition, allows early termination of the
+-- loop.
+awaitFoldE :: Monad m => (r -> i -> ConduitM i o m (Maybe r)) -> r -> ConduitM i o m ()
+awaitFoldE f = ConduitM . CI.awaitFoldE (((unConduitM . liftM (maybe (Left ()) Right)) .) . f)
 
 -- | Transform the monad that a @ConduitM@ lives in.
 --

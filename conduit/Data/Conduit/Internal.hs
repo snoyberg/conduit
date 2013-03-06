@@ -19,6 +19,9 @@ module Data.Conduit.Internal
     , await
     , awaitE
     , awaitForever
+    , awaitWhile
+    , awaitFold
+    , awaitFoldE
     , yield
     , yieldOr
     , leftover
@@ -221,6 +224,33 @@ awaitForever inner =
   where
     self = awaitE >>= either return (\i -> inner i >> self)
 {-# INLINE [1] awaitForever #-}
+
+-- | Similar to 'awaitForever'. In addition, allows early termination of the
+-- loop.
+awaitWhile :: Monad m => (i -> Pipe l i o r m (Maybe r)) -> Pipe l i o r m r
+awaitWhile inner =
+    self
+  where
+    self = awaitE >>= either return (inner >=> maybe self return)
+{-# INLINE [1] awaitWhile #-}
+
+-- | Similar to 'awaitForever', but passes an intermediate result to each next
+-- repetition.
+awaitFold :: Monad m => (r' -> i -> Pipe l i o r m r') -> r' -> Pipe l i o r m r
+awaitFold inner start =
+    self start
+  where
+    self r = awaitE >>= either return (inner r >=> self)
+{-# INLINE [1] awaitFold #-}
+
+-- | Similar to 'awaitFold'. In addition, allows early termination of the
+-- loop.
+awaitFoldE :: Monad m => (r' -> i -> Pipe l i o r m (Either r r')) -> r' -> Pipe l i o r m r
+awaitFoldE inner start =
+    self start
+  where
+    self r = awaitE >>= either return (inner r >=> either return self)
+{-# INLINE [1] awaitFoldE #-}
 
 -- | Send a single output value downstream. If the downstream @Pipe@
 -- terminates, this @Pipe@ will terminate as well.
