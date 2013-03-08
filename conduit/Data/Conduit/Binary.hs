@@ -9,13 +9,11 @@ module Data.Conduit.Binary
 
       -- ** Sources
       sourceFile
-    , sourceFileNoHandle
     , sourceHandle
     , sourceIOHandle
     , sourceFileRange
       -- ** Sinks
     , sinkFile
-    , sinkFileNoHandle
     , sinkHandle
     , sinkIOHandle
       -- ** Conduits
@@ -47,20 +45,9 @@ import Data.Word (Word8)
 import Control.Applicative ((<$>))
 #if CABAL_OS_WINDOWS
 import qualified System.Win32File as F
-#else
+#elif NO_HANDLES
 import qualified System.PosixFile as F
 #endif
-
-sourceFileNoHandle :: MonadResource m
-                   => FilePath
-                   -> Producer m S.ByteString
-sourceFileNoHandle fp =
-    bracketP
-        (F.openRead fp)
-         F.close
-         loop
-  where
-    loop h = liftIO (F.read h) >>= maybe (return ()) (\bs -> yield bs >> loop h)
 
 -- | Stream the contents of a file as binary data.
 --
@@ -70,8 +57,12 @@ sourceFile :: MonadResource m
            -> Producer m S.ByteString
 sourceFile fp =
 #if CABAL_OS_WINDOWS || NO_HANDLES
-    sourceFileNoHandle fp
-{-# INLINE sourceFile #-}
+    bracketP
+        (F.openRead fp)
+         F.close
+         loop
+  where
+    loop h = liftIO (F.read h) >>= maybe (return ()) (\bs -> yield bs >> loop h)
 #else
     sourceIOHandle (IO.openBinaryFile fp IO.ReadMode)
 #endif
@@ -164,17 +155,6 @@ sourceFileRange fp offset count = bracketP
                     yield bs
                     pullLimited c' handle
 
-sinkFileNoHandle :: MonadResource m
-                 => FilePath
-                 -> Consumer S.ByteString m ()
-sinkFileNoHandle fp =
-    bracketP
-        (F.openWrite fp)
-        F.close
-        loop
-  where
-    loop h = awaitForever $ liftIO . F.write h
-
 -- | Stream all incoming data to the given file.
 --
 -- Since 0.3.0
@@ -182,8 +162,13 @@ sinkFile :: MonadResource m
          => FilePath
          -> Consumer S.ByteString m ()
 #if NO_HANDLES
-sinkFile = sinkFileNoHandle
-{-# INLINE sinkFile #-}
+sinkFile fp =
+    bracketP
+        (F.openWrite fp)
+        F.close
+        loop
+  where
+    loop h = awaitForever $ liftIO . F.write h
 #else
 sinkFile fp = sinkIOHandle (IO.openBinaryFile fp IO.WriteMode)
 #endif

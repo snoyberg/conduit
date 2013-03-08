@@ -35,8 +35,6 @@ import Data.Functor.Identity (runIdentity)
 import Control.Monad (forever)
 import Data.Void (Void)
 import qualified Control.Concurrent.MVar as M
-import System.Directory (removeFile, doesFileExist)
-import Control.Monad (when)
 
 (@=?) :: (Eq a, Show a) => a -> a -> IO ()
 (@=?) = flip shouldBe
@@ -131,11 +129,6 @@ main = hspec $ do
             bss <- runResourceT $ CB.sourceFile "conduit.cabal" C.$$ CL.consume
             bs @=? S.concat bss
 
-        it "read no handle" $ do
-            bs <- S.readFile "conduit.cabal"
-            bss <- runResourceT $ CB.sourceFileNoHandle "conduit.cabal" C.$$ CL.consume
-            bs @=? S.concat bss
-
         it "read range" $ do
             S.writeFile "tmp" "0123456789"
             bss <- runResourceT $ CB.sourceFileRange "tmp" (Just 2) (Just 3) C.$$ CL.consume
@@ -143,14 +136,6 @@ main = hspec $ do
 
         it "write" $ do
             runResourceT $ CB.sourceFile "conduit.cabal" C.$$ CB.sinkFile "tmp"
-            bs1 <- S.readFile "conduit.cabal"
-            bs2 <- S.readFile "tmp"
-            bs1 @=? bs2
-
-        it "write no handle" $ do
-            e <- doesFileExist "tmp"
-            when e $ removeFile "tmp"
-            runResourceT $ CB.sourceFileNoHandle "conduit.cabal" C.$$ CB.sinkFileNoHandle "tmp"
             bs1 <- S.readFile "conduit.cabal"
             bs2 <- S.readFile "tmp"
             bs1 @=? bs2

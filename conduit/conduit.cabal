@@ -73,7 +73,6 @@ test-suite test
                    , text
                    , resourcet
                    , void
-                   , directory
     ghc-options:     -Wall
 
 test-suite doctests
