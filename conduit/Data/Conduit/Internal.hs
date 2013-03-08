@@ -111,9 +111,9 @@ instance Monad m => Applicative (Pipe l i o u m) where
 instance Monad m => Monad (Pipe l i o u m) where
     return = Done
 
-    Done x           >>= fp = fp x
     HaveOutput p c o >>= fp = HaveOutput (p >>= fp)            c          o
     NeedInput p c    >>= fp = NeedInput  (p >=> fp)            (c >=> fp)
+    Done x           >>= fp = fp x
     PipeM mp         >>= fp = PipeM      ((>>= fp) `liftM` mp)
     Leftover p i     >>= fp = Leftover   (p >>= fp)            i
 
@@ -316,21 +316,21 @@ pipe =
   where
     goRight final left right =
         case right of
-            Done r2          -> PipeM (final >> return (Done r2))
             HaveOutput p c o -> HaveOutput (recurse p) (c >> final) o
+            NeedInput rp rc  -> goLeft rp rc final left
+            Done r2          -> PipeM (final >> return (Done r2))
             PipeM mp         -> PipeM (liftM recurse mp)
             Leftover _ i     -> absurd i
-            NeedInput rp rc  -> goLeft rp rc final left
       where
         recurse = goRight final left
 
     goLeft rp rc final left =
         case left of
-            Done r1                   -> goRight (return ()) (Done r1) (rc r1)
             HaveOutput left' final' o -> goRight final' left' (rp o)
+            NeedInput left' lc        -> NeedInput (recurse . left') (recurse . lc)
+            Done r1                   -> goRight (return ()) (Done r1) (rc r1)
             PipeM mp                  -> PipeM (liftM recurse mp)
             Leftover left' i          -> Leftover (recurse left') i
-            NeedInput left' lc        -> NeedInput (recurse . left') (recurse . lc)
       where
         recurse = goLeft rp rc final
 
@@ -348,20 +348,20 @@ pipeL =
   where
     goRight final left right =
         case right of
-            Done r2           -> PipeM (final >> return (Done r2))
             HaveOutput p c o  -> HaveOutput (recurse p) (c >> final) o
+            NeedInput rp rc   -> goLeft rp rc final left
+            Done r2           -> PipeM (final >> return (Done r2))
             PipeM mp          -> PipeM (liftM recurse mp)
             Leftover right' i -> goRight final (HaveOutput left final i) right'
-            NeedInput rp rc   -> goLeft rp rc final left
       where
         recurse = goRight final left
 
     goLeft rp rc final left =
         case left of
-            Done r1                   -> goRight (return ()) (Done r1) (rc r1)
             HaveOutput left' final' o -> goRight final' left' (rp o)
-            PipeM mp                  -> PipeM (liftM recurse mp)
             NeedInput left' lc        -> NeedInput (recurse . left') (recurse . lc)
+            Done r1                   -> goRight (return ()) (Done r1) (rc r1)
+            PipeM mp                  -> PipeM (liftM recurse mp)
             Leftover left' i          -> Leftover (recurse left') i
       where
         recurse = goLeft rp rc final
@@ -382,19 +382,19 @@ connectResume (ResumableSource (ConduitM left0) leftFinal0) (ConduitM right0) =
   where
     goRight leftFinal left right =
         case right of
+            HaveOutput _ _ o -> absurd o
+            NeedInput rp rc  -> goLeft rp rc leftFinal left
             Done r2          -> return (ResumableSource (ConduitM left) leftFinal, r2)
             PipeM mp         -> mp >>= goRight leftFinal left
-            HaveOutput _ _ o -> absurd o
             Leftover p i     -> goRight leftFinal (HaveOutput left leftFinal i) p
-            NeedInput rp rc  -> goLeft rp rc leftFinal left
 
     goLeft rp rc leftFinal left =
         case left of
-            Leftover p ()                 -> recurse p
             HaveOutput left' leftFinal' o -> goRight leftFinal' left' (rp o)
             NeedInput _ lc                -> recurse (lc ())
             Done ()                       -> goRight (return ()) (Done ()) (rc ())
             PipeM mp                      -> mp >>= recurse
+            Leftover p ()                 -> recurse p
       where
         recurse = goLeft rp rc leftFinal
 
@@ -420,12 +420,12 @@ injectLeftovers :: Monad m => Pipe i i o u m r -> Pipe l i o u m r
 injectLeftovers =
     go []
   where
-    go _ (Done r) = Done r
     go ls (HaveOutput p c o) = HaveOutput (go ls p) c o
-    go ls (PipeM mp) = PipeM (liftM (go ls) mp)
-    go ls (Leftover p l) = go (l:ls) p
     go (l:ls) (NeedInput p _) = go ls $ p l
     go [] (NeedInput p c) = NeedInput (go [] . p) (go [] . c)
+    go _ (Done r) = Done r
+    go ls (PipeM mp) = PipeM (liftM (go ls) mp)
+    go ls (Leftover p l) = go (l:ls) p
 
 -- | Transform the monad that a @Pipe@ lives in.
 --
@@ -518,30 +518,30 @@ sourceToPipe :: Monad m => Source m o -> Pipe l i o u m ()
 sourceToPipe =
     go . unConduitM
   where
+    go (HaveOutput p c o) = HaveOutput (go p) c o
+    go (NeedInput _ c) = go $ c ()
     go (Done ()) = Done ()
     go (PipeM mp) = PipeM (liftM go mp)
-    go (NeedInput _ c) = go $ c ()
-    go (HaveOutput p c o) = HaveOutput (go p) c o
     go (Leftover p ()) = go p
 
 sinkToPipe :: Monad m => Sink i m r -> Pipe l i o u m r
 sinkToPipe =
     go . injectLeftovers . unConduitM
   where
+    go (HaveOutput _ _ o) = absurd o
+    go (NeedInput p c) = NeedInput (go . p) (const $ go $ c ())
     go (Done r) = Done r
     go (PipeM mp) = PipeM (liftM go mp)
-    go (NeedInput p c) = NeedInput (go . p) (const $ go $ c ())
-    go (HaveOutput _ _ o) = absurd o
     go (Leftover _ l) = absurd l
 
 conduitToPipe :: Monad m => Conduit i m o -> Pipe l i o u m ()
 conduitToPipe =
     go . injectLeftovers . unConduitM
   where
+    go (HaveOutput p c o) = HaveOutput (go p) c o
+    go (NeedInput p c) = NeedInput (go . p) (const $ go $ c ())
     go (Done ()) = Done ()
     go (PipeM mp) = PipeM (liftM go mp)
-    go (NeedInput p c) = NeedInput (go . p) (const $ go $ c ())
-    go (HaveOutput p c o) = HaveOutput (go p) c o
     go (Leftover _ l) = absurd l
 
 -- | Returns a tuple of the upstream and downstream results. Note that this
