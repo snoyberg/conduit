@@ -35,6 +35,8 @@ import Data.Functor.Identity (runIdentity)
 import Control.Monad (forever)
 import Data.Void (Void)
 import qualified Control.Concurrent.MVar as M
+import System.Directory (removeFile, doesFileExist)
+import Control.Monad (when)
 
 (@=?) :: (Eq a, Show a) => a -> a -> IO ()
 (@=?) = flip shouldBe
@@ -146,6 +148,8 @@ main = hspec $ do
             bs1 @=? bs2
 
         it "write no handle" $ do
+            e <- doesFileExist "tmp"
+            when e $ removeFile "tmp"
             runResourceT $ CB.sourceFileNoHandle "conduit.cabal" C.$$ CB.sinkFileNoHandle "tmp"
             bs1 <- S.readFile "conduit.cabal"
             bs2 <- S.readFile "tmp"

@@ -18,7 +18,7 @@ import Foreign.C.Types (CInt)
 #endif
 import Foreign.C.Error (throwErrno)
 import Foreign.Ptr (Ptr)
-import Data.Bits (Bits)
+import Data.Bits (Bits, (.|.))
 import Data.Word (Word8)
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Unsafe as BU
@@ -32,10 +32,14 @@ newtype Flag = Flag CInt
 #{enum Flag, Flag
     , oRdonly = O_RDONLY
     , oWronly = O_WRONLY
+    , oCreat  = O_CREAT
     }
 
 foreign import ccall "open"
     c_open :: CString -> Flag -> IO CInt
+
+foreign import ccall "open"
+    c_open_mode :: CString -> Flag -> CInt -> IO CInt
 
 foreign import ccall "read"
     c_read :: FD -> Ptr Word8 -> CInt -> IO CInt
@@ -57,7 +61,7 @@ openRead fp = do
 
 openWrite :: FilePath -> IO FD
 openWrite fp = do
-    h <- withCString fp $ \str -> c_open str oWronly
+    h <- withCString fp $ \str -> c_open_mode str (oWronly .|. oCreat) 438 -- == octal 666
     if h < 0
         then throwErrno $ "Could not open file: " ++ fp
         else return $ FD h
