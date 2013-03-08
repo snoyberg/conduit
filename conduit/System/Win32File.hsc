@@ -4,10 +4,12 @@ module System.Win32File
     ( openRead
     , openWrite
     , read
+    , write
     , close
     ) where
 
 import Foreign.C.String (CString)
+import Foreign.Ptr (castPtr)
 import Foreign.Marshal.Alloc (mallocBytes, free)
 #if __GLASGOW_HASKELL__ >= 704
 import Foreign.C.Types (CInt (..))
