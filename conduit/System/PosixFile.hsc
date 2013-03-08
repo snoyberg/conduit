@@ -2,11 +2,14 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 module System.PosixFile
     ( openRead
+    , openWrite
     , read
+    , write
     , close
     ) where
 
 import Foreign.C.String (CString, withCString)
+import Foreign.Ptr (castPtr)
 import Foreign.Marshal.Alloc (mallocBytes, free)
 #if __GLASGOW_HASKELL__ >= 704
 import Foreign.C.Types (CInt (..))
@@ -28,6 +31,7 @@ newtype Flag = Flag CInt
 
 #{enum Flag, Flag
     , oRdonly = O_RDONLY
+    , oWronly = O_WRONLY
     }
 
 foreign import ccall "open"
@@ -35,6 +39,9 @@ foreign import ccall "open"
 
 foreign import ccall "read"
     c_read :: FD -> Ptr Word8 -> CInt -> IO CInt
+
+foreign import ccall "write"
+    c_write :: FD -> Ptr Word8 -> CInt -> IO CInt
 
 foreign import ccall "close"
     close :: FD -> IO ()
@@ -44,6 +51,13 @@ newtype FD = FD CInt
 openRead :: FilePath -> IO FD
 openRead fp = do
     h <- withCString fp $ \str -> c_open str oRdonly
+    if h < 0
+        then throwErrno $ "Could not open file: " ++ fp
+        else return $ FD h
+
+openWrite :: FilePath -> IO FD
+openWrite fp = do
+    h <- withCString fp $ \str -> c_open str oWronly
     if h < 0
         then throwErrno $ "Could not open file: " ++ fp
         else return $ FD h
@@ -58,3 +72,16 @@ read fd = do
                 cstr
                 (fromIntegral len)
                 (free cstr)
+
+write :: FD -> S.ByteString -> IO ()
+write _ bs | S.null bs = return ()
+write fd bs = do
+    (written, len) <- BU.unsafeUseAsCStringLen bs $ \(cstr, len') -> do
+        let len = fromIntegral len'
+        written <- c_write fd (castPtr cstr) len
+        return (written, len)
+    case () of
+        ()
+            | written == len -> return ()
+            | written <= 0 -> throwErrno $ "Error writing to file"
+            | otherwise -> write fd $ BU.unsafeDrop (fromIntegral $ len - written) bs

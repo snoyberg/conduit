@@ -2,6 +2,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 module System.Win32File
     ( openRead
+    , openWrite
     , read
     , close
     ) where
@@ -34,6 +35,7 @@ newtype OFlag = OFlag CInt
 #{enum OFlag, OFlag
     , oBinary = _O_BINARY
     , oRdonly = _O_RDONLY
+    , oWronly = _O_WRONLY
     }
 
 newtype SHFlag = SHFlag CInt
@@ -56,6 +58,9 @@ foreign import ccall "_wsopen"
 foreign import ccall "_read"
     c_read :: FD -> Ptr Word8 -> CInt -> IO CInt
 
+foreign import ccall "_write"
+    c_write :: FD -> Ptr Word8 -> CInt -> IO CInt
+
 foreign import ccall "_close"
     close :: FD -> IO ()
 
@@ -77,6 +82,22 @@ openRead fp = do
         then throwErrno $ "Could not open file: " ++ fp
         else return $ FD h
 
+openWrite :: FilePath -> IO FD
+openWrite fp = do
+    -- need to append a null char
+    -- note that useAsCString is not sufficient, as we need to have two
+    -- null octets to account for UTF16 encoding
+    let bs = encodeUtf16LE $ pack $ fp ++ "\0"
+    h <- BU.unsafeUseAsCString bs $ \str ->
+            c_wsopen
+                str
+                (oBinary .|. oWronly)
+                shDenyno
+                pIread
+    if h < 0
+        then throwErrno $ "Could not open file: " ++ fp
+        else return $ FD h
+
 read :: FD -> IO (Maybe S.ByteString)
 read fd = do
     cstr <- mallocBytes 4096
@@ -90,3 +111,16 @@ read fd = do
                 cstr
                 (fromIntegral len)
                 (free cstr)
+
+write :: FD -> S.ByteString -> IO ()
+write _ bs | S.null bs = return ()
+write fd bs = do
+    (written, len) <- BU.unsafeUseAsCStringLen bs $ \(cstr, len') -> do
+        let len = fromIntegral len'
+        written <- c_write fd (castPtr cstr) len
+        return (written, len)
+    case () of
+        ()
+            | written == len -> return ()
+            | written <= 0 -> throwErrno $ "Error writing to file"
+            | otherwise -> write fd $ BU.unsafeDrop (fromIntegral $ len - written) bs
