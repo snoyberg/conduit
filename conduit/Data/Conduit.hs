@@ -64,15 +64,13 @@ module Data.Conduit
 import Control.Monad.Trans.Resource
 import Data.Conduit.Internal hiding (await, awaitForever, yield, yieldOr, leftover, bracketP, addCleanup, transPipe, mapOutput, mapOutputMaybe, mapInput)
 import qualified Data.Conduit.Internal as CI
+import Data.Conduit.Resumable
 
 -- Define fixity of all our operators
 infixr 0 $$
 infixl 1 $=
 infixr 2 =$
 infixr 2 =$=
-infixr 0 $$+
-infixr 0 $$++
-infixr 0 $$+-
 
 -- | The connect operator, which pulls data from a source and pushes to a sink.
 -- If you would like to keep the @Source@ open to be used for other
@@ -237,37 +235,6 @@ mapInput :: Monad m
          -> ConduitM i2 o m r
          -> ConduitM i1 o m r
 mapInput f g (ConduitM p) = ConduitM $ CI.mapInput f g p
-
--- | The connect-and-resume operator. This does not close the @Source@, but
--- instead returns it to be used again. This allows a @Source@ to be used
--- incrementally in a large program, without forcing the entire program to live
--- in the @Sink@ monad.
---
--- Mnemonic: connect + do more.
---
--- Since 0.5.0
-($$+) :: Monad m => Source m a -> Sink a m b -> m (ResumableSource m a, b)
-src $$+ sink = connectResume (ResumableSource src (return ())) sink
-{-# INLINE ($$+) #-}
-
--- | Continue processing after usage of @$$+@.
---
--- Since 0.5.0
-($$++) :: Monad m => ResumableSource m a -> Sink a m b -> m (ResumableSource m a, b)
-($$++) = connectResume
-{-# INLINE ($$++) #-}
-
--- | Complete processing of a @ResumableSource@. This will run the finalizer
--- associated with the @ResumableSource@. In order to guarantee process resource
--- finalization, you /must/ use this operator after using @$$+@ and @$$++@.
---
--- Since 0.5.0
-($$+-) :: Monad m => ResumableSource m a -> Sink a m b -> m b
-rsrc $$+- sink = do
-    (ResumableSource _ final, res) <- connectResume rsrc sink
-    final
-    return res
-{-# INLINE ($$+-) #-}
 
 -- | Provide for a stream of data that can be flushed.
 --

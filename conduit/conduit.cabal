@@ -46,6 +46,7 @@ Library
                        Data.Conduit.List
                        Data.Conduit.Lazy
                        Data.Conduit.Internal
+                       Data.Conduit.Resumable
                        Data.Conduit.Util
   Build-depends:       base                     >= 4.3          && < 5
                      , resourcet                >= 0.4.3        && < 0.5
