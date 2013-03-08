@@ -38,6 +38,7 @@ newtype OFlag = OFlag CInt
     , oBinary = _O_BINARY
     , oRdonly = _O_RDONLY
     , oWronly = _O_WRONLY
+    , oCreat  = _O_CREAT
     }
 
 newtype SHFlag = SHFlag CInt
@@ -52,6 +53,7 @@ newtype PMode = PMode CInt
 
 #{enum PMode, PMode
     , pIread = _S_IREAD
+    , pIwrite = _S_IWRITE
     }
 
 foreign import ccall "_wsopen"
@@ -93,9 +95,9 @@ openWrite fp = do
     h <- BU.unsafeUseAsCString bs $ \str ->
             c_wsopen
                 str
-                (oBinary .|. oWronly)
+                (oBinary .|. oWronly .|. oCreat)
                 shDenyno
-                pIread
+                pIwrite
     if h < 0
         then throwErrno $ "Could not open file: " ++ fp
         else return $ FD h
