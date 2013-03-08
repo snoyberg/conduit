@@ -312,25 +312,27 @@ idP = NeedInput (HaveOutput idP (return ())) Done
 -- Since 0.5.0
 pipe :: Monad m => Pipe l a b r0 m r1 -> Pipe Void b c r1 m r2 -> Pipe l a c r0 m r2
 pipe =
-    pipe' (return ())
+    goRight (return ())
   where
-    pipe' final left right =
+    goRight final left right =
         case right of
-            Done r2 -> PipeM (final >> return (Done r2))
-            HaveOutput p c o -> HaveOutput (pipe' final left p) (c >> final) o
-            PipeM mp -> PipeM (liftM (pipe' final left) mp)
-            Leftover _ i -> absurd i
-            NeedInput rp rc -> upstream rp rc
+            Done r2          -> PipeM (final >> return (Done r2))
+            HaveOutput p c o -> HaveOutput (recurse p) (c >> final) o
+            PipeM mp         -> PipeM (liftM recurse mp)
+            Leftover _ i     -> absurd i
+            NeedInput rp rc  -> goLeft rp rc final left
       where
-        upstream rp rc =
-            case left of
-                Done r1 -> pipe (Done r1) (rc r1)
-                HaveOutput left' final' o -> pipe' final' left' (rp o)
-                PipeM mp -> PipeM (liftM (\left' -> pipe' final left' right) mp)
-                Leftover left' i -> Leftover (pipe' final left' right) i
-                NeedInput left' lc -> NeedInput
-                    (\a -> pipe' final (left' a) right)
-                    (\r0 -> pipe' final (lc r0) right)
+        recurse = goRight final left
+
+    goLeft rp rc final left =
+        case left of
+            Done r1                   -> goRight (return ()) (Done r1) (rc r1)
+            HaveOutput left' final' o -> goRight final' left' (rp o)
+            PipeM mp                  -> PipeM (liftM recurse mp)
+            Leftover left' i          -> Leftover (recurse left') i
+            NeedInput left' lc        -> NeedInput (recurse . left') (recurse . lc)
+      where
+        recurse = goLeft rp rc final
 
 -- | Same as 'pipe', but automatically applies 'injectLeftovers' to the right @Pipe@.
 --
@@ -342,24 +344,27 @@ pipeL :: Monad m => Pipe l a b r0 m r1 -> Pipe b b c r1 m r2 -> Pipe l a c r0 m 
 --
 -- However, this version tested as being significantly more efficient.
 pipeL =
-    pipe' (return ())
+    goRight (return ())
   where
-    pipe' :: Monad m => m () -> Pipe l a b r0 m r1 -> Pipe b b c r1 m r2 -> Pipe l a c r0 m r2
-    pipe' final left right =
+    goRight final left right =
         case right of
-            Done r2 -> PipeM (final >> return (Done r2))
-            HaveOutput p c o -> HaveOutput (pipe' final left p) (c >> final) o
-            PipeM mp -> PipeM (liftM (pipe' final left) mp)
-            Leftover right' i -> pipe' final (HaveOutput left final i) right'
-            NeedInput rp rc ->
-                case left of
-                    Done r1 -> pipe' (return ()) (Done r1) (rc r1)
-                    HaveOutput left' final' o -> pipe' final' left' (rp o)
-                    PipeM mp -> PipeM (liftM (\left' -> pipe' final left' right) mp)
-                    NeedInput left' lc -> NeedInput
-                        (\a -> pipe' final (left' a) right)
-                        (\r0 -> pipe' final (lc r0) right)
-                    Leftover left' i -> Leftover (pipe' final left' right) i
+            Done r2           -> PipeM (final >> return (Done r2))
+            HaveOutput p c o  -> HaveOutput (recurse p) (c >> final) o
+            PipeM mp          -> PipeM (liftM recurse mp)
+            Leftover right' i -> goRight final (HaveOutput left final i) right'
+            NeedInput rp rc   -> goLeft rp rc final left
+      where
+        recurse = goRight final left
+
+    goLeft rp rc final left =
+        case left of
+            Done r1                   -> goRight (return ()) (Done r1) (rc r1)
+            HaveOutput left' final' o -> goRight final' left' (rp o)
+            PipeM mp                  -> PipeM (liftM recurse mp)
+            NeedInput left' lc        -> NeedInput (recurse . left') (recurse . lc)
+            Leftover left' i          -> Leftover (recurse left') i
+      where
+        recurse = goLeft rp rc final
 
 -- | Connect a @Source@ to a @Sink@ until the latter closes. Returns both the
 -- most recent state of the @Source@ and the result of the @Sink@.
@@ -372,22 +377,26 @@ connectResume :: Monad m
               => ResumableSource m o
               -> Sink o m r
               -> m (ResumableSource m o, r)
-connectResume (ResumableSource (ConduitM left0) leftFinal0) =
-    go leftFinal0 left0 . unConduitM
+connectResume (ResumableSource (ConduitM left0) leftFinal0) (ConduitM right0) =
+    goRight leftFinal0 left0 right0
   where
-    go leftFinal left right =
+    goRight leftFinal left right =
         case right of
-            Done r2 -> return (ResumableSource (ConduitM left) leftFinal, r2)
-            PipeM mp -> mp >>= go leftFinal left
+            Done r2          -> return (ResumableSource (ConduitM left) leftFinal, r2)
+            PipeM mp         -> mp >>= goRight leftFinal left
             HaveOutput _ _ o -> absurd o
-            Leftover p i -> go leftFinal (HaveOutput left leftFinal i) p
-            NeedInput rp rc ->
-                case left of
-                    Leftover p () -> go leftFinal p right
-                    HaveOutput left' leftFinal' o -> go leftFinal' left' (rp o)
-                    NeedInput _ lc -> go leftFinal (lc ()) right
-                    Done () -> go (return ()) (Done ()) (rc ())
-                    PipeM mp -> mp >>= \left' -> go leftFinal left' right
+            Leftover p i     -> goRight leftFinal (HaveOutput left leftFinal i) p
+            NeedInput rp rc  -> goLeft rp rc leftFinal left
+
+    goLeft rp rc leftFinal left =
+        case left of
+            Leftover p ()                 -> recurse p
+            HaveOutput left' leftFinal' o -> goRight leftFinal' left' (rp o)
+            NeedInput _ lc                -> recurse (lc ())
+            Done ()                       -> goRight (return ()) (Done ()) (rc ())
+            PipeM mp                      -> mp >>= recurse
+      where
+        recurse = goLeft rp rc leftFinal
 
 -- | Run a pipeline until processing completes.
 --
