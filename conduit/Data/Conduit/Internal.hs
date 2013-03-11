@@ -140,7 +140,7 @@ instance MonadResource m => MonadResource (Pipe l i o u m) where
     liftResourceT = lift . liftResourceT
 
 -- | Core datatype of the conduit package. This type represents a general
--- component which can consume a stream of input values @i@, produce a stream
+-- component that can consume a stream of input values @i@, produce a stream
 -- of output values @o@, perform actions in the @m@ monad, and produce a final
 -- result @r@. The type synonyms provided here are simply wrappers around this
 -- type.
@@ -160,7 +160,7 @@ instance Monad m => Monoid (ConduitM i o m ()) where
 -- Since 0.5.0
 type Source m o = ConduitM () o m ()
 
--- | A component which produces a stream of output values, regardless of the
+-- | A component that produces a stream of output values, regardless of the
 -- input stream. A @Producer@ is a generalization of a @Source@, and can be
 -- used as either a @Source@ or a @Conduit@.
 --
@@ -173,7 +173,7 @@ type Producer m o = forall i. ConduitM i o m ()
 -- Since 0.5.0
 type Sink i m r = ConduitM i Void m r
 
--- | A component which consumes a stream of input values and produces a final
+-- | A component that consumes a stream of input values and produces a final
 -- result, regardless of the output stream. A @Consumer@ is a generalization of
 -- a @Sink@, and can be used as either a @Sink@ or a @Conduit@.
 --
@@ -186,7 +186,7 @@ type Consumer i m r = forall o. ConduitM i o m r
 -- Since 0.5.0
 type Conduit i m o = ConduitM i o m ()
 
--- | A @Source@ which has been started, but has not yet completed.
+-- | A @Source@ that has been started, but has not yet completed.
 --
 -- This type contains both the current state of the @Source@, and the finalizer
 -- to be run to close it.
@@ -408,7 +408,7 @@ runPipe (Done r) = return r
 runPipe (PipeM mp) = mp >>= runPipe
 runPipe (Leftover _ i) = absurd i
 
--- | Transforms a @Pipe@ that provides leftovers to one which does not,
+-- | Transforms a @Pipe@ that provides leftovers to one that does not,
 -- allowing it to be composed.
 --
 -- This function will provide any leftover values within this @Pipe@ to any
@@ -561,7 +561,7 @@ withUpstream down =
 
 -- | Unwraps a @ResumableSource@ into a @Source@ and a finalizer.
 --
--- A @ResumableSource@ represents a @Source@ which has already been run, and
+-- A @ResumableSource@ represents a @Source@ that has already been run, and
 -- therefore has a finalizer registered. As a result, if we want to turn it
 -- into a regular @Source@, we need to ensure that the finalizer will be run
 -- appropriately. By appropriately, I mean:
@@ -570,9 +570,9 @@ withUpstream down =
 --
 -- * If the old one is called, it should not be called again.
 --
--- This function returns both a @Source@ and a finalizer which ensures that the
--- above two conditions hold. Once you call that finalizer, the @Source@ is
--- invalidated and cannot be used.
+-- This function returns both a @Source@ and a finalizer satisfying these two
+-- conditions. Once you call that finalizer, the @Source@ is invalidated and
+-- cannot be used.
 --
 -- Since 0.5.2
 unwrapResumable :: MonadIO m => ResumableSource m o -> m (Source m o, m ())
