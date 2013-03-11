@@ -2,29 +2,31 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 module System.Win32File
     ( openRead
-    , openWrite
     , read
-    , write
     , close
     ) where
 
 import Foreign.C.String (CString)
 import Foreign.Ptr (castPtr)
 import Foreign.Marshal.Alloc (mallocBytes, free)
+import Foreign.ForeignPtr       (ForeignPtr, withForeignPtr)
 #if __GLASGOW_HASKELL__ >= 704
 import Foreign.C.Types (CInt (..))
 #else
 import Foreign.C.Types (CInt)
 #endif
-import Foreign.C.Error (throwErrno)
+import Foreign.C.Error (throwErrnoIfMinus1Retry)
 import Foreign.Ptr (Ptr)
 import Data.Bits (Bits, (.|.))
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Unsafe as BU
+import qualified Data.ByteString.Internal as BI
 import Data.Text (pack)
 import Data.Text.Encoding (encodeUtf16LE)
 import Data.Word (Word8)
 import Prelude hiding (read)
+import GHC.ForeignPtr           (mallocPlainForeignPtrBytes)
+
 
 #include <fcntl.h>
 #include <Share.h>
@@ -77,54 +79,19 @@ openRead fp = do
     -- null octets to account for UTF16 encoding
     let bs = encodeUtf16LE $ pack $ fp ++ "\0"
     h <- BU.unsafeUseAsCString bs $ \str ->
+            throwErrnoIfMinus1Retry "System.Win32File.openRead" $
             c_wsopen
                 str
                 (oBinary .|. oRdonly)
                 shDenyno
                 pIread
-    if h < 0
-        then throwErrno $ "Could not open file: " ++ fp
-        else return $ FD h
-
-openWrite :: FilePath -> IO FD
-openWrite fp = do
-    -- need to append a null char
-    -- note that useAsCString is not sufficient, as we need to have two
-    -- null octets to account for UTF16 encoding
-    let bs = encodeUtf16LE $ pack $ fp ++ "\0"
-    h <- BU.unsafeUseAsCString bs $ \str ->
-            c_wsopen
-                str
-                (oBinary .|. oWronly .|. oCreat)
-                shDenyno
-                pIwrite
-    if h < 0
-        then throwErrno $ "Could not open file: " ++ fp
-        else return $ FD h
+    return $ FD h
 
 read :: FD -> IO (Maybe S.ByteString)
 read fd = do
-    cstr <- mallocBytes 4096
-    len <- c_read fd cstr 4096
-    if len == 0
-        then do
-            free cstr
-            return Nothing
-        else do
-            fmap Just $ BU.unsafePackCStringFinalizer
-                cstr
-                (fromIntegral len)
-                (free cstr)
-
-write :: FD -> S.ByteString -> IO ()
-write _ bs | S.null bs = return ()
-write fd bs = do
-    (written, len) <- BU.unsafeUseAsCStringLen bs $ \(cstr, len') -> do
-        let len = fromIntegral len'
-        written <- c_write fd (castPtr cstr) len
-        return (written, len)
-    case () of
-        ()
-            | written == len -> return ()
-            | written <= 0 -> throwErrno $ "Error writing to file"
-            | otherwise -> write fd $ BU.unsafeDrop (fromIntegral $ len - written) bs
+    fp <- mallocPlainForeignPtrBytes 4096
+    withForeignPtr fp $ \p -> do
+        len <- throwErrnoIfMinus1Retry "System.Win32File.read" $ c_read fd p 4096
+        if len == 0
+            then return $! Nothing
+            else return $! Just $! BI.PS fp 0 (fromIntegral len)
