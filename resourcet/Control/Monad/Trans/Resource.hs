@@ -424,7 +424,10 @@ instance MonadBaseControl b m => MonadBaseControl b (ResourceT m) where
      restoreM (StMT base) = ResourceT $ const $ restoreM base
 instance Monad m => MonadThrow (ExceptionT m) where
     monadThrow = ExceptionT . return . Left . E.toException
-
+instance MonadResource m => MonadResource (ExceptionT m) where
+    liftResourceT = lift . liftResourceT
+instance MonadIO m => MonadIO (ExceptionT m) where
+    liftIO = lift . liftIO
 
 -- | The express purpose of this transformer is to allow non-@IO@-based monad
 -- stacks to catch exceptions via the 'MonadThrow' typeclass.
