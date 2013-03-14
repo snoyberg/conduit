@@ -27,6 +27,7 @@ module Control.Monad.Trans.Resource
     , resourceForkIO
       -- * Monad transformation
     , transResourceT
+    , joinResourceT
       -- * A specific Exception transformer
     , ExceptionT (..)
     , runExceptionT_
@@ -383,6 +384,14 @@ transResourceT :: (m a -> n b)
                -> ResourceT m a
                -> ResourceT n b
 transResourceT f (ResourceT mx) = ResourceT (\r -> f (mx r))
+
+-- | This function mirrors @join@ at the transformer level: it will collapse
+-- two levels of @ResourceT@ into a single @ResourceT@.
+--
+-- Since 0.4.6
+joinResourceT :: ResourceT (ResourceT m) a
+              -> ResourceT m a
+joinResourceT (ResourceT f) = ResourceT $ \r -> unResourceT (f r) r
 
 -------- All of our monad et al instances
 instance Functor m => Functor (ResourceT m) where
