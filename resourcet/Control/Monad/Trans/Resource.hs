@@ -54,6 +54,7 @@ module Control.Monad.Trans.Resource
     , InternalState
     , getInternalState
     , runInternalState
+    , withInternalState
     ) where
 
 import Data.Typeable
@@ -711,3 +712,9 @@ type InternalState = I.IORef ReleaseMap
 -- Since 0.4.6
 runInternalState :: ResourceT m a -> InternalState -> m a
 runInternalState = unResourceT
+
+-- | Run an action in the underlying monad, providing it the @InternalState.
+--
+-- Since 0.4.6
+withInternalState :: (InternalState -> m a) -> ResourceT m a
+withInternalState = ResourceT
