@@ -49,6 +49,11 @@ module Control.Monad.Trans.Resource
     , InvalidAccess (..)
       -- * Re-exports
     , MonadBaseControl
+      -- * Internal state
+      -- $internalState
+    , InternalState
+    , getInternalState
+    , runInternalState
     ) where
 
 import Data.Typeable
@@ -680,3 +685,29 @@ type MonadResourceBase m = (MonadBaseControl IO m, MonadThrow m, MonadUnsafeIO m
 class (MonadBaseControl IO m, MonadThrow m, MonadUnsafeIO m, MonadIO m, Applicative m) => MonadResourceBase m
 instance (MonadBaseControl IO m, MonadThrow m, MonadUnsafeIO m, MonadIO m, Applicative m) => MonadResourceBase m
 #endif
+
+-- $internalState
+--
+-- A @ResourceT@ internally is a modified @ReaderT@ monad transformer holding
+-- onto a mutable reference to all of the release actions still remaining to be
+-- performed. If you are building up a custom application monad, it may be more
+-- efficient to embed this @ReaderT@ functionality directly in your own monad
+-- instead of wrapping around @ResourceT@ itself. This section provides you the
+-- means of doing so.
+
+-- | Get the internal state of the current @ResourceT@.
+--
+-- Since 0.4.6
+getInternalState :: Monad m => ResourceT m InternalState
+getInternalState = ResourceT return
+
+-- | The internal state held by a @ResourceT@ transformer.
+--
+-- Since 0.4.6
+type InternalState = I.IORef ReleaseMap
+
+-- | Unwrap a @ResourceT@ using the given @InternalState@.
+--
+-- Since 0.4.6
+runInternalState :: ResourceT m a -> InternalState -> m a
+runInternalState = unResourceT
