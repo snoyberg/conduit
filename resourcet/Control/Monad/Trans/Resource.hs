@@ -116,6 +116,7 @@ import qualified Control.Monad.ST.Lazy as LazyUnsafe
 import qualified Control.Monad.ST.Lazy as Lazy
 
 import Data.Functor.Identity (Identity, runIdentity)
+import Control.Monad.Morph
 
 -- | A lookup key for a specific release action. This value is returned by
 -- 'register' and 'allocate', and is passed to 'release'.
@@ -385,11 +386,20 @@ bracket_ alloc cleanup inside =
 -- | Transform the monad a @ResourceT@ lives in. This is most often used to
 -- strip or add new transformers to a stack, e.g. to run a @ReaderT@.
 --
+-- Note that this function is a slight generalization of 'hoist'.
+--
 -- Since 0.3.0
 transResourceT :: (m a -> n b)
                -> ResourceT m a
                -> ResourceT n b
 transResourceT f (ResourceT mx) = ResourceT (\r -> f (mx r))
+
+-- | Since 0.4.7
+instance MFunctor ResourceT where
+    hoist f (ResourceT mx) = ResourceT (\r -> f (mx r))
+-- | Since 0.4.7
+instance MMonad ResourceT where
+    embed f m = ResourceT (\i -> unResourceT (f (unResourceT m i)) i)
 
 -- | This function mirrors @join@ at the transformer level: it will collapse
 -- two levels of @ResourceT@ into a single @ResourceT@.

@@ -64,6 +64,7 @@ module Data.Conduit
 import Control.Monad.Trans.Resource
 import Data.Conduit.Internal hiding (await, awaitForever, yield, yieldOr, leftover, bracketP, addCleanup, transPipe, mapOutput, mapOutputMaybe, mapInput)
 import qualified Data.Conduit.Internal as CI
+import Control.Monad.Morph (hoist)
 
 -- Define fixity of all our operators
 infixr 0 $$
@@ -208,9 +209,11 @@ awaitForever f = ConduitM $ CI.awaitForever (unConduitM . f)
 --
 -- <https://github.com/snoyberg/conduit/wiki/Dealing-with-monad-transformers>
 --
+-- This function is just a synonym for 'hoist'.
+--
 -- Since 0.4.0
 transPipe :: Monad m => (forall a. m a -> n a) -> ConduitM i o m r -> ConduitM i o n r
-transPipe f = ConduitM . CI.transPipe f . unConduitM
+transPipe = hoist
 
 -- | Apply a function to all the output values of a @ConduitM@.
 --

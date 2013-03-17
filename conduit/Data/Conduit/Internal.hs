@@ -60,6 +60,7 @@ import Data.Monoid (Monoid (mappend, mempty))
 import Control.Monad.Trans.Resource
 import qualified GHC.Exts
 import qualified Data.IORef as I
+import Control.Monad.Morph
 
 -- | The underlying datatype for all the types in this package.  In has six
 -- type parameters:
@@ -147,7 +148,7 @@ instance MonadResource m => MonadResource (Pipe l i o u m) where
 --
 -- Since 1.0.0
 newtype ConduitM i o m r = ConduitM { unConduitM :: Pipe i i o () m r }
-    deriving (Functor, Applicative, Monad, MonadIO, MonadTrans, MonadThrow, MonadActive, MonadResource)
+    deriving (Functor, Applicative, Monad, MonadIO, MonadTrans, MonadThrow, MonadActive, MonadResource, MFunctor)
 instance MonadBase base m => MonadBase base (ConduitM i o m) where
     liftBase = lift . liftBase
 instance Monad m => Monoid (ConduitM i o m ()) where
@@ -435,6 +436,8 @@ injectLeftovers =
 --
 -- <https://github.com/snoyberg/conduit/wiki/Dealing-with-monad-transformers>
 --
+-- This function is just a synonym for 'hoist'.
+--
 -- Since 0.4.0
 transPipe :: Monad m => (forall a. m a -> n a) -> Pipe l i o u m r -> Pipe l i o u n r
 transPipe f (HaveOutput p c o) = HaveOutput (transPipe f p) (f c) o
@@ -629,3 +632,7 @@ toConsumer =
     go (Done r) = Done r
     go (PipeM mp) = PipeM (liftM go mp)
     go (Leftover p l) = Leftover (go p) l
+
+-- | Since 1.0.4
+instance MFunctor (Pipe l i o u) where
+    hoist = transPipe
