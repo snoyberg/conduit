@@ -41,6 +41,8 @@ import Crypto.Random.API (getSystemRandomGen, SystemRandom)
 #else
 import Crypto.Random (newGenIO, SystemRandom)
 #endif
+import Network.Socket (Socket)
+import qualified Data.ByteString as S
 
 tlsConfig :: HostPreference
           -> Int -- ^ port
@@ -79,7 +81,7 @@ runTCPServerTLS TLSConfig{..} app = do
                     { TLS.backendFlush = return ()
                     , TLS.backendClose = return ()
                     , TLS.backendSend = sendAll socket
-                    , TLS.backendRecv = recv socket
+                    , TLS.backendRecv = recvExact socket
                     }
                 params
                 (gen :: SystemRandom)
@@ -90,7 +92,7 @@ runTCPServerTLS TLSConfig{..} app = do
                 socket
                 (return ()) -- flush
                 (\bs -> yield bs $$ sinkSocket socket)
-                (recv socket)
+                (recvExact socket)
 #endif
 
             TLS.handshake ctx
@@ -154,3 +156,15 @@ readPrivateKey filepath = do
     where parseKey (Right pems) = map (fmap (TLS.PrivRSA . snd) . KeyRSA.decodePrivate . L.fromChunks . (:[]) . PEM.pemContent)
                                 $ filter ((== "RSA PRIVATE KEY") . PEM.pemName) pems
           parseKey (Left err) = error $ "Cannot parse PEM file: " ++ err
+
+-- | TLS requires exactly the number of bytes requested to be returned.
+recvExact :: Socket -> Int -> IO S.ByteString
+recvExact socket =
+    loop id
+  where
+    loop front rest
+        | rest < 0 = error "Data.Conduit.Network.TLS.recvExact: rest < 0"
+        | rest == 0 = return $ S.concat $ front []
+        | otherwise = do
+            next <- recv socket rest
+            loop (front . (next:)) $ rest - S.length next
