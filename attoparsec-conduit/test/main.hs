@@ -1,16 +1,17 @@
+{-# LANGUAGE CPP               #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE CPP #-}
 {-# OPTIONS_GHC -fno-warn-incomplete-patterns #-}
-import Test.Hspec
-import Control.Exception (fromException)
+import           Control.Exception                (fromException)
+import           Test.Hspec
 
-import Data.Conduit
-import Data.Conduit.Attoparsec
-import qualified Data.Conduit.List as CL
-import qualified Data.Attoparsec.Text
+import           Control.Applicative              ((<*), (<|>))
+import           Control.Monad
+import           Control.Monad.Trans.Resource
 import qualified Data.Attoparsec.ByteString.Char8
-import Control.Applicative ((<|>))
-import Control.Monad.Trans.Resource
+import qualified Data.Attoparsec.Text
+import           Data.Conduit
+import           Data.Conduit.Attoparsec
+import qualified Data.Conduit.List                as CL
 
 main :: IO ()
 main = hspec $ do
@@ -63,3 +64,17 @@ main = hspec $ do
                     case fromException e of
                         Just pe -> do
                             errorPosition pe `shouldBe` Position badLine badCol
+
+    describe "conduitParser" $ do
+        it "parses a repeated stream" $ do
+            let input = ["aaa\n", "aaa\naaa\n", "aaa\n"]
+                parser = Data.Attoparsec.Text.string "aaa" <* Data.Attoparsec.Text.endOfLine
+                sink = conduitParserEither parser =$= CL.consume
+            (Right ea) <- runExceptionT $ CL.sourceList input $$ sink
+            let chk a = case a of
+                          Left{} -> False
+                          Right (_, xs) -> xs == "aaa"
+            forM_ ea $ \ a -> a `shouldSatisfy` chk :: Expectation
+            length ea `shouldBe` 4
+
+
