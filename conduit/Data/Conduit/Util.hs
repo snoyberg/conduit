@@ -1,6 +1,4 @@
--- | Utility functions from older versions of @conduit@. These should be
--- considered deprecated, as there are now easier ways to handle their use
--- cases. This module is provided solely for backwards compatibility.
+-- | Various utility functions versions of @conduit@.
 module Data.Conduit.Util
     ( -- * Misc
       zip
