@@ -167,4 +167,6 @@ recvExact socket =
         | rest == 0 = return $ S.concat $ front []
         | otherwise = do
             next <- recv socket rest
-            loop (front . (next:)) $ rest - S.length next
+            if S.length next == 0
+                then return $ S.concat $ front []
+                else loop (front . (next:)) $ rest - S.length next
