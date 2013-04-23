@@ -6,6 +6,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE ImpredicativeTypes #-}
 #if __GLASGOW_HASKELL__ >= 704
 {-# LANGUAGE ConstraintKinds #-}
 #endif
@@ -144,10 +145,9 @@ data ReleaseMap =
 --
 -- Since 0.3.0
 newtype ResourceT m a = ResourceT { unResourceT :: I.IORef ReleaseMap -> m a }
-
--- | Convenient alias for @ResourceT IO@.
-type ResIO a = ResourceT IO a
-
+#if __GLASGOW_HASKELL__ >= 707
+        deriving Typeable
+#else
 instance Typeable1 m => Typeable1 (ResourceT m) where
     typeOf1 = goType undefined
       where
@@ -161,6 +161,11 @@ instance Typeable1 m => Typeable1 (ResourceT m) where
 #endif
                 [ typeOf1 m
                 ]
+#endif
+
+-- | Convenient alias for @ResourceT IO@.
+type ResIO a = ResourceT IO a
+
 
 instance MonadCont m => MonadCont (ResourceT m) where
   callCC f = ResourceT $ \i -> callCC $ \c -> unResourceT (f (ResourceT . const . c)) i
