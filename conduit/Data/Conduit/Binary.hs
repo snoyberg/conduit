@@ -26,6 +26,8 @@ module Data.Conduit.Binary
     , dropWhile
     , take
     , drop
+    , sinkCacheLength
+    , sinkLbs
       -- ** Conduits
     , isolate
     , takeWhile
@@ -36,13 +38,15 @@ import Prelude hiding (head, take, drop, takeWhile, dropWhile)
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Lazy as L
 import Data.Conduit
-import Data.Conduit.List (sourceList)
-import Control.Exception (assert)
+import Data.Conduit.List (sourceList, consume)
+import Control.Exception (assert, finally)
 import Control.Monad (unless)
 import Control.Monad.IO.Class (liftIO, MonadIO)
+import Control.Monad.Trans.Resource (allocate, release)
 import qualified System.IO as IO
-import Data.Word (Word8)
+import Data.Word (Word8, Word64)
 import Control.Applicative ((<$>))
+import System.Directory (getTemporaryDirectory, removeFile)
 #if CABAL_OS_WINDOWS
 import qualified System.Win32File as F
 #elif NO_HANDLES
@@ -319,3 +323,39 @@ lines =
 -- Since 0.5.0
 sourceLbs :: Monad m => L.ByteString -> Producer m S.ByteString
 sourceLbs = sourceList . L.toChunks
+
+-- | Stream the input data into a temp file and count the number of bytes
+-- present. When complete, return a new @Source@ reading from the temp file
+-- together with the length of the input in bytes.
+--
+-- All resources will be cleaned up automatically.
+--
+-- Since 1.0.5
+sinkCacheLength :: (MonadResource m1, MonadResource m2)
+                => Sink S.ByteString m1 (Word64, Source m2 S.ByteString)
+sinkCacheLength = do
+    tmpdir <- liftIO getTemporaryDirectory
+    (releaseKey, (fp, h)) <- allocate
+        (IO.openBinaryTempFile tmpdir "conduit.cache")
+        (\(fp, h) -> IO.hClose h `finally` removeFile fp)
+    len <- sinkHandleLen h
+    liftIO $ IO.hClose h
+    return (len, sourceFile fp >> release releaseKey)
+  where
+    sinkHandleLen :: MonadResource m => IO.Handle -> Sink S.ByteString m Word64
+    sinkHandleLen h =
+        loop 0
+      where
+        loop x =
+            await >>= maybe (return x) go
+          where
+            go bs = do
+                liftIO $ S.hPut h bs
+                loop $ x + fromIntegral (S.length bs)
+
+-- | Consume a stream of input into a lazy bytestring. Note that no lazy I\/O
+-- is performed, but rather all content is read into memory strictly.
+--
+-- Since 1.0.5
+sinkLbs :: Monad m => Sink S.ByteString m L.ByteString
+sinkLbs = fmap L.fromChunks consume

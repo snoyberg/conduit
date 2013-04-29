@@ -874,5 +874,15 @@ main = hspec $ do
             res <- C.yield 10 C.$$ C.awaitForever (C.toProducer . src) C.=$ (C.toConsumer sink >>= C.yield) C.=$ C.await
             res `shouldBe` Just (sum [1..10])
 
+    describe "sinkCacheLength" $ do
+        it' "works" $ C.runResourceT $ do
+            lbs <- liftIO $ L.readFile "test/main.hs"
+            (len, src) <- CB.sourceLbs lbs C.$$ CB.sinkCacheLength
+            lbs' <- src C.$$ CB.sinkLbs
+            liftIO $ do
+                fromIntegral len `shouldBe` L.length lbs
+                lbs' `shouldBe` lbs
+                fromIntegral len `shouldBe` L.length lbs'
+
 it' :: String -> IO () -> Spec
 it' = it
