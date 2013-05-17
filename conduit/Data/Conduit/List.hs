@@ -307,16 +307,7 @@ concatMapM f = awaitForever $ sourceList <=< lift . f
 --
 -- Since 0.3.0
 concatMapAccum :: Monad m => (a -> accum -> (accum, [b])) -> accum -> Conduit a m b
-concatMapAccum f =
-    loop
-  where
-    loop accum =
-        await >>= maybe (return ()) go
-      where
-        go a = do
-            let (accum', bs) = f a accum
-            Prelude.mapM_ yield bs
-            loop accum'
+concatMapAccum f x0 = scanl f x0 =$= concat
 
 -- | Analog of 'Prelude.scanl' for lists.
 scanl :: Monad m => (a -> s -> (s,b)) -> s -> Conduit a m b
