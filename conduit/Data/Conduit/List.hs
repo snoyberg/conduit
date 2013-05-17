@@ -32,6 +32,7 @@ module Data.Conduit.List
       -- ** Pure
     , map
     , mapMaybe
+    , mapFoldable
     , catMaybes
     , concatMap
     , concatMapAccum
@@ -42,6 +43,7 @@ module Data.Conduit.List
     , mapM
     , iterM
     , mapMaybeM
+    , mapFoldableM
     , concatMapM
     , concatMapAccumM
       -- * Misc
@@ -62,6 +64,7 @@ import Prelude
     , either
     )
 import Data.Monoid (Monoid, mempty, mappend)
+import qualified Data.Foldable as F
 import Data.Conduit
 import Control.Monad (when, (<=<))
 import Control.Monad.Trans.Class (lift)
@@ -322,6 +325,18 @@ concatMapAccumM f =
             (accum', bs) <- lift $ f a accum
             Prelude.mapM_ yield bs
             loop accum'
+
+
+-- | Generalization of 'mapMaybe' and 'concatMap'. It applies function
+-- to all values in a stream and send values inside resulting
+-- 'Foldable' downstream.
+mapFoldable :: (Monad m, F.Foldable f) => (a -> f b) -> Conduit a m b
+mapFoldable f = awaitForever $ F.mapM_ yield . f
+
+-- | Monadic variant of 'mapFoldable'.
+mapFoldableM :: (Monad m, F.Foldable f) => (a -> m (f b)) -> Conduit a m b
+mapFoldableM f = awaitForever $ F.mapM_ yield <=< lift . f
+
 
 -- | Consume all values from the stream and return as a list. Note that this
 -- will pull all values into memory. For a lazy variant, see
