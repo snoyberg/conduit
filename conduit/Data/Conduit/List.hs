@@ -34,8 +34,10 @@ module Data.Conduit.List
     , mapMaybe
     , mapFoldable
     , catMaybes
+    , concat
     , concatMap
     , concatMapAccum
+    , scanl
     , groupBy
     , isolate
     , filter
@@ -282,6 +284,11 @@ mapMaybeM f = awaitForever $ maybe (return ()) yield <=< lift . f
 catMaybes :: Monad m => Conduit (Maybe a) m a
 catMaybes = awaitForever $ maybe (return ()) yield
 
+-- | Generalization of 'catMaybes'. It puts all values from
+--   'F.Foldable' into stream.
+concat :: (Monad m, F.Foldable f) => Conduit (f a) m a
+concat = awaitForever $ F.mapM_ yield
+
 -- | Apply a transformation to all values in a stream, concatenating the output
 -- values.
 --
@@ -310,6 +317,16 @@ concatMapAccum f =
             let (accum', bs) = f a accum
             Prelude.mapM_ yield bs
             loop accum'
+
+-- | Analog of 'Prelude.scanl' for lists.
+scanl :: Monad m => (a -> s -> (s,b)) -> s -> Conduit a m b
+scanl f =
+    loop
+  where
+    loop s = await >>= F.mapM_ go
+      where
+        go a = case f a s of
+                 (s',b) -> yield b >> loop s'
 
 -- | 'concatMapM' with an accumulator.
 --
