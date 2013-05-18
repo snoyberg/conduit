@@ -44,6 +44,7 @@ module Data.Conduit.List
       -- ** Monadic
     , mapM
     , iterM
+    , scanlM
     , mapMaybeM
     , mapFoldableM
     , concatMapM
@@ -319,20 +320,21 @@ scanl f =
         go a = case f a s of
                  (s',b) -> yield b >> loop s'
 
+-- | Monadic scanl.
+scanlM :: Monad m => (a -> s -> m (s,b)) -> s -> Conduit a m b
+scanlM f =
+    loop
+  where
+    loop s = await >>= F.mapM_ go
+      where
+        go a = do (s',b) <- lift $ f a s
+                  yield b >> loop s'
+
 -- | 'concatMapM' with an accumulator.
 --
 -- Since 0.3.0
 concatMapAccumM :: Monad m => (a -> accum -> m (accum, [b])) -> accum -> Conduit a m b
-concatMapAccumM f =
-    loop
-  where
-    loop accum = do
-        await >>= maybe (return ()) go
-      where
-        go a = do
-            (accum', bs) <- lift $ f a accum
-            Prelude.mapM_ yield bs
-            loop accum'
+concatMapAccumM f x0 = scanlM f x0 =$= concat
 
 
 -- | Generalization of 'mapMaybe' and 'concatMap'. It applies function
