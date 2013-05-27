@@ -36,10 +36,7 @@ newtype Flag = Flag CInt
     }
 
 foreign import ccall "open"
-    c_open :: CString -> Flag -> IO CInt
-
-foreign import ccall "open"
-    c_open_mode :: CString -> Flag -> CInt -> IO CInt
+    c_open :: CString -> Flag -> CInt -> IO CInt
 
 foreign import ccall "read"
     c_read :: FD -> Ptr Word8 -> CInt -> IO CInt
@@ -54,14 +51,14 @@ newtype FD = FD CInt
 
 openRead :: FilePath -> IO FD
 openRead fp = do
-    h <- withCString fp $ \str -> c_open str oRdonly
+    h <- withCString fp $ \str -> c_open str oRdonly 438 -- == octal 666
     if h < 0
         then throwErrno $ "Could not open file: " ++ fp
         else return $ FD h
 
 openWrite :: FilePath -> IO FD
 openWrite fp = do
-    h <- withCString fp $ \str -> c_open_mode str (oWronly .|. oCreat) 438 -- == octal 666
+    h <- withCString fp $ \str -> c_open str (oWronly .|. oCreat) 438 -- == octal 666
     if h < 0
         then throwErrno $ "Could not open file: " ++ fp
         else return $ FD h
