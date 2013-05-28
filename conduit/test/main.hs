@@ -12,7 +12,7 @@ import qualified Data.Conduit.Lazy as CLazy
 import qualified Data.Conduit.Binary as CB
 import qualified Data.Conduit.Text as CT
 import Data.Conduit (runResourceT)
-import Data.Maybe (fromMaybe)
+import Data.Maybe   (fromMaybe,catMaybes)
 import qualified Data.List as DL
 import Control.Monad.ST (runST)
 import Data.Monoid
@@ -31,13 +31,20 @@ import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Writer (execWriter, tell, runWriterT)
 import Control.Monad.Trans.State (evalStateT, get, put)
 import Control.Applicative (pure, (<$>), (<*>))
-import Data.Functor.Identity (runIdentity)
+import Data.Functor.Identity (Identity,runIdentity)
 import Control.Monad (forever)
 import Data.Void (Void)
 import qualified Control.Concurrent.MVar as M
 
 (@=?) :: (Eq a, Show a) => a -> a -> IO ()
 (@=?) = flip shouldBe
+
+-- Quickcheck property for testing equivalence of list processing
+-- functions and their conduit counterparts
+equivToList :: Eq b => ([a] -> [b]) -> CI.Conduit a Identity b -> [a] -> Bool
+equivToList f conduit xs =
+  f xs == runIdentity (CL.sourceList xs C.$$ conduit C.=$= CL.consume)
+
 
 main :: IO ()
 main = hspec $ do
@@ -60,6 +67,17 @@ main = hspec $ do
         it "even" $ do
             x <- runResourceT $ CL.sourceList [1..10] C.$$ CL.filter even C.=$ CL.consume
             x `shouldBe` filter even [1..10 :: Int]
+
+    prop "concat" $ equivToList (concat :: [[Int]]->[Int]) CL.concat
+
+    describe "mapFoldable" $ do
+        prop "list" $
+            equivToList (concatMap (:[]) :: [Int]->[Int]) (CL.mapFoldable  (:[]))
+        let f x = if odd x then Just x else Nothing
+        prop "Maybe" $
+            equivToList (catMaybes . map f :: [Int]->[Int]) (CL.mapFoldable f)
+
+    prop "scanl" $ equivToList (tail . scanl (+) 0 :: [Int]->[Int]) (CL.scanl (\a s -> (a+s,a+s)) 0)
 
     describe "ResourceT" $ do
         it "resourceForkIO" $ do
