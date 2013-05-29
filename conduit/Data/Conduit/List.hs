@@ -287,6 +287,8 @@ catMaybes = awaitForever $ maybe (return ()) yield
 
 -- | Generalization of 'catMaybes'. It puts all values from
 --   'F.Foldable' into stream.
+--
+-- Since 1.0.6
 concat :: (Monad m, F.Foldable f) => Conduit (f a) m a
 concat = awaitForever $ F.mapM_ yield
 
@@ -311,6 +313,8 @@ concatMapAccum :: Monad m => (a -> accum -> (accum, [b])) -> accum -> Conduit a 
 concatMapAccum f x0 = scanl f x0 =$= concat
 
 -- | Analog of 'Prelude.scanl' for lists.
+--
+-- Since 1.0.6
 scanl :: Monad m => (a -> s -> (s,b)) -> s -> Conduit a m b
 scanl f =
     loop
@@ -321,6 +325,8 @@ scanl f =
                  (s',b) -> yield b >> loop s'
 
 -- | Monadic scanl.
+--
+-- Since 1.0.6
 scanlM :: Monad m => (a -> s -> m (s,b)) -> s -> Conduit a m b
 scanlM f =
     loop
@@ -340,10 +346,14 @@ concatMapAccumM f x0 = scanlM f x0 =$= concat
 -- | Generalization of 'mapMaybe' and 'concatMap'. It applies function
 -- to all values in a stream and send values inside resulting
 -- 'Foldable' downstream.
+--
+-- Since 1.0.6
 mapFoldable :: (Monad m, F.Foldable f) => (a -> f b) -> Conduit a m b
 mapFoldable f = awaitForever $ F.mapM_ yield . f
 
 -- | Monadic variant of 'mapFoldable'.
+--
+-- Since 1.0.6
 mapFoldableM :: (Monad m, F.Foldable f) => (a -> m (f b)) -> Conduit a m b
 mapFoldableM f = awaitForever $ F.mapM_ yield <=< lift . f
 
