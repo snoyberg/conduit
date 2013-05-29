@@ -79,6 +79,17 @@ main = hspec $ do
 
     prop "scanl" $ equivToList (tail . scanl (+) 0 :: [Int]->[Int]) (CL.scanl (\a s -> (a+s,a+s)) 0)
 
+    -- mapFoldableM and scanlM are fully polymorphic in type of monad
+    -- so it suffice to check only with Identity.
+    describe "mapFoldableM" $ do
+        prop "list" $
+            equivToList (concatMap (:[]) :: [Int]->[Int]) (CL.mapFoldableM (return . (:[])))
+        let f x = if odd x then Just x else Nothing
+        prop "Maybe" $
+            equivToList (catMaybes . map f :: [Int]->[Int]) (CL.mapFoldableM (return . f))
+
+    prop "scanl" $ equivToList (tail . scanl (+) 0 :: [Int]->[Int]) (CL.scanlM (\a s -> return (a+s,a+s)) 0)
+
     describe "ResourceT" $ do
         it "resourceForkIO" $ do
             counter <- I.newIORef 0
