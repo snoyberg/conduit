@@ -32,16 +32,21 @@ module Data.Conduit.List
       -- ** Pure
     , map
     , mapMaybe
+    , mapFoldable
     , catMaybes
+    , concat
     , concatMap
     , concatMapAccum
+    , scanl
     , groupBy
     , isolate
     , filter
       -- ** Monadic
     , mapM
     , iterM
+    , scanlM
     , mapMaybeM
+    , mapFoldableM
     , concatMapM
     , concatMapAccumM
       -- * Misc
@@ -62,6 +67,7 @@ import Prelude
     , either
     )
 import Data.Monoid (Monoid, mempty, mappend)
+import qualified Data.Foldable as F
 import Data.Conduit
 import Control.Monad (when, (<=<))
 import Control.Monad.Trans.Class (lift)
@@ -279,6 +285,11 @@ mapMaybeM f = awaitForever $ maybe (return ()) yield <=< lift . f
 catMaybes :: Monad m => Conduit (Maybe a) m a
 catMaybes = awaitForever $ maybe (return ()) yield
 
+-- | Generalization of 'catMaybes'. It puts all values from
+--   'F.Foldable' into stream.
+concat :: (Monad m, F.Foldable f) => Conduit (f a) m a
+concat = awaitForever $ F.mapM_ yield
+
 -- | Apply a transformation to all values in a stream, concatenating the output
 -- values.
 --
@@ -297,31 +308,45 @@ concatMapM f = awaitForever $ sourceList <=< lift . f
 --
 -- Since 0.3.0
 concatMapAccum :: Monad m => (a -> accum -> (accum, [b])) -> accum -> Conduit a m b
-concatMapAccum f =
+concatMapAccum f x0 = scanl f x0 =$= concat
+
+-- | Analog of 'Prelude.scanl' for lists.
+scanl :: Monad m => (a -> s -> (s,b)) -> s -> Conduit a m b
+scanl f =
     loop
   where
-    loop accum =
-        await >>= maybe (return ()) go
+    loop s = await >>= F.mapM_ go
       where
-        go a = do
-            let (accum', bs) = f a accum
-            Prelude.mapM_ yield bs
-            loop accum'
+        go a = case f a s of
+                 (s',b) -> yield b >> loop s'
+
+-- | Monadic scanl.
+scanlM :: Monad m => (a -> s -> m (s,b)) -> s -> Conduit a m b
+scanlM f =
+    loop
+  where
+    loop s = await >>= F.mapM_ go
+      where
+        go a = do (s',b) <- lift $ f a s
+                  yield b >> loop s'
 
 -- | 'concatMapM' with an accumulator.
 --
 -- Since 0.3.0
 concatMapAccumM :: Monad m => (a -> accum -> m (accum, [b])) -> accum -> Conduit a m b
-concatMapAccumM f =
-    loop
-  where
-    loop accum = do
-        await >>= maybe (return ()) go
-      where
-        go a = do
-            (accum', bs) <- lift $ f a accum
-            Prelude.mapM_ yield bs
-            loop accum'
+concatMapAccumM f x0 = scanlM f x0 =$= concat
+
+
+-- | Generalization of 'mapMaybe' and 'concatMap'. It applies function
+-- to all values in a stream and send values inside resulting
+-- 'Foldable' downstream.
+mapFoldable :: (Monad m, F.Foldable f) => (a -> f b) -> Conduit a m b
+mapFoldable f = awaitForever $ F.mapM_ yield . f
+
+-- | Monadic variant of 'mapFoldable'.
+mapFoldableM :: (Monad m, F.Foldable f) => (a -> m (f b)) -> Conduit a m b
+mapFoldableM f = awaitForever $ F.mapM_ yield <=< lift . f
+
 
 -- | Consume all values from the stream and return as a list. Note that this
 -- will pull all values into memory. For a lazy variant, see
