@@ -156,7 +156,7 @@ instance MonadReader r m => MonadReader r (Pipe l i o u m) where
 
 -- Provided for doctest
 #ifndef MIN_VERSION_mtl
-#define MIN_VERSION_mtl(x, y, z) 1
+#define MIN_VERSION_mtl(x, y, z) 0
 #endif
 
 instance MonadWriter w m => MonadWriter w (Pipe l i o u m) where
