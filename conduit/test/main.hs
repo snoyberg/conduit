@@ -35,6 +35,7 @@ import Data.Functor.Identity (Identity,runIdentity)
 import Control.Monad (forever)
 import Data.Void (Void)
 import qualified Control.Concurrent.MVar as M
+import Control.Monad.Error (catchError, throwError, Error)
 
 (@=?) :: (Eq a, Show a) => a -> a -> IO ()
 (@=?) = flip shouldBe
@@ -913,5 +914,23 @@ main = hspec $ do
                 lbs' `shouldBe` lbs
                 fromIntegral len `shouldBe` L.length lbs'
 
+    describe "mtl instances" $ do
+        it "ErrorT" $ do
+            let src = flip catchError (const $ C.yield 4) $ do
+                    lift $ return ()
+                    C.yield 1
+                    lift $ return ()
+                    C.yield 2
+                    lift $ return ()
+                    () <- throwError DummyError
+                    lift $ return ()
+                    C.yield 3
+                    lift $ return ()
+            (src C.$$ CL.consume) `shouldBe` Right [1, 2, 4 :: Int]
+
 it' :: String -> IO () -> Spec
 it' = it
+
+data DummyError = DummyError
+    deriving (Show, Eq)
+instance Error DummyError

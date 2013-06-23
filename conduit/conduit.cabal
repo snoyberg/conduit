@@ -54,6 +54,7 @@ Library
                      , monad-control            >= 0.3.1        && < 0.4
                      , containers
                      , transformers             >= 0.2.2        && < 0.4
+                     , mtl
                      , bytestring               >= 0.9
                      , text                     >= 0.11
                      , void                     >= 0.5.5
@@ -72,6 +73,7 @@ test-suite test
                    , QuickCheck
                    , bytestring
                    , transformers
+                   , mtl
                    , text
                    , resourcet
                    , void

@@ -1,5 +1,6 @@
 {-# OPTIONS_HADDOCK not-home #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE RankNTypes #-}
@@ -52,6 +53,11 @@ module Data.Conduit.Internal
 
 import Control.Applicative (Applicative (..))
 import Control.Monad ((>=>), liftM, ap, when)
+import Control.Monad.Error.Class(MonadError(..))
+import Control.Monad.Reader.Class(MonadReader(..))
+import Control.Monad.RWS.Class(MonadRWS())
+import Control.Monad.Writer.Class(MonadWriter(..))
+import Control.Monad.State.Class(MonadState(..))
 import Control.Monad.Trans.Class (MonadTrans (lift))
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Base (MonadBase (liftBase))
@@ -60,7 +66,7 @@ import Data.Monoid (Monoid (mappend, mempty))
 import Control.Monad.Trans.Resource
 import qualified GHC.Exts
 import qualified Data.IORef as I
-import Control.Monad.Morph
+import Control.Monad.Morph (MFunctor (..))
 
 -- | The underlying datatype for all the types in this package.  In has six
 -- type parameters:
@@ -140,6 +146,60 @@ instance Monad m => Monoid (Pipe l i o u m ()) where
 instance MonadResource m => MonadResource (Pipe l i o u m) where
     liftResourceT = lift . liftResourceT
 
+instance MonadReader r m => MonadReader r (Pipe l i o u m) where
+    ask = lift ask
+    local f (HaveOutput p c o) = HaveOutput (local f p) c o
+    local f (NeedInput p c) = NeedInput (\i -> local f (p i)) (\u -> local f (c u))
+    local _ (Done x) = Done x
+    local f (PipeM mp) = PipeM (local f mp)
+    local f (Leftover p i) = Leftover (local f p) i
+
+-- Provided for doctest
+#ifndef MIN_VERSION_mtl
+#define MIN_VERSION_mtl(x, y, z) 0
+#endif
+
+instance MonadWriter w m => MonadWriter w (Pipe l i o u m) where
+#if MIN_VERSION_mtl(2, 1, 0)
+    writer = lift . writer
+#endif
+
+    tell = lift . tell
+
+    listen (HaveOutput p c o) = HaveOutput (listen p) c o
+    listen (NeedInput p c) = NeedInput (\i -> listen (p i)) (\u -> listen (c u))
+    listen (Done x) = Done (x,mempty)
+    listen (PipeM mp) =
+      PipeM $
+      do (p,w) <- listen mp
+         return $ do (x,w') <- listen p
+                     return (x, w `mappend` w')
+    listen (Leftover p i) = Leftover (listen p) i
+
+    pass (HaveOutput p c o) = HaveOutput (pass p) c o
+    pass (NeedInput p c) = NeedInput (\i -> pass (p i)) (\u -> pass (c u))
+    pass (PipeM mp) = PipeM $ mp >>= (return . pass)
+    pass (Done (x,_)) = Done x
+    pass (Leftover p i) = Leftover (pass p) i
+
+instance MonadState s m => MonadState s (Pipe l i o u m) where
+    get = lift get
+    put = lift . put
+#if MIN_VERSION_mtl(2, 1, 0)
+    state = lift . state
+#endif
+
+instance MonadRWS r w s m => MonadRWS r w s (Pipe l i o u m)
+
+instance MonadError e m => MonadError e (Pipe l i o u m) where
+    throwError = lift . throwError
+    catchError (HaveOutput p c o) f = HaveOutput (catchError p f) c o
+    catchError (NeedInput p c) f = NeedInput (\i -> catchError (p i) f) (\u -> catchError (c u) f)
+    catchError (Done x) _ = Done x
+    catchError (PipeM mp) f =
+      PipeM $ catchError (liftM (flip catchError f) mp) (\e -> return (f e))
+    catchError (Leftover p i) f = Leftover (catchError p f) i
+
 -- | Core datatype of the conduit package. This type represents a general
 -- component which can consume a stream of input values @i@, produce a stream
 -- of output values @o@, perform actions in the @m@ monad, and produce a final
@@ -149,8 +209,35 @@ instance MonadResource m => MonadResource (Pipe l i o u m) where
 -- Since 1.0.0
 newtype ConduitM i o m r = ConduitM { unConduitM :: Pipe i i o () m r }
     deriving (Functor, Applicative, Monad, MonadIO, MonadTrans, MonadThrow, MonadActive, MonadResource, MFunctor)
+
+instance MonadReader r m => MonadReader r (ConduitM i o m) where
+    ask = ConduitM ask
+    local f (ConduitM m) = ConduitM (local f m)
+
+instance MonadWriter w m => MonadWriter w (ConduitM i o m) where
+#if MIN_VERSION_mtl(2, 1, 0)
+    writer = ConduitM . writer
+#endif
+    tell = ConduitM . tell
+    listen (ConduitM m) = ConduitM (listen m)
+    pass (ConduitM m) = ConduitM (pass m)
+
+instance MonadState s m => MonadState s (ConduitM i o m) where
+    get = ConduitM get
+    put = ConduitM . put
+#if MIN_VERSION_mtl(2, 1, 0)
+    state = ConduitM . state
+#endif
+
+instance MonadRWS r w s m => MonadRWS r w s (ConduitM i o m)
+
+instance MonadError e m => MonadError e (ConduitM i o m) where
+    throwError = ConduitM . throwError
+    catchError (ConduitM m) f = ConduitM $ catchError m (unConduitM . f)
+
 instance MonadBase base m => MonadBase base (ConduitM i o m) where
     liftBase = lift . liftBase
+
 instance Monad m => Monoid (ConduitM i o m ()) where
     mempty = return ()
     mappend = (>>)
