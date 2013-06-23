@@ -187,7 +187,7 @@ instance MonadError e m => MonadError e (Pipe l i o u m) where
     catchError (NeedInput p c) f = NeedInput (\i -> catchError (p i) f) (\u -> catchError (c u) f)
     catchError (Done x) _ = Done x
     catchError (PipeM mp) f =
-      PipeM $ catchError mp (\e -> return (f e))
+      PipeM $ catchError (liftM (flip catchError f) mp) (\e -> return (f e))
     catchError (Leftover p i) f = Leftover (catchError p f) i
 
 -- | Core datatype of the conduit package. This type represents a general
