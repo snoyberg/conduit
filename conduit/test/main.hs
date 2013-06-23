@@ -922,11 +922,11 @@ main = hspec $ do
                     lift $ return ()
                     C.yield 2
                     lift $ return ()
-                    throwError DummyError
+                    () <- throwError DummyError
                     lift $ return ()
                     C.yield 3
                     lift $ return ()
-            (src C.$$ CL.consume) `shouldBe` Right [1, 2, 4]
+            (src C.$$ CL.consume) `shouldBe` Right [1, 2, 4 :: Int]
 
 it' :: String -> IO () -> Spec
 it' = it

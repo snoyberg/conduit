@@ -73,6 +73,7 @@ test-suite test
                    , QuickCheck
                    , bytestring
                    , transformers
+                   , mtl
                    , text
                    , resourcet
                    , void

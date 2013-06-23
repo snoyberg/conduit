@@ -1,5 +1,6 @@
 {-# OPTIONS_HADDOCK not-home #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE RankNTypes #-}
@@ -65,7 +66,7 @@ import Data.Monoid (Monoid (mappend, mempty))
 import Control.Monad.Trans.Resource
 import qualified GHC.Exts
 import qualified Data.IORef as I
-import Control.Monad.Morph
+import Control.Monad.Morph (MFunctor (..))
 
 -- | The underlying datatype for all the types in this package.  In has six
 -- type parameters:
@@ -153,8 +154,15 @@ instance MonadReader r m => MonadReader r (Pipe l i o u m) where
     local f (PipeM mp) = PipeM (local f mp)
     local f (Leftover p i) = Leftover (local f p) i
 
+-- Provided for doctest
+#ifndef MIN_VERSION_mtl
+#define MIN_VERSION_mtl(x, y, z) 1
+#endif
+
 instance MonadWriter w m => MonadWriter w (Pipe l i o u m) where
+#if MIN_VERSION_mtl(2, 1, 0)
     writer = lift . writer
+#endif
 
     tell = lift . tell
 
@@ -177,7 +185,9 @@ instance MonadWriter w m => MonadWriter w (Pipe l i o u m) where
 instance MonadState s m => MonadState s (Pipe l i o u m) where
     get = lift get
     put = lift . put
+#if MIN_VERSION_mtl(2, 1, 0)
     state = lift . state
+#endif
 
 instance MonadRWS r w s m => MonadRWS r w s (Pipe l i o u m)
 
@@ -205,7 +215,9 @@ instance MonadReader r m => MonadReader r (ConduitM i o m) where
     local f (ConduitM m) = ConduitM (local f m)
 
 instance MonadWriter w m => MonadWriter w (ConduitM i o m) where
+#if MIN_VERSION_mtl(2, 1, 0)
     writer = ConduitM . writer
+#endif
     tell = ConduitM . tell
     listen (ConduitM m) = ConduitM (listen m)
     pass (ConduitM m) = ConduitM (pass m)
@@ -213,7 +225,9 @@ instance MonadWriter w m => MonadWriter w (ConduitM i o m) where
 instance MonadState s m => MonadState s (ConduitM i o m) where
     get = ConduitM get
     put = ConduitM . put
+#if MIN_VERSION_mtl(2, 1, 0)
     state = ConduitM . state
+#endif
 
 instance MonadRWS r w s m => MonadRWS r w s (ConduitM i o m)
 
