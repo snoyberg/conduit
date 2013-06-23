@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes #-}
 module Data.Conduit.ImageSize
     ( sinkImageSize
     , Size (..)
