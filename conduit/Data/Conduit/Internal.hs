@@ -144,7 +144,7 @@ instance Monad m => Monoid (Pipe l i o u m ()) where
 
 instance MonadResource m => MonadResource (Pipe l i o u m) where
     liftResourceT = lift . liftResourceT
-    
+
 instance MonadReader r m => MonadReader r (Pipe l i o u m) where
     ask = lift ask
     local f (HaveOutput p c o) = HaveOutput (local f p) c o
@@ -152,35 +152,35 @@ instance MonadReader r m => MonadReader r (Pipe l i o u m) where
     local _ (Done x) = Done x
     local f (PipeM mp) = PipeM (local f mp)
     local f (Leftover p i) = Leftover (local f p) i
-    
+
 instance MonadWriter w m => MonadWriter w (Pipe l i o u m) where
     writer = lift . writer
-    
+
     tell = lift . tell
-    
+
     listen (HaveOutput p c o) = HaveOutput (listen p) c o
     listen (NeedInput p c) = NeedInput (\i -> listen (p i)) (\u -> listen (c u))
     listen (Done x) = Done (x,mempty)
-    listen (PipeM mp) = 
+    listen (PipeM mp) =
       PipeM $
       do (p,w) <- listen mp
          return $ do (x,w') <- listen p
                      return (x, w `mappend` w')
     listen (Leftover p i) = Leftover (listen p) i
-  
+
     pass (HaveOutput p c o) = HaveOutput (pass p) c o
     pass (NeedInput p c) = NeedInput (\i -> pass (p i)) (\u -> pass (c u))
     pass (PipeM mp) = PipeM $ mp >>= (return . pass)
     pass (Done (x,_)) = Done x
     pass (Leftover p i) = Leftover (pass p) i
-                                
+
 instance MonadState s m => MonadState s (Pipe l i o u m) where
     get = lift get
     put = lift . put
     state = lift . state
-  
+
 instance MonadRWS r w s m => MonadRWS r w s (Pipe l i o u m)
-  
+
 instance MonadError e m => MonadError e (Pipe l i o u m) where
     throwError = lift . throwError
     catchError (HaveOutput p c o) f = HaveOutput (catchError p f) c o
@@ -203,18 +203,18 @@ newtype ConduitM i o m r = ConduitM { unConduitM :: Pipe i i o () m r }
 instance MonadReader r m => MonadReader r (ConduitM i o m) where
     ask = ConduitM ask
     local f (ConduitM m) = ConduitM (local f m)
-  
+
 instance MonadWriter w m => MonadWriter w (ConduitM i o m) where
     writer = ConduitM . writer
     tell = ConduitM . tell
     listen (ConduitM m) = ConduitM (listen m)
     pass (ConduitM m) = ConduitM (pass m)
-  
+
 instance MonadState s m => MonadState s (ConduitM i o m) where
     get = ConduitM get
     put = ConduitM . put
     state = ConduitM . state
-  
+
 instance MonadRWS r w s m => MonadRWS r w s (ConduitM i o m)
 
 instance MonadError e m => MonadError e (ConduitM i o m) where
@@ -223,7 +223,7 @@ instance MonadError e m => MonadError e (ConduitM i o m) where
 
 instance MonadBase base m => MonadBase base (ConduitM i o m) where
     liftBase = lift . liftBase
-    
+
 instance Monad m => Monoid (ConduitM i o m ()) where
     mempty = return ()
     mappend = (>>)
