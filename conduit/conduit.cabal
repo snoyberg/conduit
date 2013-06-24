@@ -31,6 +31,7 @@ extra-source-files:  test/main.hs, test/random
 
 flag nohandles
     default: False
+    Description: experimental code to use raw system calls in place of handles. Not recommended for general use
 
 Library
   if os(windows)
