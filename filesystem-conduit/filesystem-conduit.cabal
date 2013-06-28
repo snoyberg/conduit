@@ -2,7 +2,7 @@ Name:                filesystem-conduit
 Version:             1.0.0
 Synopsis:            Use system-filepath data types with conduits.
 Description:         Provides ability to traverse a folder structure efficiently, as well as convenience wrappers for reading from and writing to files.
-License:             BSD3
+License:             MIT
 License-file:        LICENSE
 Author:              Michael Snoyman
 Maintainer:          michael@snoyman.com
