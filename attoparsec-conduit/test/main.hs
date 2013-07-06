@@ -64,6 +64,30 @@ main = hspec $ do
                     case fromException e of
                         Just pe -> do
                             errorPosition pe `shouldBe` Position badLine badCol
+        it "works after new line in text" $ do
+            let input = ["aaa\n", "aaa\n\n", "aaa", "aa\nb\naaaa"]
+                badLine = 5
+                badCol = 1
+                parser = Data.Attoparsec.Text.endOfInput <|> (Data.Attoparsec.Text.notChar 'b' >> parser)
+                sink = sinkParser parser
+            ea <- runExceptionT $ CL.sourceList input $$ sink
+            case ea of
+                Left e ->
+                    case fromException e of
+                        Just pe -> do
+                            errorPosition pe `shouldBe` Position badLine badCol
+        it "works after new line in bytestring" $ do
+            let input = ["aaa\n", "aaa\n\n", "aaa", "aa\nb\naaaa"]
+                badLine = 5
+                badCol = 1
+                parser = Data.Attoparsec.ByteString.Char8.endOfInput <|> (Data.Attoparsec.ByteString.Char8.notChar 'b' >> parser)
+                sink = sinkParser parser
+            ea <- runExceptionT $ CL.sourceList input $$ sink
+            case ea of
+                Left e ->
+                    case fromException e of
+                        Just pe -> do
+                            errorPosition pe `shouldBe` Position badLine badCol
 
     describe "conduitParser" $ do
         it "parses a repeated stream" $ do
@@ -74,7 +98,10 @@ main = hspec $ do
             let chk a = case a of
                           Left{} -> False
                           Right (_, xs) -> xs == "aaa"
+                chkp 1 = (PositionRange (Position 1 0) (Position 2 1))
+                chkp l = (PositionRange (Position l 1) (Position (l+1) 1))
             forM_ ea $ \ a -> a `shouldSatisfy` chk :: Expectation
+            forM_ (zip ea [1..]) $ \ (Right (pos, _), l) -> pos `shouldBe` chkp l
             length ea `shouldBe` 4
 
 
