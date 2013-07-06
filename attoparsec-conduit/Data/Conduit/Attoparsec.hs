@@ -32,6 +32,7 @@ import qualified Data.ByteString            as B
 import qualified Data.ByteString.Char8      as B8
 import           Data.Maybe                 (fromMaybe)
 import qualified Data.Text                  as T
+import qualified Data.Text.Internal         as TI
 import           Data.Typeable              (Typeable)
 import           Prelude                    hiding (lines)
 
@@ -77,8 +78,11 @@ class AttoparsecInput a where
     isNull :: a -> Bool
     notEmpty :: [a] -> [a]
     getLinesCols :: a -> (Int, Int)
-    take' :: Int -> a -> a
-    length' :: a -> Int
+
+    -- | Return the beginning of the first input with the length of
+    -- the second input removed. Assumes the second string is shorter
+    -- than the first.
+    stripFromEnd :: a -> a -> a
 
 instance AttoparsecInput B.ByteString where
     parseA = Data.Attoparsec.ByteString.parse
@@ -94,8 +98,7 @@ instance AttoparsecInput B.ByteString where
             case B8.lines b of
                 [] -> 0
                 ls -> B.length $ last ls
-    take' = B.take
-    length' = B.length
+    stripFromEnd b1 b2 = B.take (B.length b1 - B.length b2) b1
 
 instance AttoparsecInput T.Text where
     parseA = Data.Attoparsec.Text.parse
@@ -111,9 +114,8 @@ instance AttoparsecInput T.Text where
             case T.lines t of
                 [] -> 0
                 ls -> T.length $ last ls
-    take' = T.take
-    length' = T.length
-
+    stripFromEnd (TI.Text arr1 off1 len1) (TI.Text _ _ len2) =
+        TI.textP arr1 off1 (len1 - len2)
 
 -- | Convert an Attoparsec 'A.Parser' into a 'Sink'. The parser will
 -- be streamed bytes until it returns 'A.Done' or 'A.Fail'.
@@ -198,12 +200,12 @@ sinkParserPos pos0 p = sink empty pos0 (parseA p)
             let pos'
                     | end       = pos
                     | otherwise = addLinesCols prev pos
-                y = take' (length' c - length' lo) c
+                y = stripFromEnd c lo
                 pos'' = addLinesCols y pos'
             unless (isNull lo) $ leftover lo
             pos'' `seq` return $! Right (pos'', x)
         go end c (A.Fail rest contexts msg) =
-            let x = take' (length' c - length' rest) c
+            let x = stripFromEnd c rest
                 pos'
                     | end       = pos
                     | otherwise = addLinesCols prev pos
