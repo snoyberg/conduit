@@ -90,14 +90,10 @@ instance AttoparsecInput B.ByteString where
     empty = B.empty
     isNull = B.null
     notEmpty = filter (not . B.null)
-    getLinesCols b =
-        (lines, cols)
+    getLinesCols = B.foldl' f (0, 0)
       where
-        lines = B.count 10 b
-        cols =
-            case B8.lines b of
-                [] -> 0
-                ls -> B.length $ last ls
+        f (!line, !col) ch | ch == 10 = (line + 1, 0)
+                           | otherwise = (line, col + 1)
     stripFromEnd b1 b2 = B.take (B.length b1 - B.length b2) b1
 
 instance AttoparsecInput T.Text where
@@ -106,14 +102,10 @@ instance AttoparsecInput T.Text where
     empty = T.empty
     isNull = T.null
     notEmpty = filter (not . T.null)
-    getLinesCols t =
-        (lines, cols)
+    getLinesCols = T.foldl' f (0, 0)
       where
-        lines = T.count (T.pack "\n") t
-        cols =
-            case T.lines t of
-                [] -> 0
-                ls -> T.length $ last ls
+        f (!line, !col) ch | ch == '\n' = (line + 1, 0)
+                           | otherwise = (line, col + 1)
     stripFromEnd (TI.Text arr1 off1 len1) (TI.Text _ _ len2) =
         TI.textP arr1 off1 (len1 - len2)
 
