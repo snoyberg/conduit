@@ -302,7 +302,7 @@ forkExecuteLog cmd args menv mwdir mstdin rlog = bracketOnError
         (\(x, y) -> (,) <$> fdToHandle x <*> fdToHandle y)
     cleanupPipes (x, y) = hClose x `finally` hClose y
 
-    usePipes (readerH, writerH) = do
+    usePipes pipes@(readerH, writerH) = do
         (min, _, _, ph) <- createProcess CreateProcess
             { cmdspec = RawCommand (S8.unpack cmd) (map S8.unpack args)
             , cwd = S8.unpack <$> mwdir
@@ -313,7 +313,7 @@ forkExecuteLog cmd args menv mwdir mstdin rlog = bracketOnError
             , close_fds = True
             , create_group = True
             }
-        ignoreExceptions $ addAttachMessage ph
+        ignoreExceptions $ addAttachMessage pipes ph
         void $ forkIO $ ignoreExceptions $
             (sourceHandle readerH $$ CL.mapM_ (addChunk rlog)) `finally` hClose readerH
         case (min, mstdin) of
@@ -323,16 +323,18 @@ forkExecuteLog cmd args menv mwdir mstdin rlog = bracketOnError
             _ -> error $ "Invariant violated: Data.Conduit.Process.Unix.forkExecuteLog"
         return ph
 
-    addAttachMessage ph = withProcessHandle_ ph $ \p_ -> do
+    addAttachMessage pipes ph = withProcessHandle_ ph $ \p_ -> do
         now <- getCurrentTime
         case p_ of
-            ClosedHandle ec -> addChunk rlog $ S8.concat
-                [ "\n\n"
-                , S8.pack $ show now
-                , ": Process immediately died with exit code "
-                , S8.pack $ show ec
-                , "\n\n"
-                ]
+            ClosedHandle ec -> do
+                addChunk rlog $ S8.concat
+                    [ "\n\n"
+                    , S8.pack $ show now
+                    , ": Process immediately died with exit code "
+                    , S8.pack $ show ec
+                    , "\n\n"
+                    ]
+                cleanupPipes pipes
             OpenHandle h -> do
                 addChunk rlog $ S8.concat
                     [ "\n\n"
@@ -353,4 +355,5 @@ forkExecuteLog cmd args menv mwdir mstdin rlog = bracketOnError
                         , S8.pack $ show ec
                         , "\n\n"
                         ]
+                    cleanupPipes pipes
         return p_
