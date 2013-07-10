@@ -1,8 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell   #-}
 module Data.Conduit.LogFile
-    ( LogFile
-    , start
+    ( RotatingLog
+    , openRotatingLog
     , addChunk
     , close
     , defaultMaxTotal
@@ -27,38 +27,44 @@ import           System.Mem.Weak                (addFinalizer)
 data Command = AddChunk !S.ByteString
              | Close
 
+-- | Represents a folder used for totating log files.
+--
+-- Since 0.2.1
+data RotatingLog = RotatingLog !(TVar State)
 -- Use a data instead of a newtype so that we can attach a finalizer.
-data LogFile = LogFile !(TVar State)
 
 data State = Closed
            | Running !SIO.Handle !(TBQueue Command)
 
-queue :: Command -> LogFile -> IO ()
-queue cmd (LogFile ts) = atomically $ do
+queue :: Command -> RotatingLog -> IO ()
+queue cmd (RotatingLog ts) = atomically $ do
     s <- readTVar ts
     case s of
         Closed -> return ()
         Running _ q -> writeTBQueue q cmd
 
-addChunk :: LogFile -> S.ByteString -> IO ()
+addChunk :: RotatingLog -> S.ByteString -> IO ()
 addChunk lf bs = queue (AddChunk bs) lf
 
-close :: LogFile -> IO ()
+close :: RotatingLog -> IO ()
 close = queue Close
 
-start :: FilePath -- ^ folder to contain logs
-      -> Word -- ^ maximum log file size, in bytes
-      -> IO LogFile
-start dir maxTotal = do
+-- | Create a new @RotatingLog@.
+--
+-- Since 0.2.1
+openRotatingLog :: FilePath -- ^ folder to contain logs
+                -> Word -- ^ maximum log file size, in bytes
+                -> IO RotatingLog
+openRotatingLog dir maxTotal = do
     createDirectoryIfMissing True dir
     bracketOnError (moveCurrent dir) SIO.hClose $ \handle -> do
         queue <- newTBQueueIO 5
         let s = Running handle queue
         ts <- newTVarIO s
         void $ forkIO $ loop dir ts maxTotal
-        let lf = LogFile ts
-        addFinalizer lf (atomically (writeTBQueue queue Close))
-        return lf
+        let rl = RotatingLog ts
+        addFinalizer rl (atomically (writeTBQueue queue Close))
+        return rl
 
 current :: FilePath -- ^ folder containing logs
         -> FilePath

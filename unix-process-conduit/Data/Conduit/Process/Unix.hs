@@ -22,6 +22,11 @@ module Data.Conduit.Process.Unix
     , initProcessTracker
     , trackProcess
     , untrackProcess
+
+      -- * Logging
+    , RotatingLog
+    , openRotatingLog
+    , forkExecuteLog
     ) where
 
 import           Control.Applicative             ((<$>), (<*>))
@@ -29,7 +34,8 @@ import           Control.Arrow                   ((***))
 import           Control.Concurrent              (forkIO)
 import           Control.Concurrent.MVar         (readMVar)
 import           Control.Exception               (Exception, SomeException,
-                                                  finally, handle, mask, mask_,
+                                                  bracketOnError, finally,
+                                                  handle, mask, mask_,
                                                   onException, throwIO)
 import           Control.Monad                   (unless, void, when, zipWithM_)
 import           Control.Monad.Trans.Class       (lift)
@@ -42,8 +48,11 @@ import           Data.ByteString.Unsafe          (unsafePackCStringFinalizer,
 import           Data.Conduit                    (Sink, Source, yield, ($$))
 import           Data.Conduit.Binary             (sinkHandle, sourceHandle)
 import           Data.Conduit.List               (mapM_)
+import qualified Data.Conduit.List               as CL
+import           Data.Conduit.LogFile
 import           Data.IORef                      (IORef, newIORef, readIORef,
                                                   writeIORef)
+import           Data.Time                       (getCurrentTime)
 import           Data.Typeable                   (Typeable)
 import           Foreign.C.String
 import           Foreign.C.Types
@@ -55,24 +64,24 @@ import           Prelude                         (Bool (..), IO, Maybe (..),
                                                   Monad (..), Show, const,
                                                   error, flip, fmap,
                                                   fromIntegral, fst, head, id,
-                                                  length, map, maybe, snd, ($),
-                                                  ($!), (*), (.), (==))
+                                                  length, map, maybe, show, snd,
+                                                  ($), ($!), (*), (.), (==))
 import           System.IO                       (hClose)
 import           System.Posix.IO.ByteString      (FdOption (CloseOnExec),
                                                   closeFd, createPipe,
-                                                  fdReadBuf, fdWriteBuf,
-                                                  setFdOption)
+                                                  fdReadBuf, fdToHandle,
+                                                  fdWriteBuf, setFdOption)
 import           System.Posix.Process.ByteString (ProcessStatus (..),
                                                   getProcessGroupIDOf,
                                                   getProcessStatus)
 import           System.Posix.Signals            (Signal, sigKILL,
                                                   signalProcess,
                                                   signalProcessGroup)
-import           System.Posix.Types              (CPid (..))
-import           System.Posix.Types              (Fd)
-import           System.Posix.Types              (ProcessID)
+import           System.Posix.Types              (CPid (..), Fd, ProcessID)
 import           System.Process
-import           System.Process.Internals
+import           System.Process.Internals        (ProcessHandle (..),
+                                                  ProcessHandle__ (..),
+                                                  withProcessHandle_)
 
 -- | Kill a process by sending it the KILL (9) signal.
 --
@@ -138,7 +147,6 @@ forkExecuteFile cmd args menv mwdir mstdin mstdout mstderr = do
         Nothing -> return ()
     return ph
   where
-    ignoreExceptions = handle (\(_ :: SomeException) -> return ())
     cp = CreateProcess
         { cmdspec = RawCommand (S8.unpack cmd) (map S8.unpack args)
         , cwd = S8.unpack <$> mwdir
@@ -149,6 +157,9 @@ forkExecuteFile cmd args menv mwdir mstdin mstdout mstderr = do
         , close_fds = True
         , create_group = True
         }
+
+ignoreExceptions :: IO () -> IO ()
+ignoreExceptions = handle (\(_ :: SomeException) -> return ())
 
 closeOnExec :: Fd -> IO ()
 closeOnExec fd = setFdOption fd CloseOnExec True
@@ -268,3 +279,78 @@ untrackProcess (TrackedProcess pt ipid) = mask_ $ do
         Pid pid -> do
             c_track_process pt pid 0
             writeIORef ipid NoPid
+
+-- | Fork and execute a subprocess, sending stdout and stderr to the specified
+-- rotating log.
+--
+-- Since 0.2.1
+forkExecuteLog :: ByteString -- ^ command
+               -> [ByteString] -- ^ args
+               -> Maybe [(ByteString, ByteString)] -- ^ environment
+               -> Maybe ByteString -- ^ working directory
+               -> Maybe (Source IO ByteString) -- ^ stdin
+               -> RotatingLog -- ^ both stdout and stderr will be sent to this location
+               -> IO ProcessHandle
+forkExecuteLog cmd args menv mwdir mstdin rlog = bracketOnError
+    setupPipe
+    cleanupPipes
+    usePipes
+  where
+    setupPipe = bracketOnError
+        createPipe
+        (\(x, y) -> closeFd x `finally` closeFd y)
+        (\(x, y) -> (,) <$> fdToHandle x <*> fdToHandle y)
+    cleanupPipes (x, y) = hClose x `finally` hClose y
+
+    usePipes (readerH, writerH) = do
+        (min, _, _, ph) <- createProcess CreateProcess
+            { cmdspec = RawCommand (S8.unpack cmd) (map S8.unpack args)
+            , cwd = S8.unpack <$> mwdir
+            , env = map (S8.unpack *** S8.unpack) <$> menv
+            , std_in = maybe Inherit (const CreatePipe) mstdin
+            , std_out = UseHandle writerH
+            , std_err = UseHandle writerH
+            , close_fds = True
+            , create_group = True
+            }
+        ignoreExceptions $ addAttachMessage ph
+        void $ forkIO $ ignoreExceptions $
+            (sourceHandle readerH $$ CL.mapM_ (addChunk rlog)) `finally` hClose readerH
+        case (min, mstdin) of
+            (Just h, Just source) -> void $ forkIO $ ignoreExceptions $
+                (source $$ sinkHandle h) `finally` hClose h
+            (Nothing, Nothing) -> return ()
+            _ -> error $ "Invariant violated: Data.Conduit.Process.Unix.forkExecuteLog"
+        return ph
+
+    addAttachMessage ph = withProcessHandle_ ph $ \p_ -> do
+        now <- getCurrentTime
+        case p_ of
+            ClosedHandle ec -> addChunk rlog $ S8.concat
+                [ "\n\n"
+                , S8.pack $ show now
+                , ": Process immediately died with exit code "
+                , S8.pack $ show ec
+                , "\n\n"
+                ]
+            OpenHandle h -> do
+                addChunk rlog $ S8.concat
+                    [ "\n\n"
+                    , S8.pack $ show now
+                    , ": Attached new process "
+                    , S8.pack $ show h
+                    , "\n\n"
+                    ]
+                void $ forkIO $ do
+                    ec <- waitForProcess ph
+                    now' <- getCurrentTime
+                    addChunk rlog $ S8.concat
+                        [ "\n\n"
+                        , S8.pack $ show now'
+                        , ": Process "
+                        , S8.pack $show h
+                        , " exited with exit code "
+                        , S8.pack $ show ec
+                        , "\n\n"
+                        ]
+        return p_
