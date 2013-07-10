@@ -1,18 +1,30 @@
-{-# LANGUAGE ForeignFunctionInterface, OverloadedStrings, ScopedTypeVariables #-}
+{-# LANGUAGE ForeignFunctionInterface, OverloadedStrings, ScopedTypeVariables, DeriveDataTypeable #-}
 module Data.Conduit.Process.Unix
-    ( forkExecuteFile
+    ( -- * Starting processes
+      forkExecuteFile
     , killProcess
     , terminateProcess
     , waitForProcess
     , ProcessStatus (..)
     , signalProcessHandle
     , signalProcessHandleGroup
+      -- * Process tracking
+      -- $processTracker
+
+      -- ** Types
+    , ProcessTracker
+    , TrackedProcess
+    , ProcessTrackerException (..)
+      -- ** Functions
+    , initProcessTracker
+    , trackProcess
+    , untrackProcess
     ) where
 
 import           Control.Applicative               ((<$>), (<*>))
 import           Control.Arrow                     ((***))
 import           Control.Concurrent                (forkIO)
-import           Control.Exception                 (finally, mask, onException, handle, SomeException)
+import           Control.Exception                 (finally, mask, onException, handle, SomeException, Exception, mask_, throwIO)
 import           Control.Monad                     (unless, void, zipWithM_, when)
 import           Control.Monad.Trans.Class         (lift)
 import           Data.ByteString                   (ByteString, null, concat, append, singleton)
@@ -23,6 +35,10 @@ import           Data.ByteString.Unsafe            (unsafePackCStringFinalizer,
 import           Data.Conduit                      (Sink, Source, yield, ($$))
 import           Data.Conduit.Binary               (sinkHandle, sourceHandle)
 import           Data.Conduit.List                 (mapM_)
+import           Data.Typeable (Typeable)
+import System.Posix.Types (CPid (..))
+import Control.Concurrent.MVar (readMVar)
+import           Data.IORef                        (IORef, newIORef, readIORef, writeIORef)
 import           Foreign.Marshal.Alloc             (free, mallocBytes, allocaBytes)
 import           Foreign.Ptr                       (castPtr, Ptr, nullPtr)
 import           Foreign.Storable                  (sizeOf, pokeElemOff)
@@ -30,7 +46,7 @@ import           Prelude                           (Bool (..), IO, Maybe (..),
                                                     Monad (..), flip,
                                                     fromIntegral, fst, maybe,
                                                     snd, ($), (.), (==), error, id, length, (*),
-                                                    head, map, const, fmap)
+                                                    head, map, const, fmap, ($!), Show)
 import           System.Posix.Types                (Fd)
 import           System.Posix.IO.ByteString        (closeFd, createPipe,
                                                     fdReadBuf, fdWriteBuf,
@@ -146,3 +162,96 @@ withArgs bss0 f =
 
     run ptrs = allocaBytes (length ptrs * sizeOf (head ptrs)) $ \res ->
         zipWithM_ (pokeElemOff res) [0..] ptrs >> f res
+
+-- $processTracker
+--
+-- Ensure that child processes are killed, regardless of how the parent process exits.
+--
+-- The technique used here is:
+--
+-- * Create a pipe.
+--
+-- * Fork a new child process that listens on the pipe.
+--
+-- * In the current process, send updates about processes that should be auto-killed.
+--
+-- * When the parent process dies, listening on the pipe in the child process will get an EOF.
+--
+-- * When the child process receives that EOF, it kills all processes it was told to auto-kill.
+--
+-- This code was originally written for Keter, but was moved to unix-process
+-- conduit in the 0.2.1 release.
+
+foreign import ccall unsafe "launch_process_tracker"
+    c_launch_process_tracker :: IO CInt
+
+foreign import ccall unsafe "track_process"
+    c_track_process :: ProcessTracker -> CPid -> CInt -> IO ()
+
+-- | Represents the child process which handles process cleanup.
+--
+-- Since 0.2.1
+newtype ProcessTracker = ProcessTracker CInt
+
+-- | Represents a child process which is currently being tracked by the cleanup
+-- child process.
+--
+-- Since 0.2.1
+data TrackedProcess = TrackedProcess !ProcessTracker !(IORef MaybePid)
+
+data MaybePid = NoPid | Pid !CPid
+
+-- | Fork off the child cleanup process.
+--
+-- This will ideally only be run once for your entire application.
+--
+-- Since 0.2.1
+initProcessTracker :: IO ProcessTracker
+initProcessTracker = do
+    i <- c_launch_process_tracker
+    if i == -1
+        then throwIO CannotLaunchProcessTracker
+        else return $! ProcessTracker i
+
+-- | Since 0.2.1
+data ProcessTrackerException = CannotLaunchProcessTracker
+    deriving (Show, Typeable)
+instance Exception ProcessTrackerException
+
+-- | Begin tracking the given process. If the 'ProcessHandle' refers to a
+-- closed process, no tracking will occur. If the process is closed, then it
+-- will be untracked automatically.
+--
+-- Note that you /must/ compile your program with @-threaded@; see
+-- 'waitForProcess'.
+--
+-- Since 0.2.1
+trackProcess :: ProcessTracker -> ProcessHandle -> IO TrackedProcess
+trackProcess pt ph@(ProcessHandle mph) = mask_ $ do
+    mpid <- readMVar mph
+    mpid' <- case mpid of
+        ClosedHandle{} -> return NoPid
+        OpenHandle pid -> do
+            c_track_process pt pid 1
+            return $ Pid pid
+    ipid <- newIORef mpid'
+    let tp = TrackedProcess pt ipid
+    case mpid' of
+        NoPid -> return ()
+        Pid _ -> void $ forkIO $ do
+            void $ waitForProcess ph
+            untrackProcess tp
+    return $! tp
+
+-- | Explicitly remove the given process from the tracked process list in the
+-- cleanup process.
+--
+-- Since 0.2.1
+untrackProcess :: TrackedProcess -> IO ()
+untrackProcess (TrackedProcess pt ipid) = mask_ $ do
+    mpid <- readIORef ipid
+    case mpid of
+        NoPid -> return ()
+        Pid pid -> do
+            c_track_process pt pid 0
+            writeIORef ipid NoPid
