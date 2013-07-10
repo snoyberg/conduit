@@ -16,12 +16,17 @@ cabal-version:       >=1.8
 
 library
   exposed-modules:     Data.Conduit.Process.Unix
+  other-modules:       Data.Conduit.LogFile
   build-depends:       base              >= 4         && < 5
                      , transformers
                      , bytestring
                      , conduit           >= 0.5       && < 1.1
                      , unix              >= 2.5
                      , process           >= 1.1
+                     , time
+                     , filepath
+                     , stm
+                     , directory
   c-sources:           cbits/process-tracker.c
 
 test-suite test
