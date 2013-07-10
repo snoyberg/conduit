@@ -77,7 +77,7 @@ class AttoparsecInput a where
     empty :: a
     isNull :: a -> Bool
     notEmpty :: [a] -> [a]
-    getLinesCols :: a -> (Int, Int)
+    getLinesCols :: a -> Position
 
     -- | Return the beginning of the first input with the length of
     -- the second input removed. Assumes the second string is shorter
@@ -90,10 +90,10 @@ instance AttoparsecInput B.ByteString where
     empty = B.empty
     isNull = B.null
     notEmpty = filter (not . B.null)
-    getLinesCols = B.foldl' f (0, 0)
+    getLinesCols = B.foldl' f (Position 0 0)
       where
-        f (!line, !col) ch | ch == 10 = (line + 1, 0)
-                           | otherwise = (line, col + 1)
+        f (Position l c) ch | ch == 10 = Position (l + 1) 0
+                            | otherwise = Position l (c + 1)
     stripFromEnd b1 b2 = B.take (B.length b1 - B.length b2) b1
 
 instance AttoparsecInput T.Text where
@@ -102,10 +102,10 @@ instance AttoparsecInput T.Text where
     empty = T.empty
     isNull = T.null
     notEmpty = filter (not . T.null)
-    getLinesCols = T.foldl' f (0, 0)
+    getLinesCols = T.foldl' f (Position 0 0)
       where
-        f (!line, !col) ch | ch == '\n' = (line + 1, 0)
-                           | otherwise = (line, col + 1)
+        f (Position l c) ch | ch == '\n' = Position (l + 1) 0
+                            | otherwise = Position l (c + 1)
     stripFromEnd (TI.Text arr1 off1 len1) (TI.Text _ _ len2) =
         TI.textP arr1 off1 (len1 - len2)
 
@@ -214,6 +214,6 @@ sinkParserPos pos0 p = sink empty pos0 (parseA p)
     addLinesCols x (Position lines cols) =
         lines' `seq` cols' `seq` Position lines' cols'
       where
-        (dlines, dcols) = getLinesCols x
+        Position dlines dcols = getLinesCols x
         lines' = lines + dlines
         cols' = (if dlines > 0 then 1 else cols) + dcols
