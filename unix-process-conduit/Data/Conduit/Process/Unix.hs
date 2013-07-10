@@ -1,4 +1,7 @@
-{-# LANGUAGE ForeignFunctionInterface, OverloadedStrings, ScopedTypeVariables, DeriveDataTypeable #-}
+{-# LANGUAGE DeriveDataTypeable       #-}
+{-# LANGUAGE ForeignFunctionInterface #-}
+{-# LANGUAGE OverloadedStrings        #-}
+{-# LANGUAGE ScopedTypeVariables      #-}
 module Data.Conduit.Process.Unix
     ( -- * Starting processes
       forkExecuteFile
@@ -21,45 +24,55 @@ module Data.Conduit.Process.Unix
     , untrackProcess
     ) where
 
-import           Control.Applicative               ((<$>), (<*>))
-import           Control.Arrow                     ((***))
-import           Control.Concurrent                (forkIO)
-import           Control.Exception                 (finally, mask, onException, handle, SomeException, Exception, mask_, throwIO)
-import           Control.Monad                     (unless, void, zipWithM_, when)
-import           Control.Monad.Trans.Class         (lift)
-import           Data.ByteString                   (ByteString, null, concat, append, singleton)
-import qualified Data.ByteString.Char8             as S8
-import           Data.ByteString.Unsafe            (unsafePackCStringFinalizer,
-                                                    unsafeUseAsCStringLen,
-                                                    unsafeUseAsCString)
-import           Data.Conduit                      (Sink, Source, yield, ($$))
-import           Data.Conduit.Binary               (sinkHandle, sourceHandle)
-import           Data.Conduit.List                 (mapM_)
-import           Data.Typeable (Typeable)
-import System.Posix.Types (CPid (..))
-import Control.Concurrent.MVar (readMVar)
-import           Data.IORef                        (IORef, newIORef, readIORef, writeIORef)
-import           Foreign.Marshal.Alloc             (free, mallocBytes, allocaBytes)
-import           Foreign.Ptr                       (castPtr, Ptr, nullPtr)
-import           Foreign.Storable                  (sizeOf, pokeElemOff)
-import           Prelude                           (Bool (..), IO, Maybe (..),
-                                                    Monad (..), flip,
-                                                    fromIntegral, fst, maybe,
-                                                    snd, ($), (.), (==), error, id, length, (*),
-                                                    head, map, const, fmap, ($!), Show)
-import           System.Posix.Types                (Fd)
-import           System.Posix.IO.ByteString        (closeFd, createPipe,
-                                                    fdReadBuf, fdWriteBuf,
-                                                    setFdOption, FdOption (CloseOnExec))
-import           System.Posix.Process.ByteString   (ProcessStatus (..),
-                                                    getProcessStatus, getProcessGroupIDOf)
-import           System.Posix.Signals              (sigKILL, signalProcess, Signal, signalProcessGroup)
-import           System.Posix.Types                (ProcessID)
-import System.IO (hClose)
-import Foreign.C.Types
-import Foreign.C.String
-import System.Process
-import System.Process.Internals
+import           Control.Applicative             ((<$>), (<*>))
+import           Control.Arrow                   ((***))
+import           Control.Concurrent              (forkIO)
+import           Control.Concurrent.MVar         (readMVar)
+import           Control.Exception               (Exception, SomeException,
+                                                  finally, handle, mask, mask_,
+                                                  onException, throwIO)
+import           Control.Monad                   (unless, void, when, zipWithM_)
+import           Control.Monad.Trans.Class       (lift)
+import           Data.ByteString                 (ByteString, append, concat,
+                                                  null, singleton)
+import qualified Data.ByteString.Char8           as S8
+import           Data.ByteString.Unsafe          (unsafePackCStringFinalizer,
+                                                  unsafeUseAsCString,
+                                                  unsafeUseAsCStringLen)
+import           Data.Conduit                    (Sink, Source, yield, ($$))
+import           Data.Conduit.Binary             (sinkHandle, sourceHandle)
+import           Data.Conduit.List               (mapM_)
+import           Data.IORef                      (IORef, newIORef, readIORef,
+                                                  writeIORef)
+import           Data.Typeable                   (Typeable)
+import           Foreign.C.String
+import           Foreign.C.Types
+import           Foreign.Marshal.Alloc           (allocaBytes, free,
+                                                  mallocBytes)
+import           Foreign.Ptr                     (Ptr, castPtr, nullPtr)
+import           Foreign.Storable                (pokeElemOff, sizeOf)
+import           Prelude                         (Bool (..), IO, Maybe (..),
+                                                  Monad (..), Show, const,
+                                                  error, flip, fmap,
+                                                  fromIntegral, fst, head, id,
+                                                  length, map, maybe, snd, ($),
+                                                  ($!), (*), (.), (==))
+import           System.IO                       (hClose)
+import           System.Posix.IO.ByteString      (FdOption (CloseOnExec),
+                                                  closeFd, createPipe,
+                                                  fdReadBuf, fdWriteBuf,
+                                                  setFdOption)
+import           System.Posix.Process.ByteString (ProcessStatus (..),
+                                                  getProcessGroupIDOf,
+                                                  getProcessStatus)
+import           System.Posix.Signals            (Signal, sigKILL,
+                                                  signalProcess,
+                                                  signalProcessGroup)
+import           System.Posix.Types              (CPid (..))
+import           System.Posix.Types              (Fd)
+import           System.Posix.Types              (ProcessID)
+import           System.Process
+import           System.Process.Internals
 
 -- | Kill a process by sending it the KILL (9) signal.
 --
