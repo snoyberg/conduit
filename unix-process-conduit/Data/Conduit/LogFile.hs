@@ -6,6 +6,7 @@ module Data.Conduit.LogFile
     , addChunk
     , close
     , defaultMaxTotal
+    , dummy
     ) where
 
 import           Control.Concurrent             (forkIO)
@@ -22,6 +23,7 @@ import           System.Directory               (createDirectoryIfMissing,
                                                  doesFileExist, renameFile)
 import           System.FilePath                ((<.>), (</>))
 import qualified System.IO                      as SIO
+import           System.IO.Unsafe               (unsafePerformIO)
 import           System.Mem.Weak                (addFinalizer)
 
 data Command = AddChunk !S.ByteString
@@ -32,6 +34,12 @@ data Command = AddChunk !S.ByteString
 -- Since 0.2.1
 data RotatingLog = RotatingLog !(TVar State)
 -- Use a data instead of a newtype so that we can attach a finalizer.
+
+-- | A @RotatingLog@ which performs no logging.
+--
+-- Since 0.2.1
+dummy :: RotatingLog
+dummy = RotatingLog $! unsafePerformIO $! newTVarIO Closed
 
 data State = Closed
            | Running !SIO.Handle !(TBQueue Command)

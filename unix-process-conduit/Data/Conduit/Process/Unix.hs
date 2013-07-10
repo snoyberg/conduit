@@ -343,17 +343,4 @@ forkExecuteLog cmd args menv mwdir mstdin rlog = bracketOnError
                     , S8.pack $ show h
                     , "\n\n"
                     ]
-                void $ forkIO $ do
-                    ec <- waitForProcess ph
-                    now' <- getCurrentTime
-                    addChunk rlog $ S8.concat
-                        [ "\n\n"
-                        , S8.pack $ show now'
-                        , ": Process "
-                        , S8.pack $show h
-                        , " exited with exit code "
-                        , S8.pack $ show ec
-                        , "\n\n"
-                        ]
-                    cleanupPipes pipes
         return p_
