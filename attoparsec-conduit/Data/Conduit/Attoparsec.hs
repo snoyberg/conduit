@@ -136,6 +136,14 @@ conduitParser parser =
                    (!pos', !res) <- sinkParserPosErr pos parser
                    yield (PositionRange pos pos', res)
                    conduit pos'
+{-# SPECIALIZE conduitParser
+                   :: MonadThrow m
+                   => A.Parser T.Text b
+                   -> Conduit T.Text m (PositionRange, b) #-}
+{-# SPECIALIZE conduitParser
+                   :: MonadThrow m
+                   => A.Parser B.ByteString b
+                   -> Conduit B.ByteString m (PositionRange, b) #-}
 
 
 
@@ -158,6 +166,14 @@ conduitParserEither parser =
             Right (!pos', !res) -> do
               yield $! Right (PositionRange pos pos', res)
               conduit pos'
+{-# SPECIALIZE conduitParserEither
+                   :: Monad m
+                   => A.Parser T.Text b
+                   -> Conduit T.Text m (Either ParseError (PositionRange, b)) #-}
+{-# SPECIALIZE conduitParserEither
+                   :: Monad m
+                   => A.Parser B.ByteString b
+                   -> Conduit B.ByteString m (Either ParseError (PositionRange, b)) #-}
 
 
 
@@ -171,6 +187,7 @@ sinkParserPosErr pos0 p = sinkParserPos pos0 p >>= f
     where
       f (Left e) = monadThrow e
       f (Right a) = return a
+{-# INLINE sinkParserPosErr #-}
 
 
 sinkParserPos
@@ -217,3 +234,4 @@ sinkParserPos pos0 p = sink empty pos0 (parseA p)
         Position dlines dcols = getLinesCols x
         lines' = lines + dlines
         cols' = (if dlines > 0 then 1 else cols) + dcols
+{-# INLINE sinkParserPos #-}
