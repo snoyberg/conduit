@@ -26,11 +26,8 @@ module Data.Conduit.Attoparsec
     ) where
 
 import           Control.Exception          (Exception)
-import           Control.Monad              (forever, unless)
-import           Control.Monad.Trans.Class  (lift)
+import           Control.Monad              (unless)
 import qualified Data.ByteString            as B
-import qualified Data.ByteString.Char8      as B8
-import           Data.Maybe                 (fromMaybe)
 import qualified Data.Text                  as T
 import qualified Data.Text.Internal         as TI
 import           Data.Typeable              (Typeable)
@@ -40,7 +37,6 @@ import qualified Data.Attoparsec.ByteString
 import qualified Data.Attoparsec.Text
 import qualified Data.Attoparsec.Types      as A
 import           Data.Conduit
-import qualified Data.Conduit.List          as C
 
 -- | The context and message from a 'A.Fail' value.
 data ParseError = ParseError
@@ -136,6 +132,14 @@ conduitParser parser =
                    (!pos', !res) <- sinkParserPosErr pos parser
                    yield (PositionRange pos pos', res)
                    conduit pos'
+{-# SPECIALIZE conduitParser
+                   :: MonadThrow m
+                   => A.Parser T.Text b
+                   -> Conduit T.Text m (PositionRange, b) #-}
+{-# SPECIALIZE conduitParser
+                   :: MonadThrow m
+                   => A.Parser B.ByteString b
+                   -> Conduit B.ByteString m (PositionRange, b) #-}
 
 
 
@@ -152,12 +156,20 @@ conduitParserEither parser =
       where
         go x = do
           leftover x
-          res <- sinkParserPos pos parser
-          case res of
+          eres <- sinkParserPos pos parser
+          case eres of
             Left e -> yield $ Left e
             Right (!pos', !res) -> do
               yield $! Right (PositionRange pos pos', res)
               conduit pos'
+{-# SPECIALIZE conduitParserEither
+                   :: Monad m
+                   => A.Parser T.Text b
+                   -> Conduit T.Text m (Either ParseError (PositionRange, b)) #-}
+{-# SPECIALIZE conduitParserEither
+                   :: Monad m
+                   => A.Parser B.ByteString b
+                   -> Conduit B.ByteString m (Either ParseError (PositionRange, b)) #-}
 
 
 
@@ -171,6 +183,7 @@ sinkParserPosErr pos0 p = sinkParserPos pos0 p >>= f
     where
       f (Left e) = monadThrow e
       f (Right a) = return a
+{-# INLINE sinkParserPosErr #-}
 
 
 sinkParserPos
@@ -217,3 +230,4 @@ sinkParserPos pos0 p = sink empty pos0 (parseA p)
         Position dlines dcols = getLinesCols x
         lines' = lines + dlines
         cols' = (if dlines > 0 then 1 else cols) + dcols
+{-# INLINE sinkParserPos #-}
