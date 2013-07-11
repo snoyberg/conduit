@@ -26,11 +26,8 @@ module Data.Conduit.Attoparsec
     ) where
 
 import           Control.Exception          (Exception)
-import           Control.Monad              (forever, unless)
-import           Control.Monad.Trans.Class  (lift)
+import           Control.Monad              (unless)
 import qualified Data.ByteString            as B
-import qualified Data.ByteString.Char8      as B8
-import           Data.Maybe                 (fromMaybe)
 import qualified Data.Text                  as T
 import qualified Data.Text.Internal         as TI
 import           Data.Typeable              (Typeable)
@@ -40,7 +37,6 @@ import qualified Data.Attoparsec.ByteString
 import qualified Data.Attoparsec.Text
 import qualified Data.Attoparsec.Types      as A
 import           Data.Conduit
-import qualified Data.Conduit.List          as C
 
 -- | The context and message from a 'A.Fail' value.
 data ParseError = ParseError
@@ -160,8 +156,8 @@ conduitParserEither parser =
       where
         go x = do
           leftover x
-          res <- sinkParserPos pos parser
-          case res of
+          eres <- sinkParserPos pos parser
+          case eres of
             Left e -> yield $ Left e
             Right (!pos', !res) -> do
               yield $! Right (PositionRange pos pos', res)
