@@ -19,7 +19,7 @@
 -- transformed.
 module Control.Monad.Trans.Resource
     ( -- * Data types
-      ResourceT
+      ResourceT (..)
     , ResIO
     , ReleaseKey
       -- * Unwrap
@@ -55,6 +55,8 @@ module Control.Monad.Trans.Resource
     , InternalState
     , getInternalState
     , runInternalState
+    , stateAlloc
+    , stateCleanup
     , withInternalState
     ) where
 
