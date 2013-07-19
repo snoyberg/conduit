@@ -24,6 +24,7 @@ import Data.ByteString.Lazy.Char8 ()
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Encoding as TLE
+import qualified Data.Text.Encoding.Error as TEE
 import Control.Monad.Trans.Resource (runExceptionT, runExceptionT_, allocate, resourceForkIO)
 import Control.Concurrent (threadDelay, killThread)
 import Control.Monad.IO.Class (liftIO)
@@ -389,7 +390,7 @@ main = hspec $ do
             (a, b) `shouldBe` (Just 1, [1..10])
 
     describe "text" $ do
-        let go enc tenc cenc = do
+        let go enc tenc tdec cenc = do
                 prop (enc ++ " single chunk") $ \chars -> runST $ runExceptionT_ $ do
                     let tl = TL.pack chars
                         lbs = tenc tl
@@ -400,19 +401,32 @@ main = hspec $ do
                     let tl = TL.pack chars
                         lbs = tenc tl
                         src = mconcat $ map (CL.sourceList . return . S.singleton) $ L.unpack lbs
+                        
                     ts <- src C.$= CT.decode cenc C.$$ CL.consume
                     return $ TL.fromChunks ts == tl
+
+                -- Check whether raw bytes are decoded correctly, in
+                -- particular that Text decoding produces an error if
+                -- Conduit does.
+                prop (enc ++ " raw bytes") $ \bytes ->
+                    let lbs = L.pack bytes
+                        src = CL.sourceList $ L.toChunks lbs
+                        etl = C.runException $ src C.$= CT.decode cenc C.$$ CL.consume
+                        tl' = tdec TEE.lenientDecode lbs
+                    in either (\_ -> TL.isInfixOf "\xFFFD" tl')
+                              (\tl -> TL.fromChunks tl == tl')
+                              etl
                 prop (enc ++ " encoding") $ \chars -> runIdentity $ runExceptionT_ $ do
                     let tss = map T.pack chars
                         lbs = tenc $ TL.fromChunks tss
                         src = mconcat $ map (CL.sourceList . return) tss
                     bss <- src C.$= CT.encode cenc C.$$ CL.consume
                     return $ L.fromChunks bss == lbs
-        go "utf8" TLE.encodeUtf8 CT.utf8
-        go "utf16_le" TLE.encodeUtf16LE CT.utf16_le
-        go "utf16_be" TLE.encodeUtf16BE CT.utf16_be
-        go "utf32_le" TLE.encodeUtf32LE CT.utf32_le
-        go "utf32_be" TLE.encodeUtf32BE CT.utf32_be
+        go "utf8" TLE.encodeUtf8 TLE.decodeUtf8With CT.utf8
+        go "utf16_le" TLE.encodeUtf16LE TLE.decodeUtf16LEWith CT.utf16_le
+        go "utf16_be" TLE.encodeUtf16BE TLE.decodeUtf16BEWith CT.utf16_be
+        go "utf32_le" TLE.encodeUtf32LE TLE.decodeUtf32LEWith CT.utf32_le
+        go "utf32_be" TLE.encodeUtf32BE TLE.decodeUtf32BEWith CT.utf32_be
 
     describe "text lines" $ do
         it "works across split lines" $
