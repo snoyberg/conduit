@@ -212,18 +212,19 @@ utf8 = Codec name enc dec where
     isContinuation byte = byte .&. 0xC0 == 0x80
 
     -- The number of continuation bytes needed by the given
-    -- non-continuation byte.
+    -- non-continuation byte. Returns -1 for an illegal UTF-8
+    -- non-continuation byte and the whole split quickly must fail so
+    -- as the input is passed to TE.decodeUtf8, which will issue a
+    -- suitable error.
     required x0
         | x0 .&. 0x80 == 0x00 = 0
         | x0 .&. 0xE0 == 0xC0 = 1
         | x0 .&. 0xF0 == 0xE0 = 2
         | x0 .&. 0xF8 == 0xF0 = 3
-        | otherwise           = err
-
-    err = error "Data.Conduit.Text.utf8: expected non-continuation byte"
+        | otherwise           = -1
 
     splitQuickly bytes
-        | B.null l = Nothing
+        | B.null l || req == -1 = Nothing
         | req == B.length r = Just (TE.decodeUtf8 bytes, B.empty)
         | otherwise = Just (TE.decodeUtf8 l', r')
       where
