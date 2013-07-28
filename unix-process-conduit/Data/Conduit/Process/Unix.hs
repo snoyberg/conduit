@@ -38,8 +38,10 @@ import           Control.Applicative             ((<$>), (<*>))
 import           Control.Arrow                   ((***))
 import           Control.Concurrent              (forkIO)
 import           Control.Concurrent              (threadDelay)
-import           Control.Concurrent.MVar         (MVar, modifyMVar, newMVar,
-                                                  readMVar, swapMVar)
+import           Control.Concurrent.MVar         (MVar, modifyMVar,
+                                                  newEmptyMVar, newMVar,
+                                                  putMVar, readMVar, swapMVar,
+                                                  takeMVar)
 import           Control.Exception               (Exception, SomeException,
                                                   bracketOnError, finally,
                                                   handle, mask, mask_,
@@ -230,7 +232,7 @@ newtype ProcessTracker = ProcessTracker CInt
 -- child process.
 --
 -- Since 0.2.1
-data TrackedProcess = TrackedProcess !ProcessTracker !(IORef MaybePid)
+data TrackedProcess = TrackedProcess !ProcessTracker !(IORef MaybePid) !(IO ())
 
 data MaybePid = NoPid | Pid !CPid
 
@@ -268,11 +270,13 @@ trackProcess pt ph@(ProcessHandle mph) = mask_ $ do
             c_track_process pt pid 1
             return $ Pid pid
     ipid <- newIORef mpid'
-    let tp = TrackedProcess pt ipid
+    baton <- newEmptyMVar
+    let tp = TrackedProcess pt ipid (takeMVar baton)
     case mpid' of
         NoPid -> return ()
         Pid _ -> void $ forkIO $ do
             void $ waitForProcess ph
+            putMVar baton ()
             untrackProcess tp
     return $! tp
 
@@ -281,7 +285,7 @@ trackProcess pt ph@(ProcessHandle mph) = mask_ $ do
 --
 -- Since 0.2.1
 untrackProcess :: TrackedProcess -> IO ()
-untrackProcess (TrackedProcess pt ipid) = mask_ $ do
+untrackProcess (TrackedProcess pt ipid _) = mask_ $ do
     mpid <- readIORef ipid
     case mpid of
         NoPid -> return ()
@@ -398,8 +402,8 @@ monitorProcess log processTracker msetuid exec dir args env rlog = do
                             Right pid -> do
                                 log $ "Process created: " `S8.append` exec
                                 return (Running pid, do
-                                    void $ trackProcess processTracker pid
-                                    void $ waitForProcess pid
+                                    TrackedProcess _ _ wait <- trackProcess processTracker pid
+                                    wait
                                     loop (Just now))
             next
     forkIO $ loop Nothing
