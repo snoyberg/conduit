@@ -77,6 +77,7 @@ import           Prelude                         (Bool (..), Either (..), IO,
                                                   length, map, maybe, show, snd,
                                                   ($), ($!), (*), (.), (<),
                                                   (==))
+import           System.Exit                     (ExitCode)
 import           System.IO                       (hClose)
 import           System.Posix.IO.ByteString      (FdOption (CloseOnExec),
                                                   closeFd, createPipe,
@@ -232,7 +233,7 @@ newtype ProcessTracker = ProcessTracker CInt
 -- child process.
 --
 -- Since 0.2.1
-data TrackedProcess = TrackedProcess !ProcessTracker !(IORef MaybePid) !(IO ())
+data TrackedProcess = TrackedProcess !ProcessTracker !(IORef MaybePid) !(IO ExitCode)
 
 data MaybePid = NoPid | Pid !CPid
 
@@ -275,8 +276,7 @@ trackProcess pt ph@(ProcessHandle mph) = mask_ $ do
     case mpid' of
         NoPid -> return ()
         Pid _ -> void $ forkIO $ do
-            void $ waitForProcess ph
-            putMVar baton ()
+            waitForProcess ph >>= putMVar baton
             untrackProcess tp
     return $! tp
 
@@ -370,8 +370,9 @@ monitorProcess
     -> [S8.ByteString] -- ^ command line parameter
     -> [(S8.ByteString, S8.ByteString)] -- ^ environment
     -> RotatingLog
+    -> (ExitCode -> IO Bool) -- ^ should we restart?
     -> IO MonitoredProcess
-monitorProcess log processTracker msetuid exec dir args env rlog = do
+monitorProcess log processTracker msetuid exec dir args env rlog shouldRestart = do
     mstatus <- newMVar NeedsRestart
     let loop mlast = do
             next <- modifyMVar mstatus $ \status ->
@@ -403,8 +404,11 @@ monitorProcess log processTracker msetuid exec dir args env rlog = do
                                 log $ "Process created: " `S8.append` exec
                                 return (Running pid, do
                                     TrackedProcess _ _ wait <- trackProcess processTracker pid
-                                    wait
-                                    loop (Just now))
+                                    ec <- wait
+                                    shouldRestart' <- shouldRestart ec
+                                    if shouldRestart'
+                                        then loop (Just now)
+                                        else return ())
             next
     forkIO $ loop Nothing
     return $ MonitoredProcess mstatus
