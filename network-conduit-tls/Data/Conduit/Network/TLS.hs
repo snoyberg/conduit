@@ -9,6 +9,7 @@ module Data.Conduit.Network.TLS
     , tlsCertificate
     , tlsKey
     , tlsNeedLocalAddr
+    , tlsAppData
     , runTCPServerTLS
     ) where
 
@@ -30,7 +31,7 @@ import Data.Conduit.Network.TLS.Internal
 import Data.Conduit (($$), yield)
 import qualified Data.Conduit.List as CL
 import Data.Either (rights)
-import Network.Socket (sClose, getSocketName)
+import Network.Socket (sClose, getSocketName, SockAddr)
 import Network.Socket.ByteString (recv, sendAll)
 import Control.Exception (bracket, finally)
 import Control.Concurrent (forkIO)
@@ -97,17 +98,7 @@ runTCPServerTLS TLSConfig{..} app = do
 
             TLS.handshake ctx
 
-            let ad = AppData
-                    { appSource =
-                        let src = lift (TLS.recvData ctx) >>= yield >> src
-                         in src
-                    , appSink = CL.mapM_ $ TLS.sendData ctx . L.fromChunks . return
-                    , appSockAddr = addr
-                    , appLocalAddr = mlocal
-                    }
-
-
-            app ad `finally` sClose socket
+            app (tlsAppData ctx addr mlocal) `finally` sClose socket
 
         params =
 #if MIN_VERSION_tls(1, 0, 0)
@@ -126,6 +117,17 @@ runTCPServerTLS TLSConfig{..} app = do
             , TLS.pCertificates    = zip certs $ Just key : repeat Nothing
             }
 #endif
+
+tlsAppData :: TLS.Context       -- ^ a TLS context
+           -> SockAddr          -- ^ remote address
+           -> Maybe SockAddr    -- ^ local address
+           -> AppData IO
+tlsAppData ctx addr mlocal = AppData
+    { appSource = forever $ lift (TLS.recvData ctx) >>= yield
+    , appSink = CL.mapM_ $ TLS.sendData ctx . L.fromChunks . return
+    , appSockAddr = addr
+    , appLocalAddr = mlocal
+    }
 
 -- taken from stunnel example in tls-extra
 ciphers :: [TLS.Cipher]
