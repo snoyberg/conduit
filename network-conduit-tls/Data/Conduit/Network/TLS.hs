@@ -118,6 +118,20 @@ runTCPServerTLS TLSConfig{..} app = do
             }
 #endif
 
+-- | Create an @AppData@ from an existing tls @Context@ value. This is a lower level function, allowing you to create a connection in any way you want.
+--
+-- Sample usage:
+--
+-- > import Network.Simple.TCP.TLS
+-- >
+-- > myapp :: Application IO
+-- > ...
+-- > main = do
+-- >     cset <- getDefaultClientSettings
+-- >     connect cset "host" "port" $
+-- >         (\(ctx, addr) -> myapp $ tlsAppData ctx addr Nothing)
+--
+-- Since 1.0.1
 tlsAppData :: TLS.Context       -- ^ a TLS context
            -> SockAddr          -- ^ remote address
            -> Maybe SockAddr    -- ^ local address
