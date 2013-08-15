@@ -16,6 +16,8 @@ Library
   Exposed-modules:     Data.Conduit.Extra
   Build-depends:       base                     >= 4            && < 5
                      , conduit                  >= 1.0
+                     , mtl
+                     , void
   ghc-options:     -Wall
 
 test-suite test
