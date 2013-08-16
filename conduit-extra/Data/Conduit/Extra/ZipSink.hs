@@ -3,7 +3,6 @@ module Data.Conduit.Extra.ZipSink where
 import Control.Applicative
 import Control.Monad
 import Data.Conduit as C
-import Data.Conduit.List as C
 import Data.Conduit.Util
 import Data.Traversable (Traversable(..), sequenceA)
 
