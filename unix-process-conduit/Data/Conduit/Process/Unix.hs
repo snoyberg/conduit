@@ -27,16 +27,25 @@ module Data.Conduit.Process.Unix
     , RotatingLog
     , openRotatingLog
     , forkExecuteLog
+
+      -- * Monitored process
+    , MonitoredProcess
+    , monitorProcess
+    , terminateMonitoredProcess
     ) where
 
 import           Control.Applicative             ((<$>), (<*>))
 import           Control.Arrow                   ((***))
 import           Control.Concurrent              (forkIO)
-import           Control.Concurrent.MVar         (readMVar)
+import           Control.Concurrent              (threadDelay)
+import           Control.Concurrent.MVar         (MVar, modifyMVar,
+                                                  newEmptyMVar, newMVar,
+                                                  putMVar, readMVar, swapMVar,
+                                                  takeMVar)
 import           Control.Exception               (Exception, SomeException,
                                                   bracketOnError, finally,
                                                   handle, mask, mask_,
-                                                  onException, throwIO)
+                                                  onException, throwIO, try)
 import           Control.Monad                   (unless, void, when, zipWithM_)
 import           Control.Monad.Trans.Class       (lift)
 import           Data.ByteString                 (ByteString, append, concat,
@@ -53,6 +62,7 @@ import           Data.Conduit.LogFile
 import           Data.IORef                      (IORef, newIORef, readIORef,
                                                   writeIORef)
 import           Data.Time                       (getCurrentTime)
+import           Data.Time                       (diffUTCTime)
 import           Data.Typeable                   (Typeable)
 import           Foreign.C.String
 import           Foreign.C.Types
@@ -60,12 +70,14 @@ import           Foreign.Marshal.Alloc           (allocaBytes, free,
                                                   mallocBytes)
 import           Foreign.Ptr                     (Ptr, castPtr, nullPtr)
 import           Foreign.Storable                (pokeElemOff, sizeOf)
-import           Prelude                         (Bool (..), IO, Maybe (..),
-                                                  Monad (..), Show, const,
-                                                  error, flip, fmap,
+import           Prelude                         (Bool (..), Either (..), IO,
+                                                  Maybe (..), Monad (..), Show,
+                                                  const, error, flip, fmap,
                                                   fromIntegral, fst, head, id,
                                                   length, map, maybe, show, snd,
-                                                  ($), ($!), (*), (.), (==))
+                                                  ($), ($!), (*), (.), (<),
+                                                  (==))
+import           System.Exit                     (ExitCode)
 import           System.IO                       (hClose)
 import           System.Posix.IO.ByteString      (FdOption (CloseOnExec),
                                                   closeFd, createPipe,
@@ -221,7 +233,7 @@ newtype ProcessTracker = ProcessTracker CInt
 -- child process.
 --
 -- Since 0.2.1
-data TrackedProcess = TrackedProcess !ProcessTracker !(IORef MaybePid)
+data TrackedProcess = TrackedProcess !ProcessTracker !(IORef MaybePid) !(IO ExitCode)
 
 data MaybePid = NoPid | Pid !CPid
 
@@ -259,11 +271,12 @@ trackProcess pt ph@(ProcessHandle mph) = mask_ $ do
             c_track_process pt pid 1
             return $ Pid pid
     ipid <- newIORef mpid'
-    let tp = TrackedProcess pt ipid
+    baton <- newEmptyMVar
+    let tp = TrackedProcess pt ipid (takeMVar baton)
     case mpid' of
         NoPid -> return ()
         Pid _ -> void $ forkIO $ do
-            void $ waitForProcess ph
+            waitForProcess ph >>= putMVar baton
             untrackProcess tp
     return $! tp
 
@@ -272,7 +285,7 @@ trackProcess pt ph@(ProcessHandle mph) = mask_ $ do
 --
 -- Since 0.2.1
 untrackProcess :: TrackedProcess -> IO ()
-untrackProcess (TrackedProcess pt ipid) = mask_ $ do
+untrackProcess (TrackedProcess pt ipid _) = mask_ $ do
     mpid <- readIORef ipid
     case mpid of
         NoPid -> return ()
@@ -344,3 +357,72 @@ forkExecuteLog cmd args menv mwdir mstdin rlog = bracketOnError
                     , "\n\n"
                     ]
         return p_
+
+data Status = NeedsRestart | NoRestart | Running ProcessHandle
+
+-- | Run the given command, restarting if the process dies.
+monitorProcess
+    :: (ByteString -> IO ()) -- ^ log
+    -> ProcessTracker
+    -> Maybe S8.ByteString -- ^ setuid
+    -> S8.ByteString -- ^ executable
+    -> S8.ByteString -- ^ working directory
+    -> [S8.ByteString] -- ^ command line parameter
+    -> [(S8.ByteString, S8.ByteString)] -- ^ environment
+    -> RotatingLog
+    -> (ExitCode -> IO Bool) -- ^ should we restart?
+    -> IO MonitoredProcess
+monitorProcess log processTracker msetuid exec dir args env rlog shouldRestart = do
+    mstatus <- newMVar NeedsRestart
+    let loop mlast = do
+            next <- modifyMVar mstatus $ \status ->
+                case status of
+                    NoRestart -> return (NoRestart, return ())
+                    _ -> do
+                        now <- getCurrentTime
+                        case mlast of
+                            Just last | diffUTCTime now last < 5 -> do
+                                log $ "Process restarting too quickly, waiting before trying again: " `S8.append` exec
+                                threadDelay $ 5 * 1000 * 1000
+                            _ -> return ()
+                        let (cmd, args') =
+                                case msetuid of
+                                    Nothing -> (exec, args)
+                                    Just setuid -> ("sudo", "-E" : "-u" : setuid : "--" : exec : args)
+                        res <- try $ forkExecuteLog
+                            cmd
+                            args'
+                            (Just env)
+                            (Just dir)
+                            (Just $ return ())
+                            rlog
+                        case res of
+                            Left e -> do
+                                log $ "Data.Conduit.Process.Unix.monitorProcess: " `S8.append` S8.pack (show (e :: SomeException))
+                                return (NeedsRestart, return ())
+                            Right pid -> do
+                                log $ "Process created: " `S8.append` exec
+                                return (Running pid, do
+                                    TrackedProcess _ _ wait <- trackProcess processTracker pid
+                                    ec <- wait
+                                    shouldRestart' <- shouldRestart ec
+                                    if shouldRestart'
+                                        then loop (Just now)
+                                        else return ())
+            next
+    forkIO $ loop Nothing
+    return $ MonitoredProcess mstatus
+
+-- | Abstract type containing information on a process which will be restarted.
+newtype MonitoredProcess = MonitoredProcess (MVar Status)
+
+-- | Terminate the process and prevent it from being restarted.
+terminateMonitoredProcess :: MonitoredProcess -> IO ()
+terminateMonitoredProcess (MonitoredProcess mstatus) = do
+    status <- swapMVar mstatus NoRestart
+    case status of
+        Running pid -> do
+            terminateProcess pid
+            threadDelay 1000000
+            killProcess pid
+        _ -> return ()

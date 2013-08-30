@@ -204,32 +204,34 @@ utf8 :: Codec
 utf8 = Codec name enc dec where
     name = T.pack "UTF-8"
     enc text = (TE.encodeUtf8 text, Nothing)
-    dec bytes = case splitQuickly bytes of
+    dec bytes = case splitQuickly bytes >>= maybeDecode of
         Just (text, extra) -> (text, Right extra)
         Nothing -> splitSlowly TE.decodeUtf8 bytes
 
-    splitQuickly bytes = loop 0 >>= maybeDecode where
-        required x0
-            | x0 .&. 0x80 == 0x00 = 1
-            | x0 .&. 0xE0 == 0xC0 = 2
-            | x0 .&. 0xF0 == 0xE0 = 3
-            | x0 .&. 0xF8 == 0xF0 = 4
+    -- Whether the given byte is a continuation byte.
+    isContinuation byte = byte .&. 0xC0 == 0x80
 
-            -- Invalid input; let Text figure it out
-            | otherwise           = 0
+    -- The number of continuation bytes needed by the given
+    -- non-continuation byte. Returns -1 for an illegal UTF-8
+    -- non-continuation byte and the whole split quickly must fail so
+    -- as the input is passed to TE.decodeUtf8, which will issue a
+    -- suitable error.
+    required x0
+        | x0 .&. 0x80 == 0x00 = 0
+        | x0 .&. 0xE0 == 0xC0 = 1
+        | x0 .&. 0xF0 == 0xE0 = 2
+        | x0 .&. 0xF8 == 0xF0 = 3
+        | otherwise           = -1
 
-        maxN = B.length bytes
-
-        loop n | n == maxN = Just (TE.decodeUtf8 bytes, B.empty)
-        loop n = let
-            req = required (B.index bytes n)
-            tooLong = first TE.decodeUtf8 (B.splitAt n bytes)
-            decodeMore = loop $! n + req
-            in if req == 0
-                then Nothing
-                else if n + req > maxN
-                    then Just tooLong
-                    else decodeMore
+    splitQuickly bytes
+        | B.null l || req == -1 = Nothing
+        | req == B.length r = Just (TE.decodeUtf8 bytes, B.empty)
+        | otherwise = Just (TE.decodeUtf8 l', r')
+      where
+        (l, r) = B.spanEnd isContinuation bytes
+        req = required (B.last l)
+        l' = B.init l
+        r' = B.cons (B.last l) r
 
 -- |
 -- Since 0.3.0
