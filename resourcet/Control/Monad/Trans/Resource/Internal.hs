@@ -272,9 +272,9 @@ instance MonadTransControl ResourceT where
 
 instance MonadBaseControl b m => MonadBaseControl b (ResourceT m) where
      newtype StM (ResourceT m) a = StMT (StM m a)
-     liftBaseWith f = ResourceT $ \reader ->
+     liftBaseWith f = ResourceT $ \reader' ->
          liftBaseWith $ \runInBase ->
-             f $ liftM StMT . runInBase . (\(ResourceT r) -> r reader)
+             f $ liftM StMT . runInBase . (\(ResourceT r) -> r reader'  )
      restoreM (StMT base) = ResourceT $ const $ restoreM base
 instance Monad m => MonadThrow (ExceptionT m) where
     monadThrow = ExceptionT . return . Left . E.toException
