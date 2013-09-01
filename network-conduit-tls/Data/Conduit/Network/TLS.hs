@@ -44,6 +44,9 @@ import Crypto.Random (newGenIO, SystemRandom)
 #endif
 import Network.Socket (Socket)
 import qualified Data.ByteString as S
+#if MIN_VERSION_tls(1, 1, 3)
+import qualified Crypto.Random.AESCtr
+#endif
 
 tlsConfig :: HostPreference
           -> Int -- ^ port
@@ -70,7 +73,9 @@ runTCPServerTLS TLSConfig{..} app = do
         return ()
       where
         handle socket addr mlocal = do
-#if MIN_VERSION_tls(1, 1, 0)
+#if MIN_VERSION_tls(1, 1, 3)
+            gen <- Crypto.Random.AESCtr.makeSystem
+#elif MIN_VERSION_tls(1, 1, 0)
             gen <- getSystemRandomGen
 #else
             gen <- newGenIO
@@ -85,7 +90,11 @@ runTCPServerTLS TLSConfig{..} app = do
                     , TLS.backendRecv = recvExact socket
                     }
                 params
+#if MIN_VERSION_tls(1, 1, 3)
+                gen
+#else
                 (gen :: SystemRandom)
+#endif
 #else
             ctx <- TLS.serverWith
                 params
