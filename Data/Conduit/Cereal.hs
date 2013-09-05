@@ -45,7 +45,10 @@ conduitGet = mkConduitGet errorHandler
 sinkGet :: C.MonadThrow m => Get r -> C.Consumer BS.ByteString m r
 sinkGet = mkSinkGet errorHandler terminationHandler
   where errorHandler msg = pipeError $ GetException msg
-        terminationHandler f = let Fail msg = f BS.empty in pipeError $ GetException msg 
+        terminationHandler f = case f BS.empty of
+          Fail msg  -> pipeError $ GetException msg
+          Done r lo -> C.leftover lo >> return r
+          Partial _ -> pipeError $ GetException "Failed reading: Internal error: unexpected Partial."
 
 pipeError :: (C.MonadThrow m, MonadTrans t, Exception e) => e -> t m a
 pipeError e = lift $ C.monadThrow e
