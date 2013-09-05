@@ -263,8 +263,8 @@ dropWhile p =
 --
 -- Since 0.3.0
 take :: Monad m => Int -> Consumer S.ByteString m L.ByteString
-take n0 =
-    go n0 id
+take  0 = return L.empty
+take n0 = go n0 id
   where
     go n front =
         await >>= maybe (return $ L.fromChunks $ front []) go'
@@ -281,8 +281,8 @@ take n0 =
 --
 -- Since 0.5.0
 drop :: Monad m => Int -> Consumer S.ByteString m ()
-drop =
-    go
+drop  0 = return ()
+drop n0 = go n0
   where
     go n =
         await >>= maybe (return ()) go'
