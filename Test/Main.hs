@@ -2,6 +2,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE Rank2Types #-}
 
+import           Control.Applicative (many)
 import           Control.Exception.Base
 import           Control.Monad.Identity
 import           Control.Monad.Trans.Resource
@@ -99,6 +100,11 @@ sinktest8 = TestCase (assertEqual "Leftover with incomplete input works"
     output <- sinkGetMaybe twoItemGet
     output' <- CL.consume
     return (output, BS.concat output'))))
+
+sinktest9 :: Test
+sinktest9 = TestCase (assertEqual "Properly terminate Partials"
+  (Right [0..255])
+  (runIdentity $ runExceptionT $ mapM_ (C.yield . BS.singleton) [0..255] C.$$ sinkGet (many getWord8)))
 
 conduittest1 :: Test
 conduittest1 = TestCase (assertEqual "Handles starting with empty bytestring"
@@ -230,6 +236,7 @@ sinktests = TestList [ sinktest1
                      , sinktest6
                      , sinktest7
                      , sinktest8
+                     , sinktest9
                      ]
 
 conduittests = TestList [ conduittest1
