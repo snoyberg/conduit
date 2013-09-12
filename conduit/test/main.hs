@@ -132,6 +132,15 @@ main = hspec $ do
             x <- CL.sourceList [[4],[2],[3],[1]] C.$$ CL.foldMap (++[(9 :: Int)])
             x `shouldBe` [4,9,2,9,3,9,1,9]
 
+    describe "foldMapM" $ do
+        it "sums 1..10" $ do
+            Sum x <- CL.sourceList [1..(10 :: Int)] C.$$ CL.foldMapM (return . Sum)
+            x `shouldBe` sum [1..10]
+
+        it "preserves order" $ do
+            x <- CL.sourceList [[4],[2],[3],[1]] C.$$ CL.foldMapM (return . (++[(9 :: Int)]))
+            x `shouldBe` [4,9,2,9,3,9,1,9]
+
     describe "unfold" $ do
         it "works" $ do
             let f 0 = Nothing

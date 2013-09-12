@@ -26,6 +26,7 @@ module Data.Conduit.List
     , consume
     , sinkNull
       -- ** Monadic
+    , foldMapM
     , foldM
     , mapM_
       -- * Conduits
@@ -69,7 +70,7 @@ import Prelude
 import Data.Monoid (Monoid, mempty, mappend)
 import qualified Data.Foldable as F
 import Data.Conduit
-import Control.Monad (when, (<=<))
+import Control.Monad (when, (<=<), liftM)
 import Control.Monad.Trans.Class (lift)
 
 -- | Generate a source from a seed value.
@@ -159,6 +160,17 @@ foldMap f =
     fold combiner mempty
   where
     combiner accum = mappend accum . f
+
+-- | A monoidal strict left fold in a Monad.
+--
+-- Since 1.0.8
+foldMapM :: (Monad m, Monoid b)
+        => (a -> m b)
+        -> Consumer a m b
+foldMapM f =
+    foldM combiner mempty
+  where
+    combiner accum = liftM (mappend accum) . f
 
 -- | Apply the action to all values in the stream.
 --
