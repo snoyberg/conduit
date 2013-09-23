@@ -77,7 +77,13 @@ replicateM n m = lift m >>= yield >> replicateM (n-1) m
 -- | Injects a sink within a pipeline which receives a copy of every input
 --   argument, similar to the Unix command of the same name.
 --
--- >>> runPipe $ each [1..10] >-> tee (P.mapM_ f) >-> P.mapM_ f
+-- >>> runPipe $ each [1..3] >-> tee (P.mapM_ f) >-> P.mapM_ f
+-- 1
+-- 1
+-- 2
+-- 2
+-- 3
+-- 3
 tee :: Monad m => Sink a (ConduitM a a m) b -> ConduitM a a m b
 tee c = go $$ c
   where
