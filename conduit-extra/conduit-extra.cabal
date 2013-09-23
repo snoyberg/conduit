@@ -14,6 +14,7 @@ Homepage:            http://github.com/snoyberg/conduit
 
 Library
   Exposed-modules:     Data.Conduit.Extra
+                     , Data.Conduit.Extra.Pipes
                      , Data.Conduit.Extra.Resumable
                      , Data.Conduit.Extra.ZipSink
   Build-depends:       base                     >= 4            && < 5
