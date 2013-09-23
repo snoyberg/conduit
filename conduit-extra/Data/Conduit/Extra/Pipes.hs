@@ -4,7 +4,7 @@
 -- | Provides a convenience layer on top of conduit with functions and
 --   operators similar to the pipes library.
 module Data.Conduit.Extra.Pipes
-    ( (>->)
+    ( (>->), (<-<)
     , runPipe, runPipeR, runEffect
     , forP, each
     , take, peel
@@ -14,8 +14,8 @@ module Data.Conduit.Extra.Pipes
 
 import Data.Conduit as X
 import Data.Conduit.List as CL hiding (take)
-import Data.Void
 import Data.Foldable
+import Data.Void
 import Prelude hiding (take)
 
 -- | The conduit composition operator, ala pipes.  When combined with
@@ -24,6 +24,10 @@ import Prelude hiding (take)
 (>->) :: forall a b i o m. Monad m
       => ConduitM i a m () -> ConduitM a o m b -> ConduitM i o m b
 (>->) = (=$=)
+
+(<-<) :: forall a b i o m. Monad m
+      => ConduitM a o m b -> ConduitM i a m () -> ConduitM i o m b
+(<-<) = flip (>->)
 
 -- | Run a conduit.  This name may be preferable to the overly generic
 --   'runEffect', which pipes uses.
