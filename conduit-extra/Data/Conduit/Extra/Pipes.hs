@@ -37,7 +37,7 @@ runEffect = runPipe
 --   resource-sensitive pipelines.
 runPipeR :: forall m b. (MonadBaseControl IO m, Monad m)
          => ConduitM () Void (ResourceT m) b -> m b
-runPipeR c = runResourceT $ yield () $$ c
+runPipeR = runResourceT . runPipe
 
 -- | Iterate over all the elements from source, similar to 'forM' for a monad.
 forP :: Monad m => Source m a -> (a -> m ()) -> m ()
