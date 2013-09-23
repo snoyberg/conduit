@@ -8,10 +8,13 @@ module Data.Conduit.Extra.Pipes
     , runPipe, runPipeR, runEffect
     , forP, each
     , take, peel
+    , replicateM
+    , tee
     , module X
     , module CL
     ) where
 
+import Control.Monad.Trans.Class
 import Data.Conduit as X
 import Data.Conduit.List as CL hiding (take)
 import Data.Foldable
@@ -65,3 +68,21 @@ peel n = take n $$ CL.consume
 -- 3
 each :: (Monad m, Foldable f) => f a -> Producer m a
 each = Data.Foldable.mapM_ yield
+
+-- | Replicate a monadic action a given number of times via a producer.
+replicateM :: Monad m => Int -> m a -> Producer m a
+replicateM 0 _ = return ()
+replicateM n m = lift m >>= yield >> replicateM (n-1) m
+
+-- | Injects a sink within a pipeline which receives a copy of every input
+--   argument, similar to the Unix command of the same name.
+--
+-- >>> runPipe $ each [1..10] >-> tee (P.mapM_ f) >-> P.mapM_ f
+tee :: Monad m => Sink a (ConduitM a a m) b -> ConduitM a a m b
+tee c = go $$ c
+  where
+    go = do
+        x <- lift await
+        case x of
+            Nothing -> return ()
+            Just x' -> yield x' >> lift (yield x') >> go
