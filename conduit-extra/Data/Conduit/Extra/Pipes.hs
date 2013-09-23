@@ -1,3 +1,6 @@
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE RankNTypes #-}
+
 -- | Provides a convenience layer on top of conduit with functions and
 --   operators similar to the pipes library.
 module Data.Conduit.Extra.Pipes
@@ -5,9 +8,11 @@ module Data.Conduit.Extra.Pipes
     , runPipe, runPipeR, runEffect
     , forP, each
     , take, peel
+    , module X
+    , module CL
     ) where
 
-import Data.Conduit
+import Data.Conduit as X
 import Data.Conduit.List as CL hiding (take)
 import Data.Void
 import Data.Foldable
