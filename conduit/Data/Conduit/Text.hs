@@ -23,6 +23,9 @@ module Data.Conduit.Text
     , lines
     , linesBounded
     , TextException (..)
+    , takeWhile
+    , drop
+    , foldLines
     ) where
 
 import qualified Prelude
@@ -368,3 +371,54 @@ maybeDecode :: (a, b) -> Maybe (a, b)
 maybeDecode (a, b) = case tryEvaluate a of
     Left _ -> Nothing
     Right _ -> Just (a, b)
+
+-- |
+--
+-- Since 1.0.8
+takeWhile :: Monad m
+          => (Char -> Bool)
+          -> Conduit T.Text m T.Text
+takeWhile p =
+    loop
+  where
+    loop = await >>= maybe (return ()) go
+    go t =
+        case T.span p t of
+            (x, y)
+                | T.null y -> yield x >> loop
+                | otherwise -> yield x >> leftover y
+
+-- |
+--
+-- Since 1.0.8
+drop :: Monad m => Int -> Consumer T.Text m ()
+drop =
+    loop
+  where
+    loop i = await >>= maybe (return ()) (go i)
+    go i t
+        | diff == 0 = return ()
+        | diff < 0 = leftover $ T.drop i t
+        | otherwise = loop diff
+      where
+        diff = i - T.length t
+
+-- |
+--
+-- Since 1.0.8
+foldLines :: Monad m
+          => (a -> ConduitM T.Text o m a)
+          -> a
+          -> ConduitM T.Text o m a
+foldLines f =
+    start
+  where
+    start a = CL.peek >>= maybe (return a) (const $ loop $ f a)
+
+    loop consumer = do
+        a <- takeWhile (/= '\n') =$= do
+            a <- CL.map (T.filter (/= '\r')) =$= consumer
+            CL.sinkNull
+            return a
+        drop 1
+        start a
