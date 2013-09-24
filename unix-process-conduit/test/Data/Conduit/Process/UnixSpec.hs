@@ -81,6 +81,6 @@ spec = describe "unix-process-conduit" $ do
             (Just sink)
             Nothing
         res <- waitForProcess pid
-        lbs <- getLBS
+        lbs <- fmap (filter (L.isPrefixOf "foo=") . L.split 10) getLBS
         res `shouldBe` ExitSuccess
-        lbs `shouldBe` L.fromChunks ["foo=bar\n"]
+        lbs `shouldBe` [L.fromChunks ["foo=bar"]]
