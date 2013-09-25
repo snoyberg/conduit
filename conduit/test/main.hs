@@ -1045,6 +1045,105 @@ main = hspec $ do
 
                 res `shouldBe` [1..4 :: Int]
 
+    describe "finalizers" $ do
+        it "promptness" $ do
+            imsgs <- I.newIORef []
+            let add x = liftIO $ do
+                    msgs <- I.readIORef imsgs
+                    I.writeIORef imsgs $ msgs ++ [x]
+                src' = C.bracketP
+                    (add "acquire")
+                    (const $ add "release")
+                    (const $ C.addCleanup (const $ add "inside") (mapM_ C.yield [1..5]))
+                src = do
+                    src' C.$= CL.isolate 4
+                    add "computation"
+                sink = CL.mapM (\x -> add (show x) >> return x) C.=$ CL.consume
+
+            res <- C.runResourceT $ src C.$$ sink
+
+            msgs <- I.readIORef imsgs
+            -- FIXME this would be better msgs `shouldBe` words "acquire 1 2 3 4 inside release computation"
+            msgs `shouldBe` words "acquire 1 2 3 4 release inside computation"
+
+            res `shouldBe` [1..4 :: Int]
+
+        it "left associative" $ do
+            imsgs <- I.newIORef []
+            let add x = liftIO $ do
+                    msgs <- I.readIORef imsgs
+                    I.writeIORef imsgs $ msgs ++ [x]
+                p1 = C.bracketP (add "start1") (const $ add "stop1") (const $ add "inside1" >> C.yield ())
+                p2 = C.bracketP (add "start2") (const $ add "stop2") (const $ add "inside2" >> C.await >>= maybe (return ()) C.yield)
+                p3 = C.bracketP (add "start3") (const $ add "stop3") (const $ add "inside3" >> C.await)
+
+            res <- C.runResourceT $ (p1 C.$= p2) C.$$ p3
+            res `shouldBe` Just ()
+
+            msgs <- I.readIORef imsgs
+            msgs `shouldBe` words "start3 inside3 start2 inside2 start1 inside1 stop3 stop2 stop1"
+
+        it "right associative" $ do
+            imsgs <- I.newIORef []
+            let add x = liftIO $ do
+                    msgs <- I.readIORef imsgs
+                    I.writeIORef imsgs $ msgs ++ [x]
+                p1 = C.bracketP (add "start1") (const $ add "stop1") (const $ add "inside1" >> C.yield ())
+                p2 = C.bracketP (add "start2") (const $ add "stop2") (const $ add "inside2" >> C.await >>= maybe (return ()) C.yield)
+                p3 = C.bracketP (add "start3") (const $ add "stop3") (const $ add "inside3" >> C.await)
+
+            res <- C.runResourceT $ p1 C.$$ (p2 C.=$ p3)
+            res `shouldBe` Just ()
+
+            msgs <- I.readIORef imsgs
+            msgs `shouldBe` words "start3 inside3 start2 inside2 start1 inside1 stop3 stop2 stop1"
+
+        describe "dan burton's associative tests" $ do
+            let tellLn = tell . (++ "\n")
+                finallyP fin = CI.addCleanup (const fin)
+                printer = CI.awaitForever $ lift . tellLn . show
+                idMsg msg = finallyP (tellLn msg) CI.idP
+                takeP 0 = return ()
+                takeP n = CI.await >>= \ex -> case ex of
+                  Nothing -> return ()
+                  Just i -> CI.yield i >> takeP (pred n)
+
+                testPipe p = execWriter $ runPipe $ printer <+< p <+< CI.sourceList ([1..] :: [Int])
+
+                p1 = takeP (1 :: Int)
+                p2 = idMsg "foo"
+                p3 = idMsg "bar"
+
+                (<+<) = (CI.<+<)
+                runPipe = CI.runConduitM
+
+                test1L = testPipe $ (p1 <+< p2) <+< p3
+                test1R = testPipe $ p1 <+< (p2 <+< p3)
+
+                test2L = testPipe $ (p2 <+< p1) <+< p3
+                test2R = testPipe $ p2 <+< (p1 <+< p3)
+
+                test3L = testPipe $ (p2 <+< p3) <+< p1
+                test3R = testPipe $ p2 <+< (p3 <+< p1)
+
+                verify testL testR p1' p2' p3'
+                  | testL == testR = return () :: IO ()
+                  | otherwise = error $ unlines
+                    [ "FAILURE"
+                    , ""
+                    , "(" ++ p1' ++ " <+< " ++ p2' ++ ") <+< " ++ p3'
+                    , "------------------"
+                    , testL
+                    , ""
+                    , p1' ++ " <+< (" ++ p2' ++ " <+< " ++ p3' ++ ")"
+                    , "------------------"
+                    , testR
+                    ]
+
+            it "test1" $ verify test1L test1R "p1" "p2" "p3"
+            -- FIXME this is broken it "test2" $ verify test2L test2R "p2" "p1" "p3"
+            it "test3" $ verify test3L test3R "p2" "p3" "p1"
+
 it' :: String -> IO () -> Spec
 it' = it
 
