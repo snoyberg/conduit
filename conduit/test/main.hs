@@ -224,8 +224,8 @@ main = hspec $ do
             (x, y, z) <- runResourceT $ do
                 let src1 = CL.sourceList [1..10 :: Int]
                 (src2, x) <- src1 C.$$+ CL.take 5
-                (src3, y) <- src2 C.$$++ CL.fold (+) 0
-                z <- src3 C.$$+- CL.consume
+                (src3, y) <- src2 C.$$+ CL.fold (+) 0
+                z <- src3 C.$$ CL.consume
                 return (x, y, z)
             x `shouldBe` [1..5] :: IO ()
             y `shouldBe` sum [6..10]
@@ -306,7 +306,7 @@ main = hspec $ do
             (x, y) <- runResourceT $ do
                 let src1 = CL.sourceList [1..10 :: Int]
                 (src2, x) <- src1 C.$= CL.isolate 5 C.$$+ CL.consume
-                y <- src2 C.$$+- CL.consume
+                y <- src2 C.$$ CL.consume
                 return (x, y)
             x `shouldBe` [1..5]
             y `shouldBe` []
@@ -324,7 +324,7 @@ main = hspec $ do
             (x, y) <- runResourceT $ do
                 let src1 = CL.sourceList [1..10 :: Int]
                 (src2, x) <- src1 C.$$+ CL.isolate 5 C.=$ CL.consume
-                y <- src2 C.$$+- CL.consume
+                y <- src2 C.$$ CL.consume
                 return (x, y)
             x `shouldBe` [1..5]
             y `shouldBe` [6..10]
@@ -484,7 +484,7 @@ main = hspec $ do
             x <- runResourceT $ do
                 let src1 = CL.sourceList [1..10 :: Int]
                 (src2, ()) <- src1 C.$$+ CL.drop 5
-                src2 C.$$+- CL.fold (+) 0
+                src2 C.$$ CL.fold (+) 0
             x `shouldBe` sum [6..10]
 
     describe "operators" $ do
@@ -805,6 +805,33 @@ main = hspec $ do
 
             x2 <- I.readIORef ref
             ('c', x2) `shouldBe` ('c', 1)
+
+    describe "setFinalizer" $ do
+        it' "works" $ do
+            ref <- I.newIORef (0 :: Int)
+            let src0 = do
+                    CI.setFinalizer $ I.writeIORef ref 2
+                    CI.yield ()
+            () <- src0 C.$$ return ()
+
+            x0 <- I.readIORef ref
+            ('a', x0) `shouldBe` ('a', 2)
+
+        it' "actions have no effect" $ do
+            ref <- I.newIORef (0 :: Int)
+            let src0 = do
+                    liftIO $ I.writeIORef ref (1 :: Int)
+                    CI.setFinalizer $ do
+                        x <- I.readIORef ref
+                        ('b', x) `shouldBe` ('b', 1)
+                        I.writeIORef ref 2
+                    CI.yield ()
+
+            () <- src0 C.$$ return ()
+
+            x0 <- I.readIORef ref
+            ('a', x0) `shouldBe` ('a', 2)
+
     describe "injectLeftovers" $ do
         it "works" $ do
             let src = mapM_ CI.yield [1..10 :: Int]

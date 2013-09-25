@@ -359,9 +359,11 @@ pipe left right = goR (getCleanup left) left right
 
 getCleanup :: Monad m
            => ConduitM i o m r
-           -> ([o] -> ConduitM i o m ())
-getCleanup (Cleanup _ cleanup) = cleanup
-getCleanup _ = defaultCleanup -- FIXME see GOALS file warning
+           -> [o]
+           -> ConduitM i o m ()
+getCleanup (Cleanup _ cleanup) os = cleanup os
+getCleanup (ConduitM m) os = lift m >>= flip getCleanup os
+getCleanup _ os = defaultCleanup os -- FIXME see GOALS file warning
 
 defaultCleanup :: Monad m => [o] -> ConduitM i o m ()
 defaultCleanup _ = Done [] ()
