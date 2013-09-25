@@ -1098,6 +1098,29 @@ main = hspec $ do
             msgs <- I.readIORef imsgs
             msgs `shouldBe` words "start3 inside3 start2 inside2 start1 inside1 stop3 stop2 stop1"
 
+        it "no double releases" $ do
+            let tellLn = tell . (++ "\n")
+                finallyP fin = CI.addCleanup (const fin)
+                printer = CI.awaitForever $ lift . tellLn . show
+                idMsg msg = finallyP (tellLn msg) CI.idP
+                takeP 0 = return ()
+                takeP n = CI.await >>= \ex -> case ex of
+                  Nothing -> return ()
+                  Just i -> CI.yield i >> takeP (pred n)
+
+                testPipe p = execWriter $ runPipe $ printer <+< p <+< CI.sourceList ([1..] :: [Int])
+
+                (<+<) = (CI.<+<)
+                runPipe = CI.runConduitM
+
+                p1 = takeP (2 :: Int)
+                p2 = idMsg "foo"
+                p3 = idMsg "bar"
+
+                test2L = testPipe $ (p2 <+< p1) <+< p3
+
+            test2L `shouldBe` "1\n2\nfoo\nbar\n"
+
         describe "dan burton's associative tests" $ do
             let tellLn = tell . (++ "\n")
                 finallyP fin = CI.addCleanup (const fin)
