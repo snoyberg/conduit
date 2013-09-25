@@ -1024,6 +1024,23 @@ main = hspec $ do
                     (setCleanup (const $ say "first") >> say "not called") >->
                     ((setCleanup (const $ say "second") >> say "not called") >->
                     return ())) `shouldBe` ((), ["second", "first"])
+            it "promptness" $ do
+                imsgs <- I.newIORef []
+                let add x = liftIO $ do
+                        msgs <- I.readIORef imsgs
+                        I.writeIORef imsgs $ msgs ++ [x]
+                    src' = C.bracketP
+                        (add "acquire")
+                        (const $ add "release")
+                        (const $ mapM_ yield [1..])
+                    src = do
+                        src' C.$= CL.isolate 4
+                        add "computation"
+                    sink = CL.mapM (\x -> add (show x) >> return x) C.=$ CL.consume
+                res <- C.runResourceT $ runConduit $ src C.$$ sink
+                res `shouldBe` [1..4 :: Int]
+                msgs <- I.readIORef imsgs
+                msgs `shouldBe` words "acquire 1 2 3 4 release computation"
 
 it' :: String -> IO () -> Spec
 it' = it
