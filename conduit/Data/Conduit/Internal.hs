@@ -438,9 +438,9 @@ goRight :: Monad m
         -> m (ConduitM a b m (), r)
 goRight leftFinal left right =
     case right of
-        --HaveOutput _ o   -> absurd o
+        --HaveOutput right' o -> absurd o
         NeedInput rp rc  -> goLeft rp rc leftFinal left
-        Done ls r2       -> return (addLeftovers (reverse ls) left, r2)
+        Done ls r2       -> return (Cleanup (addLeftovers (reverse ls) left) leftFinal, r2) -- FIXME analyze
         ConduitM mp      -> mp >>= goRight leftFinal left
         --Leftover p i   -> goRight leftFinal (HaveOutput left leftFinal i) p
   where
@@ -610,7 +610,7 @@ conduitToConduitM =
 -- Since 0.5.2
 unwrapResumable :: MonadIO m => ResumableSource m o -> m (Source m o, m ())
 unwrapResumable (ResumableSource src) = do -- FIXME remove this
-    return (src, return ())
+    return (src, runConduitM $ src >+> return ())
 
 infixr 9 <+<
 infixl 9 >+>

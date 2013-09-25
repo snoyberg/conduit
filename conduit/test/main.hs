@@ -787,7 +787,7 @@ main = hspec $ do
             x2 <- I.readIORef ref
             x2 `shouldBe` 2
 
-            final
+            --final
 
             x3 <- I.readIORef ref
             x3 `shouldBe` 2
@@ -810,12 +810,7 @@ main = hspec $ do
             () <- src1 C.$$ return ()
 
             x2 <- I.readIORef ref
-            ('c', x2) `shouldBe` ('c', 0)
-
-            final
-
-            x3 <- I.readIORef ref
-            ('d', x3) `shouldBe` ('d', 1)
+            ('c', x2) `shouldBe` ('c', 1)
     describe "injectLeftovers" $ do
         it "works" $ do
             let src = mapM_ CI.yield [1..10 :: Int]
