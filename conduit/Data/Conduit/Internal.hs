@@ -349,15 +349,16 @@ idP = setCleanup (flip Done ()) >> awaitForever yield
 --
 -- Since 0.5.0
 pipe :: Monad m => ConduitM a b m () -> ConduitM b c m r -> ConduitM a c m r
-pipe left right = goR (getCleanup left) left right
+pipe left right = do
+    (cleanup, left') <- lift $ getCleanup left
+    goR cleanup left' right
 
 getCleanup :: Monad m
            => ConduitM i o m r
-           -> [o]
-           -> ConduitM i o m ()
-getCleanup (Cleanup _ cleanup) os = cleanup os
-getCleanup (ConduitM m) os = lift m >>= flip getCleanup os
-getCleanup _ os = defaultCleanup os -- FIXME see GOALS file warning
+           -> m ([o] -> ConduitM i o m (), ConduitM i o m r)
+getCleanup (Cleanup p cleanup) = return (cleanup, p)
+getCleanup (ConduitM m) = m >>= getCleanup
+getCleanup p = return (defaultCleanup, p)
 
 defaultCleanup :: Monad m => [o] -> ConduitM i o m ()
 defaultCleanup _ = Done [] ()
@@ -413,7 +414,9 @@ connectResume :: Monad m
               => Source m o
               -> Sink o m r
               -> m (Source m o, r)
-connectResume left0 right0 = goRight (getCleanup left0) left0 right0
+connectResume left right = do
+    (cleanup, left') <- getCleanup left
+    goRight cleanup left' right
 
 goRight :: Monad m
         => ([b] -> ConduitM a b m ())

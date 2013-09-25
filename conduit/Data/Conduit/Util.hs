@@ -7,6 +7,7 @@ module Data.Conduit.Util
 
 import Prelude hiding (zip)
 import Control.Monad (liftM, liftM2)
+import Control.Monad.Trans.Class (lift)
 import Data.Conduit.Internal (Source, Sink, ConduitM (..), getCleanup, dropOutput)
 import Data.Void (Void, absurd)
 
@@ -15,8 +16,10 @@ import Data.Void (Void, absurd)
 --
 -- Since 0.3.0
 zip :: Monad m => Source m a -> Source m b -> Source m (a, b)
-zip l0 r0 =
-    go (getCleanup l0) (getCleanup r0) l0 r0
+zip l0 r0 = do
+    (cl, l1) <- lift $ getCleanup l0
+    (cr, r1) <- lift $ getCleanup r0
+    go cl cr l1 r1
   where
     go _ _ (Done _ ()) (Done _ ()) = Done [] ()
     go _ cr (Done _ ()) (HaveOutput _ _) = dropOutput (cr [])
