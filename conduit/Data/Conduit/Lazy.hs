@@ -8,7 +8,7 @@ module Data.Conduit.Lazy
     ) where
 
 import Data.Conduit
-import Data.Conduit.Internal (Pipe (..), unConduitM)
+import Data.Conduit.Internal (ConduitM (..))
 import System.IO.Unsafe (unsafeInterleaveIO)
 import Control.Monad.Trans.Control (liftBaseOp_)
 import Control.Monad.Trans.Resource (MonadActive (monadActive))
@@ -21,16 +21,16 @@ import Control.Monad.Trans.Resource (MonadActive (monadActive))
 -- Since 0.3.0
 lazyConsume :: (MonadBaseControl IO m, MonadActive m) => Source m a -> m [a]
 lazyConsume =
-    go . unConduitM
+    go
   where
     go (Done _) = return []
     go (HaveOutput src _ x) = do
         xs <- liftBaseOp_ unsafeInterleaveIO $ go src
         return $ x : xs
-    go (PipeM msrc) = liftBaseOp_ unsafeInterleaveIO $ do
+    go (ConduitM msrc) = liftBaseOp_ unsafeInterleaveIO $ do
         a <- monadActive
         if a
             then msrc >>= go
             else return []
-    go (NeedInput _ c) = go (c ())
+    go (NeedInput _ c) = go c
     go (Leftover p _) = go p

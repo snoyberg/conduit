@@ -14,6 +14,8 @@ module Data.Conduit
     , ($=)
     , (=$)
     , (=$=)
+    , (>+>)
+    , (<+<)
 
       -- ** Primitives
     , await
@@ -33,10 +35,10 @@ module Data.Conduit
 
       -- * Utility functions
     , awaitForever
-    , transPipe
     , mapOutput
     , mapOutputMaybe
     , mapInput
+    , transConduitM
 
       -- * Connect-and-resume
     , ResumableSource
@@ -62,9 +64,7 @@ module Data.Conduit
     ) where
 
 import Control.Monad.Trans.Resource
-import Data.Conduit.Internal hiding (await, awaitForever, yield, yieldOr, leftover, bracketP, addCleanup, transPipe, mapOutput, mapOutputMaybe, mapInput)
-import qualified Data.Conduit.Internal as CI
-import Control.Monad.Morph (hoist)
+import Data.Conduit.Internal
 
 -- Define fixity of all our operators
 infixr 0 $$
@@ -96,7 +96,7 @@ src $$ sink = do
 --
 -- Since 0.4.0
 ($=) :: Monad m => Source m a -> Conduit a m b -> Source m b
-ConduitM src $= ConduitM con = ConduitM $ pipeL src con
+src $= con = pipeL src con
 {-# INLINE ($=) #-}
 
 -- | Right fuse, combining a conduit and a sink together into a new sink.
@@ -108,7 +108,7 @@ ConduitM src $= ConduitM con = ConduitM $ pipeL src con
 --
 -- Since 0.4.0
 (=$) :: Monad m => Conduit a m b -> Sink b m c -> Sink a m c
-ConduitM con =$ ConduitM sink = ConduitM $ pipeL con sink
+con =$ sink = pipeL con sink
 {-# INLINE (=$) #-}
 
 -- | Fusion operator, combining two @Conduit@s together into a new @Conduit@.
@@ -119,127 +119,8 @@ ConduitM con =$ ConduitM sink = ConduitM $ pipeL con sink
 --
 -- Since 0.4.0
 (=$=) :: Monad m => Conduit a m b -> ConduitM b c m r -> ConduitM a c m r
-ConduitM left =$= ConduitM right = ConduitM $ pipeL left right
+left =$= right = pipeL left right
 {-# INLINE (=$=) #-}
-
--- | Wait for a single input value from upstream. If no data is available,
--- returns @Nothing@.
---
--- Since 0.5.0
-await :: Monad m => Consumer i m (Maybe i)
-await = ConduitM CI.await
-
--- | Send a value downstream to the next component to consume. If the
--- downstream component terminates, this call will never return control. If you
--- would like to register a cleanup function, please use 'yieldOr' instead.
---
--- Since 0.5.0
-yield :: Monad m
-      => o -- ^ output value
-      -> ConduitM i o m ()
-yield = ConduitM . CI.yield
-
--- | Provide a single piece of leftover input to be consumed by the next
--- component in the current monadic binding.
---
--- /Note/: it is highly encouraged to only return leftover values from input
--- already consumed from upstream.
---
--- Since 0.5.0
-leftover :: i -> ConduitM i o m ()
-leftover = ConduitM . CI.leftover
-
--- | Perform some allocation and run an inner component. Two guarantees are
--- given about resource finalization:
---
--- 1. It will be /prompt/. The finalization will be run as early as possible.
---
--- 2. It is exception safe. Due to usage of @resourcet@, the finalization will
--- be run in the event of any exceptions.
---
--- Since 0.5.0
-bracketP :: MonadResource m
-         => IO a
-         -> (a -> IO ())
-         -> (a -> ConduitM i o m r)
-         -> ConduitM i o m r
-bracketP alloc free inside = ConduitM $ CI.bracketP alloc free $ unConduitM . inside
-
--- | Add some code to be run when the given component cleans up.
---
--- The supplied cleanup function will be given a @True@ if the component ran to
--- completion, or @False@ if it terminated early due to a downstream component
--- terminating.
---
--- Note that this function is not exception safe. For that, please use
--- 'bracketP'.
---
--- Since 0.4.1
-addCleanup :: Monad m
-           => (Bool -> m ())
-           -> ConduitM i o m r
-           -> ConduitM i o m r
-addCleanup f = ConduitM . CI.addCleanup f . unConduitM
-
--- | Similar to 'yield', but additionally takes a finalizer to be run if the
--- downstream component terminates.
---
--- Since 0.5.0
-yieldOr :: Monad m
-        => o
-        -> m () -- ^ finalizer
-        -> ConduitM i o m ()
-yieldOr o m = ConduitM $ CI.yieldOr o m
-
--- | Wait for input forever, calling the given inner component for each piece of
--- new input. Returns the upstream result type.
---
--- This function is provided as a convenience for the common pattern of
--- @await@ing input, checking if it's @Just@ and then looping.
---
--- Since 0.5.0
-awaitForever :: Monad m => (i -> ConduitM i o m r) -> ConduitM i o m ()
-awaitForever f = ConduitM $ CI.awaitForever (unConduitM . f)
-
--- | Transform the monad that a @ConduitM@ lives in.
---
--- Note that the monad transforming function will be run multiple times,
--- resulting in unintuitive behavior in some cases. For a fuller treatment,
--- please see:
---
--- <https://github.com/snoyberg/conduit/wiki/Dealing-with-monad-transformers>
---
--- This function is just a synonym for 'hoist'.
---
--- Since 0.4.0
-transPipe :: Monad m => (forall a. m a -> n a) -> ConduitM i o m r -> ConduitM i o n r
-transPipe = hoist
-
--- | Apply a function to all the output values of a @ConduitM@.
---
--- This mimics the behavior of `fmap` for a `Source` and `Conduit` in pre-0.4
--- days. It can also be simulated by fusing with the @map@ conduit from
--- "Data.Conduit.List".
---
--- Since 0.4.1
-mapOutput :: Monad m => (o1 -> o2) -> ConduitM i o1 m r -> ConduitM i o2 m r
-mapOutput f (ConduitM p) = ConduitM $ CI.mapOutput f p
-
--- | Same as 'mapOutput', but use a function that returns @Maybe@ values.
---
--- Since 0.5.0
-mapOutputMaybe :: Monad m => (o1 -> Maybe o2) -> ConduitM i o1 m r -> ConduitM i o2 m r
-mapOutputMaybe f (ConduitM p) = ConduitM $ CI.mapOutputMaybe f p
-
--- | Apply a function to all the input values of a @ConduitM@.
---
--- Since 0.5.0
-mapInput :: Monad m
-         => (i1 -> i2) -- ^ map initial input to new input
-         -> (i2 -> Maybe i1) -- ^ map new leftovers to initial leftovers
-         -> ConduitM i2 o m r
-         -> ConduitM i1 o m r
-mapInput f g (ConduitM p) = ConduitM $ CI.mapInput f g p
 
 -- | The connect-and-resume operator. This does not close the @Source@, but
 -- instead returns it to be used again. This allows a @Source@ to be used

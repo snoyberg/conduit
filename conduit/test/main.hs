@@ -33,7 +33,6 @@ import Control.Monad.Trans.State (evalStateT, get, put)
 import Control.Applicative (pure, (<$>), (<*>))
 import Data.Functor.Identity (Identity,runIdentity)
 import Control.Monad (forever)
-import Data.Void (Void)
 import qualified Control.Concurrent.MVar as M
 import Control.Monad.Error (catchError, throwError, Error)
 
@@ -240,9 +239,8 @@ main = hspec $ do
 
         it "map, left >+>" $ do
             x <- runResourceT $
-                CI.ConduitM
-                    (CI.unConduitM (CL.sourceList [1..10])
-                    CI.>+> CI.injectLeftovers (CI.unConduitM $ CL.map (* 2)))
+                    (CL.sourceList [1..10]
+                    CI.>+> CI.injectLeftovers (CL.map (* 2)))
                     C.$$ CL.fold (+) 0
             x `shouldBe` 2 * sum [1..10 :: Int]
 
@@ -665,9 +663,9 @@ main = hspec $ do
         it "leftovers without input" $ do
             ref <- I.newIORef []
             let add x = I.modifyIORef ref (x:)
-                adder' = CI.NeedInput (\a -> liftIO (add a) >> adder') return
-                adder = CI.ConduitM adder'
-                residue x = CI.ConduitM $ CI.Leftover (CI.Done ()) x
+                adder' = CI.NeedInput (\a -> liftIO (add a) >> adder') (return ())
+                adder = adder'
+                residue x = CI.Leftover (CI.Done ()) x
 
             _ <- C.yield 1 C.$$ adder
             x <- I.readIORef ref
@@ -702,15 +700,6 @@ main = hspec $ do
             x <- I.readIORef iref
             x `shouldBe` 10
 
-    describe "upstream results" $ do
-        it' "works" $ do
-            let foldUp :: (b -> a -> b) -> b -> CI.Pipe l a Void u IO (u, b)
-                foldUp f b = CI.awaitE >>= either (\u -> return (u, b)) (\a -> let b' = f b a in b' `seq` foldUp f b')
-                passFold :: (b -> a -> b) -> b -> CI.Pipe l a a () IO b
-                passFold f b = CI.await >>= maybe (return b) (\a -> let b' = f b a in b' `seq` CI.yield a >> passFold f b')
-            (x, y) <- CI.runPipe $ mapM_ CI.yield [1..10 :: Int] CI.>+> passFold (+) 0 CI.>+>  foldUp (*) 1
-            (x, y) `shouldBe` (sum [1..10], product [1..10])
-
     describe "input/output mapping" $ do
         it' "mapOutput" $ do
             x <- C.mapOutput (+ 1) (CL.sourceList [1..10 :: Int]) C.$$ CL.fold (+) 0
@@ -731,37 +720,23 @@ main = hspec $ do
 
     describe "left/right identity" $ do
         it' "left identity" $ do
-            x <- CL.sourceList [1..10 :: Int] C.$$ CI.ConduitM CI.idP C.=$ CL.fold (+) 0
+            x <- CL.sourceList [1..10 :: Int] C.$$ CI.idP C.=$ CL.fold (+) 0
             y <- CL.sourceList [1..10 :: Int] C.$$ CL.fold (+) 0
             x `shouldBe` y
+            {- FIXME
         it' "right identity" $ do
-            x <- CI.runPipe $ mapM_ CI.yield [1..10 :: Int] CI.>+> (CI.injectLeftovers $ CI.unConduitM $ CL.fold (+) 0) CI.>+> CI.idP
-            y <- CI.runPipe $ mapM_ CI.yield [1..10 :: Int] CI.>+> (CI.injectLeftovers $ CI.unConduitM $ CL.fold (+) 0)
+            x <- CI.runConduitM $ mapM_ CI.yield [1..10 :: Int] CI.>+> (CI.injectLeftovers $ CL.fold (+) 0) CI.>+> CI.idP
+            y <- CI.runConduitM $ mapM_ CI.yield [1..10 :: Int] CI.>+> (CI.injectLeftovers $ CL.fold (+) 0)
             x `shouldBe` y
+            -}
 
     describe "generalizing" $ do
         it' "works" $ do
-            x <-     CI.runPipe
-                   $ CI.sourceToPipe  (CL.sourceList [1..10 :: Int])
-               CI.>+> CI.conduitToPipe (CL.map (+ 1))
-               CI.>+> CI.sinkToPipe    (CL.fold (+) 0)
+            x <-     CI.runConduitM
+                   $ CI.sourceToConduitM  (CL.sourceList [1..10 :: Int])
+               CI.>+> CI.conduitToConduitM (CL.map (+ 1))
+               CI.>+> CI.sinkToConduitM    (CL.fold (+) 0)
             x `shouldBe` sum [2..11]
-
-    describe "withUpstream" $ do
-        it' "works" $ do
-            let src = mapM_ CI.yield [1..10 :: Int] >> return True
-                fold f =
-                    loop
-                  where
-                    loop accum =
-                        CI.await >>= maybe (return accum) go
-                      where
-                        go a =
-                            let accum' = f accum a
-                             in accum' `seq` loop accum'
-                sink = CI.withUpstream $ fold (+) 0
-            res <- CI.runPipe $ src CI.>+> sink
-            res `shouldBe` (True, sum [1..10])
 
     describe "iterate" $ do
         it' "works" $ do
@@ -842,11 +817,11 @@ main = hspec $ do
     describe "injectLeftovers" $ do
         it "works" $ do
             let src = mapM_ CI.yield [1..10 :: Int]
-                conduit = CI.injectLeftovers $ CI.unConduitM $ C.awaitForever $ \i -> do
+                conduit = CI.injectLeftovers $ C.awaitForever $ \i -> do
                     js <- CL.take 2
                     mapM_ C.leftover $ reverse js
                     C.yield i
-            res <- CI.ConduitM (src CI.>+> CI.injectLeftovers conduit) C.$$ CL.consume
+            res <- (src CI.>+> CI.injectLeftovers conduit) C.$$ CL.consume
             res `shouldBe` [1..10]
     describe "up-upstream finalizers" $ do
         it "pipe" $ do
@@ -856,7 +831,7 @@ main = hspec $ do
                 idMsg msg = CI.addCleanup (const $ tell [msg]) $ CI.awaitForever CI.yield
                 printer = CI.awaitForever $ lift . tell . return . show
                 src = mapM_ CI.yield [1 :: Int ..]
-            let run' p = execWriter $ CI.runPipe $ printer CI.<+< p CI.<+< src
+            let run' p = execWriter $ CI.runConduitM $ printer CI.<+< p CI.<+< src
             run' (p1 CI.<+< (p2 CI.<+< p3)) `shouldBe` run' ((p1 CI.<+< p2) CI.<+< p3)
         it "conduit" $ do
             let p1 = C.await >>= maybe (return ()) C.yield
@@ -868,7 +843,7 @@ main = hspec $ do
             let run' p = execWriter $ src C.$$ p C.=$ printer
             run' ((p3 C.=$= p2) C.=$= p1) `shouldBe` run' (p3 C.=$= (p2 C.=$= p1))
     describe "monad transformer laws" $ do
-        it "transPipe" $ do
+        it "transConduitM" $ do
             let source = CL.sourceList $ replicate 10 ()
             let tell' x = tell [x :: Int]
 
@@ -883,8 +858,8 @@ main = hspec $ do
                     lift $ get >>= lift . tell'
                     C.yield i
 
-            x <- runWriterT $ source C.$$ C.transPipe (`evalStateT` 1) replaceNum1 C.=$ CL.consume
-            y <- runWriterT $ source C.$$ C.transPipe (`evalStateT` 1) replaceNum2 C.=$ CL.consume
+            x <- runWriterT $ source C.$$ C.transConduitM (`evalStateT` 1) replaceNum1 C.=$ CL.consume
+            y <- runWriterT $ source C.$$ C.transConduitM (`evalStateT` 1) replaceNum2 C.=$ CL.consume
             x `shouldBe` y
     describe "text decode" $ do
         it' "doesn't throw runtime exceptions" $ do
