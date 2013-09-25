@@ -81,10 +81,7 @@ infixr 0 $$+-
 --
 -- Since 0.4.0
 ($$) :: Monad m => Source m a -> Sink a m b -> m b
-src $$ sink = do
-    (rsrc, res) <- src $$+ sink
-    rsrc $$+- return ()
-    return res
+src $$ sink = runConduitM $ pipe src sink
 {-# INLINE ($$) #-}
 
 -- | Left fuse, combining a source and a conduit together into a new source.
@@ -96,7 +93,7 @@ src $$ sink = do
 --
 -- Since 0.4.0
 ($=) :: Monad m => Source m a -> Conduit a m b -> Source m b
-src $= con = pipeL src con
+src $= con = pipe src con
 {-# INLINE ($=) #-}
 
 -- | Right fuse, combining a conduit and a sink together into a new sink.
@@ -108,7 +105,7 @@ src $= con = pipeL src con
 --
 -- Since 0.4.0
 (=$) :: Monad m => Conduit a m b -> Sink b m c -> Sink a m c
-con =$ sink = pipeL con sink
+con =$ sink = pipe con sink
 {-# INLINE (=$) #-}
 
 -- | Fusion operator, combining two @Conduit@s together into a new @Conduit@.
@@ -119,7 +116,7 @@ con =$ sink = pipeL con sink
 --
 -- Since 0.4.0
 (=$=) :: Monad m => Conduit a m b -> ConduitM b c m r -> ConduitM a c m r
-left =$= right = pipeL left right
+left =$= right = pipe left right
 {-# INLINE (=$=) #-}
 
 -- | The connect-and-resume operator. This does not close the @Source@, but
@@ -131,7 +128,7 @@ left =$= right = pipeL left right
 --
 -- Since 0.5.0
 ($$+) :: Monad m => Source m a -> Sink a m b -> m (ResumableSource m a, b)
-src $$+ sink = connectResume (ResumableSource src (return ())) sink
+src $$+ sink = connectResume (ResumableSource src) sink
 {-# INLINE ($$+) #-}
 
 -- | Continue processing after usage of @$$+@.
@@ -148,8 +145,8 @@ src $$+ sink = connectResume (ResumableSource src (return ())) sink
 -- Since 0.5.0
 ($$+-) :: Monad m => ResumableSource m a -> Sink a m b -> m b
 rsrc $$+- sink = do
-    (ResumableSource _ final, res) <- connectResume rsrc sink
-    final
+    (ResumableSource src, res) <- connectResume rsrc sink
+    src $$ return ()
     return res
 {-# INLINE ($$+-) #-}
 

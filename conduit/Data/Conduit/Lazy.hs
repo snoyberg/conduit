@@ -23,8 +23,8 @@ lazyConsume :: (MonadBaseControl IO m, MonadActive m) => Source m a -> m [a]
 lazyConsume =
     go
   where
-    go (Done _) = return []
-    go (HaveOutput src _ x) = do
+    go (Done _ _) = return []
+    go (HaveOutput src x) = do
         xs <- liftBaseOp_ unsafeInterleaveIO $ go src
         return $ x : xs
     go (ConduitM msrc) = liftBaseOp_ unsafeInterleaveIO $ do
@@ -33,4 +33,4 @@ lazyConsume =
             then msrc >>= go
             else return []
     go (NeedInput _ c) = go c
-    go (Leftover p _) = go p
+    --go (Leftover p _) = go p
