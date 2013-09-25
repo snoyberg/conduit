@@ -1032,15 +1032,18 @@ main = hspec $ do
                     src' = C.bracketP
                         (add "acquire")
                         (const $ add "release")
-                        (const $ mapM_ yield [1..])
+                        (const $ CI.setFinalizer (add "inside") >> mapM_ yield [1..5])
                     src = do
                         src' C.$= CL.isolate 4
                         add "computation"
                     sink = CL.mapM (\x -> add (show x) >> return x) C.=$ CL.consume
+
                 res <- C.runResourceT $ runConduit $ src C.$$ sink
-                res `shouldBe` [1..4 :: Int]
+
                 msgs <- I.readIORef imsgs
-                msgs `shouldBe` words "acquire 1 2 3 4 release computation"
+                msgs `shouldBe` words "acquire 1 2 3 4 inside release computation"
+
+                res `shouldBe` [1..4 :: Int]
 
 it' :: String -> IO () -> Spec
 it' = it

@@ -315,7 +315,8 @@ bracketP :: MonadResource m
          -> (a -> ConduitM i o m r)
          -> ConduitM i o m r
 bracketP alloc free inside =
-    ConduitM start
+    -- first call clearCleanup so that this action is only called if actually needed
+    clearCleanup >> ConduitM start
   where
     start = do
         (key, seed) <- allocate alloc free
@@ -328,21 +329,14 @@ addCleanup :: Monad m
            => (Bool -> m ()) -- ^ @True@ if @ConduitM@ ran to completion, @False@ for early termination.
            -> ConduitM i o m r
            -> ConduitM i o m r
-addCleanup cleanup (Done ls r) = ConduitM (cleanup True >> return (Done ls r))
-addCleanup cleanup (HaveOutput src x) = HaveOutput
-    (addCleanup cleanup src)
-    x
-addCleanup cleanup (ConduitM msrc) = ConduitM (liftM (addCleanup cleanup) msrc)
-addCleanup cleanup (NeedInput p c) = NeedInput
-    (addCleanup cleanup . p)
-    (addCleanup cleanup c)
-{-
---addCleanup cleanup (Leftover p i) = Leftover (addCleanup cleanup p) i
-addCleanup cleanup (HaveOutput src close x) = HaveOutput
-    (addCleanup cleanup src)
-    (cleanup False >> close)
-    x
--}
+addCleanup cleanup c0 =
+    setFinalizer (cleanup False) >> go c0
+  where
+    go (Done ls r) = clearCleanup >> lift (cleanup True) >> Done ls r
+    go (HaveOutput src x) = HaveOutput (go src) x
+    go (ConduitM msrc) = ConduitM (liftM go msrc)
+    go (NeedInput p c) = NeedInput (go . p) (go c)
+    go (Cleanup p c) = Cleanup (go p) (\ls -> c ls >> lift (cleanup False))
 
 -- | The identity @ConduitM@.
 --
