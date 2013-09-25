@@ -24,12 +24,15 @@ module Data.Conduit.Text
     , linesBounded
     , TextException (..)
     , takeWhile
+    , dropWhile
+    , take
     , drop
     , foldLines
+    , withLine
     ) where
 
 import qualified Prelude
-import           Prelude hiding (head, drop, takeWhile, lines, zip, zip3, zipWith, zipWith3)
+import           Prelude hiding (head, drop, takeWhile, lines, zip, zip3, zipWith, zipWith3, take, dropWhile)
 
 import           Control.Arrow (first)
 import qualified Control.Exception as Exc
@@ -391,6 +394,39 @@ takeWhile p =
 -- |
 --
 -- Since 1.0.8
+dropWhile :: Monad m
+          => (Char -> Bool)
+          -> Consumer T.Text m ()
+dropWhile p =
+    loop
+  where
+    loop = await >>= maybe (return ()) go
+    go t
+        | T.null x = loop
+        | otherwise = leftover x
+      where
+        x = T.dropWhile p t
+
+-- |
+--
+-- Since 1.0.8
+take :: Monad m => Int -> Conduit T.Text m T.Text
+take =
+    loop
+  where
+    loop i = await >>= maybe (return ()) (go i)
+    go i t
+        | diff == 0 = yield t
+        | diff < 0 =
+            let (x, y) = T.splitAt i t
+             in yield x >> leftover y
+        | otherwise = yield t >> loop diff
+      where
+        diff = i - T.length t
+
+-- |
+--
+-- Since 1.0.8
 drop :: Monad m => Int -> Consumer T.Text m ()
 drop =
     loop
@@ -422,3 +458,21 @@ foldLines f =
             return a
         drop 1
         start a
+
+-- |
+--
+-- Since 1.0.8
+withLine :: Monad m
+         => Sink T.Text m a
+         -> Consumer T.Text m (Maybe a)
+withLine consumer = toConsumer $ do
+    mx <- CL.peek
+    case mx of
+        Nothing -> return Nothing
+        Just _ -> do
+            x <- takeWhile (/= '\n') =$ do
+                x <- CL.map (T.filter (/= '\r')) =$ consumer
+                CL.sinkNull
+                return x
+            drop 1
+            return $ Just x
