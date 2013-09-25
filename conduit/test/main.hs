@@ -950,6 +950,29 @@ main = hspec $ do
                     lift $ return ()
             (src C.$$ CL.consume) `shouldBe` Right [1, 2, 4 :: Int]
 
+    describe "finalizers" $ do
+        it "promptness" $ do
+            imsgs <- I.newIORef []
+            let add x = liftIO $ do
+                    msgs <- I.readIORef imsgs
+                    I.writeIORef imsgs $ msgs ++ [x]
+                src' = C.bracketP
+                    (add "acquire")
+                    (const $ add "release")
+                    (const $ C.addCleanup (const $ add "inside") (mapM_ C.yield [1..5]))
+                src = do
+                    src' C.$= CL.isolate 4
+                    add "computation"
+                sink = CL.mapM (\x -> add (show x) >> return x) C.=$ CL.consume
+
+            res <- C.runResourceT $ src C.$$ sink
+
+            msgs <- I.readIORef imsgs
+            -- FIXME this would be better msgs `shouldBe` words "acquire 1 2 3 4 inside release computation"
+            msgs `shouldBe` words "acquire 1 2 3 4 release inside computation"
+
+            res `shouldBe` [1..4 :: Int]
+
 it' :: String -> IO () -> Spec
 it' = it
 
