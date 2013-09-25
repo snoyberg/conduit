@@ -755,17 +755,17 @@ main = hspec $ do
             (rsrc0, Just ()) <- src0 C.$$+ CL.head
 
             x0 <- I.readIORef ref
-            x0 `shouldBe` 0
+            ('a', x0) `shouldBe` ('a', 0)
 
             (_, final) <- C.unwrapResumable rsrc0
 
             x1 <- I.readIORef ref
-            x1 `shouldBe` 0
+            ('b', x1) `shouldBe` ('b', 0)
 
             final
 
             x2 <- I.readIORef ref
-            x2 `shouldBe` 1
+            ('c', x2) `shouldBe` ('c', 1)
 
         it' "isn't called twice" $ do
             ref <- I.newIORef (0 :: Int)
@@ -800,22 +800,22 @@ main = hspec $ do
             (rsrc0, Just ()) <- src0 C.$$+ CL.head
 
             x0 <- I.readIORef ref
-            x0 `shouldBe` 0
+            ('a', x0) `shouldBe` ('a', 0)
 
             (src1, final) <- C.unwrapResumable rsrc0
 
             x1 <- I.readIORef ref
-            x1 `shouldBe` 0
+            ('b', x1) `shouldBe` ('b', 0)
 
             () <- src1 C.$$ return ()
 
             x2 <- I.readIORef ref
-            x2 `shouldBe` 0
+            ('c', x2) `shouldBe` ('c', 0)
 
             final
 
             x3 <- I.readIORef ref
-            x3 `shouldBe` 1
+            ('d', x3) `shouldBe` ('d', 1)
     describe "injectLeftovers" $ do
         it "works" $ do
             let src = mapM_ CI.yield [1..10 :: Int]
