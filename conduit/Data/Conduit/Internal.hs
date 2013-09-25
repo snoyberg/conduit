@@ -14,7 +14,6 @@ module Data.Conduit.Internal
     , Sink
     , Consumer
     , Conduit
-    , ResumableSource (..)
       -- * Primitives
     , await
     , awaitForever
@@ -46,7 +45,6 @@ module Data.Conduit.Internal
     , mapOutputMaybe
     , mapInput
     , sourceList
-    , unwrapResumable
       -- * Internal
     , getCleanup
     , dropOutput
@@ -243,14 +241,6 @@ type Consumer i m r = forall o. ConduitM i o m r
 -- Since 0.5.0
 type Conduit i m o = ConduitM i o m ()
 
--- | A @Source@ which has been started, but has not yet completed.
---
--- This type contains both the current state of the @Source@, and the finalizer
--- to be run to close it.
---
--- Since 0.5.0
-data ResumableSource m o = ResumableSource (Source m o) -- FIXME remove wrapper
-
 -- | Wait for a single input value from upstream.
 --
 -- Since 0.5.0
@@ -424,12 +414,10 @@ dropOutput (Cleanup c cleanup) = Cleanup (dropOutput c) (const (dropOutput (clea
 --
 -- Since 0.5.0
 connectResume :: Monad m
-              => ResumableSource m o
+              => Source m o
               -> Sink o m r
-              -> m (ResumableSource m o, r)
-connectResume (ResumableSource left0) right0 = do
-    (src, r) <- goRight (getCleanup left0) left0 right0
-    return (ResumableSource src, r)
+              -> m (Source m o, r)
+connectResume left0 right0 = goRight (getCleanup left0) left0 right0
 
 goRight :: Monad m
         => ([b] -> ConduitM a b m ())
@@ -591,26 +579,6 @@ conduitToConduitM =
     go (Done ls ()) = Done ls ()
     go (ConduitM mp) = ConduitM (liftM go mp)
     --go (Leftover _ l) = error "conduitToConduitM: FIXME"
-
--- | Unwraps a @ResumableSource@ into a @Source@ and a finalizer.
---
--- A @ResumableSource@ represents a @Source@ which has already been run, and
--- therefore has a finalizer registered. As a result, if we want to turn it
--- into a regular @Source@, we need to ensure that the finalizer will be run
--- appropriately. By appropriately, I mean:
---
--- * If a new finalizer is registered, the old one should not be called.
---
--- * If the old one is called, it should not be called again.
---
--- This function returns both a @Source@ and a finalizer which ensures that the
--- above two conditions hold. Once you call that finalizer, the @Source@ is
--- invalidated and cannot be used.
---
--- Since 0.5.2
-unwrapResumable :: MonadIO m => ResumableSource m o -> m (Source m o, m ())
-unwrapResumable (ResumableSource src) = do -- FIXME remove this
-    return (src, runConduitM $ src >+> return ())
 
 infixr 9 <+<
 infixl 9 >+>

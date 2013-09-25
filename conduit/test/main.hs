@@ -757,12 +757,10 @@ main = hspec $ do
             x0 <- I.readIORef ref
             ('a', x0) `shouldBe` ('a', 0)
 
-            (_, final) <- C.unwrapResumable rsrc0
-
             x1 <- I.readIORef ref
             ('b', x1) `shouldBe` ('b', 0)
 
-            final
+            rsrc0 C.$$ return ()
 
             x2 <- I.readIORef ref
             ('c', x2) `shouldBe` ('c', 1)
@@ -772,12 +770,10 @@ main = hspec $ do
             let src0 = do
                     C.yieldOr () $ I.writeIORef ref 1
                     C.yieldOr () $ I.writeIORef ref 2
-            (rsrc0, Just ()) <- src0 C.$$+ CL.head
+            (src1, Just ()) <- src0 C.$$+ CL.head
 
             x0 <- I.readIORef ref
             x0 `shouldBe` 0
-
-            (src1, final) <- C.unwrapResumable rsrc0
 
             x1 <- I.readIORef ref
             x1 `shouldBe` 0
@@ -797,12 +793,10 @@ main = hspec $ do
             let src0 = do
                     C.yieldOr () $ I.writeIORef ref 1
                     C.yieldOr () $ I.writeIORef ref 2
-            (rsrc0, Just ()) <- src0 C.$$+ CL.head
+            (src1, Just ()) <- src0 C.$$+ CL.head
 
             x0 <- I.readIORef ref
             ('a', x0) `shouldBe` ('a', 0)
-
-            (src1, final) <- C.unwrapResumable rsrc0
 
             x1 <- I.readIORef ref
             ('b', x1) `shouldBe` ('b', 0)

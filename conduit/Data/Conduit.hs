@@ -41,11 +41,7 @@ module Data.Conduit
     , transConduitM
 
       -- * Connect-and-resume
-    , ResumableSource
     , ($$+)
-    , ($$++)
-    , ($$+-)
-    , unwrapResumable
 
       -- * Flushing
     , Flush (..)
@@ -72,8 +68,6 @@ infixl 1 $=
 infixr 2 =$
 infixr 2 =$=
 infixr 0 $$+
-infixr 0 $$++
-infixr 0 $$+-
 
 -- | The connect operator, which pulls data from a source and pushes to a sink.
 -- If you would like to keep the @Source@ open to be used for other
@@ -127,28 +121,9 @@ left =$= right = pipe left right
 -- Mnemonic: connect + do more.
 --
 -- Since 0.5.0
-($$+) :: Monad m => Source m a -> Sink a m b -> m (ResumableSource m a, b)
-src $$+ sink = connectResume (ResumableSource src) sink
+($$+) :: Monad m => Source m a -> Sink a m b -> m (Source m a, b)
+($$+) = connectResume
 {-# INLINE ($$+) #-}
-
--- | Continue processing after usage of @$$+@.
---
--- Since 0.5.0
-($$++) :: Monad m => ResumableSource m a -> Sink a m b -> m (ResumableSource m a, b)
-($$++) = connectResume
-{-# INLINE ($$++) #-}
-
--- | Complete processing of a @ResumableSource@. This will run the finalizer
--- associated with the @ResumableSource@. In order to guarantee process resource
--- finalization, you /must/ use this operator after using @$$+@ and @$$++@.
---
--- Since 0.5.0
-($$+-) :: Monad m => ResumableSource m a -> Sink a m b -> m b
-rsrc $$+- sink = do
-    (ResumableSource src, res) <- connectResume rsrc sink
-    src $$ return ()
-    return res
-{-# INLINE ($$+-) #-}
 
 -- | Provide for a stream of data that can be flushed.
 --
