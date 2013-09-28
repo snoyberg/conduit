@@ -27,7 +27,6 @@ module Data.Conduit.Text
     , dropWhile
     , take
     , drop
-    , foldLines
     , withLine
     ) where
 
@@ -438,26 +437,6 @@ drop =
         | otherwise = loop diff
       where
         diff = i - T.length t
-
--- |
---
--- Since 1.0.8
-foldLines :: Monad m
-          => (a -> ConduitM T.Text o m a)
-          -> a
-          -> ConduitM T.Text o m a
-foldLines f =
-    start
-  where
-    start a = CL.peek >>= maybe (return a) (const $ loop $ f a)
-
-    loop consumer = do
-        a <- takeWhile (/= '\n') =$= do
-            a <- CL.map (T.filter (/= '\r')) =$= consumer
-            CL.sinkNull
-            return a
-        drop 1
-        start a
 
 -- |
 --

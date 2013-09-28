@@ -1,4 +1,5 @@
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ImpredicativeTypes #-}
 -- | If this is your first time with conduit, you should probably start with
 -- the tutorial:
 -- <https://haskell.fpcomplete.com/user/snoyberg/library-documentation/conduit-overview>.
@@ -8,7 +9,7 @@ module Data.Conduit
       Source
     , Conduit
     , Sink
-    , ConduitM
+    , Pipe
       -- ** Connect/fuse operators
     , ($$)
     , ($=)
@@ -38,7 +39,6 @@ module Data.Conduit
     , mapOutput
     , mapOutputMaybe
     , mapInput
-    , transConduitM
 
       -- * Connect-and-resume
     , ($$+)
@@ -61,6 +61,39 @@ module Data.Conduit
 
 import Control.Monad.Trans.Resource
 import Data.Conduit.Internal
+import Data.Void (Void)
+
+-- | Provides a stream of output values, without consuming any input or
+-- producing a final result.
+--
+-- Since 0.5.0
+type Source m o = forall d. Pipe () o d d m ()
+
+-- | A component which produces a stream of output values, regardless of the
+-- input stream. A @Producer@ is a generalization of a @Source@, and can be
+-- used as either a @Source@ or a @Conduit@.
+--
+-- Since 1.0.0
+type Producer m o = forall i d. Pipe i o d d m ()
+
+-- | Consumes a stream of input values and produces a final result, without
+-- producing any output.
+--
+-- Since 0.5.0
+type Sink i m r = forall t. Pipe i Void () t m r
+
+-- | A component which consumes a stream of input values and produces a final
+-- result, regardless of the output stream. A @Consumer@ is a generalization of
+-- a @Sink@, and can be used as either a @Sink@ or a @Conduit@.
+--
+-- Since 1.0.0
+type Consumer i m r = forall o d t. Pipe i o d t m r
+
+-- | Consumes a stream of input values and produces a stream of output values,
+-- without producing a final result.
+--
+-- Since 0.5.0
+type Conduit i m o = forall d. Pipe i o d d m ()
 
 -- Define fixity of all our operators
 infixr 0 $$
@@ -75,7 +108,7 @@ infixr 0 $$+
 --
 -- Since 0.4.0
 ($$) :: Monad m => Source m a -> Sink a m b -> m b
-src $$ sink = runConduitM $ pipe src sink
+src $$ sink = runPipe (pipe (src >> haltPipe) sink)
 {-# INLINE ($$) #-}
 
 -- | Left fuse, combining a source and a conduit together into a new source.
@@ -87,7 +120,7 @@ src $$ sink = runConduitM $ pipe src sink
 --
 -- Since 0.4.0
 ($=) :: Monad m => Source m a -> Conduit a m b -> Source m b
-src $= con = pipe src con
+src $= conduit = pipe (src >> haltPipe) (conduit >> haltPipe) >> return ()
 {-# INLINE ($=) #-}
 
 -- | Right fuse, combining a conduit and a sink together into a new sink.
@@ -99,7 +132,7 @@ src $= con = pipe src con
 --
 -- Since 0.4.0
 (=$) :: Monad m => Conduit a m b -> Sink b m c -> Sink a m c
-con =$ sink = pipe con sink
+conduit =$ sink = pipe (conduit >> haltPipe) (absurdTerm sink)
 {-# INLINE (=$) #-}
 
 -- | Fusion operator, combining two @Conduit@s together into a new @Conduit@.
@@ -109,8 +142,8 @@ con =$ sink = pipe con sink
 -- Leftover data returned from the right @Conduit@ will be discarded.
 --
 -- Since 0.4.0
-(=$=) :: Monad m => Conduit a m b -> ConduitM b c m r -> ConduitM a c m r
-left =$= right = pipe left right
+(=$=) :: Monad m => Conduit a m b -> Conduit b m c -> Conduit a m c
+up =$= down = pipe (up >> haltPipe) (down >> haltPipe) >> return ()
 {-# INLINE (=$=) #-}
 
 -- | The connect-and-resume operator. This does not close the @Source@, but
@@ -122,7 +155,7 @@ left =$= right = pipe left right
 --
 -- Since 0.5.0
 ($$+) :: Monad m => Source m a -> Sink a m b -> m (Source m a, b)
-($$+) = connectResume
+src $$+ sink = connectResume src sink
 {-# INLINE ($$+) #-}
 
 -- | Provide for a stream of data that can be flushed.
@@ -137,3 +170,33 @@ data Flush a = Chunk a | Flush
 instance Functor Flush where
     fmap _ Flush = Flush
     fmap f (Chunk a) = Chunk (f a)
+
+-- | Generalize a 'Source' to a 'Producer'.
+--
+-- Since 1.0.0
+toProducer :: Monad m => Source m a -> Producer m a
+toProducer = error "toProducer"
+{-
+    go
+  where
+    go (HaveOutput p o) = HaveOutput (go p) o
+    go (NeedInput _ c) = go c
+    go (Done _ls r) = Done [] r
+    go (ConduitM mp) = ConduitM (liftM go mp)
+    --go (Leftover p ()) = go p
+-}
+
+-- | Generalize a 'Sink' to a 'Consumer'.
+--
+-- Since 1.0.0
+toConsumer :: Monad m => Sink a m b -> Consumer a m b
+toConsumer = error "toConsumer"
+{-
+    go
+  where
+    go (HaveOutput _ o) = absurd o
+    go (NeedInput p c) = NeedInput (go . p) (go c)
+    go (Done ls r) = Done ls r
+    go (ConduitM mp) = ConduitM (liftM go mp)
+    --go (Leftover p l) = Leftover (go p) l
+-}

@@ -445,6 +445,7 @@ sequence :: Monad m
          => Consumer i m o -- ^ @Pipe@ to run repeatedly
          -> Conduit i m o
 sequence sink =
-    self
+    Prelude.error "sequence" {-self
   where
     self = awaitForever $ \i -> leftover i >> sink >>= yield
+    -}

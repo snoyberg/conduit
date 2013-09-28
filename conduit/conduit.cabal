@@ -78,6 +78,7 @@ test-suite test
                    , text
                    , resourcet
                    , void
+                   , mmorph
     ghc-options:     -Wall
 
 test-suite doctests

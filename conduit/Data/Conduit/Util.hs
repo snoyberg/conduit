@@ -1,3 +1,4 @@
+{-# LANGUAGE RankNTypes #-}
 -- | Various utility functions versions of @conduit@.
 module Data.Conduit.Util
     ( -- * Misc
@@ -8,7 +9,8 @@ module Data.Conduit.Util
 import Prelude hiding (zip)
 import Control.Monad (liftM, liftM2)
 import Control.Monad.Trans.Class (lift)
-import Data.Conduit.Internal (Source, Sink, ConduitM (..), getCleanup, dropOutput)
+import Data.Conduit (Source, Sink)
+import Data.Conduit.Internal (Pipe (..))
 import Data.Void (Void, absurd)
 
 -- | Combines two sources. The new source will stop producing once either
@@ -17,6 +19,8 @@ import Data.Void (Void, absurd)
 -- Since 0.3.0
 zip :: Monad m => Source m a -> Source m b -> Source m (a, b)
 zip l0 r0 = do
+    error "Data.Conduit.Util.zip"
+    {-
     (cl, l1) <- lift $ getCleanup l0
     (cr, r1) <- lift $ getCleanup r0
     go cl cr l1 r1
@@ -32,6 +36,7 @@ zip l0 r0 = do
     go cl cr (HaveOutput srcx x) (HaveOutput srcy y) = HaveOutput (go cl cr srcx srcy) (x, y)
     go cl cr (NeedInput _ c) right = go cl cr c right
     go cl cr left (NeedInput _ c) = go cl cr left c
+    -}
 
 -- | Combines two sinks. The new sink will complete when both input sinks have
 --   completed.
@@ -41,6 +46,8 @@ zip l0 r0 = do
 -- Since 0.4.1
 zipSinks :: Monad m => Sink i m r -> Sink i m r' -> Sink i m (r, r')
 zipSinks x0 y0 =
+    error "Data.Conduit.Util.zipSinks"
+    {-
     x0 >< y0
   where
     (><) :: Monad m => ConduitM i Void m r1 -> ConduitM i Void m r2 -> ConduitM i o m (r1, r2)
@@ -54,3 +61,4 @@ zipSinks x0 y0 =
     NeedInput px cx  >< NeedInput py cy  = NeedInput (\i -> px i >< py i) (cx >< cy)
     NeedInput px cx  >< y@Done{}         = NeedInput (\i -> px i >< y)    (cx >< y)
     x@Done{}         >< NeedInput py cy  = NeedInput (\i -> x >< py i)    (x >< cy)
+    -}

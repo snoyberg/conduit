@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
 import Test.Hspec
@@ -12,7 +13,7 @@ import qualified Data.Conduit.List as CL
 import qualified Data.Conduit.Lazy as CLazy
 import qualified Data.Conduit.Binary as CB
 import qualified Data.Conduit.Text as CT
-import Data.Conduit (runResourceT, ConduitM)
+import Data.Conduit (runResourceT, Pipe)
 import Data.Maybe   (fromMaybe,catMaybes)
 import qualified Data.List as DL
 import Control.Monad.ST (runST)
@@ -37,13 +38,14 @@ import Control.Monad (forever, void)
 import qualified Control.Concurrent.MVar as M
 import Control.Monad.Error (catchError, throwError, Error)
 import Data.Void (Void)
+import Control.Monad.Morph (hoist)
 
 (@=?) :: (Eq a, Show a) => a -> a -> IO ()
 (@=?) = flip shouldBe
 
 -- Quickcheck property for testing equivalence of list processing
 -- functions and their conduit counterparts
-equivToList :: Eq b => ([a] -> [b]) -> CI.Conduit a Identity b -> [a] -> Bool
+equivToList :: Eq b => ([a] -> [b]) -> C.Conduit a Identity b -> [a] -> Bool
 equivToList f conduit xs =
   f xs == runIdentity (CL.sourceList xs C.$$ conduit C.=$= CL.consume)
 
@@ -665,7 +667,7 @@ main = hspec $ do
         it "leftovers without input" $ do
             ref <- I.newIORef []
             let add x = I.modifyIORef ref (x:)
-                adder' = CI.NeedInput (\a -> liftIO (add a) >> adder') (return ())
+                adder' = CI.await >>= maybe (return ()) (\a -> liftIO (add a) >> adder')
                 adder = adder'
                 residue x = CI.leftover x
 
@@ -725,19 +727,17 @@ main = hspec $ do
             x <- CL.sourceList [1..10 :: Int] C.$$ CI.idP C.=$ CL.fold (+) 0
             y <- CL.sourceList [1..10 :: Int] C.$$ CL.fold (+) 0
             x `shouldBe` y
-            {- FIXME
         it' "right identity" $ do
-            x <- CI.runConduitM $ mapM_ CI.yield [1..10 :: Int] CI.>+> (CI.injectLeftovers $ CL.fold (+) 0) CI.>+> CI.idP
-            y <- CI.runConduitM $ mapM_ CI.yield [1..10 :: Int] CI.>+> (CI.injectLeftovers $ CL.fold (+) 0)
+            x <- CI.runPipe $ mapM_ CI.yield [1..10 :: Int] CI.>+> (CL.fold (+) 0) CI.>+> CI.idP
+            y <- CI.runPipe $ mapM_ CI.yield [1..10 :: Int] CI.>+> (CL.fold (+) 0)
             x `shouldBe` y
-            -}
 
     describe "generalizing" $ do
         it' "works" $ do
-            x <-     CI.runConduitM
-                   $ CI.sourceToConduitM  (CL.sourceList [1..10 :: Int])
-               CI.>+> CI.conduitToConduitM (CL.map (+ 1))
-               CI.>+> CI.sinkToConduitM    (CL.fold (+) 0)
+            x <-     CI.runPipe
+                   $ (CL.sourceList [1..10 :: Int])
+               CI.>+> (CL.map (+ 1))
+               CI.>+> (CL.fold (+) 0)
             x `shouldBe` sum [2..11]
 
     describe "iterate" $ do
@@ -810,8 +810,7 @@ main = hspec $ do
         it' "works" $ do
             ref <- I.newIORef (0 :: Int)
             let src0 = do
-                    CI.setFinalizer $ I.writeIORef ref 2
-                    CI.yield ()
+                    CI.addCleanup (\_ -> I.writeIORef ref 2) $ CI.yield ()
             () <- src0 C.$$ return ()
 
             x0 <- I.readIORef ref
@@ -821,11 +820,10 @@ main = hspec $ do
             ref <- I.newIORef (0 :: Int)
             let src0 = do
                     liftIO $ I.writeIORef ref (1 :: Int)
-                    CI.setFinalizer $ do
+                    CI.addCleanup (\_ -> do
                         x <- I.readIORef ref
                         ('b', x) `shouldBe` ('b', 1)
-                        I.writeIORef ref 2
-                    CI.yield ()
+                        I.writeIORef ref 2) $ CI.yield ()
 
             () <- src0 C.$$ return ()
 
@@ -849,7 +847,7 @@ main = hspec $ do
                 idMsg msg = CI.addCleanup (const $ tell [msg]) $ CI.awaitForever CI.yield
                 printer = CI.awaitForever $ lift . tell . return . show
                 src = mapM_ CI.yield [1 :: Int ..]
-            let run' p = execWriter $ CI.runConduitM $ printer CI.<+< p CI.<+< src
+            let run' p = execWriter $ CI.runPipe $ printer CI.<+< p CI.<+< src
             run' (p1 CI.<+< (p2 CI.<+< p3)) `shouldBe` run' ((p1 CI.<+< p2) CI.<+< p3)
         it "conduit" $ do
             let p1 = C.await >>= maybe (return ()) C.yield
@@ -876,8 +874,8 @@ main = hspec $ do
                     lift $ get >>= lift . tell'
                     C.yield i
 
-            x <- runWriterT $ source C.$$ C.transConduitM (`evalStateT` 1) replaceNum1 C.=$ CL.consume
-            y <- runWriterT $ source C.$$ C.transConduitM (`evalStateT` 1) replaceNum2 C.=$ CL.consume
+            x <- runWriterT $ source C.$$ hoist (`evalStateT` 1) replaceNum1 C.=$ CL.consume
+            y <- runWriterT $ source C.$$ hoist (`evalStateT` 1) replaceNum2 C.=$ CL.consume
             x `shouldBe` y
     describe "text decode" $ do
         it' "doesn't throw runtime exceptions" $ do
@@ -946,31 +944,37 @@ main = hspec $ do
     describe "inject approach test suite" $ do
         let (>->) = CI.pipe
 
-            say :: String -> ConduitM i o (Writer [String]) ()
-            say = lift . tell . return
+            say :: String -> Writer [String] ()
+            say = tell . return
 
-            setCleanup = CI.setCleanup
-            clearCleanup = CI.clearCleanup
             consume = CL.consume
             yield = CI.yield
             leftover = CI.leftover
             idC = CI.idP
             foldM = CL.foldM
             await = CI.await
-            runConduit = CI.runConduitM
+            runConduit = CI.runPipe
 
-            runConduitI :: ConduitM () Void Identity r -> r
+            runConduitI :: Pipe () Void d t Identity r -> r
             runConduitI = runIdentity . runConduit
 
-            runConduitW :: Monoid w => ConduitM () Void (Writer w) r -> (r, w)
+            runConduitW :: Monoid w => Pipe () Void d t (Writer w) r -> (r, w)
             runConduitW = runWriter . runConduit
 
-            takeExactly :: Monad m => Int -> ConduitM i i m ()
+            takeExactly :: Monad m => Int -> Pipe i i d t m ()
             takeExactly =
                 loop
               where
-                loop 0 = clearCleanup
-                loop i = setCleanup (const $ CL.drop i) >> await >>= maybe (return ()) (\x -> yield x >> loop (i - 1))
+                loop 0 = return ()
+                loop i = do
+                    mi <- await
+                    case mi of
+                        Nothing -> return ()
+                        Just i -> do
+                            x <- CI.tryYield i
+                            case x of
+                                Nothing -> loop (i - 1)
+                                Just _ -> CL.drop i
 
         describe "basic ops" $ do
             it "consume" $
@@ -1016,13 +1020,13 @@ main = hspec $ do
         describe "finalizers" $ do
             it "left grouping" $ do
                 runConduitW (
-                    ((setCleanup (const $ say "first") >> say "not called") >->
-                    (setCleanup (const $ say "second") >> say "not called")) >->
+                    ((CI.addCleanup (const $ say "first") $ lift $ say "not called") >->
+                    (CI.addCleanup (const $ say "second") $ lift $ say "not called")) >->
                     return ()) `shouldBe` ((), ["second", "first"])
             it "right grouping" $ do
                 runConduitW (
-                    (setCleanup (const $ say "first") >> say "not called") >->
-                    ((setCleanup (const $ say "second") >> say "not called") >->
+                    (CI.addCleanup (const $ say "first") $ lift $ say "not called") >->
+                    ((CI.addCleanup (const $ say "second") $ lift $ say "not called") >->
                     return ())) `shouldBe` ((), ["second", "first"])
             it "promptness" $ do
                 imsgs <- I.newIORef []
@@ -1032,7 +1036,7 @@ main = hspec $ do
                     src' = C.bracketP
                         (add "acquire")
                         (const $ add "release")
-                        (const $ CI.setFinalizer (add "inside") >> mapM_ yield [1..5])
+                        (const $ mapM_ (flip CI.yieldOr (add "inside")) [1..5])
                     src = do
                         src' C.$= CL.isolate 4
                         add "computation"
@@ -1111,7 +1115,7 @@ main = hspec $ do
                 testPipe p = execWriter $ runPipe $ printer <+< p <+< CI.sourceList ([1..] :: [Int])
 
                 (<+<) = (CI.<+<)
-                runPipe = CI.runConduitM
+                runPipe = CI.runPipe
 
                 p1 = takeP (2 :: Int)
                 p2 = idMsg "foo"
@@ -1138,7 +1142,7 @@ main = hspec $ do
                 p3 = idMsg "bar"
 
                 (<+<) = (CI.<+<)
-                runPipe = CI.runConduitM
+                runPipe = CI.runPipe
 
                 test1L = testPipe $ (p1 <+< p2) <+< p3
                 test1R = testPipe $ p1 <+< (p2 <+< p3)
