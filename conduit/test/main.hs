@@ -47,11 +47,12 @@ import Control.Monad.Morph (hoist)
 -- functions and their conduit counterparts
 equivToList :: Eq b => ([a] -> [b]) -> C.Conduit a Identity b -> [a] -> Bool
 equivToList f conduit xs =
-  f xs == runIdentity (CL.sourceList xs C.$$ conduit C.=$= CL.consume)
+  f xs == runIdentity (CL.sourceList xs C.$$ conduit C.=$ CL.consume)
 
 
 main :: IO ()
 main = hspec $ do
+{-
     describe "data loss rules" $ do
         it "consumes the source to quickly" $ do
             x <- runResourceT $ CL.sourceList [1..10 :: Int] C.$$ do
@@ -926,6 +927,7 @@ main = hspec $ do
                 fromIntegral len `shouldBe` L.length lbs
                 lbs' `shouldBe` lbs
                 fromIntegral len `shouldBe` L.length lbs'
+-}
 
     describe "mtl instances" $ do
         it "ErrorT" $ do
@@ -947,6 +949,7 @@ main = hspec $ do
             say :: String -> Writer [String] ()
             say = tell . return
 
+            consume :: Monad m => CI.Pipe i o d t m [i]
             consume = CL.consume
             yield = CI.yield
             leftover = CI.leftover
@@ -955,10 +958,10 @@ main = hspec $ do
             await = CI.await
             runConduit = CI.runPipe
 
-            runConduitI :: Pipe () Void d t Identity r -> r
+            runConduitI :: Pipe () Void () r Identity r -> r
             runConduitI = runIdentity . runConduit
 
-            runConduitW :: Monoid w => Pipe () Void d t (Writer w) r -> (r, w)
+            runConduitW :: Monoid w => Pipe () Void () r (Writer w) r -> (r, w)
             runConduitW = runWriter . runConduit
 
             takeExactly :: Monad m => Int -> Pipe i i d t m ()
@@ -966,67 +969,67 @@ main = hspec $ do
                 loop
               where
                 loop 0 = return ()
-                loop i = do
+                loop c = do
                     mi <- await
                     case mi of
                         Nothing -> return ()
                         Just i -> do
                             x <- CI.tryYield i
                             case x of
-                                Nothing -> loop (i - 1)
-                                Just _ -> CL.drop i
+                                Nothing -> loop (c - 1)
+                                Just _ -> CL.drop (c - 1)
 
         describe "basic ops" $ do
             it "consume" $
-                runConduitI (mapM_ yield [1..10] >-> consume) `shouldBe` [1..10 :: Int]
+                runIdentity (mapM_ yield [1..10] C.$$ consume) `shouldBe` [1..10 :: Int]
             it "foldM" $
-                runConduitI (mapM_ yield [1..10] >-> (foldM (\x y -> return (x + y)) 0)) `shouldBe` (sum [1..10] :: Int)
+                runIdentity (mapM_ yield [1..10] C.$$ (foldM (\x y -> return (x + y)) 0)) `shouldBe` (sum [1..10] :: Int)
             it "consume + leftover" $
                 runConduitI
-                    (mapM_ yield [2..10] >-> do
+                    ((mapM_ yield [2..10] >> CI.haltPipe) >-> do
                         leftover (1 :: Int)
                         consume) `shouldBe` [1..10]
         describe "identity without leftovers" $ do
             it "front" $
-                runConduitI (idC >-> mapM_ yield [1..10] >-> consume) `shouldBe` [1..10 :: Int]
+                runConduitI (idC >-> (mapM_ yield [1..10] >> CI.haltPipe) >-> consume) `shouldBe` [1..10 :: Int]
             it "middle" $
-                runConduitI (mapM_ yield [1..10] >-> idC >-> consume) `shouldBe` [1..10 :: Int]
+                runConduitI ((mapM_ yield [1..10] >> CI.haltPipe) >-> idC >-> consume) `shouldBe` [1..10 :: Int]
         describe "identity with leftovers" $ do
             it "single" $
-                runConduitI (mapM_ yield [2..10] >-> do
+                runIdentity (mapM_ yield [2..10] C.$$ do
                     idC >-> leftover (1 :: Int)
                     consume) `shouldBe` [1..10]
             it "multiple, separate blocks" $
-                runConduitI (mapM_ yield [3..10] >-> do
-                    idC >-> leftover (2 :: Int)
+                runIdentity (mapM_ yield [3..10] C.$$ do
+                    idC `CI.pipe` leftover (2 :: Int)
                     idC >-> leftover (1 :: Int)
                     consume) `shouldBe` [1..10]
             it "multiple, single block" $
-                runConduitI (mapM_ yield [3..10] >-> do
-                    idC >-> do
+                runIdentity (mapM_ yield [3..10] C.$$ do
+                    idC `CI.pipe` do
                         leftover (2 :: Int)
                         leftover (1 :: Int)
                     consume) `shouldBe` [1..10]
         describe "cleanup" $ do
             describe "takeExactly" $ do
                 it "undrained" $
-                    runConduitI (mapM_ yield [1..10 :: Int] >-> do
-                        takeExactly 5 >-> return ()
+                    runIdentity (mapM_ yield [1..10 :: Int] C.$$ do
+                        takeExactly 5 C.=$ return ()
                         consume) `shouldBe` [6..10]
                 it "drained" $
-                    runConduitI (mapM_ yield [1..10 :: Int] >-> do
-                        void $ takeExactly 5 >-> consume
+                    runIdentity (mapM_ yield [1..10 :: Int] C.$$ do
+                        void $ takeExactly 5 C.=$ consume
                         consume) `shouldBe` [6..10]
         describe "finalizers" $ do
             it "left grouping" $ do
                 runConduitW (
-                    ((CI.addCleanup (const $ say "first") $ lift $ say "not called") >->
-                    (CI.addCleanup (const $ say "second") $ lift $ say "not called")) >->
+                    ((CI.addCleanup (const $ say "first") $ yield () >> lift (say "not called")) C.=$=
+                    (CI.addCleanup (const $ say "second") $ yield () >> lift (say "not called"))) C.=$=
                     return ()) `shouldBe` ((), ["second", "first"])
             it "right grouping" $ do
                 runConduitW (
-                    (CI.addCleanup (const $ say "first") $ lift $ say "not called") >->
-                    ((CI.addCleanup (const $ say "second") $ lift $ say "not called") >->
+                    (CI.addCleanup (const $ say "first") $ yield () >> lift (say "not called")) >->
+                    ((CI.addCleanup (const $ say "second") $ yield () >> lift (say "not called")) >->
                     return ())) `shouldBe` ((), ["second", "first"])
             it "promptness" $ do
                 imsgs <- I.newIORef []
@@ -1067,8 +1070,7 @@ main = hspec $ do
             res <- C.runResourceT $ src C.$$ sink
 
             msgs <- I.readIORef imsgs
-            -- FIXME this would be better msgs `shouldBe` words "acquire 1 2 3 4 inside release computation"
-            msgs `shouldBe` words "acquire 1 2 3 4 release inside computation"
+            msgs `shouldBe` words "acquire 1 2 3 4 inside release computation"
 
             res `shouldBe` [1..4 :: Int]
 

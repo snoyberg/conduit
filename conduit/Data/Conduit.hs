@@ -142,7 +142,10 @@ conduit =$ sink = pipe (conduit >> haltPipe) (absurdTerm sink)
 -- Leftover data returned from the right @Conduit@ will be discarded.
 --
 -- Since 0.4.0
-(=$=) :: Monad m => Conduit a m b -> Conduit b m c -> Conduit a m c
+(=$=) :: Monad m
+      => Conduit a m b
+      -> Conduit b m c
+      -> Pipe a c d t m ()
 up =$= down = pipe (up >> haltPipe) (down >> haltPipe) >> return ()
 {-# INLINE (=$=) #-}
 

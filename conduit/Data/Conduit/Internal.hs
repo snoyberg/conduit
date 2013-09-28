@@ -343,8 +343,8 @@ pipe (Pipe up) (Pipe down) =
     -- causes typechecking to fail since the downstream endpoint is no longer valid.
     -- So we just drop it.
     dropDownstream :: PipeRes i o1 d1 r r -> PipeRes i o2 d2 t r
-    dropDownstream (PipeTerm endpoint) = PipeCont endpoint (error "dropDownstream1")
-    dropDownstream (PipeCont endpoint _) = PipeCont endpoint (error "dropDownstream2")
+    dropDownstream (PipeTerm endpoint) = PipeCont endpoint Nothing
+    dropDownstream (PipeCont endpoint _) = PipeCont endpoint Nothing
 
 -- | Send a single output value downstream. If the downstream @ConduitM@
 -- terminates, this @ConduitM@ will terminate as well.
@@ -420,15 +420,16 @@ leftover i =
 --
 -- Since 0.5.0
 runPipe :: Monad m
-        => Pipe i o d r m r
+        => Pipe i o () r m r
         -> m r
 runPipe =
-    go . ($ Nothing) . unPipe
+    go . ($ down) . unPipe
   where
+    down = Just $ Endpoint [] ()
     go (Pure (PipeCont (Endpoint _ r) _)) = return r
     go (Pure (PipeTerm (Endpoint _ r))) = return r
     go (M m) = m >>= go
-    go (Yield next _) = go (next Nothing)
+    go (Yield next _) = go (next down)
     go (Await next) = go (next Nothing)
 
 -- | Apply a function to all the output values of a @ConduitM@.
@@ -538,8 +539,12 @@ addCleanup :: Monad m
            => (Bool -> m ()) -- ^ @True@ if @ConduitM@ ran to completion, @False@ for early termination.
            -> Pipe i o d t m r
            -> Pipe i o d t m r
-addCleanup cleanup c0 =
-    error "addCleanup"
+addCleanup f (Pipe p) = Pipe $ \down -> do
+    res <- p down
+    case res of
+        PipeTerm _ -> lift $ f False
+        PipeCont _ _ -> lift $ f True
+    return res
     {-
     setFinalizer (cleanup False) >> go c0
   where
