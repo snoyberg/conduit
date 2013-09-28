@@ -107,7 +107,10 @@ infixr 0 $$+
 -- operations, use the connect-and-resume operator '$$+'.
 --
 -- Since 0.4.0
-($$) :: Monad m => Source m a -> Sink a m b -> m b
+($$) :: Monad m
+     => Source m a
+     -> Sink a m b
+     -> m b
 src $$ sink = runPipe (pipe (src >> haltPipe) sink)
 {-# INLINE ($$) #-}
 

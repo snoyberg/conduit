@@ -831,6 +831,7 @@ main = hspec $ do
             x0 <- I.readIORef ref
             ('a', x0) `shouldBe` ('a', 2)
 
+-}
     describe "injectLeftovers" $ do
         it "works" $ do
             let src = mapM_ CI.yield [1..10 :: Int]
@@ -838,7 +839,7 @@ main = hspec $ do
                     js <- CL.take 2
                     mapM_ C.leftover $ reverse js
                     C.yield i
-            res <- (src CI.>+> conduit) C.$$ CL.consume
+            res <- CI.runPipe $ ((src >> CI.haltPipe) CI.>+> (conduit >> CI.haltPipe)) C.>+> CL.consume
             res `shouldBe` [1..10]
     describe "up-upstream finalizers" $ do
         it "pipe" $ do
@@ -857,7 +858,9 @@ main = hspec $ do
                 idMsg msg = C.addCleanup (const $ tell [msg]) $ C.awaitForever C.yield
                 printer = C.awaitForever $ lift . tell . return . show
                 src = CL.sourceList [1 :: Int ..]
-            let run' p = execWriter $ src C.$$ p C.=$ printer
+            let run' :: C.Conduit Int (Writer [String]) Int
+                     -> [String]
+                run' p = execWriter $ src C.$$ p C.=$ printer
             run' ((p3 C.=$= p2) C.=$= p1) `shouldBe` run' (p3 C.=$= (p2 C.=$= p1))
     describe "monad transformer laws" $ do
         it "transConduitM" $ do
@@ -893,6 +896,7 @@ main = hspec $ do
                 M.readMVar ref
 
             assert $ v == length (l :: [Int])
+            {-
         prop "mapM_ equivalence" $ \l -> monadicIO $ do
             let runTest h = run $ do
                     ref <- M.newMVar (0 :: Int)
@@ -908,26 +912,32 @@ main = hspec $ do
 
             assert $ c1 == c2
             assert $ s1 == s2
+            -}
 
+{-
     describe "generalizing" $ do
         it "works" $ do
             let src :: Int -> C.Source IO Int
                 src i = CL.sourceList [1..i]
                 sink :: C.Sink Int IO Int
                 sink = CL.fold (+) 0
-            res <- C.yield 10 C.$$ C.awaitForever (C.toProducer . src) C.=$ (C.toConsumer sink >>= C.yield) C.=$ C.await
+            res <- C.yield 10
+              C.$$ C.awaitForever (C.toProducer src)
+              C.=$ (C.toConsumer sink >>= C.yield)
+              C.=$ C.await
             res `shouldBe` Just (sum [1..10])
+            -}
 
     describe "sinkCacheLength" $ do
         it' "works" $ C.runResourceT $ do
             lbs <- liftIO $ L.readFile "test/main.hs"
-            (len, src) <- CB.sourceLbs lbs C.$$ CB.sinkCacheLength
-            lbs' <- src C.$$ CB.sinkLbs
+            -- FIXME boy this is ugly
+            (len, src) <- CI.runPipe $ (CB.sourceLbs lbs >> CI.haltPipe) CI.>+> CB.sinkCacheLength
+            lbs' <- CI.runPipe $ (src >> CI.haltPipe) CI.>+> CB.sinkLbs
             liftIO $ do
                 fromIntegral len `shouldBe` L.length lbs
                 lbs' `shouldBe` lbs
                 fromIntegral len `shouldBe` L.length lbs'
--}
 
     describe "mtl instances" $ do
         it "ErrorT" $ do
