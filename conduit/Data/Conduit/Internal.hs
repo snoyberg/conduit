@@ -31,6 +31,7 @@ module Data.Conduit.Internal
     , (>+>)
     , (<+<)
     , haltPipe
+    , fromDown
     , absurdTerm
       -- * Utilities
     , mapOutput
@@ -315,6 +316,23 @@ haltPipe =
     go down@(Just (Endpoint _ d)) = Pure (PipeCont (Endpoint [] d) down)
     go Nothing = Yield go Nothing
 
+fromDown :: Monad m
+         => Pipe i o d t m r
+         -> Pipe i o d d m d
+fromDown (Pipe p) = Pipe $ \md -> do
+    res <- p md
+    down@(Endpoint _ d) <- getDown md
+    case res of
+        PipeTerm (Endpoint is _) -> do
+            down@(Endpoint _ d) <- getDown md
+            return $ PipeTerm $ Endpoint is d
+        PipeCont (Endpoint is _) md' -> do
+            down@(Endpoint _ d) <- getDown md'
+            return $ PipeCont (Endpoint is d) (Just down)
+  where
+    getDown (Just d) = return d
+    getDown Nothing = Yield getDown Nothing
+
 -- | The identity @ConduitM@.
 --
 -- Since 0.5.0
@@ -351,14 +369,14 @@ pipe (Pipe up) (Pipe down) =
 -- terminates, this @ConduitM@ will terminate as well.
 --
 -- Since 0.5.0
-yield :: Monad m => o -> Pipe i o d d m ()
+yield :: Monad m => o -> Pipe i o d () m ()
 yield o =
     Pipe go
   where
-    go (Just (Endpoint _leftovers result)) = Pure (PipeTerm (Endpoint [] result))
+    go (Just _) = Pure (PipeTerm (Endpoint [] ()))
     go Nothing = Yield go' (Just o)
 
-    go' (Just (Endpoint _leftovers result)) = Pure (PipeTerm (Endpoint [] result))
+    go' (Just _) = Pure (PipeTerm (Endpoint [] ()))
     go' Nothing = Pure (PipeCont (Endpoint [] ()) Nothing)
 
 tryYield :: Monad m => o -> Pipe i o d t m (Maybe (Endpoint o d))
@@ -375,14 +393,14 @@ tryYield o =
 -- downstream @ConduitM@ terminates.
 --
 -- Since 0.5.0
-yieldOr :: Monad m => o -> m () -> Pipe i o d d m ()
+yieldOr :: Monad m => o -> m () -> Pipe i o d () m ()
 yieldOr o f =
     Pipe go
   where
-    go (Just (Endpoint _leftovers result)) = lift f >> Pure (PipeTerm (Endpoint [] result))
+    go (Just _) = lift f >> Pure (PipeTerm (Endpoint [] ()))
     go Nothing = Yield go' (Just o)
 
-    go' (Just (Endpoint _leftovers result)) = lift f >> Pure (PipeTerm (Endpoint [] result))
+    go' (Just _) = lift f >> Pure (PipeTerm (Endpoint [] ()))
     go' Nothing = Pure (PipeCont (Endpoint [] ()) Nothing)
 
 -- | Wait for a single input value from upstream.
@@ -564,9 +582,9 @@ addCleanup f (Pipe p) =
 --
 -- Since 0.5.0
 connectResume :: Monad m
-              => (forall d. Pipe () o d d m ())
+              => (forall d. Pipe () o d () m ())
               -> Pipe o Void () r m r
-              -> m (forall d. Pipe () o d d m (), r)
+              -> m (forall d. Pipe () o d () m (), r)
 connectResume left right = do
     error "connectResume"
     {-

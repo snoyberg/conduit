@@ -67,14 +67,14 @@ import Data.Void (Void)
 -- producing a final result.
 --
 -- Since 0.5.0
-type Source m o = forall d. Pipe () o d d m ()
+type Source m o = forall d. Pipe () o d () m ()
 
 -- | A component which produces a stream of output values, regardless of the
 -- input stream. A @Producer@ is a generalization of a @Source@, and can be
 -- used as either a @Source@ or a @Conduit@.
 --
 -- Since 1.0.0
-type Producer m o = forall i d. Pipe i o d d m ()
+type Producer m o = forall i d. Pipe i o d () m ()
 
 -- | Consumes a stream of input values and produces a final result, without
 -- producing any output.
@@ -93,7 +93,7 @@ type Consumer i m r = forall o d t. Pipe i o d t m r
 -- without producing a final result.
 --
 -- Since 0.5.0
-type Conduit i m o = forall d. Pipe i o d d m ()
+type Conduit i m o = forall d. Pipe i o d () m ()
 
 -- Define fixity of all our operators
 infixr 0 $$
@@ -111,7 +111,7 @@ infixr 0 $$+
      => Source m a
      -> Sink a m b
      -> m b
-src $$ sink = runPipe (pipe (src >> haltPipe) sink)
+src $$ sink = runPipe (pipe (fromDown src) sink)
 {-# INLINE ($$) #-}
 
 -- | Left fuse, combining a source and a conduit together into a new source.
@@ -123,7 +123,7 @@ src $$ sink = runPipe (pipe (src >> haltPipe) sink)
 --
 -- Since 0.4.0
 ($=) :: Monad m => Source m a -> Conduit a m b -> Source m b
-src $= conduit = pipe (src >> haltPipe) (conduit >> haltPipe) >> return ()
+src $= conduit = pipe (fromDown src) (fromDown conduit) >> return ()
 {-# INLINE ($=) #-}
 
 -- | Right fuse, combining a conduit and a sink together into a new sink.
@@ -135,7 +135,7 @@ src $= conduit = pipe (src >> haltPipe) (conduit >> haltPipe) >> return ()
 --
 -- Since 0.4.0
 (=$) :: Monad m => Conduit a m b -> Sink b m c -> Sink a m c
-conduit =$ sink = pipe (conduit >> haltPipe) (absurdTerm sink)
+conduit =$ sink = pipe (fromDown conduit) (absurdTerm sink)
 {-# INLINE (=$) #-}
 
 -- | Fusion operator, combining two @Conduit@s together into a new @Conduit@.
@@ -149,7 +149,7 @@ conduit =$ sink = pipe (conduit >> haltPipe) (absurdTerm sink)
       => Conduit a m b
       -> Conduit b m c
       -> Pipe a c d t m ()
-up =$= down = pipe (up >> haltPipe) (down >> haltPipe) >> return ()
+up =$= down = pipe (fromDown up) (fromDown down) >> return ()
 {-# INLINE (=$=) #-}
 
 -- | The connect-and-resume operator. This does not close the @Source@, but

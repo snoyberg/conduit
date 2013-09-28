@@ -839,7 +839,7 @@ main = hspec $ do
                     js <- CL.take 2
                     mapM_ C.leftover $ reverse js
                     C.yield i
-            res <- CI.runPipe $ ((src >> CI.haltPipe) CI.>+> (conduit >> CI.haltPipe)) C.>+> CL.consume
+            res <- CI.runPipe $ (CI.fromDown src CI.>+> CI.fromDown conduit) C.>+> CL.consume
             res `shouldBe` [1..10]
     describe "up-upstream finalizers" $ do
         it "pipe" $ do
@@ -932,8 +932,8 @@ main = hspec $ do
         it' "works" $ C.runResourceT $ do
             lbs <- liftIO $ L.readFile "test/main.hs"
             -- FIXME boy this is ugly
-            (len, src) <- CI.runPipe $ (CB.sourceLbs lbs >> CI.haltPipe) CI.>+> CB.sinkCacheLength
-            lbs' <- CI.runPipe $ (src >> CI.haltPipe) CI.>+> CB.sinkLbs
+            (len, src) <- CI.runPipe $ (CI.fromDown (CB.sourceLbs lbs)) CI.>+> CB.sinkCacheLength
+            lbs' <- CI.runPipe $ (CI.fromDown src) CI.>+> CB.sinkLbs
             liftIO $ do
                 fromIntegral len `shouldBe` L.length lbs
                 lbs' `shouldBe` lbs
@@ -996,14 +996,14 @@ main = hspec $ do
                 runIdentity (mapM_ yield [1..10] C.$$ (foldM (\x y -> return (x + y)) 0)) `shouldBe` (sum [1..10] :: Int)
             it "consume + leftover" $
                 runConduitI
-                    ((mapM_ yield [2..10] >> CI.haltPipe) >-> do
+                    ((CI.fromDown (mapM_ yield [2..10])) >-> do
                         leftover (1 :: Int)
                         consume) `shouldBe` [1..10]
         describe "identity without leftovers" $ do
             it "front" $
-                runConduitI (idC >-> (mapM_ yield [1..10] >> CI.haltPipe) >-> consume) `shouldBe` [1..10 :: Int]
+                runConduitI (idC >-> CI.fromDown (mapM_ yield [1..10]) >-> consume) `shouldBe` [1..10 :: Int]
             it "middle" $
-                runConduitI ((mapM_ yield [1..10] >> CI.haltPipe) >-> idC >-> consume) `shouldBe` [1..10 :: Int]
+                runConduitI ((CI.fromDown (mapM_ yield [1..10])) >-> idC >-> consume) `shouldBe` [1..10 :: Int]
         describe "identity with leftovers" $ do
             it "single" $
                 runIdentity (mapM_ yield [2..10] C.$$ do
