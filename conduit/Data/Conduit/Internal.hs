@@ -177,8 +177,9 @@ fuseStep :: Monad m
          -> Step j k c m b
          -> Step i k c m a
 fuseStep up0 (Pure b) =
-    go (up0 (Just b))
+    killDown $ go (up0 (Just b))
   where
+    killDown p = Yield (maybe (killDown p) (const p)) Nothing -- FIXME this is ugly, we need something more robust
     go (Pure a) = Pure a
     go (M up) = M (liftM go up)
     go (Yield up _) = go (up (Just b))
@@ -545,15 +546,15 @@ addCleanup f (Pipe p) = Pipe $ \down -> do
         PipeTerm _ -> lift $ f False
         PipeCont _ _ -> lift $ f True
     return res
-    {-
-    setFinalizer (cleanup False) >> go c0
+{-
+addCleanup f (Pipe p) =
+    Pipe $ go . p
   where
-    go (Done ls r) = clearCleanup >> lift (cleanup True) >> Done ls r
-    go (HaveOutput src x) = HaveOutput (go src) x
-    go (ConduitM msrc) = ConduitM (liftM go msrc)
-    go (NeedInput p c) = NeedInput (go . p) (go c)
-    go (Cleanup p c) = Cleanup (go p) (\ls -> c ls >> lift (cleanup False))
-    -}
+    go (Pure r) = M (f True >> return (Pure r))
+    go (M m) = M (liftM go m)
+    go (Yield p o) = Yield (go . p) o
+    go (Await f) = Await (go . f)
+-}
 
 -- | Connect a @Source@ to a @Sink@ until the latter closes. Returns both the
 -- most recent state of the @Source@ and the result of the @Sink@.

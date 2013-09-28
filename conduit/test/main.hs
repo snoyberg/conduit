@@ -1180,7 +1180,7 @@ main = hspec $ do
                     ]
 
             it "test1" $ verify test1L test1R "p1" "p2" "p3"
-            -- FIXME this is broken it "test2" $ verify test2L test2R "p2" "p1" "p3"
+            it "test2" $ verify test2L test2R "p2" "p1" "p3"
             it "test3" $ verify test3L test3R "p2" "p3" "p1"
 
 it' :: String -> IO () -> Spec
