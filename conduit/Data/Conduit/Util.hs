@@ -9,8 +9,8 @@ module Data.Conduit.Util
 import Prelude hiding (zip)
 import Control.Monad (liftM, liftM2)
 import Control.Monad.Trans.Class (lift)
-import Data.Conduit (Source, Sink)
-import Data.Conduit.Internal (Pipe (..))
+import Data.Conduit (Source, Sink, ($$))
+import Data.Conduit.Internal
 import Data.Void (Void, absurd)
 
 -- | Combines two sources. The new source will stop producing once either
@@ -18,25 +18,17 @@ import Data.Void (Void, absurd)
 --
 -- Since 0.3.0
 zip :: Monad m => Source m a -> Source m b -> Source m (a, b)
-zip l0 r0 = do
-    error "Data.Conduit.Util.zip"
-    {-
-    (cl, l1) <- lift $ getCleanup l0
-    (cr, r1) <- lift $ getCleanup r0
-    go cl cr l1 r1
-  where
-    go _ _ (Done _ ()) (Done _ ()) = Done [] ()
-    go _ cr (Done _ ()) (HaveOutput _ _) = dropOutput (cr [])
-    go cl _ (HaveOutput _ _) (Done _ ()) = dropOutput (cl [])
-    go _ cr (Done _ ()) (ConduitM _) = dropOutput (cr [])
-    go cl _ (ConduitM _) (Done _ ()) = dropOutput (cl [])
-    go cl cr (ConduitM mx) (ConduitM my) = ConduitM (liftM2 (go cl cr) mx my)
-    go cl cr (ConduitM mx) y@HaveOutput{} = ConduitM (liftM (\x -> go cl cr x y) mx)
-    go cl cr x@HaveOutput{} (ConduitM my) = ConduitM (liftM (go cl cr x) my)
-    go cl cr (HaveOutput srcx x) (HaveOutput srcy y) = HaveOutput (go cl cr srcx srcy) (x, y)
-    go cl cr (NeedInput _ c) right = go cl cr c right
-    go cl cr left (NeedInput _ c) = go cl cr left c
-    -}
+zip left right = do
+    mleft <- lift $ draw left
+    case mleft of
+        Nothing -> lift $ right $$ return ()
+        Just (left', a) -> do
+            mright <- lift $ draw right
+            case mright of
+                Nothing -> lift $ left' $$ return ()
+                Just (right', b) -> do
+                    yield (a, b)
+                    zip left' right'
 
 -- | Combines two sinks. The new sink will complete when both input sinks have
 --   completed.
@@ -45,20 +37,25 @@ zip l0 r0 = do
 --
 -- Since 0.4.1
 zipSinks :: Monad m => Sink i m r -> Sink i m r' -> Sink i m (r, r')
-zipSinks x0 y0 =
-    error "Data.Conduit.Util.zipSinks"
-    {-
-    x0 >< y0
+zipSinks (Pipe x0) (Pipe y0) =
+    Pipe $ \m -> go m (x0 m) (y0 m)
   where
-    (><) :: Monad m => ConduitM i Void m r1 -> ConduitM i Void m r2 -> ConduitM i o m (r1, r2)
 
-    HaveOutput _   o >< _                = absurd o
-    _                >< HaveOutput _   o = absurd o
-
-    ConduitM mx         >< y                = ConduitM (liftM (>< y) mx)
-    x                >< ConduitM my         = ConduitM (liftM (x ><) my)
-    Done _ x         >< Done _ y         = Done [] (x, y)
-    NeedInput px cx  >< NeedInput py cy  = NeedInput (\i -> px i >< py i) (cx >< cy)
-    NeedInput px cx  >< y@Done{}         = NeedInput (\i -> px i >< y)    (cx >< y)
-    x@Done{}         >< NeedInput py cy  = NeedInput (\i -> x >< py i)    (x >< cy)
-    -}
+    go m (Yield _ (Just o)) _ = absurd o
+    go m _ (Yield _ (Just o)) = absurd o
+    go m (Yield x Nothing) y = go m (x m) y
+    go m x (Yield y Nothing) = go m x (y m)
+    go m (Pure (PipeCont (Endpoint _ x) _)) (Pure (PipeCont (Endpoint _ y) _)) = Pure $ PipeCont (Endpoint [] (x, y)) m
+    go _ (Pure PipeTerm{}) _ = error "zipSinks: PipeTerm"
+    go _ _ (Pure PipeTerm{}) = error "zipSinks: PipeTerm"
+    go m (M x) y = lift x >>= \x' -> go m x' y
+    go m x (M y) = lift y >>= \y' -> go m x y'
+    go m (Await x) (Await y) = do
+        mi <- Await Pure
+        go m (x mi) (y mi)
+    go m (Await x) (Pure y) = do
+        mi <- Await Pure
+        go m (x mi) (Pure y)
+    go m (Pure x) (Await y) = do
+        mi <- Await Pure
+        go m (Pure x) (y mi)

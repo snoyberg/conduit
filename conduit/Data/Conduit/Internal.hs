@@ -20,6 +20,7 @@ module Data.Conduit.Internal
     , tryYield
     , yieldOr
     , leftover
+    , draw
       -- * Finalization
     , bracketP
     , addCleanup

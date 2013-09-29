@@ -52,7 +52,6 @@ equivToList f conduit xs =
 
 main :: IO ()
 main = hspec $ do
-{-
     describe "data loss rules" $ do
         it "consumes the source to quickly" $ do
             x <- runResourceT $ CL.sourceList [1..10 :: Int] C.$$ do
@@ -735,9 +734,9 @@ main = hspec $ do
 
     describe "generalizing" $ do
         it' "works" $ do
-            x <-     CI.runPipe
-                   $ (CL.sourceList [1..10 :: Int])
-               CI.>+> (CL.map (+ 1))
+            Just x <-     CI.runPipe
+                   $ CI.fromDown (CL.sourceList [1..10 :: Int])
+               CI.>+> CI.fromDown (CL.map (+ 1))
                CI.>+> (CL.fold (+) 0)
             x `shouldBe` sum [2..11]
 
@@ -745,7 +744,6 @@ main = hspec $ do
         it' "works" $ do
             res <- CL.iterate (+ 1) (1 :: Int) C.$$ CL.isolate 10 C.=$ CL.fold (+) 0
             res `shouldBe` sum [1..10]
--}
 
     describe "unwrapResumable" $ do
         it' "works" $ do
@@ -911,20 +909,6 @@ main = hspec $ do
 
             assert $ c1 == c2
             assert $ s1 == s2
-
-{-
-    describe "generalizing" $ do
-        it "works" $ do
-            let src :: Int -> C.Source IO Int
-                src i = CL.sourceList [1..i]
-                sink :: C.Sink Int IO Int
-                sink = CL.fold (+) 0
-            res <- C.yield 10
-              C.$$ C.awaitForever (C.toProducer src)
-              C.=$ (C.toConsumer sink >>= C.yield)
-              C.=$ C.await
-            res `shouldBe` Just (sum [1..10])
-            -}
 
     describe "sinkCacheLength" $ do
         it' "works" $ C.runResourceT $ do
