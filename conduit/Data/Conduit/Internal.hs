@@ -32,7 +32,6 @@ module Data.Conduit.Internal
     , (<+<)
     , haltPipe
     , fromDown
-    , absurdTerm
       -- * Utilities
     , mapOutput
     , mapOutputMaybe
@@ -209,23 +208,23 @@ data Endpoint stream result = Endpoint
     , epResult :: result
     }
 
-data PipeRes i o d t r
-    = PipeTerm (Endpoint i t)
+data PipeRes i o d r
+    = PipeTerm (Endpoint i ()) -- FIXME just use [i]?
     | PipeCont (Endpoint i r) (Maybe (Endpoint o d))
 
-newtype Pipe i o d t m r = Pipe
+newtype Pipe i o d m r = Pipe
     { unPipe :: Maybe (Endpoint o d)
-             -> Step i o (Endpoint o d) m (PipeRes i o d t r)
+             -> Step i o (Endpoint o d) m (PipeRes i o d r)
     }
 
-instance Monad m => Functor (Pipe i o d t m) where
+instance Monad m => Functor (Pipe i o d m) where
     fmap = liftM
 
-instance Monad m => Applicative (Pipe i o d t m) where
+instance Monad m => Applicative (Pipe i o d m) where
     pure = return
     (<*>) = ap
 
-instance Monad m => Monad (Pipe i o d t m) where
+instance Monad m => Monad (Pipe i o d m) where
     return a = Pipe (return . PipeCont (Endpoint [] a))
 
     Pipe f >>= g = Pipe $ \down0 -> do
@@ -237,8 +236,8 @@ instance Monad m => Monad (Pipe i o d t m) where
       where
         inject :: Monad m
                => [i]
-               -> Step i o (Endpoint o d) m (PipeRes i o d t r)
-               -> Step i o (Endpoint o d) m (PipeRes i o d t r)
+               -> Step i o (Endpoint o d) m (PipeRes i o d r)
+               -> Step i o (Endpoint o d) m (PipeRes i o d r)
         inject [] s = s
         inject is (Pure (PipeTerm (Endpoint is' t))) = Pure (PipeTerm (Endpoint (is' ++ is) t))
         inject is (Pure (PipeCont (Endpoint is' r) down)) = Pure (PipeCont (Endpoint (is' ++ is) r) down)
@@ -246,31 +245,31 @@ instance Monad m => Monad (Pipe i o d t m) where
         inject is (Yield next o) = Yield (inject is . next) o
         inject (i:is) (Await next) = inject is (next (Just i))
 
-instance MonadBase base m => MonadBase base (Pipe i o d t m) where
+instance MonadBase base m => MonadBase base (Pipe i o d m) where
     liftBase = lift . liftBase
 
-instance MonadTrans (Pipe i o d t) where
+instance MonadTrans (Pipe i o d) where
     lift m = Pipe $ \done -> do
         x <- lift m
         return $ PipeCont (Endpoint [] x) done
 
-instance MonadIO m => MonadIO (Pipe i o d t m) where
+instance MonadIO m => MonadIO (Pipe i o d m) where
     liftIO = lift . liftIO
 
-instance MonadThrow m => MonadThrow (Pipe i o d t m) where
+instance MonadThrow m => MonadThrow (Pipe i o d m) where
     monadThrow = lift . monadThrow
 
-instance MonadActive m => MonadActive (Pipe i o d t m) where
+instance MonadActive m => MonadActive (Pipe i o d m) where
     monadActive = lift monadActive
 
-instance Monad m => Monoid (Pipe i o d t m ()) where
+instance Monad m => Monoid (Pipe i o d m ()) where
     mempty = return ()
     mappend = (>>)
 
-instance MonadResource m => MonadResource (Pipe i o d t m) where
+instance MonadResource m => MonadResource (Pipe i o d m) where
     liftResourceT = lift . liftResourceT
 
-instance MonadReader r m => MonadReader r (Pipe i o d t m) where
+instance MonadReader r m => MonadReader r (Pipe i o d m) where
     ask = lift ask
     local f (Pipe g) = Pipe (local f . g)
 
@@ -279,7 +278,7 @@ instance MonadReader r m => MonadReader r (Pipe i o d t m) where
 #define MIN_VERSION_mtl(x, y, z) 0
 #endif
 
-instance MonadWriter w m => MonadWriter w (Pipe i o d t m) where
+instance MonadWriter w m => MonadWriter w (Pipe i o d m) where
 #if MIN_VERSION_mtl(2, 1, 0)
     writer = lift . writer
 #endif
@@ -298,23 +297,23 @@ instance MonadWriter w m => MonadWriter w (Pipe i o d t m) where
             PipeTerm x -> return $ PipeTerm x
             PipeCont (Endpoint ls (r, w)) done -> pass $ return (PipeCont (Endpoint ls r) done, w)
 
-instance MonadState s m => MonadState s (Pipe i o d t m) where
+instance MonadState s m => MonadState s (Pipe i o d m) where
     get = lift get
     put = lift . put
 #if MIN_VERSION_mtl(2, 1, 0)
     state = lift . state
 #endif
 
-instance MonadRWS r w s m => MonadRWS r w s (Pipe i o d t m)
+instance MonadRWS r w s m => MonadRWS r w s (Pipe i o d m)
 
-instance MonadError e m => MonadError e (Pipe i o d t m) where
+instance MonadError e m => MonadError e (Pipe i o d m) where
     throwError = lift . throwError
     catchError (Pipe p) f = Pipe (\x -> catchError (p x) (\y -> unPipe (f y) x))
 
-instance MFunctor (Pipe i o d t) where
+instance MFunctor (Pipe i o d) where
     hoist f (Pipe p) = Pipe (hoist f . p)
 
-haltPipe :: Monad m => Pipe i o d t m d
+haltPipe :: Monad m => Pipe i o d m d
 haltPipe =
     Pipe go
   where
@@ -322,15 +321,18 @@ haltPipe =
     go Nothing = Yield go Nothing
 
 fromDown :: Monad m
-         => Pipe i o d t m r
-         -> Pipe i o d d m d
+         => Pipe i o () m ()
+         -> Pipe i o d m d
 fromDown (Pipe p) = Pipe $ \md -> do
-    res <- p md
+    res <- ignoreD $ p $
+        case md of
+            Nothing -> Nothing
+            Just (Endpoint o _) -> Just $ Endpoint o ()
     down@(Endpoint _ d) <- getDown md
     case res of
         PipeTerm (Endpoint is _) -> do
             down@(Endpoint _ d) <- getDown md
-            return $ PipeTerm $ Endpoint is d
+            return $ PipeCont (Endpoint is d) (Just down)
         PipeCont (Endpoint is _) md' -> do
             down@(Endpoint _ d) <- getDown md'
             return $ PipeCont (Endpoint is d) (Just down)
@@ -338,10 +340,23 @@ fromDown (Pipe p) = Pipe $ \md -> do
     getDown (Just d) = return d
     getDown Nothing = Yield getDown Nothing
 
+    ignoreD :: Monad m
+            => Step i o (Endpoint o ()) m (PipeRes i o () ())
+            -> Step i o (Endpoint o d) m (PipeRes i o d ())
+    ignoreD (Pure (PipeTerm x)) = Pure (PipeTerm x)
+    ignoreD (Pure (PipeCont (Endpoint is _) _)) = Pure $ PipeTerm $ Endpoint is ()
+    ignoreD (M m) = M (liftM ignoreD m)
+    ignoreD (Await f) = Await (ignoreD . f)
+    ignoreD (Yield f o) = Yield (\mx ->
+        case mx of
+            Nothing -> ignoreD (f Nothing)
+            Just (Endpoint os _) -> ignoreD $ f $ Just $ Endpoint os ()
+            ) o
+
 -- | The identity @ConduitM@.
 --
 -- Since 0.5.0
-idP :: Monad m => Pipe i i r t m r
+idP :: Monad m => Pipe i i r m r
 idP =
     Pipe go
   where
@@ -353,28 +368,28 @@ idP =
 --
 -- Since 0.5.0
 pipe :: Monad m
-     => Pipe i j b a m a
-     -> Pipe j k c b m b
-     -> Pipe i k c t m a
+     => Pipe i j b m a
+     -> Pipe j k c m b
+     -> Pipe i k c m a
 pipe (Pipe up) (Pipe down) =
     Pipe $ liftM dropDownstream . fuseStep up (liftM collapseRes . down)
   where
-    collapseRes :: PipeRes i o d r r -> Endpoint i r
-    collapseRes (PipeTerm endpoint) = endpoint
+    collapseRes :: PipeRes i o d r -> Endpoint i r
+    collapseRes (PipeTerm (Endpoint _ ())) = error "Data.Conduit.Internal.pipe: Cannot have a terminator in downstream position"
     collapseRes (PipeCont endpoint _) = endpoint
 
     -- We no longer need the second field in the PipeCont constructor, and its presence
     -- causes typechecking to fail since the downstream endpoint is no longer valid.
     -- So we just drop it.
-    dropDownstream :: PipeRes i o1 d1 r r -> PipeRes i o2 d2 t r
-    dropDownstream (PipeTerm endpoint) = PipeCont endpoint Nothing
+    dropDownstream :: PipeRes i o1 d1 r -> PipeRes i o2 d2 r
+    dropDownstream (PipeTerm endpoint) = PipeTerm endpoint -- PipeCont endpoint Nothing
     dropDownstream (PipeCont endpoint _) = PipeCont endpoint Nothing
 
 -- | Send a single output value downstream. If the downstream @ConduitM@
 -- terminates, this @ConduitM@ will terminate as well.
 --
 -- Since 0.5.0
-yield :: Monad m => o -> Pipe i o d () m ()
+yield :: Monad m => o -> Pipe i o d m ()
 yield o =
     Pipe go
   where
@@ -384,7 +399,7 @@ yield o =
     go' (Just _) = Pure (PipeTerm (Endpoint [] ()))
     go' Nothing = Pure (PipeCont (Endpoint [] ()) Nothing)
 
-tryYield :: Monad m => o -> Pipe i o d t m (Maybe (Endpoint o d))
+tryYield :: Monad m => o -> Pipe i o d m (Maybe (Endpoint o d))
 tryYield o =
     Pipe go
   where
@@ -398,7 +413,7 @@ tryYield o =
 -- downstream @ConduitM@ terminates.
 --
 -- Since 0.5.0
-yieldOr :: Monad m => o -> m () -> Pipe i o d () m ()
+yieldOr :: Monad m => o -> m () -> Pipe i o d m ()
 yieldOr o f =
     Pipe go
   where
@@ -411,7 +426,7 @@ yieldOr o f =
 -- | Wait for a single input value from upstream.
 --
 -- Since 0.5.0
-await :: Monad m => Pipe i o d t m (Maybe i)
+await :: Monad m => Pipe i o d m (Maybe i)
 await =
     Pipe go
   where
@@ -421,7 +436,7 @@ await =
 -- new input. Returns the upstream result type.
 --
 -- Since 0.5.0
-awaitForever :: Monad m => (i -> Pipe i o d t m r') -> Pipe i o d t m ()
+awaitForever :: Monad m => (i -> Pipe i o d m r') -> Pipe i o d m ()
 awaitForever inner =
     loop
   where
@@ -434,7 +449,7 @@ awaitForever inner =
 -- already consumed from upstream.
 --
 -- Since 0.5.0
-leftover :: Monad m => i -> Pipe i o d t m ()
+leftover :: Monad m => i -> Pipe i o d m ()
 leftover i =
     Pipe go
   where
@@ -444,14 +459,14 @@ leftover i =
 --
 -- Since 0.5.0
 runPipe :: Monad m
-        => Pipe i o () r m r
-        -> m r
+        => Pipe i o () m r
+        -> m (Maybe r)
 runPipe =
     go . ($ down) . unPipe
   where
     down = Just $ Endpoint [] ()
-    go (Pure (PipeCont (Endpoint _ r) _)) = return r
-    go (Pure (PipeTerm (Endpoint _ r))) = return r
+    go (Pure (PipeCont (Endpoint _ r) _)) = return (Just r)
+    go (Pure (PipeTerm (Endpoint _ ()))) = return Nothing
     go (M m) = m >>= go
     go (Yield next _) = go (next down)
     go (Await next) = go (next Nothing)
@@ -462,10 +477,10 @@ runPipe =
 -- days.
 --
 -- Since 0.4.1
-mapOutput :: Monad m => (o1 -> o2) -> Pipe i o1 d r m r -> Pipe i o2 d r m r
+mapOutput :: Monad m => (o1 -> o2) -> Pipe i o1 d m r -> Pipe i o2 d m r
 mapOutput f = (`pipe` mapPipe f)
 
-mapPipe :: Monad m => (a -> b) -> Pipe a b r t m r
+mapPipe :: Monad m => (a -> b) -> Pipe a b r m r
 mapPipe f =
     go
   where
@@ -474,10 +489,10 @@ mapPipe f =
 -- | Same as 'mapOutput', but use a function that returns @Maybe@ values.
 --
 -- Since 0.5.0
-mapOutputMaybe :: Monad m => (o1 -> Maybe o2) -> Pipe i o1 d r m r -> Pipe i o2 d r m r
+mapOutputMaybe :: Monad m => (o1 -> Maybe o2) -> Pipe i o1 d m r -> Pipe i o2 d m r
 mapOutputMaybe f = (`pipe` mapMaybePipe f)
 
-mapMaybePipe :: Monad m => (a -> Maybe b) -> Pipe a b r t m r
+mapMaybePipe :: Monad m => (a -> Maybe b) -> Pipe a b r m r
 mapMaybePipe f =
     go
   where
@@ -489,11 +504,11 @@ mapMaybePipe f =
 mapInput :: Monad m
          => (i1 -> i2) -- ^ map initial input to new input
          -> (i2 -> Maybe i1) -- ^ map new leftovers to initial leftovers
-         -> Pipe i2 o d r m r
-         -> Pipe i1 o d r m r
+         -> Pipe i2 o d m r
+         -> Pipe i1 o d m r
 mapInput f g = pipe (mapLeftoverPipe f g)
 
-mapLeftoverPipe :: Monad m => (a -> b) -> (b -> Maybe a) -> Pipe a b r t m r
+mapLeftoverPipe :: Monad m => (a -> b) -> (b -> Maybe a) -> Pipe a b r m r
 mapLeftoverPipe f g =
     go
   where
@@ -506,7 +521,7 @@ mapLeftoverPipe f g =
 -- | Convert a list into a source.
 --
 -- Since 0.3.0
-sourceList :: Monad m => [a] -> Pipe i a d t m ()
+sourceList :: Monad m => [a] -> Pipe i a d m ()
 sourceList [] = return ()
 sourceList (a:as) = tryYield a >>= maybe (sourceList as) (const $ return ())
 
@@ -522,9 +537,9 @@ infixl 9 >+>
 --
 -- Since 0.5.0
 (>+>) :: Monad m
-      => Pipe i j b a m a
-      -> Pipe j k c b m b
-      -> Pipe i k c a m a
+      => Pipe i j b m a
+      -> Pipe j k c m b
+      -> Pipe i k c m a
 (>+>) = pipe
 {-# INLINE (>+>) #-}
 
@@ -532,9 +547,9 @@ infixl 9 >+>
 --
 -- Since 0.5.0
 (<+<) :: Monad m
-      => Pipe j k c b m b
-      -> Pipe i j b a m a
-      -> Pipe i k c a m a
+      => Pipe j k c m b
+      -> Pipe i j b m a
+      -> Pipe i k c m a
 (<+<) = flip pipe
 {-# INLINE (<+<) #-}
 
@@ -550,8 +565,8 @@ infixl 9 >+>
 bracketP :: MonadResource m
          => IO a
          -> (a -> IO ())
-         -> (a -> Pipe i o d t m r)
-         -> Pipe i o d t m r
+         -> (a -> Pipe i o d m r)
+         -> Pipe i o d m r
 bracketP alloc free inside = do
     (key, seed) <- allocate alloc free
     addCleanup (const $ release key) (inside seed)
@@ -561,8 +576,8 @@ bracketP alloc free inside = do
 -- Since 0.4.1
 addCleanup :: Monad m
            => (Bool -> m ()) -- ^ @True@ if @ConduitM@ ran to completion, @False@ for early termination.
-           -> Pipe i o d t m r
-           -> Pipe i o d t m r
+           -> Pipe i o d m r
+           -> Pipe i o d m r
 addCleanup f (Pipe p) = Pipe $ \down -> do
     res <- p down
     case res of
@@ -587,9 +602,9 @@ addCleanup f (Pipe p) =
 --
 -- Since 0.5.0
 connectResume :: Monad m
-              => (forall d. Pipe () o d () m ())
-              -> Pipe o Void () r m r
-              -> m (forall d. Pipe () o d () m (), r)
+              => (Pipe () o () m ())
+              -> Pipe o Void () m r
+              -> m (Pipe () o () m (), r)
 connectResume left right = do
     error "connectResume"
     {-
@@ -661,12 +676,3 @@ conduitToConduitM =
     go (ConduitM mp) = ConduitM (liftM go mp)
     --go (Leftover _ l) = error "conduitToConduitM: FIXME"
 -}
-
-absurdTerm :: Monad m
-           => Pipe i o d Void m r
-           -> Pipe i o d t m r
-absurdTerm (Pipe p) = Pipe $ \done -> do
-    x <- p done
-    return $ case x of
-        PipeTerm (Endpoint _ t) -> absurd t
-        PipeCont y z -> PipeCont y z
