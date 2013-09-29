@@ -175,25 +175,30 @@ instance MFunctor (Step i o d) where
 
 fuseStep :: Monad m
          => (Maybe b -> Step i j b m a)
-         -> Step j k c m b
-         -> Step i k c m a
-fuseStep up0 (Pure b) =
-    killDown $ go (up0 (Just b))
+         -> (Maybe c -> Step j k c m b)
+         -> (Maybe c -> Step i k c m a)
+fuseStep up0 down0 mc =
+    fuseStep' (down0 mc)
   where
-    killDown p = Yield (maybe (killDown p) (const p)) Nothing -- FIXME this is ugly, we need something more robust
-    go (Pure a) = Pure a
-    go (M up) = M (liftM go up)
-    go (Yield up _) = go (up (Just b))
-    go (Await up) = Await (go . up)
-fuseStep up (M down) = M (liftM (fuseStep up) down)
-fuseStep up (Yield down k) = Yield (fuseStep up . down) k
-fuseStep up0 (Await down) =
-    go (up0 Nothing)
-  where
-    go (Pure a) = fuseStep (\_ -> Pure a) (down Nothing)
-    go (M up) = M (liftM go up)
-    go (Yield up j) = fuseStep up (down j)
-    go (Await up) = Await (go . up)
+    fuseStep' (Pure b) =
+        killDown mc
+      where
+        killDown Nothing = Yield killDown Nothing
+        killDown (Just c) = go (up0 (Just b))
+
+        go (Pure a) = Pure a
+        go (M up) = M (liftM go up)
+        go (Yield up _) = go (up (Just b))
+        go (Await up) = Await (go . up)
+    fuseStep' (M down) = M (liftM fuseStep' down)
+    fuseStep' (Yield down k) = Yield (fuseStep' . down) k
+    fuseStep' (Await down) =
+        go (up0 Nothing)
+      where
+        go (Pure a) = fuseStep (\_ -> Pure a) (const (down Nothing)) mc
+        go (M up) = M (liftM go up)
+        go (Yield up j) = fuseStep up (const (down j)) mc
+        go (Await up) = Await (go . up)
 
 idStep :: Maybe r -> Step i i r m r
 idStep (Just r) = Pure r
@@ -352,7 +357,7 @@ pipe :: Monad m
      -> Pipe j k c b m b
      -> Pipe i k c t m a
 pipe (Pipe up) (Pipe down) =
-    Pipe $ liftM dropDownstream . fuseStep up . liftM collapseRes . down
+    Pipe $ liftM dropDownstream . fuseStep up (liftM collapseRes . down)
   where
     collapseRes :: PipeRes i o d r r -> Endpoint i r
     collapseRes (PipeTerm endpoint) = endpoint
