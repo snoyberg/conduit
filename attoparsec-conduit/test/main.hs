@@ -93,7 +93,7 @@ main = hspec $ do
         it "parses a repeated stream" $ do
             let input = ["aaa\n", "aaa\naaa\n", "aaa\n"]
                 parser = Data.Attoparsec.Text.string "aaa" <* Data.Attoparsec.Text.endOfLine
-                sink = conduitParserEither parser =$= CL.consume
+                sink = conduitParserEither parser =$ CL.consume
             (Right ea) <- runExceptionT $ CL.sourceList input $$ sink
             let chk a = case a of
                           Left{} -> False
