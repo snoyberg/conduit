@@ -602,15 +602,40 @@ addCleanup f (Pipe p) =
 --
 -- Since 0.5.0
 connectResume :: Monad m
-              => (Pipe () o () m ())
+              => Pipe () o () m ()
               -> Pipe o Void () m r
               -> m (Pipe () o () m (), r)
-connectResume left right = do
-    error "connectResume"
-    {-
-    (cleanup, left') <- getCleanup left
-    goRight cleanup left' right
-    -}
+connectResume src (Pipe f) =
+    go $ f down
+  where
+    down = Just $ Endpoint [] ()
+
+    go (Pure (PipeTerm (Endpoint _ ()))) = error "Data.Conduit.Internal.connectResume: early termination from sink"
+    go (Pure (PipeCont (Endpoint os r) _)) = do
+        let src' = mapM_ yield os >> src
+        return (src', r)
+    go (M m) = m >>= go
+    go (Yield _ (Just x)) = absurd x
+    go (Yield f Nothing) = go $ f down
+    go (Await f) = do
+        mx <- draw src
+        case mx of
+            Nothing -> connectResume (return ()) (Pipe $ const $ f Nothing)
+            Just (src', o) -> connectResume src' (Pipe $ const $ f $ Just o)
+
+draw :: Monad m
+     => Pipe () o () m ()
+     -> m (Maybe (Pipe () o () m (), o))
+draw (Pipe f) =
+    go (f Nothing)
+  where
+    go (Pure _) = return Nothing
+    go (M m) = m >>= go
+    go (Await f) = go (f Nothing)
+    go (Yield next (Just o)) = return $ Just (Pipe next, o)
+    go (Yield next Nothing) = do
+        _ <- runPipe $ Pipe next `pipe` return ()
+        return Nothing
 
 {-
 

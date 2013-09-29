@@ -163,7 +163,7 @@ up =$= down = pipe (fromDown up) (fromDown down)
 --
 -- Since 0.5.0
 ($$+) :: Monad m => Source m a -> Sink a m b -> m (Source m a, b)
-src $$+ sink = error "connectResume src sink"
+src $$+ sink = connectResume src sink
 {-# INLINE ($$+) #-}
 
 -- | Provide for a stream of data that can be flushed.

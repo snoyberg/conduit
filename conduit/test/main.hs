@@ -745,6 +745,7 @@ main = hspec $ do
         it' "works" $ do
             res <- CL.iterate (+ 1) (1 :: Int) C.$$ CL.isolate 10 C.=$ CL.fold (+) 0
             res `shouldBe` sum [1..10]
+-}
 
     describe "unwrapResumable" $ do
         it' "works" $ do
@@ -831,7 +832,6 @@ main = hspec $ do
             x0 <- I.readIORef ref
             ('a', x0) `shouldBe` ('a', 2)
 
--}
     describe "injectLeftovers" $ do
         it "works" $ do
             let src = mapM_ CI.yield [1..10 :: Int]
@@ -896,7 +896,6 @@ main = hspec $ do
                 M.readMVar ref
 
             assert $ v == length (l :: [Int])
-            {-
         prop "mapM_ equivalence" $ \l -> monadicIO $ do
             let runTest h = run $ do
                     ref <- M.newMVar (0 :: Int)
@@ -912,7 +911,6 @@ main = hspec $ do
 
             assert $ c1 == c2
             assert $ s1 == s2
-            -}
 
 {-
     describe "generalizing" $ do
