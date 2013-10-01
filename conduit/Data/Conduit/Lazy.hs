@@ -21,20 +21,19 @@ import Control.Monad.Trans.Resource (MonadActive (monadActive))
 --
 -- Since 0.3.0
 lazyConsume :: (MonadBaseControl IO m, MonadActive m) => Source m a -> m [a]
-lazyConsume = error "lazyConsume"
-{-
-lazyConsume (Pipe p) =
-    go (p Nothing)
+lazyConsume =
+    go
   where
-    go (Pure _) = return []
-    go (Yield src Nothing) = go $ src $ Just $ Endpoint [] ()
-    go (Yield src (Just x)) = do
-        xs <- liftBaseOp_ unsafeInterleaveIO $ go $ src Nothing
+    go (Pure _ _) = return []
+    go (Terminate _ _) = return []
+    go (Empty done) = go $ done [] ()
+    go (Check src _) = go src
+    go (Yield src _ x) = do
+        xs <- liftBaseOp_ unsafeInterleaveIO $ go src
         return $ x : xs
     go (M msrc) = liftBaseOp_ unsafeInterleaveIO $ do
         a <- monadActive
         if a
             then msrc >>= go
             else return []
-    go (Await c) = go (c Nothing)
-    -}
+    go (Await _ c) = go c

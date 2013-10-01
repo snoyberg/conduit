@@ -19,19 +19,20 @@ import Data.Void (Void, absurd)
 -- Since 0.3.0
 zip :: Monad m => Source m a -> Source m b -> Source m (a, b)
 zip left right = do
-    error "FIXME zip"
-    {-
-    mleft <- lift $ draw left
-    case mleft of
-        Nothing -> lift $ right $$ return ()
-        Just (left', a) -> do
-            mright <- lift $ draw right
-            case mright of
-                Nothing -> lift $ left' $$ return ()
-                Just (right', b) -> do
+    eleft <- lift $ draw (\x y -> return $ Right (x, y)) (return . Left) left
+    case eleft of
+        Left left' -> lift $ do
+            left' $$ return ()
+            right $$ return ()
+        Right (left', a) -> do
+            eright <- lift $ draw (\x y -> return $ Right (x, y)) (return . Left) right
+            case eright of
+                Left right' -> lift $ do
+                    left' $$ return ()
+                    right' $$ return ()
+                Right (right', b) -> do
                     yield (a, b)
                     zip left' right'
-                    -}
 
 -- | Combines two sinks. The new sink will complete when both input sinks have
 --   completed.
@@ -40,28 +41,24 @@ zip left right = do
 --
 -- Since 0.4.1
 zipSinks :: Monad m => Sink i m r -> Sink i m r' -> Sink i m (r, r')
-zipSinks = error "zipSinks"
-{-
-zipSinks (Pipe x0) (Pipe y0) =
-    Pipe $ \m -> go m (x0 m) (y0 m)
+zipSinks =
+    go
   where
-
-    go m (Yield _ (Just o)) _ = absurd o
-    go m _ (Yield _ (Just o)) = absurd o
-    go m (Yield x Nothing) y = go m (x m) y
-    go m x (Yield y Nothing) = go m x (y m)
-    go m (Pure (PipeCont (Endpoint _ x) _)) (Pure (PipeCont (Endpoint _ y) _)) = Pure $ PipeCont (Endpoint [] (x, y)) m
-    go _ (Pure PipeTerm{}) _ = error "zipSinks: PipeTerm"
-    go _ _ (Pure PipeTerm{}) = error "zipSinks: PipeTerm"
-    go m (M x) y = lift x >>= \x' -> go m x' y
-    go m x (M y) = lift y >>= \y' -> go m x y'
-    go m (Await x) (Await y) = do
-        mi <- Await Pure
-        go m (x mi) (y mi)
-    go m (Await x) (Pure y) = do
-        mi <- Await Pure
-        go m (x mi) (Pure y)
-    go m (Pure x) (Await y) = do
-        mi <- Await Pure
-        go m (Pure x) (y mi)
--}
+    go (Yield _ _ o) _ = absurd o
+    go _ (Yield _ _ o) = absurd o
+    go (Empty x) y = go (x [] ()) y
+    go x (Empty y) = go x (y [] ())
+    go (Pure _ x) (Pure _ y) = Pure [] (x, y)
+    go Terminate{} _ = error "zipSinks: left termination"
+    go _ Terminate{} = error "zipSinks: right termination"
+    go (M x) y = lift x >>= \x' -> go x' y
+    go x (M y) = lift y >>= \y' -> go x y'
+    go (Await xm xd) (Await ym yd) = Await
+        (\i -> go (xm i) (ym i))
+        (go xd yd)
+    go (Await xm xd) (Pure is y) = Await
+        (\i -> go (xm i) (Pure is y))
+        (go xd (Pure is y))
+    go (Pure is x) (Await ym yd) = Await
+        (\i -> go (Pure is x) (ym i))
+        (go (Pure is x) yd)

@@ -245,11 +245,12 @@ fromDown :: Monad m
          => Pipe i o () t' m ()
          -> Pipe i o d t m d
 fromDown p0 = do
+{-
     unsafeCoerce p0
     Empty $ \_ d -> Pure [] d
-{-
     -- FIXME add comment explaining that this is about too much yielding
     --go (Check p0 $ \_ d -> Pure [] d)
+    -}
     go p0
   where
     go (Pure is ()) = Empty $ \_os d -> Pure is d
@@ -259,7 +260,6 @@ fromDown p0 = do
     go (Await more done) = Await (go . more) (go done)
     go (Check more done) = Check (go more) (\os _ -> go (done os ()))
     go (Terminate is _) = go (Pure is ())
-    -}
 {-
 fromDown :: Monad m
          => Pipe i o () m ()
@@ -558,12 +558,19 @@ connectResume up =
     go (Pure is r) = {-# SCC "Pure_is" #-} return (mapM_ tryYield is >> up, r)
     go (M m) = {-# SCC "M" #-} m >>= go
     go (Yield _ _ o) = {-# SCC "Yield" #-} absurd o
+    go (Check _ done) = go $ done [] ()
     go (Empty done) = {-# SCC "Empty" #-} go $ done [] ()
     go (Await more done) = {-# SCC "Await" #-}
         draw
             (\up' o -> connectResume up' (more o))
-            (connectResume (return ()) done)
+            (\up' -> do
+                Right res <- runPipeE done
+                closePipe up'
+                return (return (), res)
+                )
             up
+    go (Terminate [] r) = error "connectResume: got Terminate[]"
+    go (Terminate x r) = error "connectResume: got Terminate[x]"
 {-
 connectResume src (Pipe f) =
     go $ f $ Just down
@@ -586,18 +593,18 @@ connectResume src (Pipe f) =
 
 draw :: Monad m
      => (Pipe () o () t m () -> o -> m a)
-     -> m a
+     -> (Pipe () o () t m () -> m a)
      -> Pipe () o () t m ()
      -> m a
 draw provide done =
     go
   where
-    go Pure{} = done
+    go x@Pure{} = done x
     go (M m) = m >>= go
-    go (Yield more _ o) = provide more o -- FIXME
-    go (Empty done) = go (done [] ())
+    go (Yield more done o) = provide (Check more done) o
+    go (Empty done') = done $ done' [] () -- ensure correct ordering in connectResume
     go (Check more _) = go more
-    go Terminate{} = done
+    go x@Terminate{} = done x
 {-
 draw (Pipe f) =
     go (f Nothing)
