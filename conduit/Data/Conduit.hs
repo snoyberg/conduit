@@ -21,6 +21,7 @@ module Data.Conduit
       -- ** Primitives
     , await
     , yield
+    , tryYield
     , leftover
 
       -- ** Finalization
