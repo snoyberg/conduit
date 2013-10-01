@@ -62,11 +62,12 @@ import Control.Monad.Trans.Resource
 import qualified GHC.Exts
 import qualified Data.IORef as I
 import Control.Monad.Morph (MFunctor (..))
+import Unsafe.Coerce
 
 data Pipe i o d t m r
     = Pure [i] r
     | M (m (Pipe i o d t m r))
-    | Yield (Pipe i o d t m r) o
+    | Yield (Pipe i o d t m r) ([o] -> d -> Pipe i o d t m r) o
     | Empty ([o] -> d -> Pipe i o d t m r)
     | Await (i -> Pipe i o d t m r) (Pipe i o d t m r)
     | Check (Pipe i o d t m r) ([o] -> d -> Pipe i o d t m r)
@@ -82,13 +83,15 @@ instance Monad m => Applicative (Pipe i o d t m) where
 instance Monad m => Monad (Pipe i o d t m) where
     return = Pure []
 
+    Pure [] r >>= f = f r
     Pure is r >>= f = inject is (f r)
     M m >>= f = M (liftM (>>= f) m)
-    Yield next o >>= f = Yield (next >>= f) o
+    Yield next done o >>= f = Yield (next >>= f) (\x y -> done x y >>= f) o
     Empty done >>= f = Empty (\x y -> done x y >>= f)
     Await next done >>= f = Await (next >=> f) (done >>= f)
     Check next done >>= f = Check (next >>= f) (\x y -> done x y >>= f)
     Terminate is t >>= _ = Terminate is t
+    {-# INLINE (>>=) #-}
 
 inject :: Monad m
        => [i]
@@ -100,7 +103,7 @@ inject leftovers@(i:is) =
   where
     go (Pure is' r) = Pure (is' ++ leftovers) r
     go (M m) = M (liftM go m)
-    go (Yield more o) = Yield (go more) o
+    go (Yield more done o) = Yield (go more) (go .: done) o
     go (Empty done) = Empty (go .: done)
     go (Await more _) = inject is (more i)
     go (Check more done) = Check (go more) (go .: done)
@@ -130,7 +133,7 @@ instance MonadResource m => MonadResource (Pipe i o d t m) where
 
 instance MonadReader r m => MonadReader r (Pipe i o d t m) where
     ask = lift ask
-    local f (Yield p o) = Yield (local f p) o
+    --local f (Yield p d o) = Yield (local f p) (local o
     local f (Await p d) = Await (local f . p) (local f d)
     local _ (Pure is x) = Pure is x
     local f (M mp) = M (local f mp)
@@ -147,7 +150,7 @@ instance MonadWriter w m => MonadWriter w (Pipe i o d t m) where
 
     tell = lift . tell
 
-    listen (Yield p o) = Yield (listen p) o
+    listen (Yield p d o) = Yield (listen p) (listen .: d) o
     listen (Await p d) = Await (listen . p) (listen d)
     listen (Pure is x) = Pure is (x, mempty)
     listen (M mp) =
@@ -156,7 +159,7 @@ instance MonadWriter w m => MonadWriter w (Pipe i o d t m) where
          return $ do (x,w') <- listen p
                      return (x, w `mappend` w')
 
-    pass (Yield p o) = Yield (pass p) o
+    pass (Yield p d o) = Yield (pass p) (pass .: d) o
     pass (Await p d) = Await (pass . p) (pass d)
     pass (M mp) = M $ mp >>= (return . pass)
     pass (Pure is (x,w)) = M $ pass $ return (Pure is x, w)
@@ -172,7 +175,7 @@ instance MonadRWS r w s m => MonadRWS r w s (Pipe i o d t m)
 
 instance MonadError e m => MonadError e (Pipe i o d t m) where
     throwError = lift . throwError
-    catchError (Yield p o) f = Yield (catchError p f) o
+    catchError (Yield p d o) f = Yield (catchError p f) (\x y -> catchError (d x y) f) o
     catchError (Check more done) f = Check (catchError more f) (\x y -> catchError (done x y) f)
     catchError (Await p d) f = Await (\i -> catchError (p i) f) (catchError d f)
     catchError (Pure is x) _ = Pure is x
@@ -187,7 +190,7 @@ instance MFunctor (Pipe i o d t) where
     hoist f =
         go
       where
-        go (Yield p o) = Yield (go p) o
+        go (Yield p d o) = Yield (go p) (go .: d) o
         go (Await p d) = Await (go . p) (go d)
         go (Pure is r) = Pure is r
         go (Check p d) = Check (go p) (go .: d)
@@ -240,18 +243,22 @@ haltPipe = Empty $ const $ Pure []
 fromDown :: Monad m
          => Pipe i o () t' m ()
          -> Pipe i o d t m d
-fromDown p0 =
+fromDown p0 = do
+    unsafeCoerce p0
+    Empty $ \_ d -> Pure [] d
+{-
     -- FIXME add comment explaining that this is about too much yielding
     --go (Check p0 $ \_ d -> Pure [] d)
     go p0
   where
     go (Pure is ()) = Empty $ \_os d -> Pure is d
     go (M m) = M (liftM go m)
-    go (Yield more o) = Yield (go more) o
+    go (Yield more done o) = Yield (go more) (\os _ -> go (done os ())) o
     go (Empty done) = Empty $ \os _ -> go (done os ())
     go (Await more done) = Await (go . more) (go done)
     go (Check more done) = Check (go more) (\os _ -> go (done os ()))
     go (Terminate is _) = go (Pure is ())
+    -}
 {-
 fromDown :: Monad m
          => Pipe i o () m ()
@@ -290,9 +297,10 @@ fromDown (Pipe p) = Pipe $ \md -> do
 -- Since 0.5.0
 idP :: Pipe i i r t m r
 idP =
-    Check (Await more done) Pure
+    Check pull Pure
   where
-    more = Yield idP
+    pull = Await more done
+    more = Yield pull Pure
     done = Empty Pure
 
 -- | Compose a left and right pipe together into a complete pipe. The left pipe
@@ -312,21 +320,21 @@ pipe up (Pure js0 b) =
     -- FIXME remove duplication with runPipe
     close _js (Pure is a) = Pure is a
     close js (M m) = M (liftM (close js) m)
-    close js (Yield next _) = close js next
     -- We need to make sure that the leftovers are only provided once.
+    close js (Yield _ done _) = close [] (done js b)
     close js (Empty done) = close [] (done js b)
     close js (Await more done) = Await (close js . more) (close js done)
     close js (Check _ done) = close [] (done js b)
     close _js (Terminate is t) = Terminate is t
 pipe up (M m) = M (liftM (pipe up) m)
-pipe up (Yield more o) = Yield (pipe up more) o
+pipe up (Yield more done o) = Yield (pipe up more) (pipe up .: done) o
 pipe up (Empty done) = Empty (pipe up .: done)
 pipe up0 (Await moreD doneD) =
     go up0
   where
     go up@Pure{} = pipe up doneD
     go (M m) = M (liftM go m)
-    go (Yield moreU o) = pipe moreU $ moreD o
+    go (Yield moreU _ o) = pipe moreU (moreD o)
     go up@Empty{} = pipe up doneD
     go (Await moreU doneU) = Await (go . moreU) (go doneU)
     go (Check moreU _) = go moreU
@@ -339,10 +347,12 @@ pipe up (Terminate is t) = pipe up (Pure is t)
 --
 -- Since 0.5.0
 yield :: Monad m => o -> Pipe i o d d m ()
-yield = Yield (Check (Pure [] ()) (const $ Terminate []))
+yield = Yield (Pure [] ()) (const $ Terminate [])
+{-# INLINE [1] yield #-}
+{-# RULES "yield o >> p" forall o p. yield o >> p = Yield p (const $ Terminate []) o #-}
 
 tryYield :: Monad m => o -> Pipe i o d t m (Maybe ([o], d))
-tryYield = Yield (Check (Pure [] Nothing) (\os d -> Pure [] $ Just (os, d)))
+tryYield = Yield (Pure [] Nothing) (\os d -> Pure [] $ Just (os, d))
 
 -- | Similar to @yield@, but additionally takes a finalizer to be run if the
 -- downstream @ConduitM@ terminates.
@@ -350,13 +360,15 @@ tryYield = Yield (Check (Pure [] Nothing) (\os d -> Pure [] $ Just (os, d)))
 -- Since 0.5.0
 yieldOr :: Monad m => o -> m () -> Pipe i o d d m ()
 --yieldOr o f = Check (Yield (Pure [] ()) o) (\_ d -> M (f >> return (Terminate [] d))) -- FIXME analyze this more
-yieldOr o f = Yield (Check (Pure [] ()) (\_ d -> M (f >> return (Terminate [] d)))) o
+yieldOr o f = Yield (Pure [] ()) (\_ d -> M (f >> return (Terminate [] d))) o
 
 -- | Wait for a single input value from upstream.
 --
 -- Since 0.5.0
 await :: Monad m => Pipe i o d t m (Maybe i)
 await = Await (Pure [] . Just) (Pure [] Nothing)
+{-# RULES "await >>= maybe" forall x y. await >>= maybe x y = Await y x #-}
+{-# INLINE [1] await #-}
 
 -- | Wait for input forever, calling the given inner @ConduitM@ for each piece of
 -- new input. Returns the upstream result type.
@@ -366,7 +378,7 @@ awaitForever :: Monad m => (i -> Pipe i o d t m r') -> Pipe i o d t m ()
 awaitForever inner =
     loop
   where
-    loop = await >>= maybe (return ()) (\i -> inner i >> loop)
+    loop = Await (\i -> inner i >> loop) (Pure [] ())
 
 -- | Provide a single piece of leftover input to be consumed by the next pipe
 -- in the current monadic binding.
@@ -386,7 +398,7 @@ runPipe :: Monad m
         -> m r
 runPipe (Pure _ r) = return r
 runPipe (M m) = m >>= runPipe
-runPipe (Yield next _) = runPipe next
+runPipe (Yield _ done _) = runPipe (done [] ())
 runPipe (Empty done) = runPipe (done [] ())
 runPipe (Await _ done) = runPipe done
 runPipe (Check _ done) = runPipe (done [] ())
@@ -397,7 +409,7 @@ closePipe :: Monad m
         -> m ()
 closePipe (Pure _ _) = return ()
 closePipe (M m) = m >>= closePipe
-closePipe (Yield next _) = closePipe next
+closePipe (Yield _ done _) = closePipe (done [] ())
 closePipe (Empty done) = closePipe (done [] ())
 closePipe (Await _ done) = closePipe done
 closePipe (Check _ done) = closePipe (done [] ())
@@ -510,7 +522,7 @@ addCleanup :: Monad m
            -> Pipe i o d t m r
 addCleanup f (Pure is r) = M (f True >> return (Pure is r))
 addCleanup f (M m) = M (liftM (addCleanup f) m)
-addCleanup f (Yield more o) = Yield (addCleanup f more) o
+addCleanup f (Yield more done o) = Yield (addCleanup f more) (addCleanup f .: done) o
 addCleanup f (Empty done) = Empty (addCleanup f .: done)
 addCleanup f (Await more done) = Await (addCleanup f . more) (addCleanup f done)
 addCleanup f (Check more done) = Check (addCleanup f more) (addCleanup f .: done)
@@ -530,15 +542,16 @@ connectResume :: Monad m
 connectResume up =
     go
   where
-    go (Pure is r) = return (mapM_ tryYield is >> up, r)
-    go (M m) = m >>= go
-    go (Yield _ o) = absurd o
-    go (Empty done) = go $ done [] ()
-    go (Await more done) = do
-        mx <- draw up
-        case mx of
-            Nothing -> connectResume (return ()) done
-            Just (up', o) -> connectResume up' (more o)
+    go (Pure [] r) = {-# SCC "Pure[]" #-} return (up, r)
+    go (Pure is r) = {-# SCC "Pure_is" #-} return (mapM_ tryYield is >> up, r)
+    go (M m) = {-# SCC "M" #-} m >>= go
+    go (Yield _ _ o) = {-# SCC "Yield" #-} absurd o
+    go (Empty done) = {-# SCC "Empty" #-} go $ done [] ()
+    go (Await more done) = {-# SCC "Await" #-}
+        draw
+            (\up' o -> connectResume up' (more o))
+            (connectResume (return ()) done)
+            up
 {-
 connectResume src (Pipe f) =
     go $ f $ Just down
@@ -560,14 +573,19 @@ connectResume src (Pipe f) =
 -}
 
 draw :: Monad m
-     => Pipe () o () t m ()
-     -> m (Maybe (Pipe () o () t m (), o))
-draw Pure{} = return Nothing
-draw (M m) = m >>= draw
-draw (Yield more o) = return $ Just (more, o)
-draw (Empty done) = draw (done [] ())
-draw (Check more _) = draw more
-draw Terminate{} = return Nothing
+     => (Pipe () o () t m () -> o -> m a)
+     -> m a
+     -> Pipe () o () t m ()
+     -> m a
+draw provide done =
+    go
+  where
+    go Pure{} = done
+    go (M m) = m >>= go
+    go (Yield more _ o) = provide more o -- FIXME
+    go (Empty done) = go (done [] ())
+    go (Check more _) = go more
+    go Terminate{} = done
 {-
 draw (Pipe f) =
     go (f Nothing)
@@ -649,13 +667,16 @@ conduitToConduitM =
 -- Using Void as the output witnesses that this is never called on a Pipe that
 -- uses yield or any other terminating functions.
 disallowTerm :: Monad m => Pipe i Void d t' m r -> Pipe i Void d t m r
+disallowTerm = unsafeCoerce
+{-
 disallowTerm (Pure is r) = Pure is r
 disallowTerm (M m) = M (liftM disallowTerm m)
-disallowTerm (Yield more o) = Yield (disallowTerm more) o
+disallowTerm (Yield more done o) = Yield (disallowTerm more) (disallowTerm .: done) o
 disallowTerm (Empty done) = Empty (disallowTerm .: done)
 disallowTerm (Await more done) = Await (disallowTerm . more) (disallowTerm done)
 disallowTerm (Check more done) = Check (disallowTerm more) (disallowTerm .: done)
 disallowTerm Terminate{} = error "Data.Conduit.Internal.disallowTerm: Invariant violated: disallowTerm called when terminator used"
+-}
 
 -- | Ensure that downstream is still active.
 checkDownstream :: Monad m => Pipe i o d d m ()

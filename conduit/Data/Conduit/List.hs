@@ -57,6 +57,7 @@ module Data.Conduit.List
 import qualified Prelude
 import Prelude
     ( ($), return, (==), (-), Int
+    , ($!)
     , (.), id, Maybe (..), Monad
     , Bool (..)
     , (>>)
@@ -148,7 +149,7 @@ foldM f =
       where
         go a = do
             accum' <- lift $ f accum a
-            accum' `seq` loop accum'
+            loop $! accum'
 
 -- | A monoidal strict left fold.
 --

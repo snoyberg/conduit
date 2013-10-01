@@ -19,6 +19,8 @@ import Data.Void (Void, absurd)
 -- Since 0.3.0
 zip :: Monad m => Source m a -> Source m b -> Source m (a, b)
 zip left right = do
+    error "FIXME zip"
+    {-
     mleft <- lift $ draw left
     case mleft of
         Nothing -> lift $ right $$ return ()
@@ -29,6 +31,7 @@ zip left right = do
                 Just (right', b) -> do
                     yield (a, b)
                     zip left' right'
+                    -}
 
 -- | Combines two sinks. The new sink will complete when both input sinks have
 --   completed.
