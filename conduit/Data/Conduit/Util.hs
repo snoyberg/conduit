@@ -37,6 +37,8 @@ zip left right = do
 --
 -- Since 0.4.1
 zipSinks :: Monad m => Sink i m r -> Sink i m r' -> Sink i m (r, r')
+zipSinks = error "zipSinks"
+{-
 zipSinks (Pipe x0) (Pipe y0) =
     Pipe $ \m -> go m (x0 m) (y0 m)
   where
@@ -59,3 +61,4 @@ zipSinks (Pipe x0) (Pipe y0) =
     go m (Pure x) (Await y) = do
         mi <- Await Pure
         go m (Pure x) (y mi)
+-}

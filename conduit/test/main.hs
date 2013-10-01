@@ -34,7 +34,7 @@ import Control.Monad.Trans.Writer (execWriter, tell, runWriterT, runWriter, Writ
 import Control.Monad.Trans.State (evalStateT, get, put)
 import Control.Applicative (pure, (<$>), (<*>))
 import Data.Functor.Identity (Identity,runIdentity)
-import Control.Monad (forever, void, liftM)
+import Control.Monad (forever, void)
 import qualified Control.Concurrent.MVar as M
 import Control.Monad.Error (catchError, throwError, Error)
 import Data.Void (Void)
@@ -704,6 +704,34 @@ main = hspec $ do
             x <- I.readIORef iref
             x `shouldBe` 10
 
+    describe "too much yielding" $ do
+        it' "no await" $ do
+            let src = do
+                    CI.checkDownstream
+                    error "Should never be called"
+                sink = return ()
+            src C.$$ sink
+
+        it' "close downstream" $ do
+            let src = do
+                    lift $ tell ["src1"]
+                    _ <- CI.closeDownstream
+                    lift $ tell ["src2"]
+                sink = do
+                    lift $ tell ["sink1"]
+                    _ <- CI.await
+                    lift $ tell ["sink2"]
+                res = execWriter $ src C.$$ sink
+            res `shouldBe` words "sink1 src1 sink2 src2"
+
+        it' "one await" $ do
+            let src = do
+                    C.yield 1
+                    error "Shoudl never be called"
+                sink = C.await
+            res <- src C.$$ sink
+            res `shouldBe` Just (1 :: Int)
+
     describe "input/output mapping" $ do
         it' "mapOutput" $ do
             x <- C.mapOutput (+ 1) (CL.sourceList [1..10 :: Int]) C.$$ CL.fold (+) 0
@@ -713,10 +741,13 @@ main = hspec $ do
             x `shouldBe` sum [2, 4..10]
         it' "mapInput" $ do
             xyz <- (CL.sourceList $ map show [1..10 :: Int]) C.$$ do
-                (x, y) <- C.mapInput read (Just . show) $ ((do
+                (x, y) <- C.mapInput read (Just . show) $ CI.disallowTerm $ do
                     x <- CL.isolate 5 C.=$ CL.fold (+) 0
                     y <- CL.peek
-                    return (x :: Int, y :: Maybe Int)) :: C.Sink Int IO (Int, Maybe Int))
+                    Just y' <- CL.head
+                    _ <- CL.peek
+                    C.leftover y'
+                    return (x :: Int, y :: Maybe Int)
                 z <- CL.consume
                 return (x, y, concat z)
 
@@ -941,7 +972,7 @@ main = hspec $ do
             say :: String -> Writer [String] ()
             say = tell . return
 
-            consume :: Monad m => CI.Pipe i o () m [i]
+            consume :: Monad m => CI.Pipe i o () () m [i]
             consume = CL.consume
             yield = CI.yield
             leftover = CI.leftover
@@ -950,13 +981,13 @@ main = hspec $ do
             await = CI.await
             runConduit = CI.runPipe
 
-            runConduitI :: Pipe () Void () Identity r -> Maybe r
+            runConduitI :: Pipe () Void () t Identity r -> Maybe r
             runConduitI = runIdentity . runConduit
 
-            runConduitW :: Monoid w => Pipe () Void () (Writer w) r -> (Maybe r, w)
+            runConduitW :: Monoid w => Pipe () Void () t (Writer w) r -> (Maybe r, w)
             runConduitW = runWriter . runConduit
 
-            takeExactly :: Monad m => Int -> Pipe i i () m ()
+            takeExactly :: Monad m => Int -> Pipe i i () () m ()
             takeExactly =
                 loop
               where
@@ -980,12 +1011,12 @@ main = hspec $ do
                 runConduitI
                     ((CI.fromDown (mapM_ yield [2..10])) >-> do
                         leftover (1 :: Int)
-                        consume) `shouldBe` Just [1..10]
+                        CI.disallowTerm consume) `shouldBe` Just [1..10]
         describe "identity without leftovers" $ do
             it "front" $
-                runConduitI (idC >-> CI.fromDown (mapM_ yield [1..10]) >-> consume) `shouldBe` Just [1..10 :: Int]
+                runConduitI (idC >-> CI.fromDown (mapM_ yield [1..10]) >-> CI.disallowTerm consume) `shouldBe` Just [1..10 :: Int]
             it "middle" $
-                runConduitI ((CI.fromDown (mapM_ yield [1..10])) >-> idC >-> consume) `shouldBe` Just [1..10 :: Int]
+                runConduitI ((CI.fromDown (mapM_ yield [1..10])) >-> idC >-> CI.disallowTerm consume) `shouldBe` Just [1..10 :: Int]
         describe "identity with leftovers" $ do
             it "single" $
                 runIdentity (mapM_ yield [2..10] C.$$ do

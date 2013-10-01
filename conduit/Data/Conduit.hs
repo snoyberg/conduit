@@ -9,7 +9,7 @@ module Data.Conduit
       Source
     , Conduit
     , Sink
-    , Pipe
+    , Pipe -- FIXME replace with ConduitM
       -- ** Connect/fuse operators
     , ($$)
     , ($=)
@@ -69,33 +69,33 @@ import Data.Void (Void)
 -- producing a final result.
 --
 -- Since 0.5.0
-type Source m o = Pipe () o () m ()
+type Source m o = Pipe () o () () m ()
 
 -- | A component which produces a stream of output values, regardless of the
 -- input stream. A @Producer@ is a generalization of a @Source@, and can be
 -- used as either a @Source@ or a @Conduit@.
 --
 -- Since 1.0.0
-type Producer m o = forall i. Pipe i o () m ()
+type Producer m o = forall i. Pipe i o () () m ()
 
 -- | Consumes a stream of input values and produces a final result, without
 -- producing any output.
 --
 -- Since 0.5.0
-type Sink i m r = Pipe i Void () m r
+type Sink i m r = Pipe i Void () () m r
 
 -- | A component which consumes a stream of input values and produces a final
 -- result, regardless of the output stream. A @Consumer@ is a generalization of
 -- a @Sink@, and can be used as either a @Sink@ or a @Conduit@.
 --
 -- Since 1.0.0
-type Consumer i m r = forall o. Pipe i o () m r
+type Consumer i m r = forall o t. Pipe i o () t m r
 
 -- | Consumes a stream of input values and produces a stream of output values,
 -- without producing a final result.
 --
 -- Since 0.5.0
-type Conduit i m o = Pipe i o () m ()
+type Conduit i m o = Pipe i o () () m ()
 
 -- Define fixity of all our operators
 infixr 0 $$
@@ -113,8 +113,7 @@ infixr 0 $$+
      => Source m a
      -> Sink a m b
      -> m b
-src $$ sink = liftM (maybe (error "Data.Conduit.$$: Terminating sink") id)
-            $ runPipe (pipe (fromDown src) sink)
+src $$ sink = runPipe (pipe (fromDown src) (disallowTerm sink))
 {-# INLINE ($$) #-}
 
 -- | Left fuse, combining a source and a conduit together into a new source.
@@ -126,7 +125,7 @@ src $$ sink = liftM (maybe (error "Data.Conduit.$$: Terminating sink") id)
 --
 -- Since 0.4.0
 ($=) :: Monad m => Source m a -> Conduit a m b -> Source m b
-src $= conduit = pipe (fromDown src) (fromDown conduit) >> return ()
+src $= conduit = pipe (fromDown src) (fromDown conduit)
 {-# INLINE ($=) #-}
 
 -- | Right fuse, combining a conduit and a sink together into a new sink.
@@ -138,7 +137,7 @@ src $= conduit = pipe (fromDown src) (fromDown conduit) >> return ()
 --
 -- Since 0.4.0
 (=$) :: Monad m => Conduit a m b -> Sink b m c -> Sink a m c
-conduit =$ sink = pipe (fromDown conduit) sink
+conduit =$ sink = pipe (fromDown conduit) (disallowTerm sink)
 {-# INLINE (=$) #-}
 
 -- | Fusion operator, combining two @Conduit@s together into a new @Conduit@.
@@ -164,7 +163,7 @@ up =$= down = pipe (fromDown up) (fromDown down)
 --
 -- Since 0.5.0
 ($$+) :: Monad m => Source m a -> Sink a m b -> m (Source m a, b)
-src $$+ sink = connectResume src sink
+src $$+ sink = connectResume src (disallowTerm sink)
 {-# INLINE ($$+) #-}
 
 -- | Provide for a stream of data that can be flushed.

@@ -333,7 +333,7 @@ sourceLbs = sourceList . L.toChunks
 --
 -- Since 1.0.5
 sinkCacheLength :: (MonadResource m1, MonadResource m2)
-                => Sink S.ByteString m1 (Word64, Source m2 S.ByteString)
+                => Consumer S.ByteString m1 (Word64, Source m2 S.ByteString)
 sinkCacheLength = do
     tmpdir <- liftIO getTemporaryDirectory
     (releaseKey, (fp, h)) <- allocate
@@ -343,7 +343,7 @@ sinkCacheLength = do
     liftIO $ IO.hClose h
     return (len, sourceFile fp >> release releaseKey)
   where
-    sinkHandleLen :: MonadResource m => IO.Handle -> Sink S.ByteString m Word64
+    sinkHandleLen :: MonadResource m => IO.Handle -> Consumer S.ByteString m Word64
     sinkHandleLen h =
         loop 0
       where
@@ -358,5 +358,5 @@ sinkCacheLength = do
 -- is performed, but rather all content is read into memory strictly.
 --
 -- Since 1.0.5
-sinkLbs :: Monad m => Sink S.ByteString m L.ByteString
+sinkLbs :: Monad m => Consumer S.ByteString m L.ByteString
 sinkLbs = fmap L.fromChunks consume

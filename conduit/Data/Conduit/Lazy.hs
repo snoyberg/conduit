@@ -21,6 +21,8 @@ import Control.Monad.Trans.Resource (MonadActive (monadActive))
 --
 -- Since 0.3.0
 lazyConsume :: (MonadBaseControl IO m, MonadActive m) => Source m a -> m [a]
+lazyConsume = error "lazyConsume"
+{-
 lazyConsume (Pipe p) =
     go (p Nothing)
   where
@@ -35,3 +37,4 @@ lazyConsume (Pipe p) =
             then msrc >>= go
             else return []
     go (Await c) = go (c Nothing)
+    -}
