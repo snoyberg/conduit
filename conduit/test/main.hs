@@ -759,13 +759,13 @@ main = hspec $ do
             y <- CL.sourceList [1..10 :: Int] C.$$ CL.fold (+) 0
             x `shouldBe` y
         it' "right identity" $ do
-            x <- CI.runPipe $ mapM_ CI.yield [1..10 :: Int] CI.>+> (CL.fold (+) 0) CI.>+> CI.idP
-            y <- CI.runPipe $ mapM_ CI.yield [1..10 :: Int] CI.>+> (CL.fold (+) 0)
+            x <- CI.runPipeE $ mapM_ CI.yield [1..10 :: Int] CI.>+> (CL.fold (+) 0) CI.>+> CI.idP
+            y <- CI.runPipeE $ mapM_ CI.yield [1..10 :: Int] CI.>+> (CL.fold (+) 0)
             x `shouldBe` y
 
     describe "generalizing" $ do
         it' "works" $ do
-            Just x <-     CI.runPipe
+            x <-     CI.runPipe
                    $ CI.fromDown (CL.sourceList [1..10 :: Int])
                CI.>+> CI.fromDown (CL.map (+ 1))
                CI.>+> (CL.fold (+) 0)
@@ -868,7 +868,7 @@ main = hspec $ do
                     js <- CL.take 2
                     mapM_ C.leftover $ reverse js
                     C.yield i
-            Just res <- CI.runPipe $ (CI.fromDown src CI.>+> CI.fromDown conduit) C.>+> CL.consume
+            res <- CI.runPipe $ (CI.fromDown src CI.>+> CI.fromDown conduit) C.>+> CL.consume
             res `shouldBe` [1..10]
     describe "up-upstream finalizers" $ do
         it "pipe" $ do
@@ -878,7 +878,7 @@ main = hspec $ do
                 idMsg msg = CI.addCleanup (const $ tell [msg]) $ CI.awaitForever CI.yield
                 printer = CI.awaitForever $ lift . tell . return . show
                 src = mapM_ CI.yield [1 :: Int ..]
-            let run' p = execWriter $ CI.runPipe $ printer CI.<+< p CI.<+< src
+            let run' p = execWriter $ CI.runPipeE $ printer CI.<+< p CI.<+< src
             run' (p1 CI.<+< (p2 CI.<+< p3)) `shouldBe` run' ((p1 CI.<+< p2) CI.<+< p3)
         it "conduit" $ do
             let p1 = C.await >>= maybe (return ()) C.yield
@@ -945,8 +945,8 @@ main = hspec $ do
         it' "works" $ C.runResourceT $ do
             lbs <- liftIO $ L.readFile "test/main.hs"
             -- FIXME boy this is ugly
-            Just (len, src) <- CI.runPipe $ (CI.fromDown (CB.sourceLbs lbs)) CI.>+> CB.sinkCacheLength
-            Just lbs' <- CI.runPipe $ (CI.fromDown src) CI.>+> CB.sinkLbs
+            (len, src) <- CI.runPipe $ (CI.fromDown (CB.sourceLbs lbs)) CI.>+> CB.sinkCacheLength
+            lbs' <- CI.runPipe $ (CI.fromDown src) CI.>+> CB.sinkLbs
             liftIO $ do
                 fromIntegral len `shouldBe` L.length lbs
                 lbs' `shouldBe` lbs
@@ -979,12 +979,12 @@ main = hspec $ do
             idC = CI.idP
             foldM = CL.foldM
             await = CI.await
-            runConduit = CI.runPipe
+            runConduit = CI.runPipeE
 
-            runConduitI :: Pipe () Void () t Identity r -> Maybe r
+            runConduitI :: Pipe () Void () t Identity r -> Either t r
             runConduitI = runIdentity . runConduit
 
-            runConduitW :: Monoid w => Pipe () Void () t (Writer w) r -> (Maybe r, w)
+            runConduitW :: Monoid w => Pipe () Void () t (Writer w) r -> (Either t r, w)
             runConduitW = runWriter . runConduit
 
             takeExactly :: Monad m => Int -> Pipe i i () () m ()
@@ -1011,12 +1011,12 @@ main = hspec $ do
                 runConduitI
                     ((CI.fromDown (mapM_ yield [2..10])) >-> do
                         leftover (1 :: Int)
-                        CI.disallowTerm consume) `shouldBe` Just [1..10]
+                        CI.disallowTerm consume) `shouldBe` (Right [1..10] :: Either () [Int])
         describe "identity without leftovers" $ do
             it "front" $
-                runConduitI (idC >-> CI.fromDown (mapM_ yield [1..10]) >-> CI.disallowTerm consume) `shouldBe` Just [1..10 :: Int]
+                runConduitI (idC >-> CI.fromDown (mapM_ yield [1..10]) >-> CI.disallowTerm consume) `shouldBe` (Right [1..10] :: Either () [Int])
             it "middle" $
-                runConduitI ((CI.fromDown (mapM_ yield [1..10])) >-> idC >-> CI.disallowTerm consume) `shouldBe` Just [1..10 :: Int]
+                runConduitI ((CI.fromDown (mapM_ yield [1..10])) >-> idC >-> CI.disallowTerm consume) `shouldBe` (Right [1..10] :: Either () [Int])
         describe "identity with leftovers" $ do
             it "single" $
                 runIdentity (mapM_ yield [2..10] C.$$ do
@@ -1048,7 +1048,7 @@ main = hspec $ do
                 runConduitW (
                     ((CI.addCleanup (const $ say "first") $ yield () >> lift (say "not called")) C.=$=
                     (CI.addCleanup (const $ say "second") $ yield () >> lift (say "not called"))) C.=$=
-                    return ()) `shouldBe` (Just (), ["second", "first"])
+                    return ()) `shouldBe` (Right (), ["second", "first"])
             it "right grouping" $ do
                 snd (runConduitW (
                     (CI.addCleanup (const $ say "first") $ yield () >> lift (say "not called")) >->
@@ -1068,12 +1068,12 @@ main = hspec $ do
                         add "computation"
                     sink = CL.mapM (\x -> add (show x) >> return x) C.=$ CL.consume
 
-                res <- C.runResourceT $ runConduit $ src C.$$ sink
+                Right res <- C.runResourceT $ runConduit $ src C.$$ sink
 
                 msgs <- I.readIORef imsgs
                 msgs `shouldBe` words "acquire 1 2 3 4 inside release computation"
 
-                res `shouldBe` Just [1..4 :: Int]
+                res `shouldBe` [1..4 :: Int]
 
     describe "finalizers" $ do
         it "promptness" $ do
