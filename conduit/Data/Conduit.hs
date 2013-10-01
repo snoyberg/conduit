@@ -114,7 +114,7 @@ infixr 0 $$+
      -> Sink a m b
      -> m b
 src $$ sink = do
-    (src', res) <- connectResume src (disallowTerm sink)
+    (src', res) <- connectResume src sink
     closePipe src'
     return res
 {-# INLINE ($$) #-}

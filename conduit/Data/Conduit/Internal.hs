@@ -525,7 +525,7 @@ addCleanup f (Terminate is t) = M (f False >> return (Terminate is t))
 -- Since 0.5.0
 connectResume :: Monad m
               => Pipe () o () () m ()
-              -> Pipe o Void () r m r
+              -> Pipe o Void () () m r
               -> m (Pipe () o () () m (), r)
 connectResume up =
     go
