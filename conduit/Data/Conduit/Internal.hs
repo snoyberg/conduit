@@ -181,6 +181,9 @@ fuseStep up0 down0 mc =
     fuseStep' (down0 mc)
   where
     fuseStep' (Pure b) =
+        -- This is the tricky bit. We need to ensure that downstream closes
+        -- before we do. Ideally, this would be expressed in the type system
+        -- itself, but such a construction is more clumsy to use.
         killDown mc
       where
         killDown Nothing = Yield killDown Nothing
