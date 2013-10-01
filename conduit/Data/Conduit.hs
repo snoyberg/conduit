@@ -113,7 +113,10 @@ infixr 0 $$+
      => Source m a
      -> Sink a m b
      -> m b
-src $$ sink = runPipe (pipe (fromDown src) (disallowTerm sink))
+src $$ sink = do
+    (src', res) <- connectResume src (disallowTerm sink)
+    closePipe src'
+    return res
 {-# INLINE ($$) #-}
 
 -- | Left fuse, combining a source and a conduit together into a new source.

@@ -31,6 +31,7 @@ module Data.Conduit.Internal
     , pipe
     , connectResume
     , runPipe
+    , closePipe
     , (>+>)
     , (<+<)
     , haltPipe
@@ -390,6 +391,17 @@ runPipe (Empty done) = runPipe (done [] ())
 runPipe (Await _ done) = runPipe done
 runPipe (Check _ done) = runPipe (done [] ())
 runPipe (Terminate _ t) = absurd t
+
+closePipe :: Monad m
+        => Pipe i o () t m r
+        -> m ()
+closePipe (Pure _ _) = return ()
+closePipe (M m) = m >>= closePipe
+closePipe (Yield next _) = closePipe next
+closePipe (Empty done) = closePipe (done [] ())
+closePipe (Await _ done) = closePipe done
+closePipe (Check _ done) = closePipe (done [] ())
+closePipe (Terminate _ _) = return ()
 
 -- | Apply a function to all the output values of a @ConduitM@.
 --
