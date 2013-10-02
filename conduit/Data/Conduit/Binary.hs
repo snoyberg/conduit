@@ -47,6 +47,7 @@ import qualified System.IO as IO
 import Data.Word (Word8, Word64)
 import Control.Applicative ((<$>))
 import System.Directory (getTemporaryDirectory, removeFile)
+import Data.ByteString.Lazy.Internal (defaultChunkSize)
 #if CABAL_OS_WINDOWS
 import qualified System.Win32File as F
 #elif NO_HANDLES
@@ -83,7 +84,7 @@ sourceHandle h =
     loop
   where
     loop = do
-        bs <- liftIO (S.hGetSome h 4096)
+        bs <- liftIO (S.hGetSome h defaultChunkSize)
         if S.null bs
             then return ()
             else yield bs >> loop
