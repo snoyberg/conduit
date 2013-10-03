@@ -244,14 +244,14 @@ haltPipe = Empty $ const $ Pure []
 fromDown :: Monad m
          => Pipe i o () t' m ()
          -> Pipe i o d t m d
-fromDown p0 = do
+fromDown = do
 {-
     unsafeCoerce p0
     Empty $ \_ d -> Pure [] d
     -- FIXME add comment explaining that this is about too much yielding
     --go (Check p0 $ \_ d -> Pure [] d)
     -}
-    go p0
+    go . addCheckIfMissing
   where
     go (Pure is ()) = Empty $ \_os d -> Pure is d
     go (M m) = M (liftM go m)
@@ -260,6 +260,12 @@ fromDown p0 = do
     go (Await more done) = Await (go . more) (go done)
     go (Check more done) = Check (go more) (\os _ -> go (done os ()))
     go (Terminate is _) = go (Pure is ())
+
+    -- Emulate behavior of conduit 1: don't do any actions if downstream is
+    -- closed.
+    addCheckIfMissing p@Check{} = p
+    addCheckIfMissing (M m) = M (liftM addCheckIfMissing m)
+    addCheckIfMissing p = Check p (\_ _ -> Pure [] ())
 {-
 fromDown :: Monad m
          => Pipe i o () m ()
@@ -698,8 +704,8 @@ disallowTerm Terminate{} = error "Data.Conduit.Internal.disallowTerm: Invariant 
 -}
 
 -- | Ensure that downstream is still active.
-checkDownstream :: Monad m => Pipe i o d d m ()
-checkDownstream = Check (Pure [] ()) (const $ Terminate [])
+checkDownstream :: Monad m => Pipe i o d t m (Maybe ([o], d))
+checkDownstream = Check (Pure [] Nothing) (\os d -> Pure [] $ Just (os, d))
 
 -- | Notify downstream that we're all done generating output.
 closeDownstream :: Monad m => Pipe i o d t m ([o], d)

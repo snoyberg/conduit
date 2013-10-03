@@ -707,8 +707,7 @@ main = hspec $ do
     describe "too much yielding" $ do
         it' "no await" $ do
             let src = do
-                    CI.checkDownstream
-                    error "Should never be called"
+                    CI.yield $ error "Should never be called"
                 sink = return ()
             src C.$$ sink
 
@@ -988,8 +987,8 @@ main = hspec $ do
             runConduitW = runWriter . runConduit
 
             takeExactly :: Monad m => Int -> Pipe i i () () m ()
-            takeExactly =
-                loop
+            takeExactly c0 =
+                CI.checkDownstream >> loop c0
               where
                 loop 0 = return ()
                 loop c = do
@@ -1045,10 +1044,10 @@ main = hspec $ do
                         consume) `shouldBe` [6..10]
         describe "finalizers" $ do
             it "left grouping" $ do
-                runConduitW (
-                    ((CI.addCleanup (const $ say "first") $ yield () >> lift (say "not called")) C.=$=
-                    (CI.addCleanup (const $ say "second") $ yield () >> lift (say "not called"))) C.=$=
-                    return ()) `shouldBe` (Right (), ["second", "first"])
+                snd (runConduitW (
+                    ((CI.addCleanup (const $ say "first") $ yield () >> lift (say "not called")) >->
+                    (CI.addCleanup (const $ say "second") $ yield () >> lift (say "not called"))) >->
+                    return ())) `shouldBe` (["second", "first"])
             it "right grouping" $ do
                 snd (runConduitW (
                     (CI.addCleanup (const $ say "first") $ yield () >> lift (say "not called")) >->
