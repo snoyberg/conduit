@@ -752,6 +752,18 @@ main = hspec $ do
 
             xyz `shouldBe` (sum [1..5], Just 6, "678910")
 
+    it' "dropped input" $ do
+        xyz <- (CL.sourceList [1..10 :: Int]) C.$$ do
+            let myId = CI.idP -- CI.await >>= maybe (CI.Empty Pure) (CI.Yield myId)
+            (x, y) <- myId C.=$ do
+                x <- CL.isolate 5 C.=$ CL.fold (+) 0
+                y <- CL.peek
+                return (x :: Int, y :: Maybe Int)
+            z <- CL.consume
+            return (x, y, concat $ map show z)
+
+        xyz `shouldBe` (sum [1..5], Just 6, "678910")
+
     describe "left/right identity" $ do
         it' "left identity" $ do
             x <- CL.sourceList [1..10 :: Int] C.$$ CI.idP C.=$ CL.fold (+) 0

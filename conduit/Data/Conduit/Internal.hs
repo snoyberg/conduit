@@ -341,7 +341,7 @@ pipe up0 (Await moreD doneD) =
   where
     go up@Pure{} = pipe up doneD
     go (M m) = M (liftM go m)
-    go (Yield moreU _ o) = pipe moreU (moreD o)
+    go (Yield moreU doneU o) = pipe (Check moreU doneU) (moreD o)
     go up@Empty{} = pipe up doneD
     go (Await moreU doneU) = Await (go . moreU) (go doneU)
     go (Check moreU _) = go moreU
