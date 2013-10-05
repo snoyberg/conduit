@@ -7,11 +7,10 @@ module Data.Conduit.Util
     ) where
 
 import Prelude hiding (zip)
-import Control.Monad (liftM, liftM2)
 import Control.Monad.Trans.Class (lift)
 import Data.Conduit (Source, Sink, ($$))
 import Data.Conduit.Internal
-import Data.Void (Void, absurd)
+import Data.Void (absurd)
 
 -- | Combines two sources. The new source will stop producing once either
 --   source has been exhausted.
@@ -62,3 +61,5 @@ zipSinks =
     go (Pure is x) (Await ym yd) = Await
         (\i -> go (Pure is x) (ym i))
         (go (Pure is x) yd)
+    go (Check x _) y = go x y
+    go x (Check y _) = go x y

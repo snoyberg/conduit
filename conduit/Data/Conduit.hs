@@ -61,7 +61,6 @@ module Data.Conduit
     ) where
 
 import Control.Monad.Trans.Resource
-import Control.Monad (liftM)
 import Data.Conduit.Internal
 import Data.Void (Void)
 

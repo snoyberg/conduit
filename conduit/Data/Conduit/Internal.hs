@@ -48,7 +48,7 @@ module Data.Conduit.Internal
 import Debug.Trace
 import Data.Maybe (mapMaybe)
 import Control.Applicative (Applicative (..))
-import Control.Monad ((>=>), liftM, ap, when)
+import Control.Monad ((>=>), liftM, ap)
 import Control.Monad.Error.Class(MonadError(..))
 import Control.Monad.Reader.Class(MonadReader(..))
 import Control.Monad.RWS.Class(MonadRWS())
@@ -60,8 +60,6 @@ import Control.Monad.Base (MonadBase (liftBase))
 import Data.Void (Void, absurd)
 import Data.Monoid (Monoid (mappend, mempty))
 import Control.Monad.Trans.Resource
-import qualified GHC.Exts
-import qualified Data.IORef as I
 import Control.Monad.Morph (MFunctor (..))
 import Unsafe.Coerce
 
@@ -134,9 +132,12 @@ instance MonadResource m => MonadResource (Pipe i o d t m) where
 
 instance MonadReader r m => MonadReader r (Pipe i o d t m) where
     ask = lift ask
-    --local f (Yield p d o) = Yield (local f p) (local o
+    local f (Yield p d o) = Yield (local f p) (local f .: d) o
+    local f (Check p d) = Check (local f p) (local f .: d)
+    local f (Empty d) = Empty (local f .: d)
     local f (Await p d) = Await (local f . p) (local f d)
     local _ (Pure is x) = Pure is x
+    local _ (Terminate is t) = Terminate is t
     local f (M mp) = M (local f mp)
 
 -- Provided for doctest
@@ -159,11 +160,17 @@ instance MonadWriter w m => MonadWriter w (Pipe i o d t m) where
       do (p,w) <- listen mp
          return $ do (x,w') <- listen p
                      return (x, w `mappend` w')
+    listen (Empty d) = Empty (listen .: d)
+    listen (Check p d) = Check (listen p) (listen .: d)
+    listen (Terminate is t) = Terminate is t
 
     pass (Yield p d o) = Yield (pass p) (pass .: d) o
     pass (Await p d) = Await (pass . p) (pass d)
     pass (M mp) = M $ mp >>= (return . pass)
     pass (Pure is (x,w)) = M $ pass $ return (Pure is x, w)
+    pass (Empty d) = Empty (pass .: d)
+    pass (Check p d) = Check (pass p) (pass .: d)
+    pass (Terminate is t) = Terminate is t
 
 instance MonadState s m => MonadState s (Pipe i o d t m) where
     get = lift get
@@ -185,6 +192,9 @@ instance MonadError e m => MonadError e (Pipe i o d t m) where
     catchError (M mp) f =
       M $ catchError (liftM (flip catchError f) mp) (\e -> return (f e))
 
+(.:) :: (y -> z)
+     -> (w -> x -> y)
+     -> (w -> x -> z)
 (.:) f g x y = f (g x y)
 
 instance MFunctor (Pipe i o d t) where
@@ -195,6 +205,8 @@ instance MFunctor (Pipe i o d t) where
         go (Await p d) = Await (go . p) (go d)
         go (Pure is r) = Pure is r
         go (Check p d) = Check (go p) (go .: d)
+        go (Empty p) = Empty (go .: p)
+        go (Terminate is t) = Terminate is t
         go (M mp) =
             M (f $ liftM go $ collapse mp)
           where
@@ -209,34 +221,6 @@ instance MFunctor (Pipe i o d t) where
                 case pipe' of
                     M mpipe' -> collapse mpipe'
                     _ -> return pipe'
-
-fuse :: Monad m
-     => Pipe i j b a m a
-     -> Pipe j k c b m b
-     -> Pipe i k c a m a
-fuse up0 down0 = error "fuse"
-{-
-    fuseStep' (down0 mc)
-  where
-    fuseStep' (Pure b) =
-        case mc of
-            Just _ -> go (up0 (Just b))
-            Nothing -> Empty (const (go (up0 (Just b))))
-      where
-        go (Pure a) = Pure a
-        go (M up) = M (liftM go up)
-        go (Yield _ up _) = go (up b)
-        go (Await up upDone) = Await (go . up) (go upDone)
-    fuseStep' (M down) = M (liftM fuseStep' down)
-    fuseStep' (Yield down empty k) = Yield (fuseStep' down) (fuseStep' . empty) k
-    fuseStep' (Await more none) =
-        go (up0 Nothing)
-      where
-        go (Pure a) = fuseStep (\_ -> Pure a) (const none) mc
-        go (M up) = M (liftM go up)
-        go (Yield up upDone j) = fuseStep (maybe upDone up) (const (more j)) mc
-        go (Await up upDone) = Await (go up) (go . upDone)
-        -}
 
 haltPipe :: Monad m => Pipe i o d t m d
 haltPipe = Empty $ const $ Pure []
@@ -575,27 +559,8 @@ connectResume up =
                 return (return (), res)
                 )
             up
-    go (Terminate [] r) = error "connectResume: got Terminate[]"
-    go (Terminate x r) = error "connectResume: got Terminate[x]"
-{-
-connectResume src (Pipe f) =
-    go $ f $ Just down
-  where
-    down = Endpoint [] ()
-
-    go (Pure (PipeTerm (Endpoint _ ()))) = error "Data.Conduit.Internal.connectResume: early termination from sink"
-    go (Pure (PipeCont (Endpoint os r) _)) = do
-        let src' = mapM_ yield os >> src
-        return (src', r)
-    go (M m) = m >>= go
-    go (Yield _ _ x) = absurd x
-    go (Empty f) = go $ f down
-    go (Await more none) = do
-        mx <- draw src
-        case mx of
-            Nothing -> connectResume (return ()) (Pipe $ const none)
-            Just (src', o) -> connectResume src' (Pipe $ const $ more o)
--}
+    go (Terminate [] _) = error "connectResume: got Terminate[]"
+    go (Terminate _ _) = error "connectResume: got Terminate[x]"
 
 draw :: Monad m
      => (Pipe () o () t m () -> o -> m a)
@@ -607,91 +572,15 @@ draw provide done =
   where
     go x@Pure{} = done x
     go (M m) = m >>= go
-    go (Yield more done o) = provide (Check more done) o
+    go (Yield more done' o) = provide (Check more done') o
     go (Empty done') = done $ done' [] () -- ensure correct ordering in connectResume
     go (Check more _) = go more
     go x@Terminate{} = done x
-{-
-draw (Pipe f) =
-    go (f Nothing)
-  where
-    go (Pure _) = return Nothing
-    go (M m) = m >>= go
     go (Await _ none) = go none
-    go (Yield next done o) = return $ Just (Pipe $ maybe next done, o)
-    go (Empty next) = do
-        _ <- runPipe $ Pipe (const $ next $ Endpoint [] ()) `pipe` return ()
-        return Nothing
--}
-
-{-
-
-goRight :: Monad m
-        => ([b] -> ConduitM a b m ())
-        -> ConduitM a b m ()
-        -> ConduitM b c m r
-        -> m (ConduitM a b m (), r)
-goRight leftFinal left right =
-    case right of
-        --HaveOutput right' o -> absurd o
-        NeedInput rp rc  -> goLeft rp rc leftFinal left
-        Done ls r2       -> return (Cleanup (addLeftovers (reverse ls) left) leftFinal, r2) -- FIXME analyze
-        ConduitM mp      -> mp >>= goRight leftFinal left
-        --Leftover p i   -> goRight leftFinal (HaveOutput left leftFinal i) p
-  where
-    addLeftovers [] x = x
-    addLeftovers (l:ls) x = addLeftovers ls (HaveOutput x l)
-
-goLeft :: Monad m
-       => (b -> ConduitM b c m r)
-       -> ConduitM b c m r
-       -> ([b] -> ConduitM a b m ())
-       -> ConduitM a b m ()
-       -> m (ConduitM a b m (), r)
-goLeft rp rc leftFinal left =
-    case left of
-        HaveOutput left' o            -> goRight leftFinal left' (rp o)
-        NeedInput _ lc                -> recurse lc
-        Done ls ()                    -> goRight (inject ls . leftFinal) (Done ls ()) rc
-        ConduitM mp                   -> mp >>= recurse
-        Cleanup p leftFinal'          -> goLeft rp rc leftFinal' p
-  where
-    recurse = goLeft rp rc leftFinal
-
-sourceToConduitM :: Monad m => Source m o -> ConduitM i o m ()
-sourceToConduitM =
-    go
-  where
-    go (HaveOutput p o) = HaveOutput (go p) o
-    go (NeedInput _ c) = go c
-    go (Done _ ()) = Done [] ()
-    go (ConduitM mp) = ConduitM (liftM go mp)
-    --go (Leftover p ()) = go p
-
-sinkToConduitM :: Monad m => Sink i m r -> ConduitM i o m r
-sinkToConduitM =
-    go
-  where
-    go (HaveOutput _ o) = absurd o
-    go (NeedInput p c) = NeedInput (go . p) (go c)
-    go (Done ls r) = Done ls r
-    go (ConduitM mp) = ConduitM (liftM go mp)
-    --go (Leftover _ l) = error "sinkToConduitM: FIXME"
-
-conduitToConduitM :: Monad m => Conduit i m o -> ConduitM i o m ()
-conduitToConduitM =
-    go
-  where
-    go (HaveOutput p o) = HaveOutput (go p) o
-    go (NeedInput p c) = NeedInput (go . p) (go c)
-    go (Done ls ()) = Done ls ()
-    go (ConduitM mp) = ConduitM (liftM go mp)
-    --go (Leftover _ l) = error "conduitToConduitM: FIXME"
--}
 
 -- Using Void as the output witnesses that this is never called on a Pipe that
 -- uses yield or any other terminating functions.
-disallowTerm :: Monad m => Pipe i Void d t' m r -> Pipe i Void d t m r
+disallowTerm :: Monad m => Pipe i Void d t' m r -> Pipe i Void d t m r -- FIXME remove
 disallowTerm = unsafeCoerce
 {-
 disallowTerm (Pure is r) = Pure is r
