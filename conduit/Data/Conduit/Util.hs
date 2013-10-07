@@ -8,7 +8,7 @@ module Data.Conduit.Util
 
 import Prelude hiding (zip)
 import Control.Monad.Trans.Class (lift)
-import Data.Conduit (Source, Sink, ($$))
+import Data.Conduit (Source, Sink, ($$), Producer, Consumer)
 import Data.Conduit.Internal
 import Data.Void (absurd)
 
@@ -16,7 +16,7 @@ import Data.Void (absurd)
 --   source has been exhausted.
 --
 -- Since 0.3.0
-zip :: Monad m => Source m a -> Source m b -> Source m (a, b)
+zip :: Monad m => Source m a -> Source m b -> Producer m (a, b)
 zip left right = do
     mleft <- lift $ draw left
     case mleft of
@@ -39,7 +39,7 @@ zip left right = do
 -- Any leftovers are discarded.
 --
 -- Since 0.4.1
-zipSinks :: Monad m => Sink i m r -> Sink i m r' -> Sink i m (r, r')
+zipSinks :: Monad m => Sink i m r -> Sink i m r' -> Consumer i m (r, r')
 zipSinks =
     go
   where

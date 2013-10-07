@@ -77,7 +77,7 @@ type Source m o = Pipe () o () () m ()
 -- used as either a @Source@ or a @Conduit@.
 --
 -- Since 1.0.0
-type Producer m o = forall i. Pipe i o () () m ()
+type Producer m o = forall i d. Pipe i o d d m ()
 
 -- | Consumes a stream of input values and produces a final result, without
 -- producing any output.
@@ -190,12 +190,12 @@ toProducer :: Monad m => Source m a -> Producer m a
 toProducer =
     go
   where
-    go (Yield p d o) = Yield (go p) (\x y -> go (d x y)) o
-    go (Check p d) = Check (go p) (\x y -> go (d x y))
+    go (Yield p d o) = Yield (go p) (\x _ -> go (d x ())) o
+    go (Check p d) = Check (go p) (\x _ -> go (d x ()))
     go (Pure _ r) = Pure [] r
-    go (Terminate _ t) = Terminate [] t
+    go (Terminate _ ()) = Empty $ \_ d -> Terminate [] d
     go (M m) = M (liftM go m)
-    go (Empty d) = Empty (\x y -> go (d x y))
+    go (Empty d) = Empty (\x _ -> go (d x ()))
     go (Await _ d) = go d
 
 -- | Generalize a 'Sink' to a 'Consumer'.

@@ -7,12 +7,14 @@ module Data.Conduit.Internal.Primitives
     , tryYield
       -- * Consuming
     , await
+    , awaitTerm
     , awaitForever
     , leftover
       -- * Termination
     , checkDownstream
     , closeDownstream
     , terminatePipe
+    , checkTerminate
       -- * Finalization
     , addCleanup
     , bracketP
@@ -65,6 +67,11 @@ await = Await (Pure [] . Just) (Pure [] Nothing)
 {-# RULES "await >>= maybe" forall x y. await >>= maybe x y = Await y x #-}
 {-# INLINE [1] await #-}
 
+-- | A terminating await: if upstream provides no values, terminates with the
+-- downstream return value.
+awaitTerm :: Monad m => Pipe i o d d m i
+awaitTerm = await >>= maybe (closeDownstream >>= terminatePipe . snd) return
+
 -- | Wait for input forever, calling the given inner @ConduitM@ for each piece of
 -- new input. Returns the upstream result type.
 --
@@ -102,6 +109,13 @@ closeDownstream = Empty $ curry $ Pure []
 -- Since 2.0.0
 terminatePipe :: Monad m => t -> Pipe i o d t m r
 terminatePipe = Terminate []
+
+-- | Check if downstream is closed. If so, terminate with the downstream return
+-- value.
+--
+-- Since 2.0.0
+checkTerminate :: Monad m => Pipe i o d d m ()
+checkTerminate = checkDownstream >>= maybe (return ()) (terminatePipe . snd)
 
 -- | Add some code to be run when the given @ConduitM@ cleans up.
 --
