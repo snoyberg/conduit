@@ -852,7 +852,7 @@ main = hspec $ do
             ref <- I.newIORef (0 :: Int)
             let src0 = do
                     CI.addCleanup (\_ -> I.writeIORef ref 2) $ CI.yield ()
-            () <- src0 C.$$ return ()
+            CI.closePipe src0
 
             x0 <- I.readIORef ref
             ('a', x0) `shouldBe` ('a', 2)
@@ -866,7 +866,7 @@ main = hspec $ do
                         ('b', x) `shouldBe` ('b', 1)
                         I.writeIORef ref 2) $ CI.yield ()
 
-            () <- src0 C.$$ return ()
+            CI.closePipe src0
 
             x0 <- I.readIORef ref
             ('a', x0) `shouldBe` ('a', 2)
@@ -1046,11 +1046,11 @@ main = hspec $ do
             describe "takeExactly" $ do
                 it "undrained" $
                     runIdentity (mapM_ yield [1..10 :: Int] C.$$ do
-                        takeExactly 5 C.=$ return ()
+                        takeExactly 5 C.+=$ return ()
                         consume) `shouldBe` [6..10]
                 it "drained" $
                     runIdentity (mapM_ yield [1..10 :: Int] C.$$ do
-                        void $ takeExactly 5 C.=$ consume
+                        void $ takeExactly 5 C.+=$ consume
                         consume) `shouldBe` [6..10]
         describe "finalizers" $ do
             it "left grouping" $ do

@@ -14,6 +14,7 @@ module Data.Conduit
     , ($$)
     , ($=)
     , (=$)
+    , (+=$)
     , (=$=)
     , (>+>)
     , (<+<)
@@ -104,6 +105,7 @@ type Conduit i m o = Pipe i o () () m ()
 infixr 0 $$
 infixl 1 $=
 infixr 2 =$
+infixr 2 +=$
 infixr 2 =$=
 infixr 0 $$+
 infixr 0 $$++
@@ -146,6 +148,17 @@ src $= conduit = pipe id id (const Pure) (const Pure) (checkTerminate >> src) co
 (=$) :: Monad m => Conduit a m b -> Sink b m c -> Sink a m c
 conduit =$ sink = pipe absurd (const ()) (\c as () -> Pure as c) (\c as () -> Pure as c) (checkTerminate >> conduit) sink
 {-# INLINE (=$) #-}
+
+-- | Right fuse, combining a conduit and a sink together into a new sink.
+--
+-- Unlike @=$@, this does not apply @checkTerminate@ to upstream.
+--
+-- FIXME: we really need a better approach here...
+--
+-- Since 2.0.0
+(+=$) :: Monad m => Conduit a m b -> Sink b m c -> Sink a m c
+conduit +=$ sink = pipe absurd (const ()) (\c as () -> Pure as c) (\c as () -> Pure as c) conduit sink
+{-# INLINE (+=$) #-}
 
 -- | Fusion operator, combining two @Conduit@s together into a new @Conduit@.
 --
