@@ -16,7 +16,7 @@ import Foreign.C.Types (CInt (..))
 #else
 import Foreign.C.Types (CInt)
 #endif
-import Foreign.C.Error (throwErrno)
+import Foreign.C.Error (throwErrno, throwErrnoIfMinus1Retry)
 import Foreign.Ptr (Ptr)
 import Data.Bits (Bits, (.|.))
 import Data.Word (Word8)
@@ -79,7 +79,8 @@ write _ bs | S.null bs = return ()
 write fd bs = do
     (written, len) <- BU.unsafeUseAsCStringLen bs $ \(cstr, len') -> do
         let len = fromIntegral len'
-        written <- c_write fd (castPtr cstr) len
+        written <- throwErrnoIfMinus1Retry "System.PosixFile.write"
+                 $ c_write fd (castPtr cstr) len
         return (written, len)
     case () of
         ()
