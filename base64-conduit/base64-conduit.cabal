@@ -1,5 +1,5 @@
 Name:                base64-conduit
-Version:             1.0.0
+Version:             2.0.0
 Synopsis:            Base64-encode and decode streams of bytes.
 Description:         Base64-encode and decode streams of bytes.
 License:             BSD3
@@ -17,7 +17,7 @@ Library
   Build-depends:       base                     >= 4            && < 5
                      , bytestring               >= 0.9
                      , base64-bytestring        >= 0.1.1.1
-                     , conduit                  >= 1.0          && < 1.1
+                     , conduit                  >= 2.0          && < 2.1
   ghc-options:     -Wall
 
 test-suite test
