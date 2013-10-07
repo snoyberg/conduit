@@ -16,6 +16,7 @@ module Data.Conduit.Internal.Primitives
       -- * Finalization
     , addCleanup
     , bracketP
+    , bracketPNoCheck
     ) where
 
 import Data.Conduit.Internal.Pipe
@@ -125,12 +126,27 @@ addCleanup f (Terminate is t) = M (f False >> return (Terminate is t))
 -- 2. It is exception safe. Due to usage of @resourcet@, the finalization will
 --    be run in the event of any exceptions.
 --
+-- Before running, this function will check if downstream has closed and, if
+-- so, will immediately terminate. Note that, as a result, this function cannot
+-- be used in creating @Sink@s, which do not have automatic termination.
+--
 -- Since 0.5.0
 bracketP :: MonadResource m
          => IO a
          -> (a -> IO ())
-         -> (a -> Pipe i o d t m r)
-         -> Pipe i o d t m r
+         -> (a -> Pipe i o d d m r)
+         -> Pipe i o d d m r
 bracketP alloc free inside = do
+    checkDownstream >>= maybe (bracketPNoCheck alloc free inside) (terminatePipe . snd)
+
+-- | Same as @bracketP@, but does not perform a check on downstream for
+-- aliveness before running.
+bracketPNoCheck
+    :: MonadResource m
+    => IO a
+    -> (a -> IO ())
+    -> (a -> Pipe i o d t m r)
+    -> Pipe i o d t m r
+bracketPNoCheck alloc free inside = do
     (key, seed) <- allocate alloc free
     addCleanup (const $ release key) (inside seed)

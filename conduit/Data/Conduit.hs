@@ -26,6 +26,7 @@ module Data.Conduit
 
       -- ** Finalization
     , bracketP
+    , bracketPNoCheck
     , addCleanup
     , yieldOr
 

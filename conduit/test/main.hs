@@ -1111,9 +1111,9 @@ main = hspec $ do
             let add x = liftIO $ do
                     msgs <- I.readIORef imsgs
                     I.writeIORef imsgs $ msgs ++ [x]
-                p1 = C.bracketP (add "start1") (const $ add "stop1") (const $ add "inside1" >> C.yield ())
-                p2 = C.bracketP (add "start2") (const $ add "stop2") (const $ add "inside2" >> C.await >>= maybe (return ()) C.yield)
-                p3 = C.bracketP (add "start3") (const $ add "stop3") (const $ add "inside3" >> C.await)
+                p1 = C.bracketPNoCheck (add "start1") (const $ add "stop1") (const $ add "inside1" >> C.yield ())
+                p2 = C.bracketPNoCheck (add "start2") (const $ add "stop2") (const $ add "inside2" >> C.await >>= maybe (return ()) C.yield)
+                p3 = C.bracketPNoCheck (add "start3") (const $ add "stop3") (const $ add "inside3" >> C.await)
 
             res <- C.runResourceT $ (p1 C.$= p2) C.$$ p3
             res `shouldBe` Just ()
@@ -1126,9 +1126,9 @@ main = hspec $ do
             let add x = liftIO $ do
                     msgs <- I.readIORef imsgs
                     I.writeIORef imsgs $ msgs ++ [x]
-                p1 = C.bracketP (add "start1") (const $ add "stop1") (const $ add "inside1" >> C.yield ())
-                p2 = C.bracketP (add "start2") (const $ add "stop2") (const $ add "inside2" >> C.await >>= maybe (return ()) C.yield)
-                p3 = C.bracketP (add "start3") (const $ add "stop3") (const $ add "inside3" >> C.await)
+                p1 = C.bracketPNoCheck (add "start1") (const $ add "stop1") (const $ add "inside1" >> C.yield ())
+                p2 = C.bracketPNoCheck (add "start2") (const $ add "stop2") (const $ add "inside2" >> C.await >>= maybe (return ()) C.yield)
+                p3 = C.bracketPNoCheck (add "start3") (const $ add "stop3") (const $ add "inside3" >> C.await)
 
             res <- C.runResourceT $ p1 C.$$ (p2 C.=$ p3)
             res `shouldBe` Just ()
@@ -1204,6 +1204,13 @@ main = hspec $ do
             it "test1" $ verify test1L test1R "p1" "p2" "p3"
             it "test2" $ verify test2L test2R "p2" "p1" "p3"
             it "test3" $ verify test3L test3R "p2" "p3" "p1"
+
+    describe "initial termination" $ do
+        it "works" $ do
+            let src :: C.Source (C.ResourceT IO) Int
+                src = C.bracketP undefined undefined undefined
+                sink = return ()
+            C.runResourceT $ src C.$$ sink
 
 it' :: String -> IO () -> Spec
 it' = it
