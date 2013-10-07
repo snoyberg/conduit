@@ -2,6 +2,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
+{-# OPTIONS_GHC -fno-warn-warnings-deprecations #-}
 import Test.Hspec
 import Test.Hspec.QuickCheck (prop)
 import Test.QuickCheck.Monadic (assert, monadicIO, run)
@@ -37,7 +38,6 @@ import Data.Functor.Identity (Identity,runIdentity)
 import Control.Monad (forever, void)
 import qualified Control.Concurrent.MVar as M
 import Control.Monad.Error (catchError, throwError, Error)
-import Data.Void (Void)
 import Control.Monad.Morph (hoist)
 
 (@=?) :: (Eq a, Show a) => a -> a -> IO ()
@@ -740,7 +740,7 @@ main = hspec $ do
             x `shouldBe` sum [2, 4..10]
         it' "mapInput" $ do
             xyz <- (CL.sourceList $ map show [1..10 :: Int]) C.$$ do
-                (x, y) <- C.mapInput read (Just . show) $ CI.disallowTerm $ do
+                (x, y) <- C.mapInput read (Just . show) $ do
                     x <- CL.isolate 5 C.=$ CL.fold (+) 0
                     y <- CL.peek
                     Just y' <- CL.head
@@ -777,9 +777,8 @@ main = hspec $ do
     describe "generalizing" $ do
         it' "works" $ do
             x <-     CI.runPipe
-                   $ CI.fromDown (CL.sourceList [1..10 :: Int])
-               CI.>+> CI.fromDown (CL.map (+ 1))
-               CI.>+> (CL.fold (+) 0)
+                   $ CL.sourceList [1..10 :: Int]
+               C.=$ (CL.map (+ 1) C.=$ CL.fold (+) 0)
             x `shouldBe` sum [2..11]
 
     describe "iterate" $ do
@@ -879,7 +878,7 @@ main = hspec $ do
                     js <- CL.take 2
                     mapM_ C.leftover $ reverse js
                     C.yield i
-            res <- CI.runPipe $ (CI.fromDown src CI.>+> CI.fromDown conduit) C.>+> CL.consume
+            res <- CI.runPipe $ (src C.$= conduit) C.=$ CL.consume
             res `shouldBe` [1..10]
     describe "up-upstream finalizers" $ do
         it "pipe" $ do
@@ -956,8 +955,8 @@ main = hspec $ do
         it' "works" $ C.runResourceT $ do
             lbs <- liftIO $ L.readFile "test/main.hs"
             -- FIXME boy this is ugly
-            (len, src) <- CI.runPipe $ (CI.fromDown (CB.sourceLbs lbs)) CI.>+> CB.sinkCacheLength
-            lbs' <- CI.runPipe $ (CI.fromDown src) CI.>+> CB.sinkLbs
+            (len, src) <- CI.runPipe $ CB.sourceLbs lbs C.=$ CB.sinkCacheLength
+            lbs' <- CI.runPipe $ src C.=$ CB.sinkLbs
             liftIO $ do
                 fromIntegral len `shouldBe` L.length lbs
                 lbs' `shouldBe` lbs
@@ -978,12 +977,11 @@ main = hspec $ do
             (src C.$$ CL.consume) `shouldBe` Right [1, 2, 4 :: Int]
 
     describe "inject approach test suite" $ do
-        let (>->) = CI.pipe
+        let (>->) = (CI.>+>)
 
             say :: String -> Writer [String] ()
             say = tell . return
 
-            consume :: Monad m => CI.Pipe i o () () m [i]
             consume = CL.consume
             yield = CI.yield
             leftover = CI.leftover
@@ -992,10 +990,10 @@ main = hspec $ do
             await = CI.await
             runConduit = CI.runPipeE
 
-            runConduitI :: Pipe () Void () t Identity r -> Either t r
+            --runConduitI :: Pipe () Void () t Identity r -> Either t r
             runConduitI = runIdentity . runConduit
 
-            runConduitW :: Monoid w => Pipe () Void () t (Writer w) r -> (Either t r, w)
+            --runConduitW :: Monoid w => Pipe () Void () t (Writer w) r -> (Either t r, w)
             runConduitW = runWriter . runConduit
 
             takeExactly :: Monad m => Int -> Pipe i i () () m ()
@@ -1020,14 +1018,14 @@ main = hspec $ do
                 runIdentity (mapM_ yield [1..10] C.$$ (foldM (\x y -> return (x + y)) 0)) `shouldBe` (sum [1..10] :: Int)
             it "consume + leftover" $
                 runConduitI
-                    ((CI.fromDown (mapM_ yield [2..10])) >-> do
+                    (mapM_ yield [2..10] C.=$ do
                         leftover (1 :: Int)
-                        CI.disallowTerm consume) `shouldBe` (Right [1..10] :: Either () [Int])
+                        consume) `shouldBe` Right [1..10]
         describe "identity without leftovers" $ do
             it "front" $
-                runConduitI (idC >-> CI.fromDown (mapM_ yield [1..10]) >-> CI.disallowTerm consume) `shouldBe` (Right [1..10] :: Either () [Int])
+                runConduitI ((idC CI.>+> mapM_ yield [1..10]) C.=$ consume) `shouldBe` Right [1..10 :: Int]
             it "middle" $
-                runConduitI ((CI.fromDown (mapM_ yield [1..10])) >-> idC >-> CI.disallowTerm consume) `shouldBe` (Right [1..10] :: Either () [Int])
+                runConduitI (mapM_ yield [1..10] C.=$ (idC CI.>+> consume)) `shouldBe` (Right [1..10 :: Int])
         describe "identity with leftovers" $ do
             it "single" $
                 runIdentity (mapM_ yield [2..10] C.$$ do
@@ -1035,12 +1033,12 @@ main = hspec $ do
                     consume) `shouldBe` [1..10]
             it "multiple, separate blocks" $
                 runIdentity (mapM_ yield [3..10] C.$$ do
-                    idC `CI.pipe` leftover (2 :: Int)
+                    idC CI.>+> leftover (2 :: Int)
                     idC >-> leftover (1 :: Int)
                     consume) `shouldBe` [1..10]
             it "multiple, single block" $
                 runIdentity (mapM_ yield [3..10] C.$$ do
-                    idC `CI.pipe` do
+                    idC CI.>+> do
                         leftover (2 :: Int)
                         leftover (1 :: Int)
                     consume) `shouldBe` [1..10]

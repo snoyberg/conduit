@@ -10,7 +10,7 @@ import Prelude hiding (zip)
 import Control.Monad.Trans.Class (lift)
 import Data.Conduit (Source, Sink, ($$))
 import Data.Conduit.Internal
-import Data.Void (absurd)
+import Data.Void (Void, absurd)
 
 -- | Combines two sources. The new source will stop producing once either
 --   source has been exhausted.
@@ -18,18 +18,18 @@ import Data.Void (absurd)
 -- Since 0.3.0
 zip :: Monad m => Source m a -> Source m b -> Source m (a, b)
 zip left right = do
-    eleft <- lift $ draw (\x y -> return $ Right (x, y)) (return . Left) left
-    case eleft of
-        Left left' -> lift $ do
+    mleft <- lift $ draw left
+    case mleft of
+        (left', Nothing) -> lift $ do
             left' $$ return ()
             right $$ return ()
-        Right (left', a) -> do
-            eright <- lift $ draw (\x y -> return $ Right (x, y)) (return . Left) right
-            case eright of
-                Left right' -> lift $ do
+        (left', Just a) -> do
+            mright <- lift $ draw right
+            case mright of
+                (right', Nothing) -> lift $ do
                     left' $$ return ()
                     right' $$ return ()
-                Right (right', b) -> do
+                (right', Just b) -> do
                     yield (a, b)
                     zip left' right'
 
@@ -39,7 +39,7 @@ zip left right = do
 -- Any leftovers are discarded.
 --
 -- Since 0.4.1
-zipSinks :: Monad m => Sink i m r -> Sink i m r' -> Sink i m (r, r')
+zipSinks :: Monad m => Sink i m r -> Sink i m r' -> Pipe i Void d t m (r, r')
 zipSinks =
     go
   where
