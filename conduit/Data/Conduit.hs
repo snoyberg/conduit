@@ -61,6 +61,7 @@ module Data.Conduit
     , MonadBaseControl
     ) where
 
+import Control.Monad (liftM)
 import Control.Monad.Trans.Resource
 import Data.Conduit.Internal
 import Data.Void (Void, absurd)
@@ -186,28 +187,28 @@ instance Functor Flush where
 --
 -- Since 1.0.0
 toProducer :: Monad m => Source m a -> Producer m a
-toProducer = error "toProducer"
-{-
+toProducer =
     go
   where
-    go (HaveOutput p o) = HaveOutput (go p) o
-    go (NeedInput _ c) = go c
-    go (Done _ls r) = Done [] r
-    go (ConduitM mp) = ConduitM (liftM go mp)
-    --go (Leftover p ()) = go p
--}
+    go (Yield p d o) = Yield (go p) (\x y -> go (d x y)) o
+    go (Check p d) = Check (go p) (\x y -> go (d x y))
+    go (Pure _ r) = Pure [] r
+    go (Terminate _ t) = Terminate [] t
+    go (M m) = M (liftM go m)
+    go (Empty d) = Empty (\x y -> go (d x y))
+    go (Await _ d) = go d
 
 -- | Generalize a 'Sink' to a 'Consumer'.
 --
 -- Since 1.0.0
 toConsumer :: Monad m => Sink a m b -> Consumer a m b
-toConsumer = error "toConsumer"
-{-
+toConsumer =
     go
   where
-    go (HaveOutput _ o) = absurd o
-    go (NeedInput p c) = NeedInput (go . p) (go c)
-    go (Done ls r) = Done ls r
-    go (ConduitM mp) = ConduitM (liftM go mp)
-    --go (Leftover p l) = Leftover (go p) l
--}
+    go (Yield _ _ o) = absurd o
+    go (Check p d) = Check (go p) (\_ _ -> go (d [] ()))
+    go (Pure is r) = Pure is r
+    go (Terminate _ t) = absurd t
+    go (M m) = M (liftM go m)
+    go (Empty d) = Empty (\_ _ -> go (d [] ()))
+    go (Await p d) = Await (go . p) (go d)

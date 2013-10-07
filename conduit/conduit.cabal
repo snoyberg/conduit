@@ -5,6 +5,7 @@ Description:
     @conduit@ is a solution to the streaming data problem, allowing for production, transformation, and consumption of streams of data in constant memory. It is an alternative to lazy I\/O which guarantees deterministic resource handling, and fits in the same general solution space as @enumerator@\/@iteratee@ and @pipes@. For a tutorial, please visit <https://haskell.fpcomplete.com/user/snoyberg/library-documentation/conduit-overview>.
 	.
 	Release history:
+    .
     [2.0] Restructured the core datatype to get rid of automatic termination on yield, resulting in three improvements: identity in composition, associativity of finalizers, and guaranteed input draining in data transformation. High level API remains almost unchanged, since automatic termination is reclaimed via the @Terminate@ constructor.
     .
     [1.0] Simplified the user-facing interface back to the Source, Sink, and Conduit types, with Producer and Consumer for generic code. Error messages have been simplified, and optional leftovers and upstream terminators have been removed from the external API. Some long-deprecated functions were finally removed.

@@ -141,6 +141,8 @@ bracketP alloc free inside = do
 
 -- | Same as @bracketP@, but does not perform a check on downstream for
 -- aliveness before running.
+--
+-- Since 2.0.0
 bracketPNoCheck
     :: MonadResource m
     => IO a

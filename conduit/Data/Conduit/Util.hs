@@ -10,7 +10,7 @@ import Prelude hiding (zip)
 import Control.Monad.Trans.Class (lift)
 import Data.Conduit (Source, Sink, ($$))
 import Data.Conduit.Internal
-import Data.Void (Void, absurd)
+import Data.Void (absurd)
 
 -- | Combines two sources. The new source will stop producing once either
 --   source has been exhausted.
@@ -39,7 +39,7 @@ zip left right = do
 -- Any leftovers are discarded.
 --
 -- Since 0.4.1
-zipSinks :: Monad m => Sink i m r -> Sink i m r' -> Pipe i Void d t m (r, r')
+zipSinks :: Monad m => Sink i m r -> Sink i m r' -> Sink i m (r, r')
 zipSinks =
     go
   where
