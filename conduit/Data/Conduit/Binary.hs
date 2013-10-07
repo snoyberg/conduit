@@ -119,7 +119,7 @@ sinkHandle h = awaitForever $ liftIO . S.hPut h
 sinkIOHandle :: MonadResource m
              => IO IO.Handle
              -> Consumer S.ByteString m ()
-sinkIOHandle alloc = bracketPNoCheck alloc IO.hClose sinkHandle
+sinkIOHandle alloc = bracketP alloc IO.hClose sinkHandle
 
 -- | Stream the contents of a file as binary data, starting from a certain
 -- offset and only consuming up to a certain number of bytes.

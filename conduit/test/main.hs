@@ -226,8 +226,8 @@ main = hspec $ do
             (x, y, z) <- runResourceT $ do
                 let src1 = CL.sourceList [1..10 :: Int]
                 (src2, x) <- src1 C.$$+ CL.take 5
-                (src3, y) <- src2 C.$$+ CL.fold (+) 0
-                z <- src3 C.$$ CL.consume
+                (src3, y) <- src2 C.$$++ CL.fold (+) 0
+                z <- src3 C.$$+- CL.consume
                 return (x, y, z)
             x `shouldBe` [1..5] :: IO ()
             y `shouldBe` sum [6..10]
@@ -308,7 +308,7 @@ main = hspec $ do
             (x, y) <- runResourceT $ do
                 let src1 = CL.sourceList [1..10 :: Int]
                 (src2, x) <- src1 C.$= CL.isolate 5 C.$$+ CL.consume
-                y <- src2 C.$$ CL.consume
+                y <- src2 C.$$+- CL.consume
                 return (x, y)
             x `shouldBe` [1..5]
             y `shouldBe` []
@@ -326,7 +326,7 @@ main = hspec $ do
             (x, y) <- runResourceT $ do
                 let src1 = CL.sourceList [1..10 :: Int]
                 (src2, x) <- src1 C.$$+ CL.isolate 5 C.=$ CL.consume
-                y <- src2 C.$$ CL.consume
+                y <- src2 C.$$+- CL.consume
                 return (x, y)
             x `shouldBe` [1..5]
             y `shouldBe` [6..10]
@@ -486,7 +486,7 @@ main = hspec $ do
             x <- runResourceT $ do
                 let src1 = CL.sourceList [1..10 :: Int]
                 (src2, ()) <- src1 C.$$+ CL.drop 5
-                src2 C.$$ CL.fold (+) 0
+                src2 C.$$+- CL.fold (+) 0
             x `shouldBe` sum [6..10]
 
     describe "operators" $ do
@@ -801,7 +801,7 @@ main = hspec $ do
             x1 <- I.readIORef ref
             ('b', x1) `shouldBe` ('b', 0)
 
-            rsrc0 C.$$ return ()
+            rsrc0 C.$$+- return ()
 
             x2 <- I.readIORef ref
             ('c', x2) `shouldBe` ('c', 1)
@@ -819,7 +819,7 @@ main = hspec $ do
             x1 <- I.readIORef ref
             x1 `shouldBe` 0
 
-            Just () <- src1 C.$$ CL.head
+            Just () <- src1 C.$$+- CL.head
 
             x2 <- I.readIORef ref
             x2 `shouldBe` 2
@@ -842,7 +842,7 @@ main = hspec $ do
             x1 <- I.readIORef ref
             ('b', x1) `shouldBe` ('b', 0)
 
-            () <- src1 C.$$ return ()
+            () <- src1 C.$$+- return ()
 
             x2 <- I.readIORef ref
             ('c', x2) `shouldBe` ('c', 1)
@@ -1111,9 +1111,9 @@ main = hspec $ do
             let add x = liftIO $ do
                     msgs <- I.readIORef imsgs
                     I.writeIORef imsgs $ msgs ++ [x]
-                p1 = C.bracketPNoCheck (add "start1") (const $ add "stop1") (const $ add "inside1" >> C.yield ())
-                p2 = C.bracketPNoCheck (add "start2") (const $ add "stop2") (const $ add "inside2" >> C.await >>= maybe (return ()) C.yield)
-                p3 = C.bracketPNoCheck (add "start3") (const $ add "stop3") (const $ add "inside3" >> C.await)
+                p1 = C.bracketP (add "start1") (const $ add "stop1") (const $ add "inside1" >> C.yield ())
+                p2 = C.bracketP (add "start2") (const $ add "stop2") (const $ add "inside2" >> C.await >>= maybe (return ()) C.yield)
+                p3 = C.bracketP (add "start3") (const $ add "stop3") (const $ add "inside3" >> C.await)
 
             res <- C.runResourceT $ (p1 C.$= p2) C.$$ p3
             res `shouldBe` Just ()
@@ -1126,9 +1126,9 @@ main = hspec $ do
             let add x = liftIO $ do
                     msgs <- I.readIORef imsgs
                     I.writeIORef imsgs $ msgs ++ [x]
-                p1 = C.bracketPNoCheck (add "start1") (const $ add "stop1") (const $ add "inside1" >> C.yield ())
-                p2 = C.bracketPNoCheck (add "start2") (const $ add "stop2") (const $ add "inside2" >> C.await >>= maybe (return ()) C.yield)
-                p3 = C.bracketPNoCheck (add "start3") (const $ add "stop3") (const $ add "inside3" >> C.await)
+                p1 = C.bracketP (add "start1") (const $ add "stop1") (const $ add "inside1" >> C.yield ())
+                p2 = C.bracketP (add "start2") (const $ add "stop2") (const $ add "inside2" >> C.await >>= maybe (return ()) C.yield)
+                p3 = C.bracketP (add "start3") (const $ add "stop3") (const $ add "inside3" >> C.await)
 
             res <- C.runResourceT $ p1 C.$$ (p2 C.=$ p3)
             res `shouldBe` Just ()

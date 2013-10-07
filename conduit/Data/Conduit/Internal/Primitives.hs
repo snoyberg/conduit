@@ -18,7 +18,6 @@ module Data.Conduit.Internal.Primitives
       -- * Finalization
     , addCleanup
     , bracketP
-    , bracketPNoCheck
     ) where
 
 import Data.Conduit.Internal.Pipe
@@ -148,21 +147,8 @@ addCleanup f (Terminate is t) = M (f False >> return (Terminate is t))
 bracketP :: MonadResource m
          => IO a
          -> (a -> IO ())
-         -> (a -> Pipe i o d d m r)
-         -> Pipe i o d d m r
+         -> (a -> Pipe i o d t m r)
+         -> Pipe i o d t m r
 bracketP alloc free inside = do
-    checkDownstream >>= maybe (bracketPNoCheck alloc free inside) (terminatePipe . snd)
-
--- | Same as @bracketP@, but does not perform a check on downstream for
--- aliveness before running.
---
--- Since 2.0.0
-bracketPNoCheck
-    :: MonadResource m
-    => IO a
-    -> (a -> IO ())
-    -> (a -> Pipe i o d t m r)
-    -> Pipe i o d t m r
-bracketPNoCheck alloc free inside = do
     (key, seed) <- allocate alloc free
     addCleanup (const $ release key) (inside seed)

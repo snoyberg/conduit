@@ -26,7 +26,6 @@ module Data.Conduit
 
       -- ** Finalization
     , bracketP
-    , bracketPNoCheck
     , addCleanup
     , yieldOr
 
@@ -43,7 +42,10 @@ module Data.Conduit
     , mapInput
 
       -- * Connect-and-resume
+    , ResumableSource (..)
     , ($$+)
+    , ($$++)
+    , ($$+-)
 
       -- * Flushing
     , Flush (..)
@@ -104,10 +106,15 @@ infixl 1 $=
 infixr 2 =$
 infixr 2 =$=
 infixr 0 $$+
+infixr 0 $$++
+infixr 0 $$+-
 
 -- | The connect operator, which pulls data from a source and pushes to a sink.
 -- If you would like to keep the @Source@ open to be used for other
 -- operations, use the connect-and-resume operator '$$+'.
+--
+-- Note that this applies @checkTerminate@ to upstream to ensure upstream is
+-- not run if downstream never awaits any values.
 --
 -- Since 0.4.0
 ($$) :: Monad m
@@ -115,48 +122,58 @@ infixr 0 $$+
      -> Sink a m b
      -> m b
 src $$ sink = do
-    (src', res) <- connectResume src sink
+    (src', res) <- connectResume (checkTerminate >> src) sink
     closePipe src'
     return res
 {-# INLINE ($$) #-}
 
 -- | Left fuse, combining a source and a conduit together into a new source.
 --
--- Both the @Source@ and @Conduit@ will be closed when the newly-created
--- @Source@ is closed.
---
--- Leftover data from the @Conduit@ will be discarded.
+-- Note that this applies @checkTerminate@ to upstream to ensure upstream is
+-- not run if downstream never awaits any values.
 --
 -- Since 0.4.0
 ($=) :: Monad m => Source m a -> Conduit a m b -> Source m b
-src $= conduit = pipe id id (const Pure) (const Pure) src conduit
+src $= conduit = pipe id id (const Pure) (const Pure) (checkTerminate >> src) conduit
 {-# INLINE ($=) #-}
 
 -- | Right fuse, combining a conduit and a sink together into a new sink.
 --
--- Both the @Conduit@ and @Sink@ will be closed when the newly-created @Sink@
--- is closed.
---
--- Leftover data returned from the @Sink@ will be discarded.
+-- Note that this applies @checkTerminate@ to upstream to ensure upstream is
+-- not run if downstream never awaits any values.
 --
 -- Since 0.4.0
 (=$) :: Monad m => Conduit a m b -> Sink b m c -> Sink a m c
-conduit =$ sink = pipe absurd (const ()) (\c as () -> Pure as c) (\c as () -> Pure as c) conduit sink
+conduit =$ sink = pipe absurd (const ()) (\c as () -> Pure as c) (\c as () -> Pure as c) (checkTerminate >> conduit) sink
 {-# INLINE (=$) #-}
 
 -- | Fusion operator, combining two @Conduit@s together into a new @Conduit@.
 --
--- Both @Conduit@s will be closed when the newly-created @Conduit@ is closed.
---
--- Leftover data returned from the right @Conduit@ will be discarded.
+-- Note that this applies @checkTerminate@ to upstream to ensure upstream is
+-- not run if downstream never awaits any values.
 --
 -- Since 0.4.0
 (=$=) :: Monad m
       => Conduit a m b
       -> Conduit b m c
       -> Conduit a m c
-up =$= down = pipe id id (const Pure) (const Pure) up down
+up =$= down = pipe id id (const Pure) (const Pure) (checkTerminate >> up) down
 {-# INLINE (=$=) #-}
+
+-- | A @Source@ which has already started running, and which may therefore have
+-- allocated resources which require finalizing.
+--
+-- When you use the standard composition operators on a @Source@,
+-- @checkTerminate@ is used to ensure that the @Source@ is only run if
+-- downstream is awaiting data. However, when dealing with an already-run
+-- @Source@, we want to run finalizers even if downstream is closed. This
+-- @newtype@ wrapper enforces this idea.
+--
+-- Of course, you're free to unwrap the @newtype@ and treat this as a normal
+-- @Source@, you just need to be careful that you properly address resources.
+--
+-- Since 2.0.0
+newtype ResumableSource m a = ResumableSource { unResumableSource :: Source m a }
 
 -- | The connect-and-resume operator. This does not close the @Source@, but
 -- instead returns it to be used again. This allows a @Source@ to be used
@@ -166,9 +183,32 @@ up =$= down = pipe id id (const Pure) (const Pure) up down
 -- Mnemonic: connect + do more.
 --
 -- Since 0.5.0
-($$+) :: Monad m => Source m a -> Sink a m b -> m (Source m a, b)
-src $$+ sink = connectResume src sink
+($$+) :: Monad m => Source m a -> Sink a m b -> m (ResumableSource m a, b)
+src $$+ sink = do
+    (src', b) <- connectResume (checkTerminate >> src) sink
+    return (ResumableSource src', b)
 {-# INLINE ($$+) #-}
+
+-- | Continue processing after usage of @$$+@.
+--
+-- Since 0.5.0
+($$++) :: Monad m => ResumableSource m a -> Sink a m b -> m (ResumableSource m a, b)
+ResumableSource src $$++ sink = do
+    (src', b) <- connectResume src sink
+    return (ResumableSource src', b)
+{-# INLINE ($$++) #-}
+
+-- | Complete processing of a @ResumableSource@. This will run the finalizer
+-- associated with the @ResumableSource@. In order to guarantee process resource
+-- finalization, you /must/ use this operator after using @$$+@ and @$$++@.
+--
+-- Since 0.5.0
+($$+-) :: Monad m => ResumableSource m a -> Sink a m b -> m b
+ResumableSource src $$+- sink = do
+    (src', res) <- connectResume src sink
+    closePipe src'
+    return res
+{-# INLINE ($$+-) #-}
 
 -- | Provide for a stream of data that can be flushed.
 --
