@@ -12,6 +12,7 @@ module Data.Conduit.Binary
     , sourceHandle
     , sourceIOHandle
     , sourceFileRange
+    , sourceHandleRange
       -- ** Sinks
     , sinkFile
     , sinkHandle
@@ -132,25 +133,34 @@ sourceFileRange :: MonadResource m
 sourceFileRange fp offset count = bracketP
     (IO.openBinaryFile fp IO.ReadMode)
     IO.hClose
-    start
-  where
-    start handle = do
-        case offset of
-            Nothing -> return ()
-            Just off -> liftIO $ IO.hSeek handle IO.AbsoluteSeek off
-        case count of
-            Nothing -> pullUnlimited handle
-            Just c -> pullLimited (fromInteger c) handle
+    (\h -> sourceHandleRange h offset count)
 
-    pullUnlimited handle = do
+-- | Stream the contents of a handle as binary data, starting from a certain
+-- offset and only consuming up to a certain number of bytes.
+--
+-- Since 1.0.8
+sourceHandleRange :: MonadIO m
+                  => IO.Handle
+                  -> Maybe Integer -- ^ Offset
+                  -> Maybe Integer -- ^ Maximum count
+                  -> Producer m S.ByteString
+sourceHandleRange handle offset count = do
+    case offset of
+        Nothing -> return ()
+        Just off -> liftIO $ IO.hSeek handle IO.AbsoluteSeek off
+    case count of
+        Nothing -> pullUnlimited
+        Just c -> pullLimited (fromInteger c)
+  where
+    pullUnlimited = do
         bs <- liftIO $ S.hGetSome handle 4096
         if S.null bs
             then return ()
             else do
                 yield bs
-                pullUnlimited handle
+                pullUnlimited
 
-    pullLimited c handle = do
+    pullLimited c = do
         bs <- liftIO $ S.hGetSome handle (min c 4096)
         let c' = c - S.length bs
         assert (c' >= 0) $
@@ -158,7 +168,7 @@ sourceFileRange fp offset count = bracketP
                 then return ()
                 else do
                     yield bs
-                    pullLimited c' handle
+                    pullLimited c'
 
 -- | Stream all incoming data to the given file.
 --
