@@ -56,6 +56,8 @@ module Control.Monad.Trans.Resource
     , getInternalState
     , runInternalState
     , withInternalState
+    , createInternalState
+    , closeInternalState
     ) where
 
 import qualified Data.IntMap as IntMap
@@ -205,18 +207,16 @@ release' istate key act = E.mask $ \restore -> do
 -- Since 0.3.0
 runResourceT :: MonadBaseControl IO m => ResourceT m a -> m a
 runResourceT (ResourceT r) = do
-    istate <- liftBase $ I.newIORef
-        $ ReleaseMap maxBound minBound IntMap.empty
-    bracket_
-        (stateAlloc istate)
-        (stateCleanup istate)
-        (r istate)
+    istate <- createInternalState
+    r istate `finally` stateCleanup istate
 
 bracket_ :: MonadBaseControl IO m => IO () -> IO () -> m a -> m a
 bracket_ alloc cleanup inside =
     control $ \run -> E.bracket_ alloc cleanup (run inside)
 
-
+finally :: MonadBaseControl IO m => m a -> IO () -> m a
+finally action cleanup =
+    control $ \run -> E.finally (run action) cleanup
 
 -- | This function mirrors @join@ at the transformer level: it will collapse
 -- two levels of @ResourceT@ into a single @ResourceT@.
@@ -354,6 +354,22 @@ instance (MonadBaseControl IO m, MonadThrow m, MonadUnsafeIO m, MonadIO m, Appli
 -- efficient to embed this @ReaderT@ functionality directly in your own monad
 -- instead of wrapping around @ResourceT@ itself. This section provides you the
 -- means of doing so.
+
+-- | Create a new internal state. This state must be closed with
+-- @closeInternalState@. It is your responsibility to ensure exception safety.
+-- Caveat emptor!
+--
+-- Since 0.4.9
+createInternalState :: MonadBase IO m => m InternalState
+createInternalState = liftBase
+                    $ I.newIORef
+                    $ ReleaseMap maxBound (minBound + 1) IntMap.empty
+
+-- | Close an internal state created by @createInternalState@.
+--
+-- Since 0.4.9
+closeInternalState :: MonadBase IO m => InternalState -> m ()
+closeInternalState = liftBase . stateCleanup
 
 -- | Get the internal state of the current @ResourceT@.
 --
