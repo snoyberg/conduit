@@ -1,5 +1,5 @@
 Name:                conduit-extra
-Version:             0.1.0
+Version:             0.1.1
 Synopsis:            Experimental helper functions for conduit.
 Description:
     This package is meant as a testing ground for new concepts in conduit. The idea is to have a much lower barrier to entry for this library relative to conduit itself. This way, conduit itself will continue to have a best-practices, minimal, stable API, while people are free to try crazy new features.
