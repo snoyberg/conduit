@@ -201,6 +201,11 @@ conduitFile fp = bracketP
     IO.hClose
     conduitHandle
 
+-- | Stream the contents of the input to a @Handle@, and also send it along the
+-- pipeline. Similar in concept to the Unix command @tee@. Like @sourceHandle@,
+-- does not close the handle on completion. Related to: @conduitFile@.
+--
+-- Since 1.0.9
 conduitHandle :: MonadIO m => IO.Handle -> Conduit S.ByteString m S.ByteString
 conduitHandle h = awaitForever $ \bs -> liftIO (S.hPut h bs) >> yield bs
 
