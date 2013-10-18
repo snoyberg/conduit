@@ -19,6 +19,7 @@ module Data.Conduit.Binary
     , sinkIOHandle
       -- ** Conduits
     , conduitFile
+    , conduitHandle
       -- * Utilities
       -- ** Sources
     , sourceLbs
@@ -198,9 +199,10 @@ conduitFile :: MonadResource m
 conduitFile fp = bracketP
     (IO.openBinaryFile fp IO.WriteMode)
     IO.hClose
-    go
-  where
-    go h = awaitForever $ \bs -> liftIO (S.hPut h bs) >> yield bs
+    conduitHandle
+
+conduitHandle :: MonadIO m => IO.Handle -> Conduit S.ByteString m S.ByteString
+conduitHandle h = awaitForever $ \bs -> liftIO (S.hPut h bs) >> yield bs
 
 -- | Ensure that only up to the given number of bytes are consume by the inner
 -- sink. Note that this does /not/ ensure that all of those bytes are in fact
