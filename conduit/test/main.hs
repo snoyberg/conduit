@@ -31,7 +31,7 @@ import Control.Monad.Trans.Resource (runExceptionT, runExceptionT_, allocate, re
 import Control.Concurrent (threadDelay, killThread)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Trans.Class (lift)
-import Control.Monad.Trans.Writer (execWriter, tell, runWriterT, runWriter, Writer)
+import Control.Monad.Trans.Writer (execWriter, tell, runWriterT, runWriter, Writer, WriterT)
 import Control.Monad.Trans.State (evalStateT, get, put)
 import Control.Applicative (pure, (<$>), (<*>))
 import Data.Functor.Identity (Identity,runIdentity)
@@ -1211,6 +1211,40 @@ main = hspec $ do
                 src = C.bracketP undefined undefined undefined
                 sink = return ()
             C.runResourceT $ src C.$$ sink
+
+    describe "associativity and premature closing" $ do
+        let src :: C.Source (WriterT String IO) Int
+            src = do
+                lift $ tell "starting src\n"
+                CI.addCleanup (const $ tell "cleaning src\n") $ mapM_ C.yield [1..]
+                lift $ tell "never reached: src"
+            conduit :: C.Conduit Int (WriterT String IO) Int
+            conduit = do
+                lift $ tell "starting conduit\n"
+                CL.isolate 3 CI.>+> return ()
+                CI.addCleanup (const $ tell "cleaning conduit\n") $ CL.isolate 7
+            sink :: C.Sink Int (WriterT String IO) [Int]
+            sink = do
+                lift $ tell "starting sink\n"
+                C.leftover (3 :: Int)
+                CI.idP CI.>+> C.leftover 2
+                C.leftover 1
+                res <- CL.consume
+                lift $ tell "sink is done\n"
+                return res
+            test name x = it name $ do
+                (res, w) <- runWriterT x
+                res `shouldBe` [1..10 :: Int]
+                w `shouldBe` unlines
+                    [ "starting sink"
+                    , "starting conduit"
+                    , "starting src"
+                    , "cleaning conduit"
+                    , "sink is done"
+                    , "cleaning src"
+                    ]
+        test "1" (src C.$$ conduit C.=$ sink)
+        test "2" ((src C.$= conduit) C.$$ sink)
 
 it' :: String -> IO () -> Spec
 it' = it
