@@ -258,8 +258,10 @@ type Producer m o = forall i. ConduitM i o m ()
 -- | Consumes a stream of input values and produces a final result, without
 -- producing any output.
 --
+-- > type Sink i m r = ConduitM i Void m r
+--
 -- Since 0.5.0
-type Sink i m r = ConduitM i Void m r
+type Sink i = ConduitM i Void
 
 -- | A component which consumes a stream of input values and produces a final
 -- result, regardless of the output stream. A @Consumer@ is a generalization of
