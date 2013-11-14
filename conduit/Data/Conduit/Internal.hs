@@ -336,8 +336,7 @@ yieldOr o f = HaveOutput (Done ()) f o
 {-# RULES
     "yield o >> p" forall o (p :: Pipe l i o u m r). yield o >> p = HaveOutput p (return ()) o
   ; "mapM_ yield" mapM_ yield = sourceList
-  ; "yieldOr o c >> p" forall o c (p :: Pipe l i o u m r). yieldOr o c >> p = HaveOutput p c o
-  #-}
+  ; "yieldOr o c >> p" forall o c (p :: Pipe l i o u m r). yieldOr o c >> p = HaveOutput p c o #-}
 
 -- | Provide a single piece of leftover input to be consumed by the next pipe
 -- in the current monadic binding.
@@ -603,8 +602,7 @@ build :: Monad m => (forall b. (o -> b -> b) -> b -> b) -> Pipe l i o u m ()
 build g = g (\o p -> HaveOutput p (return ()) o) (return ())
 
 {-# RULES
-    "sourceList/build" forall (f :: (forall b. (a -> b -> b) -> b -> b)). sourceList (GHC.Exts.build f) = build f
-  #-}
+    "sourceList/build" forall (f :: (forall b. (a -> b -> b) -> b -> b)). sourceList (GHC.Exts.build f) = build f #-}
 
 sourceToPipe :: Monad m => Source m o -> Pipe l i o u m ()
 sourceToPipe =
