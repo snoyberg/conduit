@@ -1,5 +1,5 @@
 name:            cereal-conduit
-version:         0.7.1
+version:         0.7.2
 license:         BSD3
 license-file:    LICENSE
 author:          Myles C. Maxfield <myles.maxfield@gmail.com>
@@ -20,7 +20,7 @@ bug-reports:     https://github.com/litherum/cereal-conduit/issues
 library
     build-depends: base         >= 4       && < 5
                  , conduit      >= 1.0.0   && < 1.1
-                 , cereal       >= 0.3.1.0
+                 , cereal       >= 0.4.0.0
                  , bytestring
                  , transformers >= 0.2.0.0
     exposed-modules: Data.Conduit.Cereal
