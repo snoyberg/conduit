@@ -46,7 +46,7 @@ sinkGet :: C.MonadThrow m => Get r -> C.Consumer BS.ByteString m r
 sinkGet = mkSinkGet errorHandler terminationHandler
   where errorHandler msg = pipeError $ GetException msg
         terminationHandler f = case f BS.empty of
-          Fail msg  -> pipeError $ GetException msg
+          Fail msg _ -> pipeError $ GetException msg
           Done r lo -> C.leftover lo >> return r
           Partial _ -> pipeError $ GetException "Failed reading: Internal error: unexpected Partial."
 
