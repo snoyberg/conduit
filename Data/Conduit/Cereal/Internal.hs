@@ -32,7 +32,7 @@ mkConduitGet errorHandler get = consume True (runGetPartial get) [] BS.empty
           | BS.null s = C.await >>= maybe (when (not $ null b) (C.leftover $ BS.concat $ reverse b)) (pull f b)
           | otherwise = consume False f b s
         consume initial f b s = case f s of
-          Fail msg  -> do
+          Fail msg _ -> do
             when (not $ null b) (C.leftover $ BS.concat $ reverse consumed)
             errorHandler msg
           Partial p -> pull p consumed BS.empty
@@ -56,7 +56,7 @@ mkSinkGet errorHandler terminationHandler get = consume (runGetPartial get) [] B
                           Just a -> pull f b a
           | otherwise = consume f b s
         consume f b s = case f s of
-          Fail msg  -> do
+          Fail msg _ -> do
             when (not $ null b) (C.leftover $ BS.concat $ reverse consumed)
             errorHandler msg
           Partial p -> pull p consumed BS.empty
