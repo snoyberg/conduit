@@ -1,5 +1,5 @@
 Name:                network-conduit
-Version:             1.0.1.1
+Version:             1.0.2
 Synopsis:            Stream socket data using conduits.
 Description:         Stream socket data using conduits.
 License:             BSD3
@@ -31,6 +31,10 @@ Library
                      , network-bytestring    >= 0.1.3   && < 0.1.4
   else
         build-depends: network               >= 2.3
+  if !os(windows)
+      Exposed-modules: Data.Conduit.Network.Unix
+                     , Data.Conduit.Network.Internal.Unix
+      Build-depends:   directory                >= 1.2
   ghc-options:     -Wall
 
 test-suite test
