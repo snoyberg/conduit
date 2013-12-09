@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, BangPatterns #-}
+{-# LANGUAGE CPP, OverloadedStrings, BangPatterns #-}
 module Data.Conduit.Process.UnixSpec where
 
 import Test.Hspec (describe, it, shouldBe, Spec)
@@ -56,7 +56,12 @@ spec = describe "unix-process-conduit" $ do
             Nothing
         terminateProcess pid
         res <- waitForProcess pid
-        res `shouldBe` ExitFailure (fromIntegral sigTERM)
+        res `shouldBe` ExitFailure
+#if MIN_VERSION_process(1, 2, 0)
+            (negate $ fromIntegral sigTERM)
+#else
+            (fromIntegral sigTERM)
+#endif
     it "killProcess works" $ do
         let src = lift (threadDelay 1000000) >> src
         pid <- forkExecuteFile
@@ -69,7 +74,12 @@ spec = describe "unix-process-conduit" $ do
             Nothing
         killProcess pid
         res <- waitForProcess pid
-        res `shouldBe` ExitFailure (fromIntegral sigKILL)
+        res `shouldBe` ExitFailure
+#if MIN_VERSION_process(1, 2, 0)
+            (negate $ fromIntegral sigKILL)
+#else
+            (fromIntegral sigKILL)
+#endif
     it "environment is set" $ do
         (sink, getLBS) <- iorefSink
         pid <- forkExecuteFile

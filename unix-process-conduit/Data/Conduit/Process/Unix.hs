@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP                      #-}
 {-# LANGUAGE DeriveDataTypeable       #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
 {-# LANGUAGE OverloadedStrings        #-}
@@ -38,7 +39,7 @@ import           Control.Applicative             ((<$>), (<*>))
 import           Control.Arrow                   ((***))
 import           Control.Concurrent              (forkIO)
 import           Control.Concurrent              (threadDelay)
-import           Control.Concurrent.MVar         (MVar, modifyMVar,
+import           Control.Concurrent.MVar         (MVar, modifyMVar, modifyMVar_,
                                                   newEmptyMVar, newMVar,
                                                   putMVar, readMVar, swapMVar,
                                                   takeMVar)
@@ -92,8 +93,20 @@ import           System.Posix.Signals            (Signal, sigKILL,
 import           System.Posix.Types              (CPid (..), Fd, ProcessID)
 import           System.Process
 import           System.Process.Internals        (ProcessHandle (..),
-                                                  ProcessHandle__ (..),
-                                                  withProcessHandle_)
+                                                  ProcessHandle__ (..))
+
+processHandleMVar :: ProcessHandle -> MVar ProcessHandle__
+#if MIN_VERSION_process(1, 2, 0)
+processHandleMVar (ProcessHandle m _) = m
+#else
+processHandleMVar (ProcessHandle m) = m
+#endif
+
+withProcessHandle_
+        :: ProcessHandle
+        -> (ProcessHandle__ -> IO ProcessHandle__)
+        -> IO ()
+withProcessHandle_ ph io = modifyMVar_ (processHandleMVar ph) io
 
 -- | Kill a process by sending it the KILL (9) signal.
 --
@@ -168,6 +181,9 @@ forkExecuteFile cmd args menv mwdir mstdin mstdout mstderr = do
         , std_err = maybe Inherit (const CreatePipe) mstderr
         , close_fds = True
         , create_group = True
+#if MIN_VERSION_process(1, 2, 0)
+        , delegate_ctlc = False
+#endif
         }
 
 ignoreExceptions :: IO () -> IO ()
@@ -263,8 +279,8 @@ instance Exception ProcessTrackerException
 --
 -- Since 0.2.1
 trackProcess :: ProcessTracker -> ProcessHandle -> IO TrackedProcess
-trackProcess pt ph@(ProcessHandle mph) = mask_ $ do
-    mpid <- readMVar mph
+trackProcess pt ph = mask_ $ do
+    mpid <- readMVar $ processHandleMVar ph
     mpid' <- case mpid of
         ClosedHandle{} -> return NoPid
         OpenHandle pid -> do
@@ -325,6 +341,9 @@ forkExecuteLog cmd args menv mwdir mstdin rlog = bracketOnError
             , std_err = UseHandle writerH
             , close_fds = True
             , create_group = True
+#if MIN_VERSION_process(1, 2, 0)
+            , delegate_ctlc = False
+#endif
             }
         ignoreExceptions $ addAttachMessage pipes ph
         void $ forkIO $ ignoreExceptions $
