@@ -1,9 +1,11 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE RankNTypes #-}
 
 module Control.Monad.Trans.Resource.Internal(
     ExceptionT(..)
@@ -18,13 +20,17 @@ module Control.Monad.Trans.Resource.Internal(
   , stateAlloc
   , stateCleanup
   , transResourceT
+  , Resource (..)
+  , Allocated (..)
+  , withResource
+  , mkResource
 ) where
 
 import Control.Exception (throw,Exception,SomeException)
 import Control.Applicative (Applicative (..))
 import Control.Monad.Trans.Control
     ( MonadTransControl (..), MonadBaseControl (..)
-    , ComposeSt, defaultLiftBaseWith, defaultRestoreM)
+    , ComposeSt, defaultLiftBaseWith, defaultRestoreM, control)
 import Control.Monad.Base (MonadBase, liftBase)
 import Control.Monad.Trans.Cont     ( ContT  )
 import Control.Monad.Cont.Class   ( MonadCont (..) )
@@ -48,7 +54,7 @@ import qualified Control.Monad.Trans.State.Strict  as Strict ( StateT )
 import qualified Control.Monad.Trans.Writer.Strict as Strict ( WriterT )
 
 import Control.Monad.IO.Class (MonadIO (..))
-import Control.Monad (liftM)
+import Control.Monad (liftM, ap)
 import qualified Control.Exception as E
 import Control.Monad.ST (ST)
 import Data.IntMap (IntMap)
@@ -418,3 +424,61 @@ instance MonadWriter w m => MonadWriter w (ExceptionT m) where
     return $! case a of
         Left  l      -> (Left  l, id)
         Right (r, f) -> (Right r, f)
+
+data Allocated a = Allocated !a !(IO ())
+
+-- | A method for allocating a scarce resource, providing the means of freeing
+-- it when no longer needed. This data type provides
+-- @Functor@/@Applicative@/@Monad@ instances for composing different resources
+-- together. You can allocate these resources using either the @bracket@
+-- pattern (via @withResource@) or using @ResourceT@ (via @allocateResource@).
+--
+-- Since 0.4.10
+newtype Resource a = Resource ((forall b. IO b -> IO b) -> IO (Allocated a))
+    deriving Typeable
+
+instance Functor Resource where
+    fmap = liftM
+instance Applicative Resource where
+    pure = return
+    (<*>) = ap
+
+instance Monad Resource where
+    return a = Resource (\_ -> return (Allocated a (return ())))
+    Resource f >>= g' = Resource $ \restore -> do
+        Allocated x free1 <- f restore
+        let Resource g = g' x
+        Allocated y free2 <- g restore `E.onException` free1
+        return $! Allocated y (free2 `E.finally` free1)
+
+instance MonadIO Resource where
+    liftIO f = Resource $ \restore -> do
+        x <- restore f
+        return $! Allocated x (return ())
+
+instance MonadBase IO Resource where
+    liftBase = liftIO
+
+-- | Create a @Resource@ value using the given allocate and free functions.
+--
+-- Since 0.4.10
+mkResource :: IO a -- ^ allocate the resource
+           -> (a -> IO ()) -- ^ free the resource
+           -> Resource a
+mkResource create free = Resource $ \restore -> do
+    x <- restore create
+    return $! Allocated x (free x)
+
+-- | Allocate the given resource and provide it to the provided function. The
+-- resource will be freed as soon as the inner block is exited, whether
+-- normally or via an exception. This function is similar in function to
+-- @bracket@.
+--
+-- Since 0.4.10
+withResource :: MonadBaseControl IO m
+             => Resource a
+             -> (a -> m b)
+             -> m b
+withResource (Resource f) g = control $ \run -> E.mask $ \restore -> do
+    Allocated x free <- f restore
+    run (g x) `E.finally` free

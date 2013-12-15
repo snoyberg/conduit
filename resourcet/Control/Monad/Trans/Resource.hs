@@ -58,6 +58,11 @@ module Control.Monad.Trans.Resource
     , withInternalState
     , createInternalState
     , closeInternalState
+      -- * Resource
+    , Resource
+    , mkResource
+    , withResource
+    , allocateResource
     ) where
 
 import qualified Data.IntMap as IntMap
@@ -135,6 +140,13 @@ allocate :: MonadResource m
          -> m (ReleaseKey, a)
 allocate a = liftResourceT . allocateRIO a
 
+-- | Allocate a resource and register an action with the @MonadResource@ to
+-- free the resource.
+--
+-- Since 0.4.10
+allocateResource :: MonadResource m => Resource a -> m (ReleaseKey, a)
+allocateResource = liftResourceT . allocateResourceRIO
+
 -- | Perform asynchronous exception masking.
 --
 -- This is more general then @Control.Exception.mask@, yet more efficient
@@ -148,6 +160,12 @@ allocateRIO :: IO a -> (a -> IO ()) -> ResourceT IO (ReleaseKey, a)
 allocateRIO acquire rel = ResourceT $ \istate -> liftIO $ E.mask $ \restore -> do
     a <- restore acquire
     key <- register' istate $ rel a
+    return (key, a)
+
+allocateResourceRIO :: Resource a -> ResourceT IO (ReleaseKey, a)
+allocateResourceRIO (Resource f) = ResourceT $ \istate -> liftIO $ E.mask $ \restore -> do
+    Allocated a free <- f restore
+    key <- register' istate free
     return (key, a)
 
 registerRIO :: IO () -> ResourceT IO ReleaseKey
