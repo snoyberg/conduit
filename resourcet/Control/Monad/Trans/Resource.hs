@@ -61,7 +61,7 @@ module Control.Monad.Trans.Resource
       -- * Resource
     , Resource
     , mkResource
-    , withResource
+    , with
     , allocateResource
     ) where
 

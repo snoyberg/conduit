@@ -22,7 +22,7 @@ module Control.Monad.Trans.Resource.Internal(
   , transResourceT
   , Resource (..)
   , Allocated (..)
-  , withResource
+  , with
   , mkResource
 ) where
 
@@ -431,7 +431,12 @@ data Allocated a = Allocated !a !(IO ())
 -- it when no longer needed. This data type provides
 -- @Functor@/@Applicative@/@Monad@ instances for composing different resources
 -- together. You can allocate these resources using either the @bracket@
--- pattern (via @withResource@) or using @ResourceT@ (via @allocateResource@).
+-- pattern (via @with@) or using @ResourceT@ (via @allocateResource@).
+--
+-- This concept was originally introduced by Gabriel Gonzalez and described at:
+-- <http://www.haskellforall.com/2013/06/the-resource-applicative.html>. The
+-- implementation in this package is slightly different, due to taking a
+-- different approach to async exception safety.
 --
 -- Since 0.4.10
 newtype Resource a = Resource ((forall b. IO b -> IO b) -> IO (Allocated a))
@@ -475,10 +480,10 @@ mkResource create free = Resource $ \restore -> do
 -- @bracket@.
 --
 -- Since 0.4.10
-withResource :: MonadBaseControl IO m
-             => Resource a
-             -> (a -> m b)
-             -> m b
-withResource (Resource f) g = control $ \run -> E.mask $ \restore -> do
+with :: MonadBaseControl IO m
+     => Resource a
+     -> (a -> m b)
+     -> m b
+with (Resource f) g = control $ \run -> E.mask $ \restore -> do
     Allocated x free <- f restore
     run (g x) `E.finally` free
