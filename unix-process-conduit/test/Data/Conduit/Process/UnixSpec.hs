@@ -14,6 +14,7 @@ import Control.Monad.Trans.Class (lift)
 import Control.Concurrent (threadDelay)
 import System.Posix.Signals (sigKILL, sigTERM)
 import qualified Control.Concurrent.MVar as M
+import Data.ByteString.Lazy.Char8 ()
 
 iorefSink :: IO (Sink ByteString IO (), IO L.ByteString)
 iorefSink = do
