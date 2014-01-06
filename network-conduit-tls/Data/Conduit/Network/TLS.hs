@@ -7,11 +7,12 @@
 module Data.Conduit.Network.TLS
     ( -- * Server
       TLSConfig
+    , tlsConfigBS
     , tlsConfig
     , tlsHost
     , tlsPort
-    , tlsCertificate
-    , tlsKey
+--    , tlsCertificate
+--    , tlsKey
     , tlsNeedLocalAddr
     , tlsAppData
     , runTCPServerTLS
@@ -67,17 +68,36 @@ import qualified Network.Connection as NC
 import Control.Monad.Trans.Control
 import Data.Default
 
+
+
+makeCertDataPath :: FilePath -> FilePath -> TlsCertData
+makeCertDataPath certPath keyPath = TlsCertData (readFile certPath) (readFile keyPath)
+
+makeCertDataBS :: S.ByteString -> S.ByteString -> TlsCertData
+makeCertDataBS certBS keyBS = TlsCertData (return certBS) (return keyBS)
+
+
 tlsConfig :: HostPreference
           -> Int -- ^ port
           -> FilePath -- ^ certificate
           -> FilePath -- ^ key
           -> TLSConfig
-tlsConfig a b c d = TLSConfig a b c d False
+tlsConfig a b c d = TLSConfig a b (makeCertDataPath c d) False
+
+
+-- allow to build a server config directly from bytestring data (if the certifcates and all
+-- comes from somewhere else than the filesystem
+tlsConfigBS :: HostPreference
+            -> Int          -- ^ port 
+            -> S.ByteString -- ^ Certificate raw data 
+            -> S.ByteString -- ^ Key file raw data 
+            -> TLSConfig
+tlsConfigBS a b c d = TLSConfig a b (makeCertDataBS c d ) False               
 
 runTCPServerTLS :: TLSConfig -> Application IO -> IO ()
 runTCPServerTLS TLSConfig{..} app = do
-    certs <- readCertificates tlsCertificate
-    key <- readPrivateKey tlsKey
+    certs <- readCertificates tlsCertData
+    key <- readPrivateKey tlsCertData
     bracket
         (bindPort tlsPort tlsHost)
         sClose
@@ -180,9 +200,9 @@ ciphers =
     , TLSExtra.cipher_RC4_128_SHA1
     ]
 
-readCertificates :: FilePath -> IO [X509.X509]
-readCertificates filepath = do
-    certs <- rights . parseCerts . PEM.pemParseBS <$> readFile filepath
+readCertificates :: TlsCertData -> IO [X509.X509]
+readCertificates certData = do
+    certs <- rights . parseCerts . PEM.pemParseBS <$> getTLSCert certData
     case certs of
         []    -> error "no valid certificate found"
         (_:_) -> return certs
@@ -190,9 +210,9 @@ readCertificates filepath = do
                                   $ filter (flip elem ["CERTIFICATE", "TRUSTED CERTIFICATE"] . PEM.pemName) pems
           parseCerts (Left err) = error $ "cannot parse PEM file: " ++ err
 
-readPrivateKey :: FilePath -> IO TLS.PrivateKey
-readPrivateKey filepath = do
-    pk <- rights . parseKey . PEM.pemParseBS <$> readFile filepath
+readPrivateKey :: TlsCertData -> IO TLS.PrivateKey
+readPrivateKey certData = do
+    pk <- rights . parseKey . PEM.pemParseBS <$> getTLSKey certData
     case pk of
         []    -> error "no valid RSA key found"
         (x:_) -> return x

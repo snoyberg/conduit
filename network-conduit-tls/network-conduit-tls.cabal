@@ -33,3 +33,17 @@ library
                     , connection
                     , monad-control
                     , data-default
+
+test-suite test
+    hs-source-dirs: test
+    main-is: main.hs
+    type: exitcode-stdio-1.0
+    cpp-options:   -DTEST
+    build-depends:   conduit
+                   , network-conduit
+                   , connection
+                   , base
+                   , mtl
+                   , network-conduit-tls
+                   , bytestring
+    ghc-options:     -Wall -threaded
