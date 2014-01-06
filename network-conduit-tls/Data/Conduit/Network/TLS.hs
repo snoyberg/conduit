@@ -94,6 +94,65 @@ tlsConfigBS :: HostPreference
             -> TLSConfig
 tlsConfigBS a b c d = TLSConfig a b (makeCertDataBS c d ) False               
 
+
+serverHandshake :: Socket -> [X509.X509] -> TLS.PrivateKey -> IO (TLS.Context) 
+serverHandshake socket certs key = do
+#if MIN_VERSION_tls(1, 1, 3)
+    gen <- Crypto.Random.AESCtr.makeSystem
+#elif MIN_VERSION_tls(1, 1, 0)
+    gen <- getSystemRandomGen
+#else
+    gen <- newGenIO
+#endif
+
+#if MIN_VERSION_tls(1, 0, 0)
+    ctx <- TLS.contextNew
+           TLS.Backend
+                    { TLS.backendFlush = return ()
+                    , TLS.backendClose = return ()
+                    , TLS.backendSend = sendAll socket
+                    , TLS.backendRecv = recvExact socket
+                    }
+            params
+#if MIN_VERSION_tls(1, 1, 3)
+            gen
+#else
+            (gen :: SystemRandom)
+#endif
+#else
+    ctx <- TLS.serverWith
+                params
+                (gen :: SystemRandom)
+                socket
+                (return ()) -- flush
+                (\bs -> yield bs $$ sinkSocket socket)
+                (recvExact socket)
+#endif
+
+    TLS.handshake ctx
+    return ctx
+
+  where
+    params =
+#if MIN_VERSION_tls(1, 0, 0)
+        TLS.updateServerParams
+           (\sp -> sp { TLS.serverWantClientCert = False }) $
+           TLS.defaultParamsServer
+              { TLS.pAllowedVersions = [TLS.SSL3,TLS.TLS10,TLS.TLS11,TLS.TLS12]
+              , TLS.pCiphers         = ciphers
+              , TLS.pCertificates    = zip certs $ Just key : repeat Nothing
+              }
+#else
+    TLS.defaultParams
+            { TLS.pWantClientCert = False
+            , TLS.pAllowedVersions = [TLS.SSL3,TLS.TLS10,TLS.TLS11,TLS.TLS12]
+            , TLS.pCiphers         = ciphers
+            , TLS.pCertificates    = zip certs $ Just key : repeat Nothing
+            }
+#endif
+
+
+
 runTCPServerTLS :: TLSConfig -> Application IO -> IO ()
 runTCPServerTLS TLSConfig{..} app = do
     certs <- readCertificates tlsCertData
@@ -112,59 +171,9 @@ runTCPServerTLS TLSConfig{..} app = do
         return ()
       where
         handle socket addr mlocal = do
-#if MIN_VERSION_tls(1, 1, 3)
-            gen <- Crypto.Random.AESCtr.makeSystem
-#elif MIN_VERSION_tls(1, 1, 0)
-            gen <- getSystemRandomGen
-#else
-            gen <- newGenIO
-#endif
-
-#if MIN_VERSION_tls(1, 0, 0)
-            ctx <- TLS.contextNew
-                TLS.Backend
-                    { TLS.backendFlush = return ()
-                    , TLS.backendClose = return ()
-                    , TLS.backendSend = sendAll socket
-                    , TLS.backendRecv = recvExact socket
-                    }
-                params
-#if MIN_VERSION_tls(1, 1, 3)
-                gen
-#else
-                (gen :: SystemRandom)
-#endif
-#else
-            ctx <- TLS.serverWith
-                params
-                (gen :: SystemRandom)
-                socket
-                (return ()) -- flush
-                (\bs -> yield bs $$ sinkSocket socket)
-                (recvExact socket)
-#endif
-
-            TLS.handshake ctx
-
+            ctx <- serverHandshake socket certs key
             app (tlsAppData ctx addr mlocal) `finally` sClose socket
 
-        params =
-#if MIN_VERSION_tls(1, 0, 0)
-          TLS.updateServerParams
-                (\sp -> sp { TLS.serverWantClientCert = False }) $
-          TLS.defaultParamsServer
-            { TLS.pAllowedVersions = [TLS.SSL3,TLS.TLS10,TLS.TLS11,TLS.TLS12]
-            , TLS.pCiphers         = ciphers
-            , TLS.pCertificates    = zip certs $ Just key : repeat Nothing
-            }
-#else
-          TLS.defaultParams
-            { TLS.pWantClientCert = False
-            , TLS.pAllowedVersions = [TLS.SSL3,TLS.TLS10,TLS.TLS11,TLS.TLS12]
-            , TLS.pCiphers         = ciphers
-            , TLS.pCertificates    = zip certs $ Just key : repeat Nothing
-            }
-#endif
 
 -- | Create an @AppData@ from an existing tls @Context@ value. This is a lower level function, allowing you to create a connection in any way you want.
 --
