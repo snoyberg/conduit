@@ -20,6 +20,8 @@ module Data.Conduit.Network
     , serverAfterBind
     , serverNeedLocalAddr
     , runTCPServer
+    , runTCPServerWithHandle
+    , ConnectionHandle (..)
       -- ** Client
     , ClientSettings
     , clientSettings

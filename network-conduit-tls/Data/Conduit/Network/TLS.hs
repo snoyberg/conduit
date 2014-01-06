@@ -40,7 +40,7 @@ import qualified Data.Certificate.KeyRSA as KeyRSA
 import qualified Data.PEM as PEM
 import qualified Network.TLS as TLS
 import qualified Data.Certificate.X509 as X509
-import Data.Conduit.Network (HostPreference, Application, bindPort, sinkSocket, acceptSafe)
+import Data.Conduit.Network (HostPreference, Application, bindPort, sinkSocket, acceptSafe, runTCPServerWithHandle, ConnectionHandle(..), serverSettings)
 import Data.Conduit.Network.Internal (AppData (..))
 import Data.Conduit.Network.TLS.Internal
 import Data.Conduit (($$), yield, awaitForever, Producer, Consumer)
@@ -151,28 +151,22 @@ serverHandshake socket certs key = do
             }
 #endif
 
-
-
 runTCPServerTLS :: TLSConfig -> Application IO -> IO ()
-runTCPServerTLS TLSConfig{..} app = do
+runTCPServerTLS TLSConfig{..} app = do  
     certs <- readCertificates tlsCertData
     key <- readPrivateKey tlsCertData
-    bracket
-        (bindPort tlsPort tlsHost)
-        sClose
-        (forever . serve certs key)
-  where
-    serve certs key lsocket = do
-        (socket, addr) <- acceptSafe lsocket
-        mlocal <- if tlsNeedLocalAddr
-                    then fmap Just $ getSocketName socket
-                    else return Nothing
-        _ <- forkIO $ handle socket addr mlocal
-        return ()
-      where
-        handle socket addr mlocal = do
+
+    runTCPServerWithHandle settings (wrapApp certs key)
+    
+    where
+      -- convert tls settings to regular conduit network ones 
+      settings = serverSettings tlsPort tlsHost  -- (const $ return () ) tlsNeedLocalAddr
+
+      wrapApp certs key = ConnectionHandle app'
+        where
+          app' socket addr mlocal = do
             ctx <- serverHandshake socket certs key
-            app (tlsAppData ctx addr mlocal) `finally` sClose socket
+            app (tlsAppData ctx addr mlocal)
 
 
 -- | Create an @AppData@ from an existing tls @Context@ value. This is a lower level function, allowing you to create a connection in any way you want.
