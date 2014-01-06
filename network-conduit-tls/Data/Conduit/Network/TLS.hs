@@ -40,7 +40,7 @@ import qualified Data.Certificate.KeyRSA as KeyRSA
 import qualified Data.PEM as PEM
 import qualified Network.TLS as TLS
 import qualified Data.Certificate.X509 as X509
-import Data.Conduit.Network (HostPreference, Application, bindPort, sinkSocket, acceptSafe, runTCPServerWithHandle, ConnectionHandle(..), serverSettings)
+import Data.Conduit.Network (HostPreference, Application, bindPort, sinkSocket, acceptSafe, runTCPServerWithHandle, ConnectionHandle(..), serverSettings, sourceSocket)
 import Data.Conduit.Network.Internal (AppData (..))
 import Data.Conduit.Network.TLS.Internal
 import Data.Conduit (($$), yield, awaitForever, Producer, Consumer)
@@ -168,6 +168,42 @@ runTCPServerTLS TLSConfig{..} app = do
             ctx <- serverHandshake socket certs key
             app (tlsAppData ctx addr mlocal)
 
+
+
+data AppDataSTLS m = AppDataSTLS
+    { appSSource :: Producer m S.ByteString
+    , appSSink :: Consumer S.ByteString m ()
+    , appSSockAddr :: SockAddr
+    , appSLocalAddr :: Maybe SockAddr
+    , startTls :: Application m -> m ()  -- wrap the existing connection with SSL...  
+    }
+
+type ApplicationSTLS = AppDataSTLS IO -> IO ()
+
+runTCPServerStartTLS :: TLSConfig -> ApplicationSTLS -> IO ()
+runTCPServerStartTLS TLSConfig{..} app = do 
+    certs <- readCertificates tlsCertData
+    key <- readPrivateKey tlsCertData
+
+    runTCPServerWithHandle settings (wrapApp certs key)
+    
+    where
+      -- convert tls settings to regular conduit network ones 
+      settings = serverSettings tlsPort tlsHost  -- (const $ return () ) tlsNeedLocalAddr
+
+      wrapApp certs key = ConnectionHandle clearapp
+        where clearapp socket addr mlocal = let 
+                startTLSData = AppDataSTLS {
+                  appSSource = sourceSocket socket
+                  , appSSink = sinkSocket socket
+                  , appSSockAddr = addr
+                  , appSLocalAddr = mlocal
+                  , startTls = \app' -> do
+                    ctx <- serverHandshake socket certs key
+                    app' (tlsAppData ctx addr mlocal)
+                  }
+                in
+                 app startTLSData
 
 -- | Create an @AppData@ from an existing tls @Context@ value. This is a lower level function, allowing you to create a connection in any way you want.
 --
