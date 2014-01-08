@@ -16,10 +16,13 @@ module Data.Conduit.Network.TLS
     , tlsNeedLocalAddr
     , tlsAppData
     , runTCPServerTLS
+    , runTCPServerStartTLS
+    , AppDataSTLS (..)
       -- * Client
     , TLSClientConfig
     , tlsClientConfig
     , runTLSClient
+    , runTLSClientStartTLS
     , tlsClientPort
     , tlsClientHost
     , tlsClientUseTLS
@@ -348,6 +351,42 @@ runTLSClient TLSClientConfig {..} app = do
             , appSockAddr = SockAddrInet (fromIntegral tlsClientPort) 0 -- FIXME
             , appLocalAddr = Nothing
             })
+
+
+-- | Run an application with the given configuration.
+--
+-- Since 1.0.2
+runTLSClientStartTLS :: TLSClientConfig IO
+                     -> ApplicationSTLS
+                     -> IO ()
+runTLSClientStartTLS TLSClientConfig {..} app = do
+    context <- maybe (liftIO NC.initConnectionContext) return tlsClientConnectionContext
+    let params = NC.ConnectionParams
+            { NC.connectionHostname = S8.unpack tlsClientHost
+            , NC.connectionPort = fromIntegral tlsClientPort
+            , NC.connectionUseSecure = Nothing
+            , NC.connectionUseSocks = tlsClientSockSettings
+            }
+        tlsSettings = tlsClientTLSSettings
+    control $ \run -> bracket
+        (NC.connectTo context params)
+        NC.connectionClose
+        (\conn -> run $ app AppDataSTLS
+            { appSSource = sourceConnection conn
+            , appSSink = sinkConnection conn
+            , appSSockAddr = SockAddrInet (fromIntegral tlsClientPort) 0 -- FIXME
+            , appSLocalAddr = Nothing
+                              
+            , startTls = \app' -> do
+                 NC.connectionSetSecure context conn tlsClientTLSSettings
+                 app' AppData
+                   { appSource = sourceConnection conn
+                   , appSink = sinkConnection conn
+                   , appSockAddr = SockAddrInet (fromIntegral tlsClientPort) 0 -- FIXME
+                   , appLocalAddr = Nothing
+                   }
+            })
+
 
 -- | Read from a 'NC.Connection'.
 --

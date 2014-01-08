@@ -1,9 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
+import Test.HUnit
 import Data.Conduit
 import Data.Conduit.Network (HostPreference(..), Application, appSource, appSink)
 import Data.Conduit.Network.TLS
-import Control.Concurrent (forkIO, threadDelay)
-import Control.Monad (replicateM_)
+import Control.Concurrent (forkIO, threadDelay, killThread)
+import Control.Monad (replicateM_, forever)
 import qualified Network.Connection as NC
 import qualified Data.ByteString as BS
 
@@ -25,18 +26,54 @@ clientConfig = tlsClientConfig 4242 "127.0.0.1"
 
 clientConfigNoCA = clientConfig {tlsClientTLSSettings = NC.TLSSettingsSimple True False False}
 
-main :: IO ()
-main = do
-    _ <- forkIO $ runTCPServerTLS serverConfig sayHello
+testSimpleServerClient :: IO ()
+testSimpleServerClient = do
+    -- a simple server that says hello over tls 
+    serverThreadId <- forkIO $ runTCPServerTLS serverConfig $ \ad ->
+      yield "hello world" $$ appSink ad
+      
+    -- wait for server to be ready 
     threadDelay 1000000
-    replicateM_ 10
-        $ runTLSClient clientConfigNoCA doNothing -- default settings checks CA, the test cert is self-signed. should fail 
+    
+    -- default settings checks CA, the test cert is self-signed. should
+    runTLSClient clientConfigNoCA $ \ad -> do
+      d <- appSource ad $$ (await >>= return)
+      assertEqual "client receives hello world" (Just "hello world") d
+      
+    -- kill the server 
+    killThread serverThreadId
 
-sayHello :: Application IO
-sayHello ad = yield "hello world"  $$ appSink ad
 
-doNothing :: Application IO
-doNothing ad = appSource ad $$ (await >> return ())
+testSimpleServerClientStartTLS :: IO ()
+testSimpleServerClientStartTLS = do
+  serverThreadId <- forkIO $ runTCPServerStartTLS serverConfig serve
+  threadDelay 100000
 
+  runTLSClientStartTLS clientConfigNoCA client
+
+  killThread serverThreadId
+
+  where
+    serve ad = do
+      yield "proceed" $$ appSSink ad
+      startTls ad $ \app -> (forever $ yield "crypted") $$ appSink app
+
+
+    client ad = do
+      -- reads one message from server
+      msg <- appSSource ad $$ (await >>= return)
+      assertEqual "server sends proceed" (Just "proceed") msg
+      startTls ad $ \app -> do
+        msgTls <- appSource app $$ (await >>= return)
+        assertEqual "server sends crypted" (Just "crypted") msgTls
+
+
+
+main = runTestTT $ TestList [ TestLabel "TLS Server" $ TestCase testSimpleServerClient
+                            , TestLabel "StartTLS" $ TestCase testSimpleServerClientStartTLS ]
+        
+    
+
+  
   
 

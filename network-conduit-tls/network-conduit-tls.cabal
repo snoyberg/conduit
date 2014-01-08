@@ -46,4 +46,5 @@ test-suite test
                    , mtl
                    , network-conduit-tls
                    , bytestring
+                   , HUnit
     ghc-options:     -Wall -threaded
