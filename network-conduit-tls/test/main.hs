@@ -1,10 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 import Test.HUnit
 import Data.Conduit
-import Data.Conduit.Network (HostPreference(..), Application, appSource, appSink)
+import Data.Conduit.Network (HostPreference(..), appSource, appSink)
 import Data.Conduit.Network.TLS
 import Control.Concurrent (forkIO, threadDelay, killThread)
-import Control.Monad (replicateM_, forever)
 import qualified Network.Connection as NC
 import qualified Data.ByteString as BS
 
@@ -22,8 +21,10 @@ testCertificateRaw = "-----BEGIN CERTIFICATE-----\nMIIDBjCCAe4CCQDBE77UEng3SDANB
 serverConfig :: TLSConfig
 serverConfig = tlsConfigBS HostIPv4 4242 testCertificateRaw testKeyRaw               
 
+clientConfig :: TLSClientConfig IO
 clientConfig = tlsClientConfig 4242 "127.0.0.1"
 
+clientConfigNoCA :: TLSClientConfig IO 
 clientConfigNoCA = clientConfig {tlsClientTLSSettings = NC.TLSSettingsSimple True False False}
 
 testSimpleServerClient :: IO ()
@@ -54,21 +55,21 @@ testSimpleServerClientStartTLS = do
   killThread serverThreadId
 
   where
-    serve ad = do
-      yield "proceed" $$ appSSink ad
-      startTls ad $ \app -> (forever $ yield "crypted") $$ appSink app
+    serve (ad, startTls) = do
+      yield "proceed" $$ appSink ad
+      startTls $ \app -> (yield "crypted") $$ appSink app
 
 
-    client ad = do
+    client (ad, startTls) = do
       -- reads one message from server
-      msg <- appSSource ad $$ (await >>= return)
+      msg <- appSource ad $$ (await >>= return)
       assertEqual "server sends proceed" (Just "proceed") msg
-      startTls ad $ \app -> do
+      startTls $ \app -> do
         msgTls <- appSource app $$ (await >>= return)
         assertEqual "server sends crypted" (Just "crypted") msgTls
 
 
-
+main :: IO (Counts)
 main = runTestTT $ TestList [ TestLabel "TLS Server" $ TestCase testSimpleServerClient
                             , TestLabel "StartTLS" $ TestCase testSimpleServerClientStartTLS ]
         

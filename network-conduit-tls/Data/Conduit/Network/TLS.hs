@@ -17,7 +17,6 @@ module Data.Conduit.Network.TLS
     , tlsAppData
     , runTCPServerTLS
     , runTCPServerStartTLS
-    , AppDataSTLS (..)
       -- * Client
     , TLSClientConfig
     , tlsClientConfig
@@ -91,14 +90,14 @@ tlsConfig a b c d = TLSConfig a b (makeCertDataPath c d) False
 -- allow to build a server config directly from bytestring data (if the certifcates and all
 -- comes from somewhere else than the filesystem
 tlsConfigBS :: HostPreference
-            -> Int          -- ^ port 
-            -> S.ByteString -- ^ Certificate raw data 
-            -> S.ByteString -- ^ Key file raw data 
+            -> Int          -- ^ port
+            -> S.ByteString -- ^ Certificate raw data
+            -> S.ByteString -- ^ Key file raw data
             -> TLSConfig
-tlsConfigBS a b c d = TLSConfig a b (makeCertDataBS c d ) False               
+tlsConfigBS a b c d = TLSConfig a b (makeCertDataBS c d ) False
 
 
-serverHandshake :: Socket -> [X509.X509] -> TLS.PrivateKey -> IO (TLS.Context) 
+serverHandshake :: Socket -> [X509.X509] -> TLS.PrivateKey -> IO (TLS.Context)
 serverHandshake socket certs key = do
 #if MIN_VERSION_tls(1, 1, 3)
     gen <- Crypto.Random.AESCtr.makeSystem
@@ -155,14 +154,14 @@ serverHandshake socket certs key = do
 #endif
 
 runTCPServerTLS :: TLSConfig -> Application IO -> IO ()
-runTCPServerTLS TLSConfig{..} app = do  
+runTCPServerTLS TLSConfig{..} app = do
     certs <- readCertificates tlsCertData
     key <- readPrivateKey tlsCertData
 
     runTCPServerWithHandle settings (wrapApp certs key)
-    
+
     where
-      -- convert tls settings to regular conduit network ones 
+      -- convert tls settings to regular conduit network ones
       settings = serverSettings tlsPort tlsHost  -- (const $ return () ) tlsNeedLocalAddr
 
       wrapApp certs key = ConnectionHandle app'
@@ -172,41 +171,34 @@ runTCPServerTLS TLSConfig{..} app = do
             app (tlsAppData ctx addr mlocal)
 
 
+type ApplicationStartTLS = (AppData IO, Application IO -> IO ()) -> IO ()
 
-data AppDataSTLS m = AppDataSTLS
-    { appSSource :: Producer m S.ByteString
-    , appSSink :: Consumer S.ByteString m ()
-    , appSSockAddr :: SockAddr
-    , appSLocalAddr :: Maybe SockAddr
-    , startTls :: Application m -> m ()  -- wrap the existing connection with SSL...  
-    }
-
-type ApplicationSTLS = AppDataSTLS IO -> IO ()
-
-runTCPServerStartTLS :: TLSConfig -> ApplicationSTLS -> IO ()
-runTCPServerStartTLS TLSConfig{..} app = do 
+runTCPServerStartTLS :: TLSConfig -> ApplicationStartTLS -> IO ()
+runTCPServerStartTLS TLSConfig{..} app = do
     certs <- readCertificates tlsCertData
     key <- readPrivateKey tlsCertData
 
     runTCPServerWithHandle settings (wrapApp certs key)
-    
+
     where
-      -- convert tls settings to regular conduit network ones 
+      -- convert tls settings to regular conduit network ones
       settings = serverSettings tlsPort tlsHost  -- (const $ return () ) tlsNeedLocalAddr
 
       wrapApp certs key = ConnectionHandle clearapp
-        where clearapp socket addr mlocal = let 
-                startTLSData = AppDataSTLS {
-                  appSSource = sourceSocket socket
-                  , appSSink = sinkSocket socket
-                  , appSSockAddr = addr
-                  , appSLocalAddr = mlocal
-                  , startTls = \app' -> do
-                    ctx <- serverHandshake socket certs key
-                    app' (tlsAppData ctx addr mlocal)
+        where clearapp socket addr mlocal = let
+                -- setup app data for the clear part of the connection
+                clearData = AppData
+                  { appSource = sourceSocket socket
+                  , appSink = sinkSocket socket
+                  , appSockAddr = addr
+                  , appLocalAddr = mlocal
                   }
+                -- wrap up the current connection with TLS
+                startTls = \app' -> do
+                  ctx <- serverHandshake socket certs key
+                  app' (tlsAppData ctx addr mlocal)
                 in
-                 app startTLSData
+                 app (clearData, startTls)
 
 -- | Create an @AppData@ from an existing tls @Context@ value. This is a lower level function, allowing you to create a connection in any way you want.
 --
@@ -357,7 +349,7 @@ runTLSClient TLSClientConfig {..} app = do
 --
 -- Since 1.0.2
 runTLSClientStartTLS :: TLSClientConfig IO
-                     -> ApplicationSTLS
+                     -> ApplicationStartTLS
                      -> IO ()
 runTLSClientStartTLS TLSClientConfig {..} app = do
     context <- maybe (liftIO NC.initConnectionContext) return tlsClientConnectionContext
@@ -371,13 +363,14 @@ runTLSClientStartTLS TLSClientConfig {..} app = do
     control $ \run -> bracket
         (NC.connectTo context params)
         NC.connectionClose
-        (\conn -> run $ app AppDataSTLS
-            { appSSource = sourceConnection conn
-            , appSSink = sinkConnection conn
-            , appSSockAddr = SockAddrInet (fromIntegral tlsClientPort) 0 -- FIXME
-            , appSLocalAddr = Nothing
-                              
-            , startTls = \app' -> do
+        (\conn -> run $ app (
+            AppData
+            { appSource = sourceConnection conn
+            , appSink = sinkConnection conn
+            , appSockAddr = SockAddrInet (fromIntegral tlsClientPort) 0 -- FIXME
+            , appLocalAddr = Nothing
+            }
+            , \app' -> do
                  NC.connectionSetSecure context conn tlsClientTLSSettings
                  app' AppData
                    { appSource = sourceConnection conn
@@ -385,7 +378,8 @@ runTLSClientStartTLS TLSClientConfig {..} app = do
                    , appSockAddr = SockAddrInet (fromIntegral tlsClientPort) 0 -- FIXME
                    , appLocalAddr = Nothing
                    }
-            })
+            )
+            )
 
 
 -- | Read from a 'NC.Connection'.
