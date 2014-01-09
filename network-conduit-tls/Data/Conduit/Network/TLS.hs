@@ -87,8 +87,9 @@ tlsConfig :: HostPreference
 tlsConfig a b c d = TLSConfig a b (makeCertDataPath c d) False
 
 
--- allow to build a server config directly from bytestring data (if the certifcates and all
--- comes from somewhere else than the filesystem
+-- | allow to build a server config directly from raw bytestring data (exact same
+-- string as if the certificates were read from the filesystem).
+-- this enables to plug another backend to fetch certifcates (other than FS) 
 tlsConfigBS :: HostPreference
             -> Int          -- ^ port
             -> S.ByteString -- ^ Certificate raw data
@@ -173,6 +174,16 @@ runTCPServerTLS TLSConfig{..} app = do
 
 type ApplicationStartTLS = (AppData IO, Application IO -> IO ()) -> IO ()
 
+-- | run a server un-crypted but also pass a call-back to trigger a StartTLS handshake
+-- on the underlying connection
+--
+-- example usage :
+--  @
+--  runTCPServerStartTLS serverConfig $ (appData,startTLS) -> do
+--    abortTLS <- doSomethingInClear appData
+--    unless (abortTLS) $ startTls $ appDataTls -> do
+--      doSomethingSSL appDataTls
+--  @
 runTCPServerStartTLS :: TLSConfig -> ApplicationStartTLS -> IO ()
 runTCPServerStartTLS TLSConfig{..} app = do
     certs <- readCertificates tlsCertData
@@ -345,7 +356,8 @@ runTLSClient TLSClientConfig {..} app = do
             })
 
 
--- | Run an application with the given configuration.
+-- | Run an application with the given configuration. starting with a clear connection
+--   but provide also a call back to trigger a StartTLS handshake on the connection
 --
 -- Since 1.0.2
 runTLSClientStartTLS :: TLSClientConfig IO
