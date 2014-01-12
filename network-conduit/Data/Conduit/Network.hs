@@ -20,6 +20,8 @@ module Data.Conduit.Network
     , serverAfterBind
     , serverNeedLocalAddr
     , runTCPServer
+    , runTCPServerWithHandle
+    , ConnectionHandle (..)
       -- ** Client
     , ClientSettings
     , clientSettings
@@ -97,13 +99,11 @@ serverSettings port host = ServerSettings
     , serverNeedLocalAddr = False
     }
 
--- | Run an @Application@ with the given settings. This function will create a
--- new listening socket, accept connections on it, and spawn a new thread for
--- each connection.
---
--- Since 0.6.0
-runTCPServer :: (MonadIO m, MonadBaseControl IO m) => ServerSettings m -> Application m -> m ()
-runTCPServer (ServerSettings port host afterBind needLocalAddr) app = control $ \run -> bracket
+
+data ConnectionHandle m = ConnectionHandle { getHandle :: Socket -> NS.SockAddr -> Maybe NS.SockAddr -> m ()  }
+
+runTCPServerWithHandle :: (MonadIO m, MonadBaseControl IO m) => ServerSettings m -> ConnectionHandle m -> m ()
+runTCPServerWithHandle (ServerSettings port host afterBind needLocalAddr) handle = control $ \run -> bracket
     (liftIO $ bindPort port host)
     (liftIO . NS.sClose)
     (\socket -> run $ do
@@ -115,15 +115,30 @@ runTCPServer (ServerSettings port host afterBind needLocalAddr) app = control $ 
         mlocal <- if needLocalAddr
                     then fmap Just $ liftIO (NS.getSocketName socket)
                     else return Nothing
-        let ad = AppData
+        let
+            handler = getHandle handle
+            app' run = run (handler socket addr mlocal) >> return ()
+            appClose run = app' run `finally` NS.sClose socket
+        control $ \run -> forkIO (appClose run) >> run (return ())
+
+
+
+-- | Run an @Application@ with the given settings. This function will create a
+-- new listening socket, accept connections on it, and spawn a new thread for
+-- each connection.
+--
+-- Since 0.6.0
+runTCPServer :: (MonadIO m, MonadBaseControl IO m) => ServerSettings m -> Application m -> m ()
+runTCPServer settings app = runTCPServerWithHandle settings (ConnectionHandle app')
+  where app' socket addr mlocal = 
+          let ad = AppData
                 { appSource = sourceSocket socket
                 , appSink = sinkSocket socket
                 , appSockAddr = addr
                 , appLocalAddr = mlocal
                 }
-            app' run = run (app ad) >> return ()
-            appClose run = app' run `finally` NS.sClose socket
-        control $ \run -> forkIO (appClose run) >> run (return ())
+          in
+            app ad
 
 -- | Smart constructor.
 --

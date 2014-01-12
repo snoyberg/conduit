@@ -7,18 +7,21 @@
 module Data.Conduit.Network.TLS
     ( -- * Server
       TLSConfig
+    , tlsConfigBS
     , tlsConfig
     , tlsHost
     , tlsPort
-    , tlsCertificate
-    , tlsKey
+--    , tlsCertificate
+--    , tlsKey
     , tlsNeedLocalAddr
     , tlsAppData
     , runTCPServerTLS
+    , runTCPServerStartTLS
       -- * Client
     , TLSClientConfig
     , tlsClientConfig
     , runTLSClient
+    , runTLSClientStartTLS
     , tlsClientPort
     , tlsClientHost
     , tlsClientUseTLS
@@ -39,7 +42,7 @@ import qualified Data.Certificate.KeyRSA as KeyRSA
 import qualified Data.PEM as PEM
 import qualified Network.TLS as TLS
 import qualified Data.Certificate.X509 as X509
-import Data.Conduit.Network (HostPreference, Application, bindPort, sinkSocket, acceptSafe)
+import Data.Conduit.Network (HostPreference, Application, bindPort, sinkSocket, acceptSafe, runTCPServerWithHandle, ConnectionHandle(..), serverSettings, sourceSocket)
 import Data.Conduit.Network.Internal (AppData (..))
 import Data.Conduit.Network.TLS.Internal
 import Data.Conduit (($$), yield, awaitForever, Producer, Consumer)
@@ -67,55 +70,60 @@ import qualified Network.Connection as NC
 import Control.Monad.Trans.Control
 import Data.Default
 
+
+
+makeCertDataPath :: FilePath -> FilePath -> TlsCertData
+makeCertDataPath certPath keyPath = TlsCertData (readFile certPath) (readFile keyPath)
+
+makeCertDataBS :: S.ByteString -> S.ByteString -> TlsCertData
+makeCertDataBS certBS keyBS = TlsCertData (return certBS) (return keyBS)
+
+
 tlsConfig :: HostPreference
           -> Int -- ^ port
           -> FilePath -- ^ certificate
           -> FilePath -- ^ key
           -> TLSConfig
-tlsConfig a b c d = TLSConfig a b c d False
+tlsConfig a b c d = TLSConfig a b (makeCertDataPath c d) False
 
-runTCPServerTLS :: TLSConfig -> Application IO -> IO ()
-runTCPServerTLS TLSConfig{..} app = do
-    certs <- readCertificates tlsCertificate
-    key <- readPrivateKey tlsKey
-    bracket
-        (bindPort tlsPort tlsHost)
-        sClose
-        (forever . serve certs key)
-  where
-    serve certs key lsocket = do
-        (socket, addr) <- acceptSafe lsocket
-        mlocal <- if tlsNeedLocalAddr
-                    then fmap Just $ getSocketName socket
-                    else return Nothing
-        _ <- forkIO $ handle socket addr mlocal
-        return ()
-      where
-        handle socket addr mlocal = do
+
+-- | allow to build a server config directly from raw bytestring data (exact same
+-- string as if the certificates were read from the filesystem).
+-- this enables to plug another backend to fetch certifcates (other than FS) 
+tlsConfigBS :: HostPreference
+            -> Int          -- ^ port
+            -> S.ByteString -- ^ Certificate raw data
+            -> S.ByteString -- ^ Key file raw data
+            -> TLSConfig
+tlsConfigBS a b c d = TLSConfig a b (makeCertDataBS c d ) False
+
+
+serverHandshake :: Socket -> [X509.X509] -> TLS.PrivateKey -> IO (TLS.Context)
+serverHandshake socket certs key = do
 #if MIN_VERSION_tls(1, 1, 3)
-            gen <- Crypto.Random.AESCtr.makeSystem
+    gen <- Crypto.Random.AESCtr.makeSystem
 #elif MIN_VERSION_tls(1, 1, 0)
-            gen <- getSystemRandomGen
+    gen <- getSystemRandomGen
 #else
-            gen <- newGenIO
+    gen <- newGenIO
 #endif
 
 #if MIN_VERSION_tls(1, 0, 0)
-            ctx <- TLS.contextNew
-                TLS.Backend
+    ctx <- TLS.contextNew
+           TLS.Backend
                     { TLS.backendFlush = return ()
                     , TLS.backendClose = return ()
                     , TLS.backendSend = sendAll socket
                     , TLS.backendRecv = recvExact socket
                     }
-                params
+            params
 #if MIN_VERSION_tls(1, 1, 3)
-                gen
+            gen
 #else
-                (gen :: SystemRandom)
+            (gen :: SystemRandom)
 #endif
 #else
-            ctx <- TLS.serverWith
+    ctx <- TLS.serverWith
                 params
                 (gen :: SystemRandom)
                 socket
@@ -124,27 +132,84 @@ runTCPServerTLS TLSConfig{..} app = do
                 (recvExact socket)
 #endif
 
-            TLS.handshake ctx
+    TLS.handshake ctx
+    return ctx
 
-            app (tlsAppData ctx addr mlocal) `finally` sClose socket
-
-        params =
+  where
+    params =
 #if MIN_VERSION_tls(1, 0, 0)
-          TLS.updateServerParams
-                (\sp -> sp { TLS.serverWantClientCert = False }) $
-          TLS.defaultParamsServer
-            { TLS.pAllowedVersions = [TLS.SSL3,TLS.TLS10,TLS.TLS11,TLS.TLS12]
-            , TLS.pCiphers         = ciphers
-            , TLS.pCertificates    = zip certs $ Just key : repeat Nothing
-            }
+        TLS.updateServerParams
+           (\sp -> sp { TLS.serverWantClientCert = False }) $
+           TLS.defaultParamsServer
+              { TLS.pAllowedVersions = [TLS.SSL3,TLS.TLS10,TLS.TLS11,TLS.TLS12]
+              , TLS.pCiphers         = ciphers
+              , TLS.pCertificates    = zip certs $ Just key : repeat Nothing
+              }
 #else
-          TLS.defaultParams
+    TLS.defaultParams
             { TLS.pWantClientCert = False
             , TLS.pAllowedVersions = [TLS.SSL3,TLS.TLS10,TLS.TLS11,TLS.TLS12]
             , TLS.pCiphers         = ciphers
             , TLS.pCertificates    = zip certs $ Just key : repeat Nothing
             }
 #endif
+
+runTCPServerTLS :: TLSConfig -> Application IO -> IO ()
+runTCPServerTLS TLSConfig{..} app = do
+    certs <- readCertificates tlsCertData
+    key <- readPrivateKey tlsCertData
+
+    runTCPServerWithHandle settings (wrapApp certs key)
+
+    where
+      -- convert tls settings to regular conduit network ones
+      settings = serverSettings tlsPort tlsHost  -- (const $ return () ) tlsNeedLocalAddr
+
+      wrapApp certs key = ConnectionHandle app'
+        where
+          app' socket addr mlocal = do
+            ctx <- serverHandshake socket certs key
+            app (tlsAppData ctx addr mlocal)
+
+
+type ApplicationStartTLS = (AppData IO, Application IO -> IO ()) -> IO ()
+
+-- | run a server un-crypted but also pass a call-back to trigger a StartTLS handshake
+-- on the underlying connection
+--
+-- example usage :
+--  @
+--  runTCPServerStartTLS serverConfig $ (appData,startTLS) -> do
+--    abortTLS <- doSomethingInClear appData
+--    unless (abortTLS) $ startTls $ appDataTls -> do
+--      doSomethingSSL appDataTls
+--  @
+runTCPServerStartTLS :: TLSConfig -> ApplicationStartTLS -> IO ()
+runTCPServerStartTLS TLSConfig{..} app = do
+    certs <- readCertificates tlsCertData
+    key <- readPrivateKey tlsCertData
+
+    runTCPServerWithHandle settings (wrapApp certs key)
+
+    where
+      -- convert tls settings to regular conduit network ones
+      settings = serverSettings tlsPort tlsHost  -- (const $ return () ) tlsNeedLocalAddr
+
+      wrapApp certs key = ConnectionHandle clearapp
+        where clearapp socket addr mlocal = let
+                -- setup app data for the clear part of the connection
+                clearData = AppData
+                  { appSource = sourceSocket socket
+                  , appSink = sinkSocket socket
+                  , appSockAddr = addr
+                  , appLocalAddr = mlocal
+                  }
+                -- wrap up the current connection with TLS
+                startTls = \app' -> do
+                  ctx <- serverHandshake socket certs key
+                  app' (tlsAppData ctx addr mlocal)
+                in
+                 app (clearData, startTls)
 
 -- | Create an @AppData@ from an existing tls @Context@ value. This is a lower level function, allowing you to create a connection in any way you want.
 --
@@ -180,9 +245,9 @@ ciphers =
     , TLSExtra.cipher_RC4_128_SHA1
     ]
 
-readCertificates :: FilePath -> IO [X509.X509]
-readCertificates filepath = do
-    certs <- rights . parseCerts . PEM.pemParseBS <$> readFile filepath
+readCertificates :: TlsCertData -> IO [X509.X509]
+readCertificates certData = do
+    certs <- rights . parseCerts . PEM.pemParseBS <$> getTLSCert certData
     case certs of
         []    -> error "no valid certificate found"
         (_:_) -> return certs
@@ -190,9 +255,9 @@ readCertificates filepath = do
                                   $ filter (flip elem ["CERTIFICATE", "TRUSTED CERTIFICATE"] . PEM.pemName) pems
           parseCerts (Left err) = error $ "cannot parse PEM file: " ++ err
 
-readPrivateKey :: FilePath -> IO TLS.PrivateKey
-readPrivateKey filepath = do
-    pk <- rights . parseKey . PEM.pemParseBS <$> readFile filepath
+readPrivateKey :: TlsCertData -> IO TLS.PrivateKey
+readPrivateKey certData = do
+    pk <- rights . parseKey . PEM.pemParseBS <$> getTLSKey certData
     case pk of
         []    -> error "no valid RSA key found"
         (x:_) -> return x
@@ -289,6 +354,45 @@ runTLSClient TLSClientConfig {..} app = do
             , appSockAddr = SockAddrInet (fromIntegral tlsClientPort) 0 -- FIXME
             , appLocalAddr = Nothing
             })
+
+
+-- | Run an application with the given configuration. starting with a clear connection
+--   but provide also a call back to trigger a StartTLS handshake on the connection
+--
+-- Since 1.0.2
+runTLSClientStartTLS :: TLSClientConfig IO
+                     -> ApplicationStartTLS
+                     -> IO ()
+runTLSClientStartTLS TLSClientConfig {..} app = do
+    context <- maybe (liftIO NC.initConnectionContext) return tlsClientConnectionContext
+    let params = NC.ConnectionParams
+            { NC.connectionHostname = S8.unpack tlsClientHost
+            , NC.connectionPort = fromIntegral tlsClientPort
+            , NC.connectionUseSecure = Nothing
+            , NC.connectionUseSocks = tlsClientSockSettings
+            }
+        tlsSettings = tlsClientTLSSettings
+    control $ \run -> bracket
+        (NC.connectTo context params)
+        NC.connectionClose
+        (\conn -> run $ app (
+            AppData
+            { appSource = sourceConnection conn
+            , appSink = sinkConnection conn
+            , appSockAddr = SockAddrInet (fromIntegral tlsClientPort) 0 -- FIXME
+            , appLocalAddr = Nothing
+            }
+            , \app' -> do
+                 NC.connectionSetSecure context conn tlsClientTLSSettings
+                 app' AppData
+                   { appSource = sourceConnection conn
+                   , appSink = sinkConnection conn
+                   , appSockAddr = SockAddrInet (fromIntegral tlsClientPort) 0 -- FIXME
+                   , appLocalAddr = Nothing
+                   }
+            )
+            )
+
 
 -- | Read from a 'NC.Connection'.
 --
