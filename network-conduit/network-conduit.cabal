@@ -1,5 +1,5 @@
 Name:                network-conduit
-Version:             1.0.0
+Version:             1.0.1
 Synopsis:            Stream socket data using conduits.
 Description:         Stream socket data using conduits.
 License:             BSD3
