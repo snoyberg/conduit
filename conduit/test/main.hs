@@ -944,6 +944,25 @@ main = hspec $ do
                 bss = execWriter $ src C.$$ sink
              in L.fromChunks bss == lbs
 
+    describe "passthroughSink" $ do
+        it "works" $ do
+            ref <- I.newIORef (-1)
+            let sink = CL.fold (+) (0 :: Int)
+                conduit = C.passthroughSink sink (I.writeIORef ref)
+                input = [1..10]
+            output <- mapM_ C.yield input C.$$ conduit C.=$ CL.consume
+            output `shouldBe` input
+            x <- I.readIORef ref
+            x `shouldBe` sum input
+        it "does nothing when downstream does nothing" $ do
+            ref <- I.newIORef (-1)
+            let sink = CL.fold (+) (0 :: Int)
+                conduit = C.passthroughSink sink (I.writeIORef ref)
+                input = [undefined]
+            mapM_ C.yield input C.$$ conduit C.=$ return ()
+            x <- I.readIORef ref
+            x `shouldBe` (-1)
+
     describe "mtl instances" $ do
         it "ErrorT" $ do
             let src = flip catchError (const $ C.yield 4) $ do
