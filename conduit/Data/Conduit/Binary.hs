@@ -30,13 +30,14 @@ module Data.Conduit.Binary
     , drop
     , sinkCacheLength
     , sinkLbs
+    , mapM_
       -- ** Conduits
     , isolate
     , takeWhile
     , Data.Conduit.Binary.lines
     ) where
 
-import Prelude hiding (head, take, drop, takeWhile, dropWhile)
+import Prelude hiding (head, take, drop, takeWhile, dropWhile, mapM_)
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Lazy as L
 import Data.Conduit
@@ -45,6 +46,7 @@ import Control.Exception (assert, finally)
 import Control.Monad (unless)
 import Control.Monad.IO.Class (liftIO, MonadIO)
 import Control.Monad.Trans.Resource (allocate, release)
+import Control.Monad.Trans.Class (lift)
 import qualified System.IO as IO
 import Data.Word (Word8, Word64)
 import Control.Applicative ((<$>))
@@ -377,3 +379,20 @@ sinkCacheLength = do
 -- Since 1.0.5
 sinkLbs :: Monad m => Sink S.ByteString m L.ByteString
 sinkLbs = fmap L.fromChunks consume
+
+-- | Perform a computation on each @Word8@ in a stream.
+--
+-- Since 1.0.10
+mapM_ :: Monad m => (Word8 -> m ()) -> Consumer S.ByteString m ()
+mapM_ f =
+    awaitForever (lift . go)
+  where
+    go bs =
+        loop 0
+      where
+        len = S.length bs
+        loop i
+            | i < len = do
+                f (S.index bs i)
+                loop (i + 1)
+            | otherwise = return ()

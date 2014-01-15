@@ -936,6 +936,14 @@ main = hspec $ do
                 lbs' `shouldBe` lbs
                 fromIntegral len `shouldBe` L.length lbs'
 
+    describe "Data.Conduit.Binary.mapM_" $ do
+        prop "telling works" $ \bytes ->
+            let lbs = L.pack bytes
+                src = CB.sourceLbs lbs
+                sink = CB.mapM_ (tell . return . S.singleton)
+                bss = execWriter $ src C.$$ sink
+             in L.fromChunks bss == lbs
+
     describe "mtl instances" $ do
         it "ErrorT" $ do
             let src = flip catchError (const $ C.yield 4) $ do
