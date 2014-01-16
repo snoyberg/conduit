@@ -15,6 +15,7 @@ import Data.Conduit (runResourceT)
 import Data.Maybe   (fromMaybe,catMaybes)
 import qualified Data.List as DL
 import Control.Monad.ST (runST)
+import qualified Data.STRef as ST
 import Data.Monoid
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Char8 as S8
@@ -29,7 +30,7 @@ import Control.Concurrent (threadDelay, killThread)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Writer (execWriter, tell, runWriterT)
-import Control.Monad.Trans.State (evalStateT, get, put)
+import Control.Monad.Trans.State (State, StateT, evalStateT, execStateT, get, put, modify)
 import Control.Applicative (pure, (<$>), (<*>))
 import Data.Functor.Identity (Identity,runIdentity)
 import Control.Monad (forever)
@@ -976,6 +977,24 @@ main = hspec $ do
                     C.yield 3
                     lift $ return ()
             (src C.$$ CL.consume) `shouldBe` Right [1, 2, 4 :: Int]
+
+    describe "conduitSwapBase" $ do
+        it "ST" $ do
+            let sink = do
+                    ref <- lift $ ST.newSTRef (0 :: Int)
+                    CL.mapM_ $ \i -> ST.modifySTRef ref (+ i)
+                    lift $ ST.readSTRef ref
+                src = mapM_ C.yield [1..10]
+            res <- src C.$$ C.conduitSwapBase sink
+            res `shouldBe` sum [1..10]
+
+        it "StateT Identity" $ do
+            let sink :: C.Sink Int (State Int) ()
+                sink = CL.mapM_ $ modify . (+)
+                src :: C.Source (StateT Int IO) Int
+                src = mapM_ C.yield [1..10]
+            res <- execStateT (src C.$$ C.conduitSwapBase sink) 0
+            res `shouldBe` sum [1..10]
 
     describe "finalizers" $ do
         it "promptness" $ do
