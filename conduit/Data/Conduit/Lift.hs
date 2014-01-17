@@ -103,6 +103,8 @@ distribute
 distribute p = catAwaitLifted =$= hoist (hoist lift) p $$ catYieldLifted
 
 -- | Run 'E.ErrorT' in the base monad
+--
+-- Since 1.0.11
 errorC
   :: (Monad m, Monad (t (E.ErrorT e m)), MonadTrans t, E.Error e,
       MFunctor t) =>
@@ -112,6 +114,8 @@ errorC p = do
     lift $ E.ErrorT (return x)
 
 -- | Run 'E.ErrorT' in the base monad
+--
+-- Since 1.0.11
 runErrorC
   :: (Monad m, E.Error e) =>
      ConduitM b o (E.ErrorT e m) () -> ConduitM b o m (Either e ())
@@ -119,6 +123,8 @@ runErrorC    = E.runErrorT . distribute
 {-# INLINABLE runErrorC #-}
 
 -- | Catch an error in the base monad
+--
+-- Since 1.0.11
 catchError
   :: (Monad m, E.Error e) =>
      ConduitM i o (E.ErrorT e m) ()
@@ -129,6 +135,8 @@ catchError e h = errorC $ E.runErrorT $
 {-# INLINABLE catchError #-}
 
 -- | Wrap the base monad in 'M.MaybeT'
+--
+-- Since 1.0.11
 maybeC
   :: (Monad m, Monad (t (M.MaybeT m)),
       MonadTrans t,
@@ -140,6 +148,8 @@ maybeC p = do
 {-# INLINABLE maybeC #-}
 
 -- | Run 'M.MaybeT' in the base monad
+--
+-- Since 1.0.11
 runMaybeC
   :: Monad m =>
      ConduitM b o (M.MaybeT m) () -> ConduitM b o m (Maybe ())
@@ -147,6 +157,8 @@ runMaybeC p = M.runMaybeT $ distribute p
 {-# INLINABLE runMaybeC #-}
 
 -- | Wrap the base monad in 'R.ReaderT'
+--
+-- Since 1.0.11
 readerC
   :: (Monad m, Monad (t1 (R.ReaderT t m)),
       MonadTrans t1,
@@ -158,6 +170,8 @@ readerC k = do
 {-# INLINABLE readerC #-}
 
 -- | Run 'R.ReaderT' in the base monad
+--
+-- Since 1.0.11
 runReaderC
   :: Monad m =>
      r -> ConduitM b o (R.ReaderT r m) () -> ConduitM b o m ()
@@ -166,6 +180,8 @@ runReaderC r p = (`R.runReaderT` r) $ distribute p
 
 
 -- | Wrap the base monad in 'S.StateT'
+--
+-- Since 1.0.11
 stateC
   :: (Monad m, Monad (t1 (S.StateT t m)),
       MonadTrans t1,
@@ -179,6 +195,8 @@ stateC k = do
 {-# INLINABLE stateC #-}
 
 -- | Run 'S.StateT' in the base monad
+--
+-- Since 1.0.11
 runStateC
   :: Monad m =>
      s -> ConduitM b o (S.StateT s m) () -> ConduitM b o m ((), s)
@@ -186,6 +204,8 @@ runStateC s p = (`S.runStateT` s) $ distribute p
 {-# INLINABLE runStateC #-}
 
 -- | Evaluate 'S.StateT' in the base monad
+--
+-- Since 1.0.11
 evalStateC
   :: Monad m =>
      b -> ConduitM b1 o (S.StateT b m) () -> ConduitM b1 o m ()
@@ -193,6 +213,8 @@ evalStateC s p = fmap fst $ runStateC s p
 {-# INLINABLE evalStateC #-}
 
 -- | Execute 'S.StateT' in the base monad
+--
+-- Since 1.0.11
 execStateC
   :: Monad m =>
      b -> ConduitM b1 o (S.StateT b m) () -> ConduitM b1 o m b
@@ -201,6 +223,8 @@ execStateC s p = fmap snd $ runStateC s p
 
 
 -- | Wrap the base monad in 'W.WriterT'
+--
+-- Since 1.0.11
 writerC
   :: (Monad m, Monad (t (W.WriterT w m)), MonadTrans t, Monoid w,
       MFunctor t) =>
@@ -212,6 +236,8 @@ writerC p = do
 {-# INLINABLE writerC #-}
 
 -- | Run 'W.WriterT' in the base monad
+--
+-- Since 1.0.11
 runWriterC
   :: (Monad m, Monoid w) =>
      ConduitM b o (W.WriterT w m) () -> ConduitM b o m ((), w)
@@ -219,6 +245,8 @@ runWriterC p = W.runWriterT $ distribute p
 {-# INLINABLE runWriterC #-}
 
 -- | Execute 'W.WriterT' in the base monad
+--
+-- Since 1.0.11
 execWriterC
   :: (Monad m, Monoid b) =>
      ConduitM b1 o (W.WriterT b m) () -> ConduitM b1 o m b
@@ -227,6 +255,8 @@ execWriterC p = fmap snd $ runWriterC p
 
 
 -- | Wrap the base monad in 'RWS.RWST'
+--
+-- Since 1.0.11
 rwsC
   :: (Monad m, Monad (t1 (RWS.RWST t w t2 m)), MonadTrans t1,
       Monoid w, MFunctor t1) =>
@@ -242,6 +272,8 @@ rwsC k = do
 {-# INLINABLE rwsC #-}
 
 -- | Run 'RWS.RWST' in the base monad
+--
+-- Since 1.0.11
 runRWSC
   :: (Monad m, Monoid w) =>
      r
@@ -252,6 +284,8 @@ runRWSC  i s p = (\b -> RWS.runRWST b i s) $ distribute p
 {-# INLINABLE runRWSC #-}
 
 -- | Evaluate 'RWS.RWST' in the base monad
+--
+-- Since 1.0.11
 evalRWSC
   :: (Monad m, Monoid t1) =>
      r
@@ -263,6 +297,8 @@ evalRWSC i s p = fmap f $ runRWSC i s p
 {-# INLINABLE evalRWSC #-}
 
 -- | Execute 'RWS.RWST' in the base monad
+--
+-- Since 1.0.11
 execRWSC
   :: (Monad m, Monoid t1) =>
      r
