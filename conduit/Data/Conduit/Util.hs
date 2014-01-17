@@ -1,15 +1,9 @@
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE UndecidableInstances #-}
 -- | Various utility functions versions of @conduit@.
 module Data.Conduit.Util
     ( -- * Misc
       zip
     , zipSinks
     , passthroughSink
-    , conduitSwapBase
-    , Performable (..)
     ) where
 
 import Prelude hiding (zip)
@@ -17,12 +11,6 @@ import Control.Monad (liftM, liftM2)
 import Data.Conduit.Internal (Pipe (..), Source, Sink, injectLeftovers, ConduitM (..), Conduit, awaitForever, yield, await)
 import Data.Void (Void, absurd)
 import Control.Monad.Trans.Class (lift)
-import Control.Monad.Trans.Control
-import Control.Monad.ST (ST)
-import Control.Monad.ST.Unsafe (unsafeSTToIO)
-import Control.Monad.IO.Class (MonadIO (liftIO))
-import System.IO.Unsafe (unsafePerformIO)
-import Data.Functor.Identity (Identity (..))
 
 -- | Combines two sources. The new source will stop producing once either
 --   source has been exhausted.
@@ -106,47 +94,3 @@ passthroughSink (ConduitM sink0) final =
             Just x -> do
                 yield x
                 go [] (next x)
-
--- | Swap the base monad for the given @Conduit@ for another base monad which
--- is compatible. This can be used in multiple ways, though likely the most
--- common is performing @ST@ actions inside a single component of a @Conduit@
--- pipeline.
---
--- Since 1.0.11
-conduitSwapBase :: Performable orig m => ConduitM i o orig r -> ConduitM i o m r
-conduitSwapBase =
-    ConduitM . go . unConduitM
-  where
-    go (Done r) = Done r
-    go (Leftover p i) = Leftover (go p) i
-    go (HaveOutput p f o) = HaveOutput (go p) (perform f) o
-    go (PipeM mp) = PipeM $ liftM go $ perform mp
-    go (NeedInput p c) = NeedInput (go . p) (go . c)
-
--- | A class for all monads which allow their actions to be performed in a
--- diferent monad.
---
--- Note that while the usage of this typeclass in @conduitSwapBase@ is
--- completely safe, misuse of it can be dangerous, much like misusing
--- @unsafePerformIO@.
---
--- An instance is provided for all monad transformers which are instances of
--- @MonadTransControl@ so that, for example, a @StateT Int (ST s) a@ can be
--- converted to a @StateT Int Identity a@.
---
--- Since 1.0.11
-class (Monad orig, Monad final) => Performable orig final | orig -> final where
-    perform :: orig a -> final a
-
-instance Monad m => Performable (ST s) m where
-    perform = return . unsafePerformIO . unsafeSTToIO
-
-instance Monad m => Performable Identity m where
-    perform = return . runIdentity
-
-instance MonadIO m => Performable IO m where
-    perform = liftIO
-
-instance (MonadTransControl t, Performable orig final, Monad (t final), Monad (t orig))
-  => Performable (t orig) (t final) where
-    perform orig = liftWith (\run -> perform $ run orig) >>= restoreT . return
