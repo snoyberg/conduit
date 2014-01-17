@@ -2,7 +2,6 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TupleSections #-}
@@ -51,27 +50,18 @@ module Data.Conduit.Internal
     , sourceList
     , withUpstream
     , unwrapResumable
-      -- * Utility typeclasses
-    , Performable (..)
-    , MonadLinear
-    , MonadTransLinear
     ) where
 
 import Control.Applicative (Applicative (..))
 import Control.Monad ((>=>), liftM, ap, when)
-import Control.Monad.Error (MonadError(..), ErrorT, Error)
-import Control.Monad.Reader (MonadReader(..), ReaderT)
-import Control.Monad.RWS (MonadRWS(), RWST)
-import Control.Monad.Writer (MonadWriter(..), WriterT)
-import Control.Monad.State (MonadState(..), StateT)
+import Control.Monad.Error.Class(MonadError(..))
+import Control.Monad.Reader.Class(MonadReader(..))
+import Control.Monad.RWS.Class(MonadRWS())
+import Control.Monad.Writer.Class(MonadWriter(..))
+import Control.Monad.State.Class(MonadState(..))
 import Control.Monad.Trans.Class (MonadTrans (lift))
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Base (MonadBase (liftBase))
-import Control.Monad.Trans.Control (MonadTransControl (..))
-import Control.Monad.ST (ST)
-import Control.Monad.ST.Unsafe (unsafeSTToIO)
-import System.IO.Unsafe (unsafePerformIO)
-import Data.Functor.Identity (Identity (..))
 import Data.Void (Void, absurd)
 import Data.Monoid (Monoid (mappend, mempty))
 import Control.Monad.Trans.Resource
@@ -734,45 +724,3 @@ toConsumer =
 -- | Since 1.0.4
 instance MFunctor (Pipe l i o u) where
     hoist = transPipe
-
--- | A class for all monads which allow their actions to be performed in a
--- diferent monad.
---
--- Note that while the usage of this typeclass in @conduitSwapBase@ is
--- completely safe, misuse of it can be dangerous, much like misusing
--- @unsafePerformIO@.
---
--- An instance is provided for all monad transformers which are instances of
--- @MonadTransControl@ so that, for example, a @StateT Int (ST s) a@ can be
--- converted to a @StateT Int Identity a@.
---
--- Since 1.0.11
-class (Monad orig, Monad final) => Performable orig final | orig -> final where
-    unsafePerform :: orig a -> final a
-
-instance MonadLinear m => Performable (ST s) m where
-    unsafePerform = return . unsafePerformIO . unsafeSTToIO
-
-instance Monad m => Performable Identity m where
-    unsafePerform = return . runIdentity
-
-instance MonadIO m => Performable IO m where
-    unsafePerform = liftIO
-
-instance (MonadTransControl t, Performable orig final, Monad (t final), Monad (t orig))
-  => Performable (t orig) (t final) where
-    unsafePerform orig = liftWith (\run -> unsafePerform $ run orig) >>= restoreT . return
-
-class Monad m => MonadLinear m -- FIXME this needs to be renamed
-instance MonadLinear Identity
-instance MonadLinear IO
-instance MonadLinear Maybe
-instance MonadLinear (Either e)
-instance (MonadTransLinear t, MonadLinear m, Monad (t m)) => MonadLinear (t m)
-
-class MonadTrans t => MonadTransLinear t -- FIXME this needs to be renamed
-instance Error e => MonadTransLinear (ErrorT e)
-instance MonadTransLinear (ReaderT r)
-instance Monoid w => MonadTransLinear (RWST r w s)
-instance Monoid w => MonadTransLinear (WriterT w)
-instance MonadTransLinear (StateT s)
