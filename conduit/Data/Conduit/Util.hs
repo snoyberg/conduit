@@ -119,8 +119,8 @@ conduitSwapBase =
   where
     go (Done r) = Done r
     go (Leftover p i) = Leftover (go p) i
-    go (HaveOutput p f o) = HaveOutput (go p) (unsafePerform f) o
-    go (PipeM mp) = PipeM $ liftM go $ unsafePerform mp
+    go (HaveOutput p f o) = HaveOutput (go p) (perform f) o
+    go (PipeM mp) = PipeM $ liftM go $ perform mp
     go (NeedInput p c) = NeedInput (go . p) (go . c)
 
 -- | A class for all monads which allow their actions to be performed in a
@@ -136,17 +136,17 @@ conduitSwapBase =
 --
 -- Since 1.0.11
 class (Monad orig, Monad final) => Performable orig final | orig -> final where
-    unsafePerform :: orig a -> final a
+    perform :: orig a -> final a
 
 instance Monad m => Performable (ST s) m where
-    unsafePerform = return . unsafePerformIO . unsafeSTToIO
+    perform = return . unsafePerformIO . unsafeSTToIO
 
 instance Monad m => Performable Identity m where
-    unsafePerform = return . runIdentity
+    perform = return . runIdentity
 
 instance MonadIO m => Performable IO m where
-    unsafePerform = liftIO
+    perform = liftIO
 
 instance (MonadTransControl t, Performable orig final, Monad (t final), Monad (t orig))
   => Performable (t orig) (t final) where
-    unsafePerform orig = liftWith (\run -> unsafePerform $ run orig) >>= restoreT . return
+    perform orig = liftWith (\run -> perform $ run orig) >>= restoreT . return
