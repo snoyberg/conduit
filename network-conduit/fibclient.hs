@@ -3,25 +3,24 @@ import Data.Conduit.Network
 import Data.Conduit.Binary (sinkHandle)
 import System.IO (stdout)
 import Data.ByteString.Char8 (ByteString, pack)
-import Control.Monad.Trans.Resource (resourceForkIO)
-import Control.Concurrent (threadDelay)
-import Control.Monad.IO.Class (liftIO)
+import Control.Concurrent (threadDelay, forkIO)
+import Control.Monad.IO.Class (MonadIO, liftIO)
 
-fibs :: ResourceIO m => Source m Int
+fibs :: MonadIO m => Source m Int
 fibs =
-    sourceState (1, 1) pull
+    go (1, 1)
   where
-    pull (x, y) = do
+    go (x, y) = do
         liftIO $ threadDelay 1000000
-        return $ StateOpen (y, z) x
+        yield x >> go (y, z)
       where
         z = x + y
 
-fibsBS :: ResourceIO m => Source m ByteString
-fibsBS = fmap (\i -> pack $ show i ++ "\n") fibs
+fibsBS :: MonadIO m => Source m ByteString
+fibsBS = mapOutput (\i -> pack $ show i ++ "\n") fibs
 
 main :: IO ()
 main = do
-    runTCPClient (ClientSettings 5000 "localhost") $ \src sink -> do
-        resourceForkIO $ fibsBS $$ sink
-        src $$ sinkHandle stdout
+    runTCPClient (clientSettings 5000 (pack "localhost")) $ \app -> do
+        forkIO $ fibsBS $$ (appSink app)
+        (appSource app) $$ sinkHandle stdout
