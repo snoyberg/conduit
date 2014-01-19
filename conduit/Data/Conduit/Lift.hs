@@ -22,7 +22,7 @@ module Data.Conduit.Lift (
     -- * ErrorT
     errorC,
     runErrorC,
-    catchError,
+    catchErrorC,
 --    liftCatchError,
 
     -- * MaybeT
@@ -143,21 +143,42 @@ errorC p = do
 -- Since 1.0.11
 runErrorC
   :: (Monad m, E.Error e) =>
-     ConduitM b o (E.ErrorT e m) () -> ConduitM b o m (Either e ())
-runErrorC    = E.runErrorT . distribute
+     ConduitM i o (E.ErrorT e m) r -> ConduitM i o m (Either e r)
+runErrorC =
+    ConduitM . go . unConduitM
+  where
+    go (Done r) = Done (Right r)
+    go (PipeM mp) = PipeM $ do
+        eres <- E.runErrorT mp
+        return $ case eres of
+            Left e -> Done $ Left e
+            Right p -> go p
+    go (Leftover p i) = Leftover (go p) i
+    go (HaveOutput p f o) = HaveOutput (go p) (E.runErrorT f >> return ()) o
+    go (NeedInput x y) = NeedInput (go . x) (go . y)
 {-# INLINABLE runErrorC #-}
 
 -- | Catch an error in the base monad
 --
 -- Since 1.0.11
-catchError
+catchErrorC
   :: (Monad m, E.Error e) =>
-     ConduitM i o (E.ErrorT e m) ()
-     -> (e -> ConduitM i o (E.ErrorT e m) ())
-     -> ConduitM i o (E.ErrorT e m) ()
-catchError e h = errorC $ E.runErrorT $
-    E.catchError (distribute e) (distribute . h)
-{-# INLINABLE catchError #-}
+     ConduitM i o (E.ErrorT e m) r
+     -> (e -> ConduitM i o (E.ErrorT e m) r)
+     -> ConduitM i o (E.ErrorT e m) r
+catchErrorC c0 h =
+    ConduitM $ go $ unConduitM c0
+  where
+    go (Done r) = Done r
+    go (PipeM mp) = PipeM $ do
+        eres <- lift $ E.runErrorT mp
+        return $ case eres of
+            Left e -> unConduitM $ h e
+            Right p -> go p
+    go (Leftover p i) = Leftover (go p) i
+    go (HaveOutput p f o) = HaveOutput (go p) f o
+    go (NeedInput x y) = NeedInput (go . x) (go . y)
+{-# INLINABLE catchErrorC #-}
 
 -- | Wrap the base monad in 'M.MaybeT'
 --

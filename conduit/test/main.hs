@@ -1090,6 +1090,13 @@ main = hspec $ do
             res <- src C.$$ sink
             res `shouldBe` [1..10]
 
+        it "runErrorT" $ do
+            let sink = C.runErrorC $ do
+                    x <- C.catchErrorC (lift $ throwError "foo") return
+                    return $ x ++ "bar"
+            res <- return () C.$$ sink
+            res `shouldBe` Right ("foobar" :: String)
+
 it' :: String -> IO () -> Spec
 it' = it
 
