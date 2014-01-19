@@ -50,6 +50,7 @@ module Data.Conduit.Internal
     , sourceList
     , withUpstream
     , unwrapResumable
+    , Data.Conduit.Internal.enumFromTo
     ) where
 
 import Control.Applicative (Applicative (..))
@@ -555,21 +556,29 @@ transPipe f (Leftover p i) = Leftover (transPipe f p) i
 --
 -- Since 0.4.1
 mapOutput :: Monad m => (o1 -> o2) -> Pipe l i o1 u m r -> Pipe l i o2 u m r
-mapOutput f (HaveOutput p c o) = HaveOutput (mapOutput f p) c (f o)
-mapOutput f (NeedInput p c) = NeedInput (mapOutput f . p) (mapOutput f . c)
-mapOutput _ (Done r) = Done r
-mapOutput f (PipeM mp) = PipeM (liftM (mapOutput f) mp)
-mapOutput f (Leftover p i) = Leftover (mapOutput f p) i
+mapOutput f =
+    go
+  where
+    go (HaveOutput p c o) = HaveOutput (go p) c (f o)
+    go (NeedInput p c) = NeedInput (go . p) (go . c)
+    go (Done r) = Done r
+    go (PipeM mp) = PipeM (liftM (go) mp)
+    go (Leftover p i) = Leftover (go p) i
+{-# INLINE mapOutput #-}
 
 -- | Same as 'mapOutput', but use a function that returns @Maybe@ values.
 --
 -- Since 0.5.0
 mapOutputMaybe :: Monad m => (o1 -> Maybe o2) -> Pipe l i o1 u m r -> Pipe l i o2 u m r
-mapOutputMaybe f (HaveOutput p c o) = maybe id (\o' p' -> HaveOutput p' c o') (f o) (mapOutputMaybe f p)
-mapOutputMaybe f (NeedInput p c) = NeedInput (mapOutputMaybe f . p) (mapOutputMaybe f . c)
-mapOutputMaybe _ (Done r) = Done r
-mapOutputMaybe f (PipeM mp) = PipeM (liftM (mapOutputMaybe f) mp)
-mapOutputMaybe f (Leftover p i) = Leftover (mapOutputMaybe f p) i
+mapOutputMaybe f =
+    go
+  where
+    go (HaveOutput p c o) = maybe id (\o' p' -> HaveOutput p' c o') (f o) (mapOutputMaybe f p)
+    go (NeedInput p c) = NeedInput (go . p) (go . c)
+    go (Done r) = Done r
+    go (PipeM mp) = PipeM (liftM (go) mp)
+    go (Leftover p i) = Leftover (go p) i
+{-# INLINE mapOutputMaybe #-}
 
 -- | Apply a function to all the input values of a @Pipe@.
 --
@@ -584,6 +593,18 @@ mapInput f f' (NeedInput p c)    = NeedInput (mapInput f f' . p . f) (mapInput f
 mapInput _ _  (Done r)           = Done r
 mapInput f f' (PipeM mp)         = PipeM (liftM (mapInput f f') mp)
 mapInput f f' (Leftover p i)     = maybe id (flip Leftover) (f' i) $ mapInput f f' p
+
+enumFromTo :: (Enum o, Eq o, Monad m)
+           => o
+           -> o
+           -> Pipe l i o u m ()
+enumFromTo start stop =
+    loop start
+  where
+    loop i
+        | i == stop = HaveOutput (Done ()) (return ()) i
+        | otherwise = HaveOutput (loop (succ i)) (return ()) i
+{-# INLINE enumFromTo #-}
 
 -- | Convert a list into a source.
 --

@@ -70,6 +70,7 @@ import Prelude
 import Data.Monoid (Monoid, mempty, mappend)
 import qualified Data.Foldable as F
 import Data.Conduit
+import qualified Data.Conduit.Internal as CI
 import Control.Monad (when, (<=<), liftM)
 import Control.Monad.Trans.Class (lift)
 
@@ -102,12 +103,8 @@ enumFromTo :: (Enum a, Eq a, Monad m)
            => a
            -> a
            -> Producer m a
-enumFromTo start stop =
-    go start
-  where
-    go i
-        | i == stop = yield i
-        | otherwise = yield i >> go (succ i)
+enumFromTo x = CI.ConduitM . CI.enumFromTo x
+{-# INLINE enumFromTo #-}
 
 -- | Produces an infinite stream of repeated applications of f to x.
 iterate :: Monad m => (a -> a) -> a -> Producer m a
@@ -180,6 +177,18 @@ mapM_ :: Monad m
       -> Consumer a m ()
 mapM_ f = awaitForever $ lift . f
 
+srcMapM_ :: Monad m => Source m a -> (a -> m ()) -> m ()
+srcMapM_ (CI.ConduitM src) f =
+    go src
+  where
+    go (CI.Done ()) = return ()
+    go (CI.PipeM mp) = mp >>= go
+    go (CI.Leftover p ()) = go p
+    go (CI.HaveOutput p _ o) = f o >> go p
+    go (CI.NeedInput _ c) = go (c ())
+{-# INLINE srcMapM_ #-}
+{-# RULES "connect to mapM_" forall f src. src $$ mapM_ f = srcMapM_ src f #-}
+
 -- | Ignore a certain number of values in the stream. This function is
 -- semantically equivalent to:
 --
@@ -234,6 +243,15 @@ peek = await >>= maybe (return Nothing) (\x -> leftover x >> return (Just x))
 -- Since 0.3.0
 map :: Monad m => (a -> b) -> Conduit a m b
 map f = awaitForever $ yield . f
+{-# INLINE [1] map #-}
+
+-- Since a Source never has any leftovers, fusion rules on it are safe.
+{-# RULES "source/map fusion $=" forall f src. src $= map f = mapFuseRight src f #-}
+{-# RULES "source/map fusion =$=" forall f src. src =$= map f = mapFuseRight src f #-}
+
+mapFuseRight :: Monad m => Source m a -> (a -> b) -> Source m b
+mapFuseRight (CI.ConduitM src) f = CI.ConduitM (CI.mapOutput f src)
+{-# INLINE mapFuseRight #-}
 
 {-
 
@@ -423,12 +441,42 @@ isolate =
 filter :: Monad m => (a -> Bool) -> Conduit a m a
 filter f = awaitForever $ \i -> when (f i) (yield i)
 
+filterFuseRight :: Monad m => Source m a -> (a -> Bool) -> Source m a
+filterFuseRight (CI.ConduitM src) f =
+    CI.ConduitM (go src)
+  where
+    go (CI.Done ()) = CI.Done ()
+    go (CI.PipeM mp) = CI.PipeM (liftM go mp)
+    go (CI.Leftover p i) = CI.Leftover (go p) i
+    go (CI.HaveOutput p c o)
+        | f o = CI.HaveOutput (go p) c o
+        | otherwise = go p
+    go (CI.NeedInput p c) = CI.NeedInput (go . p) (go . c)
+-- Intermediate finalizers are dropped, but this is acceptable: the next
+-- yielded value would be demanded by downstream in any event, and that new
+-- finalizer will always override the existing finalizer.
+{-# RULES "source/filter fusion $=" forall f src. src $= filter f = filterFuseRight src f #-}
+{-# RULES "source/filter fusion =$=" forall f src. src =$= filter f = filterFuseRight src f #-}
+{-# INLINE filterFuseRight #-}
+
 -- | Ignore the remainder of values in the source. Particularly useful when
 -- combined with 'isolate'.
 --
 -- Since 0.3.0
 sinkNull :: Monad m => Consumer a m ()
 sinkNull = awaitForever $ \_ -> return ()
+{-# RULES "connect to sinkNull" forall src. src $$ sinkNull = srcSinkNull src #-}
+
+srcSinkNull :: Monad m => Source m a -> m ()
+srcSinkNull (CI.ConduitM src) =
+    go src
+  where
+    go (CI.Done ()) = return ()
+    go (CI.PipeM mp) = mp >>= go
+    go (CI.Leftover p ()) = go p
+    go (CI.HaveOutput p _ _) = go p
+    go (CI.NeedInput _ c) = go (c ())
+{-# INLINE srcSinkNull #-}
 
 -- | A source that outputs no values. Note that this is just a type-restricted
 -- synonym for 'mempty'.
