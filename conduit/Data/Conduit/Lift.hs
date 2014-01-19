@@ -38,17 +38,35 @@ module Data.Conduit.Lift (
     evalStateC,
     execStateC,
 
+    -- ** Strict
+    stateSC,
+    runStateSC,
+    evalStateSC,
+    execStateSC,
+
     -- * WriterT
-    -- $writert
     writerC,
     runWriterC,
     execWriterC,
+
+    -- ** Strict
+    writerSC,
+    runWriterSC,
+    execWriterSC,
 
     -- * RWST
     rwsC,
     runRWSC,
     evalRWSC,
     execRWSC,
+
+    -- ** Strict
+    rwsSC,
+    runRWSSC,
+    evalRWSSC,
+    execRWSSC,
+
+    -- * Utilities
 
     distribute
     ) where
@@ -64,9 +82,14 @@ import Data.Monoid (Monoid(..))
 import qualified Control.Monad.Trans.Error as E
 import qualified Control.Monad.Trans.Maybe as M
 import qualified Control.Monad.Trans.Reader as R
-import qualified Control.Monad.Trans.State.Strict as S
-import qualified Control.Monad.Trans.Writer.Strict as W
-import qualified Control.Monad.Trans.RWS.Strict as RWS
+
+import qualified Control.Monad.Trans.State.Strict as SS
+import qualified Control.Monad.Trans.Writer.Strict as WS
+import qualified Control.Monad.Trans.RWS.Strict as RWSS
+
+import qualified Control.Monad.Trans.State.Lazy as SL
+import qualified Control.Monad.Trans.Writer.Lazy as WL
+import qualified Control.Monad.Trans.RWS.Lazy as RWSL
 
 
 catAwaitLifted
@@ -179,133 +202,264 @@ runReaderC r p = (`R.runReaderT` r) $ distribute p
 {-# INLINABLE runReaderC #-}
 
 
--- | Wrap the base monad in 'S.StateT'
+-- | Wrap the base monad in 'SL.StateT'
 --
 -- Since 1.0.11
 stateC
-  :: (Monad m, Monad (t1 (S.StateT t m)),
+  :: (Monad m, Monad (t1 (SL.StateT t m)),
       MonadTrans t1,
       MFunctor t1) =>
-     (t -> t1 m (b, t)) -> t1 (S.StateT t m) b
+     (t -> t1 m (b, t)) -> t1 (SL.StateT t m) b
 stateC k = do
-    s <- lift S.get
+    s <- lift SL.get
     (r, s') <- hoist lift (k s)
-    lift (S.put s')
+    lift (SL.put s')
     return r
 {-# INLINABLE stateC #-}
 
--- | Run 'S.StateT' in the base monad
+-- | Run 'SL.StateT' in the base monad
 --
 -- Since 1.0.11
 runStateC
   :: Monad m =>
-     s -> ConduitM b o (S.StateT s m) () -> ConduitM b o m ((), s)
-runStateC s p = (`S.runStateT` s) $ distribute p
+     s -> ConduitM b o (SL.StateT s m) () -> ConduitM b o m ((), s)
+runStateC s p = (`SL.runStateT` s) $ distribute p
 {-# INLINABLE runStateC #-}
 
--- | Evaluate 'S.StateT' in the base monad
+-- | Evaluate 'SL.StateT' in the base monad
 --
 -- Since 1.0.11
 evalStateC
   :: Monad m =>
-     b -> ConduitM b1 o (S.StateT b m) () -> ConduitM b1 o m ()
+     b -> ConduitM b1 o (SL.StateT b m) () -> ConduitM b1 o m ()
 evalStateC s p = fmap fst $ runStateC s p
 {-# INLINABLE evalStateC #-}
 
--- | Execute 'S.StateT' in the base monad
+-- | Execute 'SL.StateT' in the base monad
 --
 -- Since 1.0.11
 execStateC
   :: Monad m =>
-     b -> ConduitM b1 o (S.StateT b m) () -> ConduitM b1 o m b
+     b -> ConduitM b1 o (SL.StateT b m) () -> ConduitM b1 o m b
 execStateC s p = fmap snd $ runStateC s p
 {-# INLINABLE execStateC #-}
 
 
--- | Wrap the base monad in 'W.WriterT'
+-- | Wrap the base monad in 'SS.StateT'
+--
+-- Since 1.0.11
+stateSC
+  :: (Monad m, Monad (t1 (SS.StateT t m)),
+      MonadTrans t1,
+      MFunctor t1) =>
+     (t -> t1 m (b, t)) -> t1 (SS.StateT t m) b
+stateSC k = do
+    s <- lift SS.get
+    (r, s') <- hoist lift (k s)
+    lift (SS.put s')
+    return r
+{-# INLINABLE stateSC #-}
+
+-- | Run 'SS.StateT' in the base monad
+--
+-- Since 1.0.11
+runStateSC
+  :: Monad m =>
+     s -> ConduitM b o (SS.StateT s m) () -> ConduitM b o m ((), s)
+runStateSC s p = (`SS.runStateT` s) $ distribute p
+{-# INLINABLE runStateSC #-}
+
+-- | Evaluate 'SS.StateT' in the base monad
+--
+-- Since 1.0.11
+evalStateSC
+  :: Monad m =>
+     b -> ConduitM b1 o (SS.StateT b m) () -> ConduitM b1 o m ()
+evalStateSC s p = fmap fst $ runStateSC s p
+{-# INLINABLE evalStateSC #-}
+
+-- | Execute 'SS.StateT' in the base monad
+--
+-- Since 1.0.11
+execStateSC
+  :: Monad m =>
+     b -> ConduitM b1 o (SS.StateT b m) () -> ConduitM b1 o m b
+execStateSC s p = fmap snd $ runStateSC s p
+{-# INLINABLE execStateSC #-}
+
+
+-- | Wrap the base monad in 'WL.WriterT'
 --
 -- Since 1.0.11
 writerC
-  :: (Monad m, Monad (t (W.WriterT w m)), MonadTrans t, Monoid w,
+  :: (Monad m, Monad (t (WL.WriterT w m)), MonadTrans t, Monoid w,
       MFunctor t) =>
-     t m (b, w) -> t (W.WriterT w m) b
+     t m (b, w) -> t (WL.WriterT w m) b
 writerC p = do
     (r, w) <- hoist lift p
-    lift $ W.tell w
+    lift $ WL.tell w
     return r
 {-# INLINABLE writerC #-}
 
--- | Run 'W.WriterT' in the base monad
+-- | Run 'WL.WriterT' in the base monad
 --
 -- Since 1.0.11
 runWriterC
   :: (Monad m, Monoid w) =>
-     ConduitM b o (W.WriterT w m) () -> ConduitM b o m ((), w)
-runWriterC p = W.runWriterT $ distribute p
+     ConduitM b o (WL.WriterT w m) () -> ConduitM b o m ((), w)
+runWriterC p = WL.runWriterT $ distribute p
 {-# INLINABLE runWriterC #-}
 
--- | Execute 'W.WriterT' in the base monad
+-- | Execute 'WL.WriterT' in the base monad
 --
 -- Since 1.0.11
 execWriterC
   :: (Monad m, Monoid b) =>
-     ConduitM b1 o (W.WriterT b m) () -> ConduitM b1 o m b
+     ConduitM b1 o (WL.WriterT b m) () -> ConduitM b1 o m b
 execWriterC p = fmap snd $ runWriterC p
 {-# INLINABLE execWriterC #-}
 
 
--- | Wrap the base monad in 'RWS.RWST'
+-- | Wrap the base monad in 'WS.WriterT'
+--
+-- Since 1.0.11
+writerSC
+  :: (Monad m, Monad (t (WS.WriterT w m)), MonadTrans t, Monoid w,
+      MFunctor t) =>
+     t m (b, w) -> t (WS.WriterT w m) b
+writerSC p = do
+    (r, w) <- hoist lift p
+    lift $ WS.tell w
+    return r
+{-# INLINABLE writerSC #-}
+
+-- | Run 'WS.WriterT' in the base monad
+--
+-- Since 1.0.11
+runWriterSC
+  :: (Monad m, Monoid w) =>
+     ConduitM b o (WS.WriterT w m) () -> ConduitM b o m ((), w)
+runWriterSC p = WS.runWriterT $ distribute p
+{-# INLINABLE runWriterSC #-}
+
+-- | Execute 'WS.WriterT' in the base monad
+--
+-- Since 1.0.11
+execWriterSC
+  :: (Monad m, Monoid b) =>
+     ConduitM b1 o (WS.WriterT b m) () -> ConduitM b1 o m b
+execWriterSC p = fmap snd $ runWriterSC p
+{-# INLINABLE execWriterSC #-}
+
+
+-- | Wrap the base monad in 'RWSL.RWST'
 --
 -- Since 1.0.11
 rwsC
-  :: (Monad m, Monad (t1 (RWS.RWST t w t2 m)), MonadTrans t1,
+  :: (Monad m, Monad (t1 (RWSL.RWST t w t2 m)), MonadTrans t1,
       Monoid w, MFunctor t1) =>
-     (t -> t2 -> t1 m (b, t2, w)) -> t1 (RWS.RWST t w t2 m) b
+     (t -> t2 -> t1 m (b, t2, w)) -> t1 (RWSL.RWST t w t2 m) b
 rwsC k = do
-    i <- lift RWS.ask
-    s <- lift RWS.get
+    i <- lift RWSL.ask
+    s <- lift RWSL.get
     (r, s', w) <- hoist lift (k i s)
     lift $ do
-        RWS.put s'
-        RWS.tell w
+        RWSL.put s'
+        RWSL.tell w
     return r
 {-# INLINABLE rwsC #-}
 
--- | Run 'RWS.RWST' in the base monad
+-- | Run 'RWSL.RWST' in the base monad
 --
 -- Since 1.0.11
 runRWSC
   :: (Monad m, Monoid w) =>
      r
      -> s
-     -> ConduitM b o (RWS.RWST r w s m) ()
+     -> ConduitM b o (RWSL.RWST r w s m) ()
      -> ConduitM b o m ((), s, w)
-runRWSC  i s p = (\b -> RWS.runRWST b i s) $ distribute p
+runRWSC  i s p = (\b -> RWSL.runRWST b i s) $ distribute p
 {-# INLINABLE runRWSC #-}
 
--- | Evaluate 'RWS.RWST' in the base monad
+-- | Evaluate 'RWSL.RWST' in the base monad
 --
 -- Since 1.0.11
 evalRWSC
   :: (Monad m, Monoid t1) =>
      r
      -> t
-     -> ConduitM b o (RWS.RWST r t1 t m) ()
+     -> ConduitM b o (RWSL.RWST r t1 t m) ()
      -> ConduitM b o m ((), t1)
 evalRWSC i s p = fmap f $ runRWSC i s p
   where f x = let (r, _, w) = x in (r, w)
 {-# INLINABLE evalRWSC #-}
 
--- | Execute 'RWS.RWST' in the base monad
+-- | Execute 'RWSL.RWST' in the base monad
 --
 -- Since 1.0.11
 execRWSC
   :: (Monad m, Monoid t1) =>
      r
      -> t
-     -> ConduitM b o (RWS.RWST r t1 t m) ()
+     -> ConduitM b o (RWSL.RWST r t1 t m) ()
      -> ConduitM b o m (t, t1)
 execRWSC i s p = fmap f $ runRWSC i s p
   where f x = let (_, s2, w2) = x in (s2, w2)
 {-# INLINABLE execRWSC #-}
+
+
+-- | Wrap the base monad in 'RWSS.RWST'
+--
+-- Since 1.0.11
+rwsSC
+  :: (Monad m, Monad (t1 (RWSS.RWST t w t2 m)), MonadTrans t1,
+      Monoid w, MFunctor t1) =>
+     (t -> t2 -> t1 m (b, t2, w)) -> t1 (RWSS.RWST t w t2 m) b
+rwsSC k = do
+    i <- lift RWSS.ask
+    s <- lift RWSS.get
+    (r, s', w) <- hoist lift (k i s)
+    lift $ do
+        RWSS.put s'
+        RWSS.tell w
+    return r
+{-# INLINABLE rwsSC #-}
+
+-- | Run 'RWSS.RWST' in the base monad
+--
+-- Since 1.0.11
+runRWSSC
+  :: (Monad m, Monoid w) =>
+     r
+     -> s
+     -> ConduitM b o (RWSS.RWST r w s m) ()
+     -> ConduitM b o m ((), s, w)
+runRWSSC  i s p = (\b -> RWSS.runRWST b i s) $ distribute p
+{-# INLINABLE runRWSSC #-}
+
+-- | Evaluate 'RWSS.RWST' in the base monad
+--
+-- Since 1.0.11
+evalRWSSC
+  :: (Monad m, Monoid t1) =>
+     r
+     -> t
+     -> ConduitM b o (RWSS.RWST r t1 t m) ()
+     -> ConduitM b o m ((), t1)
+evalRWSSC i s p = fmap f $ runRWSSC i s p
+  where f x = let (r, _, w) = x in (r, w)
+{-# INLINABLE evalRWSSC #-}
+
+-- | Execute 'RWSS.RWST' in the base monad
+--
+-- Since 1.0.11
+execRWSSC
+  :: (Monad m, Monoid t1) =>
+     r
+     -> t
+     -> ConduitM b o (RWSS.RWST r t1 t m) ()
+     -> ConduitM b o m (t, t1)
+execRWSSC i s p = fmap f $ runRWSSC i s p
+  where f x = let (_, s2, w2) = x in (s2, w2)
+{-# INLINABLE execRWSSC #-}
 
