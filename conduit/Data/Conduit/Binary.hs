@@ -396,3 +396,4 @@ mapM_ f =
                 f (S.index bs i)
                 loop (i + 1)
             | otherwise = return ()
+{-# INLINE [1] mapM_ #-}
