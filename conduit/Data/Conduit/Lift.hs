@@ -198,7 +198,7 @@ readerC k = do
 runReaderC
   :: Monad m =>
      r -> ConduitM b o (R.ReaderT r m) () -> ConduitM b o m ()
-runReaderC r p = (`R.runReaderT` r) $ distribute p
+runReaderC r = hoist (`R.runReaderT` r)
 {-# INLINABLE runReaderC #-}
 
 
