@@ -5,7 +5,7 @@ import Test.Hspec.QuickCheck (prop)
 import Test.QuickCheck.Monadic (assert, monadicIO, run)
 
 import qualified Data.Conduit as C
--- FIXME import qualified Data.Conduit.Lift as C
+import qualified Data.Conduit.Lift as C
 import qualified Data.Conduit.Util as C
 import qualified Data.Conduit.Internal as CI
 import qualified Data.Conduit.List as CL
@@ -31,9 +31,10 @@ import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Writer (execWriter, tell, runWriterT)
 import Control.Monad.Trans.State (evalStateT, get, put, modify)
+import Control.Monad.Trans.Maybe (MaybeT (..))
 import Control.Applicative (pure, (<$>), (<*>))
 import Data.Functor.Identity (Identity,runIdentity)
-import Control.Monad (forever)
+import Control.Monad (forever, void)
 import Data.Void (Void)
 import qualified Control.Concurrent.MVar as M
 import Control.Monad.Error (catchError, throwError, Error)
@@ -1077,7 +1078,6 @@ main = hspec $ do
             -- FIXME this is broken it "test2" $ verify test2L test2R "p2" "p1" "p3"
             it "test3" $ verify test3L test3R "p2" "p3" "p1"
 
-    {- FIXME
     describe "Data.Conduit.Lift" $ do
         it "execStateC" $ do
             let sink = C.execStateC 0 $ CL.mapM_ $ modify . (+)
@@ -1085,19 +1085,27 @@ main = hspec $ do
             res <- src C.$$ sink
             res `shouldBe` sum [1..10]
 
-        it "execWriterT" $ do
+        it "execWriterC" $ do
             let sink = C.execWriterC $ CL.mapM_ $ tell . return
                 src = mapM_ C.yield [1..10 :: Int]
             res <- src C.$$ sink
             res `shouldBe` [1..10]
 
-        it "runErrorT" $ do
+        it "runErrorC" $ do
             let sink = C.runErrorC $ do
                     x <- C.catchErrorC (lift $ throwError "foo") return
                     return $ x ++ "bar"
             res <- return () C.$$ sink
             res `shouldBe` Right ("foobar" :: String)
-            -}
+
+        it "runMaybeC" $ do
+            let src = void $ C.runMaybeC $ do
+                    C.yield 1
+                    () <- lift $ MaybeT $ return Nothing
+                    C.yield 2
+                sink = CL.consume
+            res <- src C.$$ sink
+            res `shouldBe` [1 :: Int]
 
 it' :: String -> IO () -> Spec
 it' = it

@@ -198,8 +198,19 @@ maybeC p = do
 -- Since 1.0.11
 runMaybeC
   :: Monad m =>
-     ConduitM b o (M.MaybeT m) () -> ConduitM b o m (Maybe ())
-runMaybeC p = M.runMaybeT $ distribute p
+     ConduitM i o (M.MaybeT m) r -> ConduitM i o m (Maybe r)
+runMaybeC =
+    ConduitM . go . unConduitM
+  where
+    go (Done r) = Done (Just r)
+    go (PipeM mp) = PipeM $ do
+        mres <- M.runMaybeT mp
+        return $ case mres of
+            Nothing -> Done Nothing
+            Just p -> go p
+    go (Leftover p i) = Leftover (go p) i
+    go (HaveOutput p c o) = HaveOutput (go p) (M.runMaybeT c >> return ()) o
+    go (NeedInput x y) = NeedInput (go . x) (go . y)
 {-# INLINABLE runMaybeC #-}
 
 -- | Wrap the base monad in 'R.ReaderT'
@@ -220,7 +231,7 @@ readerC k = do
 -- Since 1.0.11
 runReaderC
   :: Monad m =>
-     r -> ConduitM b o (R.ReaderT r m) () -> ConduitM b o m ()
+     r -> ConduitM i o (R.ReaderT r m) res -> ConduitM i o m res
 runReaderC r = hoist (`R.runReaderT` r)
 {-# INLINABLE runReaderC #-}
 
