@@ -57,6 +57,11 @@ import qualified System.Win32File as F
 #elif NO_HANDLES
 import qualified System.PosixFile as F
 #endif
+import Data.ByteString.Internal (ByteString (PS), inlinePerformIO)
+import Foreign.ForeignPtr.Unsafe (unsafeForeignPtrToPtr)
+import Foreign.ForeignPtr (touchForeignPtr)
+import Foreign.Ptr (plusPtr)
+import Foreign.Storable (peek)
 
 -- | Stream the contents of a file as binary data.
 --
@@ -380,20 +385,21 @@ sinkCacheLength = do
 sinkLbs :: Monad m => Sink S.ByteString m L.ByteString
 sinkLbs = fmap L.fromChunks consume
 
+mapM_BS :: Monad m => (Word8 -> m ()) -> S.ByteString -> m ()
+mapM_BS f (PS fptr offset len) = do
+    let start = unsafeForeignPtrToPtr fptr `plusPtr` offset
+        end = start `plusPtr` len
+        loop ptr
+            | ptr >= end = inlinePerformIO (touchForeignPtr fptr) `seq` return ()
+            | otherwise = do
+                f (inlinePerformIO (peek ptr))
+                loop (ptr `plusPtr` 1)
+    loop start
+{-# INLINE mapM_BS #-}
+
 -- | Perform a computation on each @Word8@ in a stream.
 --
 -- Since 1.0.10
 mapM_ :: Monad m => (Word8 -> m ()) -> Consumer S.ByteString m ()
-mapM_ f =
-    awaitForever (lift . go)
-  where
-    go bs =
-        loop 0
-      where
-        len = S.length bs
-        loop i
-            | i < len = do
-                f (S.index bs i)
-                loop (i + 1)
-            | otherwise = return ()
-{-# INLINE [1] mapM_ #-}
+mapM_ f = awaitForever (lift . mapM_BS f)
+{-# INLINE mapM_ #-}

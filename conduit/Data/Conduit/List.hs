@@ -176,6 +176,7 @@ mapM_ :: Monad m
       => (a -> m ())
       -> Consumer a m ()
 mapM_ f = awaitForever $ lift . f
+{-# INLINE [1] mapM_ #-}
 
 srcMapM_ :: Monad m => Source m a -> (a -> m ()) -> m ()
 srcMapM_ (CI.ConduitM src) f =
