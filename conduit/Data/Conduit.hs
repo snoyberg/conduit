@@ -25,6 +25,11 @@ module Data.Conduit
     , addCleanup
     , yieldOr
 
+      -- ** Exception handling
+    , catchC
+    , handleC
+    , tryC
+
       -- * Generalized conduit types
     , Producer
     , Consumer

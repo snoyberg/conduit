@@ -4,6 +4,7 @@ import Test.Hspec
 import Test.Hspec.QuickCheck (prop)
 import Test.QuickCheck.Monadic (assert, monadicIO, run)
 
+import Control.Exception (IOException)
 import qualified Data.Conduit as C
 import qualified Data.Conduit.Lift as C
 import qualified Data.Conduit.Util as C
@@ -27,7 +28,7 @@ import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Encoding as TLE
 import Control.Monad.Trans.Resource (runExceptionT, runExceptionT_, allocate, resourceForkIO)
 import Control.Concurrent (threadDelay, killThread)
-import Control.Monad.IO.Class (liftIO)
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Writer (execWriter, tell, runWriterT)
 import Control.Monad.Trans.State (evalStateT, get, put, modify)
@@ -1106,6 +1107,34 @@ main = hspec $ do
                 sink = CL.consume
             res <- src C.$$ sink
             res `shouldBe` [1 :: Int]
+
+    describe "exception handling" $ do
+        it "catchC" $ do
+            ref <- I.newIORef 0
+            let src = do
+                    C.catchC (CB.sourceFile "some-file-that-does-not-exist") onErr
+                    C.handleC onErr $ CB.sourceFile "conduit.cabal"
+                onErr :: MonadIO m => IOException -> m ()
+                onErr _ = liftIO $ I.modifyIORef ref (+ 1)
+            contents <- L.readFile "conduit.cabal"
+            res <- C.runResourceT $ src C.$$ CB.sinkLbs
+            res `shouldBe` contents
+            errCount <- I.readIORef ref
+            errCount `shouldBe` (1 :: Int)
+        it "tryC" $ do
+            ref <- I.newIORef undefined
+            let src = do
+                    res1 <- C.tryC $ CB.sourceFile "some-file-that-does-not-exist"
+                    res2 <- C.tryC $ CB.sourceFile "conduit.cabal"
+                    liftIO $ I.writeIORef ref (res1, res2)
+            contents <- L.readFile "conduit.cabal"
+            res <- C.runResourceT $ src C.$$ CB.sinkLbs
+            res `shouldBe` contents
+            exc <- I.readIORef ref
+            case exc :: (Either IOException (), Either IOException ()) of
+                (Left _, Right ()) ->
+                    return ()
+                _ -> error $ show exc
 
 it' :: String -> IO () -> Spec
 it' = it
