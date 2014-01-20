@@ -10,6 +10,7 @@ module Data.Conduit.Binary
       -- ** Sources
       sourceFile
     , sourceHandle
+    , sourceHandleUnsafe
     , sourceIOHandle
     , sourceFileRange
     , sourceHandleRange
@@ -43,7 +44,7 @@ import qualified Data.ByteString.Lazy as L
 import Data.Conduit
 import Data.Conduit.List (sourceList, consume)
 import Control.Exception (assert, finally)
-import Control.Monad (unless)
+import Control.Monad (unless, when)
 import Control.Monad.IO.Class (liftIO, MonadIO)
 import Control.Monad.Trans.Resource (allocate, release)
 import Control.Monad.Trans.Class (lift)
@@ -62,6 +63,7 @@ import Foreign.ForeignPtr.Unsafe (unsafeForeignPtrToPtr)
 import Foreign.ForeignPtr (touchForeignPtr)
 import Foreign.Ptr (plusPtr)
 import Foreign.Storable (peek)
+import GHC.ForeignPtr           (mallocPlainForeignPtrBytes)
 
 -- | Stream the contents of a file as binary data.
 --
@@ -97,6 +99,31 @@ sourceHandle h =
         if S.null bs
             then return ()
             else yield bs >> loop
+
+-- | Same as @sourceHandle@, but instead of allocating a new buffer for each
+-- incoming chunk of data, reuses the same buffer. Therefore, the @ByteString@s
+-- yielded by this function are not referentially transparent between two
+-- different @yield@s.
+--
+-- This function will be slightly more efficient than @sourceHandle@ by
+-- avoiding allocations and reducing garbage collections, but should only be
+-- used if you can guarantee that you do not reuse a @ByteString@ (or any slice
+-- thereof) between two calls to @await@.
+--
+-- Since 1.0.12
+sourceHandleUnsafe :: MonadIO m => IO.Handle -> Source m ByteString
+sourceHandleUnsafe handle = do
+    fptr <- liftIO $ mallocPlainForeignPtrBytes defaultChunkSize
+    let ptr = unsafeForeignPtrToPtr fptr
+        loop = do
+            count <- liftIO $ IO.hGetBuf handle ptr defaultChunkSize
+            when (count > 0) $ do
+                yield (PS fptr 0 count)
+                loop
+
+    loop
+
+    liftIO $ touchForeignPtr fptr
 
 -- | An alternative to 'sourceHandle'.
 -- Instead of taking a pre-opened 'IO.Handle', it takes an action that opens
