@@ -1,6 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE CPP #-}
 module Data.Conduit.Network
     ( -- * Basic utilities
       sourceSocket
@@ -48,11 +49,30 @@ import Control.Exception (throwIO, SomeException, try, finally, bracket, IOExcep
 import Control.Monad (forever)
 import Control.Monad.Trans.Control (MonadBaseControl, control)
 import Control.Monad.Trans.Class (lift)
-import Control.Concurrent (forkIO, threadDelay)
+import Control.Concurrent (forkIO, threadDelay, newEmptyMVar, putMVar, takeMVar)
 
 import Data.Conduit.Network.Internal
 import Data.Conduit.Network.Utils (HostPreference)
 import qualified Data.Conduit.Network.Utils as Utils
+
+#if defined(__GLASGOW_HASKELL__) && defined(mingw32_HOST_OS)
+-- Socket recv and accept calls on Windows platform cannot be interrupted when compiled with -threaded.
+-- See https://ghc.haskell.org/trac/ghc/ticket/5797 for details.
+-- The following enables simple workaround
+#define SOCKET_ACCEPT_RECV_WORKAROUND
+#endif
+
+
+safeRecv :: Socket -> Int -> IO S.ByteString
+#ifndef SOCKET_ACCEPT_RECV_WORKAROUND
+safeRecv = recv
+#else
+safeRecv s buf = do
+    var <- newEmptyMVar
+    forkIO $ recv s buf `catch` (\(_::IOException) -> return S.empty) >>= putMVar var
+    takeMVar var
+#endif
+
 
 -- | Stream data from the socket.
 --
@@ -64,7 +84,7 @@ sourceSocket socket =
     loop
   where
     loop = do
-        bs <- lift $ liftIO $ recv socket 4096
+        bs <- lift $ liftIO $ safeRecv socket 4096
         if S.null bs
             then return ()
             else yield bs >> loop
@@ -202,7 +222,13 @@ bindPort p s = do
 -- Since 0.6.0
 acceptSafe :: Socket -> IO (Socket, NS.SockAddr)
 acceptSafe socket =
+#ifndef SOCKET_ACCEPT_RECV_WORKAROUND
     loop
+#else
+    do var <- newEmptyMVar
+       forkIO $ loop >>= putMVar var
+       takeMVar var
+#endif
   where
     loop =
         NS.accept socket `catch` \(_ :: IOException) -> do
