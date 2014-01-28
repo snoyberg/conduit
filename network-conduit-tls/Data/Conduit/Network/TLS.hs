@@ -55,21 +55,16 @@ import Control.Concurrent (forkIO)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.IO.Class (liftIO, MonadIO)
 import qualified Network.TLS.Extra as TLSExtra
-#if MIN_VERSION_tls(1, 1, 0)
 import Crypto.Random.API (getSystemRandomGen, SystemRandom)
-#else
-import Crypto.Random (newGenIO, SystemRandom)
-#endif
 import Network.Socket (Socket)
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Char8 as S8
-#if MIN_VERSION_tls(1, 1, 3)
 import qualified Crypto.Random.AESCtr
-#endif
 import qualified Network.Connection as NC
 import Control.Monad.Trans.Control
 import Data.Default
-
+import System.IO (hClose, openBinaryTempFile)
+import System.Directory (removeFile, getTemporaryDirectory)
 
 
 makeCertDataPath :: FilePath -> FilePath -> TlsCertData
@@ -98,17 +93,10 @@ tlsConfigBS :: HostPreference
 tlsConfigBS a b c d = TLSConfig a b (makeCertDataBS c d ) False
 
 
-serverHandshake :: Socket -> [X509.X509] -> TLS.PrivateKey -> IO (TLS.Context)
-serverHandshake socket certs key = do
-#if MIN_VERSION_tls(1, 1, 3)
+serverHandshake :: Socket -> TLS.Credentials -> IO (TLS.Context)
+serverHandshake socket creds = do
     gen <- Crypto.Random.AESCtr.makeSystem
-#elif MIN_VERSION_tls(1, 1, 0)
-    gen <- getSystemRandomGen
-#else
-    gen <- newGenIO
-#endif
 
-#if MIN_VERSION_tls(1, 0, 0)
     ctx <- TLS.contextNew
            TLS.Backend
                     { TLS.backendFlush = return ()
@@ -117,58 +105,37 @@ serverHandshake socket certs key = do
                     , TLS.backendRecv = recvExact socket
                     }
             params
-#if MIN_VERSION_tls(1, 1, 3)
             gen
-#else
-            (gen :: SystemRandom)
-#endif
-#else
-    ctx <- TLS.serverWith
-                params
-                (gen :: SystemRandom)
-                socket
-                (return ()) -- flush
-                (\bs -> yield bs $$ sinkSocket socket)
-                (recvExact socket)
-#endif
 
     TLS.handshake ctx
     return ctx
 
   where
-    params =
-#if MIN_VERSION_tls(1, 0, 0)
-        TLS.updateServerParams
-           (\sp -> sp { TLS.serverWantClientCert = False }) $
-           TLS.defaultParamsServer
-              { TLS.pAllowedVersions = [TLS.SSL3,TLS.TLS10,TLS.TLS11,TLS.TLS12]
-              , TLS.pCiphers         = ciphers
-              , TLS.pCertificates    = zip certs $ Just key : repeat Nothing
-              }
-#else
-    TLS.defaultParams
-            { TLS.pWantClientCert = False
-            , TLS.pAllowedVersions = [TLS.SSL3,TLS.TLS10,TLS.TLS11,TLS.TLS12]
-            , TLS.pCiphers         = ciphers
-            , TLS.pCertificates    = zip certs $ Just key : repeat Nothing
+    params = def
+        { TLS.serverWantClientCert = False
+        , TLS.serverSupported = def
+            { TLS.supportedCiphers = ciphers
+            , TLS.supportedVersions = [TLS.SSL3,TLS.TLS10,TLS.TLS11,TLS.TLS12]
             }
-#endif
+        , TLS.serverShared = def
+            { TLS.sharedCredentials = creds
+            }
+        }
 
 runTCPServerTLS :: TLSConfig -> Application IO -> IO ()
 runTCPServerTLS TLSConfig{..} app = do
-    certs <- readCertificates tlsCertData
-    key <- readPrivateKey tlsCertData
+    creds <- readCreds tlsCertData
 
-    runTCPServerWithHandle settings (wrapApp certs key)
+    runTCPServerWithHandle settings (wrapApp creds)
 
     where
       -- convert tls settings to regular conduit network ones
       settings = serverSettings tlsPort tlsHost  -- (const $ return () ) tlsNeedLocalAddr
 
-      wrapApp certs key = ConnectionHandle app'
+      wrapApp creds = ConnectionHandle app'
         where
           app' socket addr mlocal = do
-            ctx <- serverHandshake socket certs key
+            ctx <- serverHandshake socket creds
             app (tlsAppData ctx addr mlocal)
 
 
@@ -186,16 +153,15 @@ type ApplicationStartTLS = (AppData IO, Application IO -> IO ()) -> IO ()
 --  @
 runTCPServerStartTLS :: TLSConfig -> ApplicationStartTLS -> IO ()
 runTCPServerStartTLS TLSConfig{..} app = do
-    certs <- readCertificates tlsCertData
-    key <- readPrivateKey tlsCertData
+    creds <- readCreds tlsCertData
 
-    runTCPServerWithHandle settings (wrapApp certs key)
+    runTCPServerWithHandle settings (wrapApp creds)
 
     where
       -- convert tls settings to regular conduit network ones
       settings = serverSettings tlsPort tlsHost  -- (const $ return () ) tlsNeedLocalAddr
 
-      wrapApp certs key = ConnectionHandle clearapp
+      wrapApp creds = ConnectionHandle clearapp
         where clearapp socket addr mlocal = let
                 -- setup app data for the clear part of the connection
                 clearData = AppData
@@ -206,7 +172,7 @@ runTCPServerStartTLS TLSConfig{..} app = do
                   }
                 -- wrap up the current connection with TLS
                 startTls = \app' -> do
-                  ctx <- serverHandshake socket certs key
+                  ctx <- serverHandshake socket creds
                   app' (tlsAppData ctx addr mlocal)
                 in
                  app (clearData, startTls)
@@ -245,6 +211,26 @@ ciphers =
     , TLSExtra.cipher_RC4_128_SHA1
     ]
 
+readCreds :: TlsCertData -> IO TLS.Credentials
+readCreds (TlsCertData iocert iokey) =
+    -- FIXME This whole function is an ugly hack. Need to figure out the right
+    -- way to do this in tls 1.2.
+    go iocert $ \certfp -> go iokey $ \keyfp -> do
+        ecreds <- TLS.credentialLoadX509 certfp keyfp
+        case ecreds of
+            Left err -> error $ "Error reading TLS credentials: " ++ err
+            Right creds -> return $ TLS.Credentials [creds]
+  where
+    go iobs f = do
+        tempdir <- getTemporaryDirectory
+        bracket
+            (openBinaryTempFile tempdir "network-conduit-tls.bin")
+            (\(fp, h) -> hClose h >> removeFile fp)
+            $ \(fp, h) -> do
+                iobs >>= S.hPutStr h
+                hClose h
+                f fp
+
 readCertificates :: TlsCertData -> IO [X509.X509]
 readCertificates certData = do
     certs <- rights . parseCerts . PEM.pemParseBS <$> getTLSCert certData
@@ -255,14 +241,14 @@ readCertificates certData = do
                                   $ filter (flip elem ["CERTIFICATE", "TRUSTED CERTIFICATE"] . PEM.pemName) pems
           parseCerts (Left err) = error $ "cannot parse PEM file: " ++ err
 
-readPrivateKey :: TlsCertData -> IO TLS.PrivateKey
+readPrivateKey :: TlsCertData -> IO TLS.PrivKey
 readPrivateKey certData = do
     pk <- rights . parseKey . PEM.pemParseBS <$> getTLSKey certData
     case pk of
         []    -> error "no valid RSA key found"
         (x:_) -> return x
 
-    where parseKey (Right pems) = map (fmap (TLS.PrivRSA . snd) . KeyRSA.decodePrivate . L.fromChunks . (:[]) . PEM.pemContent)
+    where parseKey (Right pems) = map (fmap (TLS.PrivKeyRSA . snd) . KeyRSA.decodePrivate . L.fromChunks . (:[]) . PEM.pemContent)
                                 $ filter ((== "RSA PRIVATE KEY") . PEM.pemName) pems
           parseKey (Left err) = error $ "Cannot parse PEM file: " ++ err
 
