@@ -194,7 +194,7 @@ main = hspec $ do
 
     describe "zipping" $ do
         it "zipping two small lists" $ do
-            res <- runResourceT $ C.zip (CL.sourceList [1..10]) (CL.sourceList [11..12]) C.$$ CL.consume
+            res <- runResourceT $ C.zipSources (CL.sourceList [1..10]) (CL.sourceList [11..12]) C.$$ CL.consume
             res @=? zip [1..10 :: Int] [11..12 :: Int]
 
     describe "zipping sinks" $ do

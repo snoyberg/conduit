@@ -2,6 +2,7 @@
 module Data.Conduit.Util
     ( -- * Misc
       zip
+    , zipSources
     , zipSinks
     , passthroughSink
     ) where
@@ -12,12 +13,19 @@ import Data.Conduit.Internal (Pipe (..), Source, Sink, injectLeftovers, ConduitM
 import Data.Void (Void, absurd)
 import Control.Monad.Trans.Class (lift)
 
--- | Combines two sources. The new source will stop producing once either
---   source has been exhausted.
+-- | Deprecated synonym for 'zipSources'.
 --
 -- Since 0.3.0
 zip :: Monad m => Source m a -> Source m b -> Source m (a, b)
-zip (ConduitM left0) (ConduitM right0) =
+zip = zipSources
+{-# DEPRECATED zip "Use zipSources instead" #-}
+
+-- | Combines two sources. The new source will stop producing once either
+--   source has been exhausted.
+--
+-- Since 1.0.13
+zipSources :: Monad m => Source m a -> Source m b -> Source m (a, b)
+zipSources (ConduitM left0) (ConduitM right0) =
     ConduitM $ go left0 right0
   where
     go (Leftover left ()) right = go left right
