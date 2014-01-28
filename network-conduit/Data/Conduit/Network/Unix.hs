@@ -71,7 +71,7 @@ bindPath path = do
 
 removeFileSafe :: FilePath -> IO ()
 removeFileSafe path =
-    removeFile path `catch` handleExists
+    removeFile path `Control.Exception.catch` handleExists
   where
     handleExists e
           | isDoesNotExistError e = return ()
