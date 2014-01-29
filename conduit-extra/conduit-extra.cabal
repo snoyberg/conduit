@@ -17,10 +17,15 @@ Library
                      , Data.Conduit.Extra.Pipes
                      , Data.Conduit.Extra.Resumable
                      , Data.Conduit.Extra.ZipSink
+                     , Data.Conduit.Extra.Utils
   Build-depends:       base                     >= 4            && < 5
                      , conduit                  >= 1.0
                      , mtl
+                     , monad-loops
+                     , containers
+                     , primitive
                      , transformers
+                     , vector
                      , void
   ghc-options:     -Wall
 
