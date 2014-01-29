@@ -60,11 +60,13 @@ module Data.Conduit.Internal
     , unwrapResumable
     , Data.Conduit.Internal.enumFromTo
     , zipSinks
+    , zipSources
+    , zipSourcesApp
     ) where
 
 import Control.Applicative (Applicative (..))
 import Control.Exception.Lifted as E (Exception, catch)
-import Control.Monad ((>=>), liftM, ap, when)
+import Control.Monad ((>=>), liftM, ap, when, liftM2)
 import Control.Monad.Error.Class(MonadError(..))
 import Control.Monad.Reader.Class(MonadReader(..))
 import Control.Monad.RWS.Class(MonadRWS())
@@ -863,3 +865,47 @@ zipSinks (ConduitM x0) (ConduitM y0) =
     NeedInput px cx  >< NeedInput py cy  = NeedInput (\i -> px i >< py i) (\() -> cx () >< cy ())
     NeedInput px cx  >< y@Done{}         = NeedInput (\i -> px i >< y)    (\u -> cx u >< y)
     x@Done{}         >< NeedInput py cy  = NeedInput (\i -> x >< py i)    (\u -> x >< cy u)
+
+-- | Combines two sources. The new source will stop producing once either
+--   source has been exhausted.
+--
+-- Since 1.0.13
+zipSources :: Monad m => Source m a -> Source m b -> Source m (a, b)
+zipSources (ConduitM left0) (ConduitM right0) =
+    ConduitM $ go left0 right0
+  where
+    go (Leftover left ()) right = go left right
+    go left (Leftover right ())  = go left right
+    go (Done ()) (Done ()) = Done ()
+    go (Done ()) (HaveOutput _ close _) = PipeM (close >> return (Done ()))
+    go (HaveOutput _ close _) (Done ()) = PipeM (close >> return (Done ()))
+    go (Done ()) (PipeM _) = Done ()
+    go (PipeM _) (Done ()) = Done ()
+    go (PipeM mx) (PipeM my) = PipeM (liftM2 go mx my)
+    go (PipeM mx) y@HaveOutput{} = PipeM (liftM (\x -> go x y) mx)
+    go x@HaveOutput{} (PipeM my) = PipeM (liftM (go x) my)
+    go (HaveOutput srcx closex x) (HaveOutput srcy closey y) = HaveOutput (go srcx srcy) (closex >> closey) (x, y)
+    go (NeedInput _ c) right = go (c ()) right
+    go left (NeedInput _ c) = go left (c ())
+
+-- | Combines two sources. The new source will stop producing once either
+--   source has been exhausted.
+--
+-- Since 1.0.13
+zipSourcesApp :: Monad m => Source m (a -> b) -> Source m a -> Source m b
+zipSourcesApp (ConduitM left0) (ConduitM right0) =
+    ConduitM $ go left0 right0
+  where
+    go (Leftover left ()) right = go left right
+    go left (Leftover right ())  = go left right
+    go (Done ()) (Done ()) = Done ()
+    go (Done ()) (HaveOutput _ close _) = PipeM (close >> return (Done ()))
+    go (HaveOutput _ close _) (Done ()) = PipeM (close >> return (Done ()))
+    go (Done ()) (PipeM _) = Done ()
+    go (PipeM _) (Done ()) = Done ()
+    go (PipeM mx) (PipeM my) = PipeM (liftM2 go mx my)
+    go (PipeM mx) y@HaveOutput{} = PipeM (liftM (\x -> go x y) mx)
+    go x@HaveOutput{} (PipeM my) = PipeM (liftM (go x) my)
+    go (HaveOutput srcx closex x) (HaveOutput srcy closey y) = HaveOutput (go srcx srcy) (closex >> closey) (x y)
+    go (NeedInput _ c) right = go (c ()) right
+    go left (NeedInput _ c) = go left (c ())

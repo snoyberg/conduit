@@ -1,10 +1,15 @@
+{-# LANGUAGE CPP #-}
 module Data.Conduit.Extra.ZipSink
     ( ZipSink (..)
     , broadcast
     ) where
 
 #if MIN_VERSION_conduit(1, 0, 13)
-import Data.Conduit (ZipSink (..), broadcast)
+import Data.Conduit (ZipSink (..), sequenceSinks, Sink)
+import Data.Traversable (Traversable)
+
+broadcast :: (Traversable f, Monad m) => f (Sink i m r) -> Sink i m (f r)
+broadcast = sequenceSinks
 #else
 import Control.Applicative
 import Control.Monad

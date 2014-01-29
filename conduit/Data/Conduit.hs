@@ -53,9 +53,14 @@ module Data.Conduit
       -- * Flushing
     , Flush (..)
 
-      -- * ZipSink
+      -- * Newtype wrappers
+      -- ** ZipSource
+    , ZipSource (..)
+    , sequenceSources
+
+      -- ** ZipSink
     , ZipSink (..)
-    , broadcast
+    , sequenceSinks
 
       -- * Convenience re-exports
     , ResourceT
@@ -74,7 +79,7 @@ import Control.Monad.Trans.Resource
 import Data.Conduit.Internal hiding (await, awaitForever, yield, yieldOr, leftover, bracketP, addCleanup, transPipe, mapOutput, mapOutputMaybe, mapInput)
 import qualified Data.Conduit.Internal as CI
 import Control.Monad.Morph (hoist)
-import Control.Monad (liftM)
+import Control.Monad (liftM, forever)
 import Control.Applicative (Applicative (..))
 import Data.Traversable (Traversable (..))
 
@@ -298,14 +303,36 @@ instance Functor Flush where
     fmap f (Chunk a) = Chunk (f a)
 
 -- | A wrapper for defining an 'Applicative' instance for 'Sink's which allows
+-- to combine sinks together, generalizing 'zipSources'. A combined sources
+-- will take input yielded from each of its @Source@s until any of them stop
+-- producing output.
+--
+-- Since 1.0.13
+newtype ZipSource m o = ZipSource { getZipSource :: Source m o }
+
+instance Monad m => Functor (ZipSource m) where
+    fmap f = ZipSource . mapOutput f . getZipSource
+instance Monad m => Applicative (ZipSource m) where
+    pure  = ZipSource . forever . yield
+    (ZipSource f) <*> (ZipSource x) = ZipSource $ zipSourcesApp f x
+
+-- | Coalesce all values yielding by all of the @Source@s.
+--
+-- Implemented on top of @ZipSource@, see that data type for more details.
+--
+-- Since 1.0.13
+sequenceSources :: (Traversable f, Monad m) => f (Source m o) -> Source m (f o)
+sequenceSources = getZipSource . sequenceA . fmap ZipSource
+
+-- | A wrapper for defining an 'Applicative' instance for 'Sink's which allows
 -- to combine sinks together, generalizing 'zipSinks'. A combined sink
 -- distributes the input to all its participants and when all finish, produces
 -- the result. This allows to define functions like
 --
 -- @
--- broadcast :: (Monad m)
+-- sequenceSinks :: (Monad m)
 --           => [Sink i m r] -> Sink i m [r]
--- broadcast = getZipSink . sequenceA . fmap ZipSink
+-- sequenceSinks = getZipSink . sequenceA . fmap ZipSink
 -- @
 --
 -- Note that the standard 'Applicative' instance for conduits works
@@ -328,5 +355,5 @@ instance Monad m => Applicative (ZipSink i m) where
 -- Implemented on top of @ZipSink@, see that data type for more details.
 --
 -- Since 1.0.13
-broadcast :: (Traversable f, Monad m) => f (Sink i m r) -> Sink i m (f r)
-broadcast = getZipSink . sequenceA . fmap ZipSink
+sequenceSinks :: (Traversable f, Monad m) => f (Sink i m r) -> Sink i m (f r)
+sequenceSinks = getZipSink . sequenceA . fmap ZipSink

@@ -8,8 +8,7 @@ module Data.Conduit.Util
     ) where
 
 import Prelude hiding (zip)
-import Control.Monad (liftM, liftM2)
-import Data.Conduit.Internal (Pipe (..), Source, Sink, ConduitM (..), Conduit, awaitForever, yield, await, zipSinks)
+import Data.Conduit.Internal (Pipe (..), Source, Sink, ConduitM (..), Conduit, awaitForever, yield, await, zipSinks, zipSources)
 import Data.Void (absurd)
 import Control.Monad.Trans.Class (lift)
 
@@ -19,28 +18,6 @@ import Control.Monad.Trans.Class (lift)
 zip :: Monad m => Source m a -> Source m b -> Source m (a, b)
 zip = zipSources
 {-# DEPRECATED zip "Use zipSources instead" #-}
-
--- | Combines two sources. The new source will stop producing once either
---   source has been exhausted.
---
--- Since 1.0.13
-zipSources :: Monad m => Source m a -> Source m b -> Source m (a, b)
-zipSources (ConduitM left0) (ConduitM right0) =
-    ConduitM $ go left0 right0
-  where
-    go (Leftover left ()) right = go left right
-    go left (Leftover right ())  = go left right
-    go (Done ()) (Done ()) = Done ()
-    go (Done ()) (HaveOutput _ close _) = PipeM (close >> return (Done ()))
-    go (HaveOutput _ close _) (Done ()) = PipeM (close >> return (Done ()))
-    go (Done ()) (PipeM _) = Done ()
-    go (PipeM _) (Done ()) = Done ()
-    go (PipeM mx) (PipeM my) = PipeM (liftM2 go mx my)
-    go (PipeM mx) y@HaveOutput{} = PipeM (liftM (\x -> go x y) mx)
-    go x@HaveOutput{} (PipeM my) = PipeM (liftM (go x) my)
-    go (HaveOutput srcx closex x) (HaveOutput srcy closey y) = HaveOutput (go srcx srcy) (closex >> closey) (x, y)
-    go (NeedInput _ c) right = go (c ()) right
-    go left (NeedInput _ c) = go left (c ())
 
 -- | Turn a @Sink@ into a @Conduit@ in the following way:
 --
