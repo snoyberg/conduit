@@ -59,6 +59,7 @@ module Data.Conduit.Internal
     , withUpstream
     , unwrapResumable
     , Data.Conduit.Internal.enumFromTo
+    , zipSinks
     ) where
 
 import Control.Applicative (Applicative (..))
@@ -838,3 +839,27 @@ tryC :: (MonadBaseControl IO m, Exception e)
      -> ConduitM i o m (Either e r)
 tryC = ConduitM . tryP . unConduitM
 {-# INLINE tryC #-}
+
+-- | Combines two sinks. The new sink will complete when both input sinks have
+--   completed.
+--
+-- Any leftovers are discarded.
+--
+-- Since 0.4.1
+zipSinks :: Monad m => Sink i m r -> Sink i m r' -> Sink i m (r, r')
+zipSinks (ConduitM x0) (ConduitM y0) =
+    ConduitM $ injectLeftovers x0 >< injectLeftovers y0
+  where
+    (><) :: Monad m => Pipe Void i Void () m r1 -> Pipe Void i Void () m r2 -> Pipe l i o () m (r1, r2)
+
+    Leftover _  i    >< _                = absurd i
+    _                >< Leftover _  i    = absurd i
+    HaveOutput _ _ o >< _                = absurd o
+    _                >< HaveOutput _ _ o = absurd o
+
+    PipeM mx         >< y                = PipeM (liftM (>< y) mx)
+    x                >< PipeM my         = PipeM (liftM (x ><) my)
+    Done x           >< Done y           = Done (x, y)
+    NeedInput px cx  >< NeedInput py cy  = NeedInput (\i -> px i >< py i) (\() -> cx () >< cy ())
+    NeedInput px cx  >< y@Done{}         = NeedInput (\i -> px i >< y)    (\u -> cx u >< y)
+    x@Done{}         >< NeedInput py cy  = NeedInput (\i -> x >< py i)    (\u -> x >< cy u)

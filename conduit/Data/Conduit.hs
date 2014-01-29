@@ -53,6 +53,10 @@ module Data.Conduit
       -- * Flushing
     , Flush (..)
 
+      -- * ZipSink
+    , ZipSink (..)
+    , broadcast
+
       -- * Convenience re-exports
     , ResourceT
     , MonadResource
@@ -70,6 +74,9 @@ import Control.Monad.Trans.Resource
 import Data.Conduit.Internal hiding (await, awaitForever, yield, yieldOr, leftover, bracketP, addCleanup, transPipe, mapOutput, mapOutputMaybe, mapInput)
 import qualified Data.Conduit.Internal as CI
 import Control.Monad.Morph (hoist)
+import Control.Monad (liftM)
+import Control.Applicative (Applicative (..))
+import Data.Traversable (Traversable (..))
 
 -- Define fixity of all our operators
 infixr 0 $$
@@ -289,3 +296,37 @@ data Flush a = Chunk a | Flush
 instance Functor Flush where
     fmap _ Flush = Flush
     fmap f (Chunk a) = Chunk (f a)
+
+-- | A wrapper for defining an 'Applicative' instance for 'Sink's which allows
+-- to combine sinks together, generalizing 'zipSinks'. A combined sink
+-- distributes the input to all its participants and when all finish, produces
+-- the result. This allows to define functions like
+--
+-- @
+-- broadcast :: (Monad m)
+--           => [Sink i m r] -> Sink i m [r]
+-- broadcast = getZipSink . sequenceA . fmap ZipSink
+-- @
+--
+-- Note that the standard 'Applicative' instance for conduits works
+-- differently. It feeds one sink with input until it finishes, then switches
+-- to another, etc., and at the end combines their results.
+--
+-- Since 1.0.13
+newtype ZipSink i m r = ZipSink { getZipSink :: Sink i m r }
+
+instance Monad m => Functor (ZipSink i m) where
+    fmap f (ZipSink x) = ZipSink (liftM f x)
+instance Monad m => Applicative (ZipSink i m) where
+    pure  = ZipSink . return
+    (ZipSink f) <*> (ZipSink x) =
+         ZipSink $ liftM (uncurry ($)) $ zipSinks f x
+
+-- | Send incoming values to all of the @Sink@ providing, and ultimately
+-- coalesce together all return values.
+--
+-- Implemented on top of @ZipSink@, see that data type for more details.
+--
+-- Since 1.0.13
+broadcast :: (Traversable f, Monad m) => f (Sink i m r) -> Sink i m (f r)
+broadcast = getZipSink . sequenceA . fmap ZipSink

@@ -1,5 +1,11 @@
-module Data.Conduit.Extra.ZipSink where
+module Data.Conduit.Extra.ZipSink
+    ( ZipSink (..)
+    , broadcast
+    ) where
 
+#if MIN_VERSION_conduit(1, 0, 13)
+import Data.Conduit (ZipSink (..), broadcast)
+#else
 import Control.Applicative
 import Control.Monad
 import Data.Conduit as C
@@ -31,3 +37,4 @@ instance Monad m => Applicative (ZipSink i m) where
 
 broadcast :: (Traversable f, Monad m) => f (Sink i m r) -> Sink i m (f r)
 broadcast = getZipSink . sequenceA . fmap ZipSink
+#endif
