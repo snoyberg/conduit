@@ -63,8 +63,6 @@ import qualified Crypto.Random.AESCtr
 import qualified Network.Connection as NC
 import Control.Monad.Trans.Control
 import Data.Default
-import System.IO (hClose, openBinaryTempFile)
-import System.Directory (removeFile, getTemporaryDirectory)
 
 
 makeCertDataPath :: FilePath -> FilePath -> TlsCertData
@@ -213,23 +211,10 @@ ciphers =
 
 readCreds :: TlsCertData -> IO TLS.Credentials
 readCreds (TlsCertData iocert iokey) =
-    -- FIXME This whole function is an ugly hack. Need to figure out the right
-    -- way to do this in tls 1.2.
-    go iocert $ \certfp -> go iokey $ \keyfp -> do
-        ecreds <- TLS.credentialLoadX509 certfp keyfp
-        case ecreds of
-            Left err -> error $ "Error reading TLS credentials: " ++ err
-            Right creds -> return $ TLS.Credentials [creds]
-  where
-    go iobs f = do
-        tempdir <- getTemporaryDirectory
-        bracket
-            (openBinaryTempFile tempdir "network-conduit-tls.bin")
-            (\(fp, h) -> hClose h >> removeFile fp)
-            $ \(fp, h) -> do
-                iobs >>= S.hPutStr h
-                hClose h
-                f fp
+    (TLS.credentialLoadX509FromMemory <$> iocert <*> iokey)
+    >>= either
+        (error . ("Error reading TLS credentials: " ++))
+        (return . TLS.Credentials . return)
 
 readCertificates :: TlsCertData -> IO [X509.X509]
 readCertificates certData = do
