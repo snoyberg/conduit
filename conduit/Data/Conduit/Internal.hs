@@ -298,7 +298,7 @@ type Conduit i m o = ConduitM i o m ()
 -- Since 0.5.0
 data ResumableSource m o = ResumableSource (Source m o) (m ())
 
--- | Since 1.0.14
+-- | Since 1.0.13
 instance MFunctor ResumableSource where
     hoist nat (ResumableSource src m) = ResumableSource (hoist nat src) (nat m)
 
