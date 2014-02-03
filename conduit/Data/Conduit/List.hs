@@ -363,7 +363,7 @@ scanlM :: Monad m => (a -> s -> m (s,b)) -> s -> Conduit a m b
 scanlM f =
     loop
   where
-    loop s = await >>= F.mapM_ go
+    loop s = await >>= maybe (return ()) go
       where
         go a = do (s',b) <- lift $ f a s
                   yield b >> loop s'
