@@ -66,6 +66,7 @@ import Prelude
     , Enum (succ), Eq
     , maybe
     , either
+    , (<=)
     )
 import Data.Monoid (Monoid, mempty, mappend)
 import qualified Data.Foldable as F
@@ -205,7 +206,7 @@ drop :: Monad m
 drop =
     loop
   where
-    loop 0 = return ()
+    loop i | i <= 0 = return ()
     loop count = await >>= maybe (return ()) (\_ -> loop (count - 1))
 
 -- | Take some values from the stream and return as a list. If you want to
@@ -350,7 +351,7 @@ scanl :: Monad m => (a -> s -> (s,b)) -> s -> Conduit a m b
 scanl f =
     loop
   where
-    loop s = await >>= F.mapM_ go
+    loop s = await >>= maybe (return ()) go
       where
         go a = case f a s of
                  (s',b) -> yield b >> loop s'
