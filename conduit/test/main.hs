@@ -39,6 +39,7 @@ import Control.Monad (forever, void)
 import Data.Void (Void)
 import qualified Control.Concurrent.MVar as M
 import Control.Monad.Error (catchError, throwError, Error)
+import qualified Data.Map as Map
 
 (@=?) :: (Eq a, Show a) => a -> a -> IO ()
 (@=?) = flip shouldBe
@@ -1135,6 +1136,23 @@ main = hspec $ do
                 (Left _, Right ()) ->
                     return ()
                 _ -> error $ show exc
+
+    describe "sequenceSources" $ do
+        it "works" $ do
+            let src1 = mapM_ C.yield [1, 2, 3 :: Int]
+                src2 = mapM_ C.yield [3, 2, 1]
+                src3 = mapM_ C.yield $ repeat 2
+                srcs = C.sequenceSources $ Map.fromList
+                    [ (1 :: Int, src1)
+                    , (2, src2)
+                    , (3, src3)
+                    ]
+            res <- srcs C.$$ CL.consume
+            res `shouldBe`
+                [ Map.fromList [(1, 1), (2, 3), (3, 2)]
+                , Map.fromList [(1, 2), (2, 2), (3, 2)]
+                , Map.fromList [(1, 3), (2, 1), (3, 2)]
+                ]
 
 it' :: String -> IO () -> Spec
 it' = it

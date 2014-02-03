@@ -79,6 +79,7 @@ test-suite test
                    , text
                    , resourcet
                    , void
+                   , containers
     ghc-options:     -Wall
 
 --test-suite doctests
