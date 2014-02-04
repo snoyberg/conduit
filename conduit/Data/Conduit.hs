@@ -302,8 +302,8 @@ instance Functor Flush where
     fmap _ Flush = Flush
     fmap f (Chunk a) = Chunk (f a)
 
--- | A wrapper for defining an 'Applicative' instance for 'Sink's which allows
--- to combine sinks together, generalizing 'zipSources'. A combined sources
+-- | A wrapper for defining an 'Applicative' instance for 'Source's which allows
+-- to combine sources together, generalizing 'zipSources'. A combined source
 -- will take input yielded from each of its @Source@s until any of them stop
 -- producing output.
 --
