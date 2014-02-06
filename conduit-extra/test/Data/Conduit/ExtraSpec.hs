@@ -24,6 +24,38 @@ spec = describe "Data.Conduit.Extra" $ do
         res <- source $$ sink2
         res `shouldBe` (Just 1, Just 1)
 
+    it "get leftovers" $ do
+        let sink2 :: Sink a IO ([a], [a], [a])
+            sink2 = do
+                (x, y) <- fuseLeftovers (isolate 2) peek3
+                z <- CL.consume
+                return (x, y, z)
+
+            peek3 = do
+                x <- CL.take 3
+                mapM_ leftover $ reverse x
+                return x
+
+            source = mapM_ yield [1..5]
+        res <- source $$ sink2
+        res `shouldBe` ([1..2], [1..2], [3..5])
+
+    it "multiple values" $ do
+        let sink2 :: Sink a IO ([a], Maybe a)
+            sink2 = do
+                ma1 <- fuseReturnLeftovers id (isolate 10) peek3
+                ma2 <- peek
+                return (ma1, ma2)
+
+            peek3 = do
+                x <- CL.take 3
+                mapM_ leftover $ reverse x
+                return x
+
+            source = mapM_ yield [1..5]
+        res <- source $$ sink2
+        res `shouldBe` ([1..3], Just 1)
+
     prop "more complex" $ \ss cnt -> do
         let ts = map T.pack ss
             src = mapM_ (yield . T.encodeUtf8) ts
