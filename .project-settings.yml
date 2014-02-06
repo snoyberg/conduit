@@ -1,0 +1,9 @@
+module-template: ! 'module MODULE_NAME where
+
+'
+extensions: {}
+environment: default
+cabal-file: project.cabal
+version: 1
+ghc-args: []
+excluded-modules: []
