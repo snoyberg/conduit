@@ -12,6 +12,7 @@ import           Data.Conduit as C
 import qualified Data.Conduit.List as CL
 import qualified Data.Conduit.Extra as CE
 import Data.Conduit (runResourceT)
+import qualified Data.Conduit.ExtraSpec as ES
 
 
 main :: IO ()
@@ -31,4 +32,4 @@ main = hspec $ do
             x <- runResourceT $ CL.sourceList [100,99..1] $$ sink
             x `shouldBe` (505000 :: Integer)
 
-    return ()
+    ES.spec
