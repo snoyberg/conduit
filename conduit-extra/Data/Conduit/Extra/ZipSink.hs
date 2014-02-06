@@ -4,7 +4,7 @@ module Data.Conduit.Extra.ZipSink
     , broadcast
     ) where
 
-#if MIN_VERSION_conduit(1, 0, 13)
+#if MIN_VERSION_conduit(1, 0, 13) || FPHC
 import Data.Conduit (ZipSink (..), sequenceSinks, Sink)
 import Data.Traversable (Traversable)
 
