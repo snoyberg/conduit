@@ -16,7 +16,7 @@ spec = describe "Data.Conduit.Extra" $ do
     it "basic test" $ do
         let sink2 :: Sink a IO (Maybe a, Maybe a)
             sink2 = do
-                ma1 <- fuseReturnLeftovers id (isolate 10) peek
+                ma1 <- fuseLeftovers id (isolate 10) peek
                 ma2 <- peek
                 return (ma1, ma2)
 
@@ -27,7 +27,7 @@ spec = describe "Data.Conduit.Extra" $ do
     it "get leftovers" $ do
         let sink2 :: Sink a IO ([a], [a], [a])
             sink2 = do
-                (x, y) <- fuseLeftovers (isolate 2) peek3
+                (x, y) <- fuseReturnLeftovers (isolate 2) peek3
                 z <- CL.consume
                 return (x, y, z)
 
@@ -43,7 +43,7 @@ spec = describe "Data.Conduit.Extra" $ do
     it "multiple values" $ do
         let sink2 :: Sink a IO ([a], Maybe a)
             sink2 = do
-                ma1 <- fuseReturnLeftovers id (isolate 10) peek3
+                ma1 <- fuseLeftovers id (isolate 10) peek3
                 ma2 <- peek
                 return (ma1, ma2)
 
@@ -63,7 +63,7 @@ spec = describe "Data.Conduit.Extra" $ do
             sink = CT.take cnt =$ consume
             undo = return . T.encodeUtf8 . T.concat
         res <- src $$ do
-            x <- fuseReturnLeftovers undo conduit sink
+            x <- fuseLeftovers undo conduit sink
             y <- consume
             return (T.concat x, T.decodeUtf8 $ S.concat y)
         res `shouldBe` T.splitAt cnt (T.concat ts)

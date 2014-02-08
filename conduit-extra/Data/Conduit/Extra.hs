@@ -10,13 +10,16 @@ import Data.Conduit.Extra.Resumable
 import Data.Conduit
 import Data.Conduit.Internal (Pipe (..), ConduitM (..))
 import Control.Monad (liftM)
-import Data.Void (absurd)
 
-fuseLeftovers :: Monad m
-              => ConduitM a b m ()
-              -> ConduitM b c m r
-              -> ConduitM a c m (r, [b])
-fuseLeftovers (ConduitM left0) (ConduitM right0) =
+-- | Same as normal fusion (e.g. @=$=@), except instead of discarding leftovers
+-- from the downstream component, return them.
+--
+-- Since 1.0.4
+fuseReturnLeftovers :: Monad m
+                    => ConduitM a b m ()
+                    -> ConduitM b c m r
+                    -> ConduitM a c m (r, [b])
+fuseReturnLeftovers (ConduitM left0) (ConduitM right0) =
     ConduitM $ goRight (return ()) [] left0 right0
   where
     goRight final bs left right =
@@ -42,13 +45,17 @@ fuseLeftovers (ConduitM left0) (ConduitM right0) =
       where
         recurse = goLeft rp rc final
 
-fuseReturnLeftovers
+-- | Similar to @fuseReturnLeftovers@, but use the provided function to convert
+-- downstream leftovers to upstream leftovers.
+--
+-- Since 1.0.4
+fuseLeftovers
     :: Monad m
     => ([b] -> [a])
     -> ConduitM a b m ()
     -> ConduitM b c m r
     -> ConduitM a c m r
-fuseReturnLeftovers f left right = do
-    (r, bs) <- fuseLeftovers left right
+fuseLeftovers f left right = do
+    (r, bs) <- fuseReturnLeftovers left right
     mapM_ leftover $ reverse $ f bs
     return r
