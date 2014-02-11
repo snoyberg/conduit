@@ -1,11 +1,13 @@
 module Data.Conduit.Extra
     ( module Data.Conduit.Extra.ZipSink
+    , module Data.Conduit.Extra.ZipConduit
     , module Data.Conduit.Extra.Resumable
     , fuseLeftovers
     , fuseReturnLeftovers
     ) where
 
 import Data.Conduit.Extra.ZipSink
+import Data.Conduit.Extra.ZipConduit
 import Data.Conduit.Extra.Resumable
 import Data.Conduit
 import Data.Conduit.Internal (Pipe (..), ConduitM (..))

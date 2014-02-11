@@ -13,6 +13,7 @@ import qualified Data.Conduit.List as CL
 import qualified Data.Conduit.Extra as CE
 import Data.Conduit (runResourceT)
 import qualified Data.Conduit.ExtraSpec as ES
+import qualified Data.Conduit.Extra.ZipConduitSpec as ZipConduit
 
 
 main :: IO ()
@@ -33,3 +34,4 @@ main = hspec $ do
             x `shouldBe` (505000 :: Integer)
 
     ES.spec
+    ZipConduit.spec

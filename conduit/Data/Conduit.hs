@@ -316,7 +316,7 @@ instance Monad m => Applicative (ZipSource m) where
     pure  = ZipSource . forever . yield
     (ZipSource f) <*> (ZipSource x) = ZipSource $ zipSourcesApp f x
 
--- | Coalesce all values yielding by all of the @Source@s.
+-- | Coalesce all values yielded by all of the @Source@s.
 --
 -- Implemented on top of @ZipSource@, see that data type for more details.
 --
