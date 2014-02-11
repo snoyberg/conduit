@@ -402,25 +402,25 @@ main = hspec $ do
             (a, b) `shouldBe` (Just 1, [1..10])
 
     describe "text" $ do
-        let go enc tenc tdec cenc = do
-                prop (enc ++ " single chunk") $ \chars -> runST $ runExceptionT_ $ do
+        let go enc tenc tdec cenc = describe enc $ do
+                prop "single chunk" $ \chars -> runST $ runExceptionT_ $ do
                     let tl = TL.pack chars
                         lbs = tenc tl
                         src = CL.sourceList $ L.toChunks lbs
                     ts <- src C.$= CT.decode cenc C.$$ CL.consume
                     return $ TL.fromChunks ts == tl
-                prop (enc ++ " many chunks") $ \chars -> runIdentity $ runExceptionT_ $ do
+                prop "many chunks" $ \chars -> runIdentity $ runExceptionT_ $ do
                     let tl = TL.pack chars
                         lbs = tenc tl
                         src = mconcat $ map (CL.sourceList . return . S.singleton) $ L.unpack lbs
-                        
+
                     ts <- src C.$= CT.decode cenc C.$$ CL.consume
                     return $ TL.fromChunks ts == tl
 
                 -- Check whether raw bytes are decoded correctly, in
                 -- particular that Text decoding produces an error if
                 -- and only if Conduit does.
-                prop (enc ++ " raw bytes") $ \bytes ->
+                prop "raw bytes" $ \bytes ->
                     let lbs = L.pack bytes
                         src = CL.sourceList $ L.toChunks lbs
                         etl = C.runException $ src C.$= CT.decode cenc C.$$ CL.consume
@@ -428,17 +428,30 @@ main = hspec $ do
                     in  case etl of
                           (Left _) -> (return $! TL.toStrict tl') `shouldThrow` anyException
                           (Right tl) -> TL.fromChunks tl `shouldBe` tl'
-                prop (enc ++ " encoding") $ \chars -> runIdentity $ runExceptionT_ $ do
+                prop "encoding" $ \chars -> runIdentity $ runExceptionT_ $ do
                     let tss = map T.pack chars
                         lbs = tenc $ TL.fromChunks tss
                         src = mconcat $ map (CL.sourceList . return) tss
                     bss <- src C.$= CT.encode cenc C.$$ CL.consume
                     return $ L.fromChunks bss == lbs
+                prop "valid then invalid" $ \x y chars -> runIdentity $ runExceptionT_ $ do
+                    let tss = map T.pack ([x, y]:chars)
+                        ts = T.concat tss
+                        lbs = tenc (TL.fromChunks tss) `L.append` "\0\0\0\0\0\0\0"
+                        src = mapM_ C.yield $ L.toChunks lbs
+                    Just x <- src C.$$ CT.decode cenc C.=$ C.await
+                    return $ x `T.isPrefixOf` ts
         go "utf8" TLE.encodeUtf8 TLE.decodeUtf8 CT.utf8
         go "utf16_le" TLE.encodeUtf16LE TLE.decodeUtf16LE CT.utf16_le
         go "utf16_be" TLE.encodeUtf16BE TLE.decodeUtf16BE CT.utf16_be
         go "utf32_le" TLE.encodeUtf32LE TLE.decodeUtf32LE CT.utf32_le
         go "utf32_be" TLE.encodeUtf32BE TLE.decodeUtf32BE CT.utf32_be
+        it "mixed utf16 and utf8" $ do
+            let bs = "8\NUL:\NULu\NUL\215\216\217\218"
+                src = C.yield bs C.$= CT.decode CT.utf16_le
+            text <- src C.$$ C.await
+            text `shouldBe` Just "8:u"
+            (src C.$$ CL.sinkNull) `shouldThrow` anyException
 
     describe "text lines" $ do
         it "works across split lines" $

@@ -293,6 +293,7 @@ utf16_be = Codec name enc dec where
         decodeTo n = first TE.decodeUtf16BE (B.splitAt n bytes)
         decodeAll = (TE.decodeUtf16BE bytes, B.empty)
 
+-- FIXME http://www.unicode.org/faq/utf_bom.html#utf16-7
 utf16Required :: Word8 -> Word8 -> Int
 utf16Required x0 x1 = required where
     required = if x >= 0xD800 && x <= 0xDBFF
