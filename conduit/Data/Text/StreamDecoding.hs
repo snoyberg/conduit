@@ -16,6 +16,16 @@
 -- Fusible 'Stream'-oriented functions for converting between lazy
 -- 'Text' and several common encodings.
 
+-- | Provides a stream-based approach to decoding Unicode data. Each function
+-- below works the same way: you give it a chunk of data, and it gives back a
+-- @DecodeResult@. If the parse was a success, then you get a chunk of @Text@
+-- (possibly empty) and a continuation parsing function. If the parse was a
+-- failure, you get a chunk of successfully decoded @Text@ (possibly empty) and
+-- the unconsumed bytes.
+--
+-- In order to indicate end of stream, you pass an empty @ByteString@ to the
+-- decode function. This call may result in a failure, if there were unused
+-- bytes left over from a previous step which formed part of a code sequence.
 module Data.Text.StreamDecoding
     (
     -- * Streaming
@@ -29,7 +39,6 @@ module Data.Text.StreamDecoding
     -- * Unstreaming
     --, unstream
 
-    , feedLazy
     , DecodeResult (..)
     ) where
 
@@ -66,27 +75,6 @@ data S = S0
 data DecodeResult
     = DecodeResultSuccess !Text !(B.ByteString -> DecodeResult)
     | DecodeResultFailure !Text !B.ByteString
-
-feedLazy :: (B.ByteString -> DecodeResult)
-         -> L.ByteString
-         -> TL.Text
-feedLazy _ Empty = TL.empty
-feedLazy start (Chunk bs0 lbs0) =
-    TL.fromChunks $ loop (start bs0) lbs0
-  where
-    loop (DecodeResultSuccess t next) Empty = t : kill next
-    loop (DecodeResultSuccess t next) (Chunk bs lbs) = t : loop (next bs) lbs
-    loop (DecodeResultFailure t _) _ = t : error "invalid stream"
-
-    func = "streamUtf8"
-    kind = "UTF-8"
-    kill f =
-        case f B.empty of
-            DecodeResultSuccess _ _ -> []
-            DecodeResultFailure _ _ -> throw $ DecodeError
-                ("Data.Text.Lazy.Encoding.Fusion." ++ func ++ ": Invalid " ++
-                   kind ++ " stream")
-                Nothing
 
 data Status s = Status
     !Int -- ^ position in ByteString
@@ -193,6 +181,7 @@ streamUtf8Start =
         _ -> consume st next streamUtf8Start
        where addChar' = addChar st next 0
 {-# INLINE [0] streamUtf8 #-}
+{-# INLINE [0] streamUtf8Start #-}
 
 -- | /O(n)/ Convert a 'ByteString' into a 'Stream Char', using little
 -- endian UTF-16 encoding.
@@ -221,6 +210,7 @@ streamUtf16LEStart =
        where c :: Word8 -> Word8 -> Word16
              c w1 w2 = fromIntegral w1 + (fromIntegral w2 `shiftL` 8)
 {-# INLINE [0] streamUtf16LE #-}
+{-# INLINE [0] streamUtf16LEStart #-}
 
 -- | /O(n)/ Convert a 'ByteString' into a 'Stream Char', using big
 -- endian UTF-16 encoding.
@@ -249,6 +239,7 @@ streamUtf16BEStart =
        where c :: Word8 -> Word8 -> Word16
              c w1 w2 = (fromIntegral w1 `shiftL` 8) + fromIntegral w2
 {-# INLINE [0] streamUtf16BE #-}
+{-# INLINE [0] streamUtf16BEStart #-}
 
 -- | /O(n)/ Convert a 'ByteString' into a 'Stream Char', using big
 -- endian UTF-32 encoding.
@@ -283,6 +274,7 @@ streamUtf32BEStart =
                x3 = fromIntegral w3
                x4 = fromIntegral w4
 {-# INLINE [0] streamUtf32BE #-}
+{-# INLINE [0] streamUtf32BEStart #-}
 
 -- | /O(n)/ Convert a 'ByteString' into a 'Stream Char', using little
 -- endian UTF-32 encoding.
@@ -317,56 +309,4 @@ streamUtf32LEStart =
                x3 = fromIntegral w3
                x4 = fromIntegral w4
 {-# INLINE [0] streamUtf32LE #-}
-
-{-
--- | /O(n)/ Convert a 'Stream' 'Word8' to a lazy 'ByteString'.
-unstreamChunks :: Int -> Stream Word8 -> ByteString
-unstreamChunks chunkSize (Stream next s0 len0) = chunk s0 (upperBound 4 len0)
-  where chunk s1 len1 = unsafeDupablePerformIO $ do
-          let len = max 4 (min len1 chunkSize)
-          mallocByteString len >>= loop len 0 s1
-          where
-            loop !n !off !s fp = case next s of
-                Done | off == 0 -> return Empty
-                     | otherwise -> return $! Chunk (trimUp fp off) Empty
-                Skip s' -> loop n off s' fp
-                Yield x s'
-                    | off == chunkSize -> do
-                      let !newLen = n - off
-                      return $! Chunk (trimUp fp off) (chunk s newLen)
-                    | off == n -> realloc fp n off s' x
-                    | otherwise -> do
-                      withForeignPtr fp $ \p -> pokeByteOff p off x
-                      loop n (off+1) s' fp
-            {-# NOINLINE realloc #-}
-            realloc fp n off s x = do
-              let n' = min (n+n) chunkSize
-              fp' <- copy0 fp n n'
-              withForeignPtr fp' $ \p -> pokeByteOff p off x
-              loop n' (off+1) s fp'
-            trimUp fp off = B.PS fp 0 off
-            copy0 :: ForeignPtr Word8 -> Int -> Int -> IO (ForeignPtr Word8)
-            copy0 !src !srcLen !destLen =
-#if defined(ASSERTS)
-              assert (srcLen <= destLen) $
-#endif
-              do
-                dest <- mallocByteString destLen
-                withForeignPtr src  $ \src'  ->
-                    withForeignPtr dest $ \dest' ->
-                        memcpy dest' src' (fromIntegral srcLen)
-                return dest
-
--- | /O(n)/ Convert a 'Stream' 'Word8' to a lazy 'ByteString'.
-unstream :: Stream Word8 -> ByteString
-unstream = unstreamChunks defaultChunkSize
-
-decodeError :: forall s. String -> String -> OnDecodeError -> Maybe Word8
-            -> s -> Step s Char
-decodeError func kind onErr mb i =
-    case onErr desc mb of
-      Nothing -> Skip i
-      Just c  -> Yield c i
-    where desc = "Data.Text.Lazy.Encoding.Fusion." ++ func ++ ": Invalid " ++
-                 kind ++ " stream"
--}
+{-# INLINE [0] streamUtf32LEStart #-}
