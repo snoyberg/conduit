@@ -439,8 +439,8 @@ main = hspec $ do
                         ts = T.concat tss
                         lbs = tenc (TL.fromChunks tss) `L.append` "\0\0\0\0\0\0\0"
                         src = mapM_ C.yield $ L.toChunks lbs
-                    Just x <- src C.$$ CT.decode cenc C.=$ C.await
-                    return $ x `T.isPrefixOf` ts
+                    Just x' <- src C.$$ CT.decode cenc C.=$ C.await
+                    return $ x' `T.isPrefixOf` ts
         go "utf8" TLE.encodeUtf8 TLE.decodeUtf8 CT.utf8
         go "utf16_le" TLE.encodeUtf16LE TLE.decodeUtf16LE CT.utf16_le
         go "utf16_be" TLE.encodeUtf16BE TLE.decodeUtf16BE CT.utf16_be
@@ -451,6 +451,12 @@ main = hspec $ do
                 src = C.yield bs C.$= CT.decode CT.utf16_le
             text <- src C.$$ C.await
             text `shouldBe` Just "8:u"
+            (src C.$$ CL.sinkNull) `shouldThrow` anyException
+        it "invalid utf8" $ do
+            let bs = S.pack [0..255]
+                src = C.yield bs C.$= CT.decode CT.utf8
+            text <- src C.$$ C.await
+            text `shouldBe` Just (T.pack $ map toEnum [0..127])
             (src C.$$ CL.sinkNull) `shouldThrow` anyException
 
     describe "text lines" $ do
@@ -1069,8 +1075,8 @@ main = hspec $ do
                 test1L = testPipe $ (p1 <+< p2) <+< p3
                 test1R = testPipe $ p1 <+< (p2 <+< p3)
 
-                test2L = testPipe $ (p2 <+< p1) <+< p3
-                test2R = testPipe $ p2 <+< (p1 <+< p3)
+                _test2L = testPipe $ (p2 <+< p1) <+< p3
+                _test2R = testPipe $ p2 <+< (p1 <+< p3)
 
                 test3L = testPipe $ (p2 <+< p3) <+< p1
                 test3R = testPipe $ p2 <+< (p3 <+< p1)

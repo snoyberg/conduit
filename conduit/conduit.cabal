@@ -1,5 +1,5 @@
 Name:                conduit
-Version:             1.0.13.1
+Version:             1.0.13.2
 Synopsis:            Streaming data processing library.
 Description:
     @conduit@ is a solution to the streaming data problem, allowing for production, transformation, and consumption of streams of data in constant memory. It is an alternative to lazy I\/O which guarantees deterministic resource handling, and fits in the same general solution space as @enumerator@\/@iteratee@ and @pipes@. For a tutorial, please visit <https://haskell.fpcomplete.com/user/snoyberg/library-documentation/conduit-overview>.
@@ -33,6 +33,10 @@ flag nohandles
     default: False
     Description: experimental code to use raw system calls in place of handles. Not recommended for general use
 
+flag text11
+    default: False
+    Description: Use text version 1.1, which exports many encoding modules.
+
 Library
   if os(windows)
       cpp-options: -DCABAL_OS_WINDOWS
@@ -49,6 +53,7 @@ Library
                        Data.Conduit.Internal
                        Data.Conduit.Util
                        Data.Conduit.Lift
+  other-modules:       Data.Text.StreamDecoding
   Build-depends:       base                     >= 4.3          && < 5
                      , resourcet                >= 0.4.3        && < 0.5
                      , lifted-base              >= 0.1
@@ -58,10 +63,18 @@ Library
                      , transformers             >= 0.2.2        && < 0.4
                      , mtl
                      , bytestring               >= 0.9
-                     , text                     >= 0.11
                      , void                     >= 0.5.5
                      , mmorph
                      , directory
+  if flag(text11)
+      build-depends:   text                     >= 1.1
+      other-modules:   Data.Text.Internal.Unsafe.Char
+                       Data.Text.Internal.Unsafe.Shift
+                       Data.Text.Internal.Internal.Encoding.Utf8
+                       Data.Text.Internal.Internal.Encoding.Utf16
+                       Data.Text.Internal.Internal.Encoding.Utf32
+  else
+      build-depends:   text                     >= 0.11 && < 1.1
   ghc-options:     -Wall
 
 test-suite test

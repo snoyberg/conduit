@@ -34,23 +34,20 @@ module Data.Conduit.Text
 import qualified Prelude
 import           Prelude hiding (head, drop, takeWhile, lines, zip, zip3, zipWith, zipWith3, take, dropWhile)
 
-import           Control.Arrow (first)
 import qualified Control.Exception as Exc
-import           Data.Bits ((.&.), (.|.), shiftL)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as B8
 import           Data.Char (ord)
-import           Data.Maybe (catMaybes)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
-import           Data.Word (Word8, Word16)
-import           System.IO.Unsafe (unsafePerformIO)
+import           Data.Word (Word8)
 import           Data.Typeable (Typeable)
 
 import Data.Conduit
 import qualified Data.Conduit.List as CL
 import Control.Monad.Trans.Class (lift)
 import Control.Monad (unless,when)
+import Data.Text.StreamDecoding
 
 -- | A specific character encoding.
 --
@@ -66,6 +63,7 @@ data Codec = Codec
             (TextException, B.ByteString)
             B.ByteString)
     }
+    | NewCodec T.Text (T.Text -> B.ByteString) (B.ByteString -> DecodeResult)
 
 instance Show Codec where
     showsPrec d c = showParen (d > 10) $
@@ -141,6 +139,7 @@ linesBounded maxLineLen =
 --
 -- Since 0.3.0
 encode :: MonadThrow m => Codec -> Conduit T.Text m B.ByteString
+encode (NewCodec _ enc _) = CL.map enc
 encode codec = CL.mapM $ \t -> do
     let (bs, mexc) = codecEncode codec t
     maybe (return bs) (monadThrow . fst) mexc
@@ -151,6 +150,29 @@ encode codec = CL.mapM $ \t -> do
 --
 -- Since 0.3.0
 decode :: MonadThrow m => Codec -> Conduit B.ByteString m T.Text
+decode (NewCodec name _ start) =
+    loop 0 start
+  where
+    loop consumed dec = await >>= maybe (finish consumed dec) (go consumed dec)
+
+    finish consumed dec =
+        case dec B.empty of
+            DecodeResultSuccess _ _ -> return ()
+            DecodeResultFailure t rest -> onFailure consumed B.empty t rest
+
+    go consumed dec bs | B.null bs = loop consumed dec
+    go consumed dec bs =
+        case dec bs of
+            DecodeResultSuccess t dec' -> do
+                unless (T.null t) (yield t)
+                let consumed' = consumed + B.length bs
+                consumed' `seq` loop consumed' dec'
+            DecodeResultFailure t rest -> onFailure consumed bs t rest
+
+    onFailure consumed bs t rest = do
+        unless (T.null t) (yield t)
+        let consumed' = consumed + B.length bs - B.length rest
+        monadThrow $ NewDecodeException name consumed' (B.take 4 rest)
 decode codec =
     loop id
   where
@@ -175,165 +197,34 @@ data TextException = DecodeException Codec Word8
                    | EncodeException Codec Char
                    | LengthExceeded Int
                    | TextException Exc.SomeException
+                   | NewDecodeException !T.Text !Int !B.ByteString
     deriving (Show, Typeable)
 instance Exc.Exception TextException
-
-byteSplits :: B.ByteString
-           -> [(B.ByteString, B.ByteString)]
-byteSplits bytes = loop (B.length bytes) where
-    loop 0 = [(B.empty, bytes)]
-    loop n = B.splitAt n bytes : loop (n - 1)
-
-splitSlowly :: (B.ByteString -> T.Text)
-            -> B.ByteString
-            -> (T.Text, Either
-                (TextException, B.ByteString)
-                B.ByteString)
-splitSlowly dec bytes = valid where
-    valid = firstValid (Prelude.map decFirst splits)
-    splits = byteSplits bytes
-    firstValid = Prelude.head . catMaybes
-    tryDec = tryEvaluate . dec
-
-    decFirst (a, b) = case tryDec a of
-        Left _ -> Nothing
-        Right text -> Just (text, case tryDec b of
-            Left exc -> Left (TextException exc, b)
-
-            -- this case shouldn't occur, since splitSlowly
-            -- is only called when parsing failed somewhere
-            Right _ -> Right B.empty)
 
 -- |
 -- Since 0.3.0
 utf8 :: Codec
-utf8 = Codec name enc dec where
-    name = T.pack "UTF-8"
-    enc text = (TE.encodeUtf8 text, Nothing)
-    dec bytes = case splitQuickly bytes >>= maybeDecode of
-        Just (text, extra) -> (text, Right extra)
-        Nothing -> splitSlowly TE.decodeUtf8 bytes
-
-    -- Whether the given byte is a continuation byte.
-    isContinuation byte = byte .&. 0xC0 == 0x80
-
-    -- The number of continuation bytes needed by the given
-    -- non-continuation byte. Returns -1 for an illegal UTF-8
-    -- non-continuation byte and the whole split quickly must fail so
-    -- as the input is passed to TE.decodeUtf8, which will issue a
-    -- suitable error.
-    required x0
-        | x0 .&. 0x80 == 0x00 = 0
-        | x0 .&. 0xE0 == 0xC0 = 1
-        | x0 .&. 0xF0 == 0xE0 = 2
-        | x0 .&. 0xF8 == 0xF0 = 3
-        | otherwise           = -1
-
-    splitQuickly bytes
-        | B.null l || req == -1 = Nothing
-        | req == B.length r = Just (TE.decodeUtf8 bytes, B.empty)
-        | otherwise = Just (TE.decodeUtf8 l', r')
-      where
-        (l, r) = B.spanEnd isContinuation bytes
-        req = required (B.last l)
-        l' = B.init l
-        r' = B.cons (B.last l) r
+utf8 = NewCodec (T.pack "UTF-8") TE.encodeUtf8 streamUtf8
 
 -- |
 -- Since 0.3.0
 utf16_le :: Codec
-utf16_le = Codec name enc dec where
-    name = T.pack "UTF-16-LE"
-    enc text = (TE.encodeUtf16LE text, Nothing)
-    dec bytes = case splitQuickly bytes of
-        Just (text, extra) -> (text, Right extra)
-        Nothing -> splitSlowly TE.decodeUtf16LE bytes
-
-    splitQuickly bytes = maybeDecode (loop 0) where
-        maxN = B.length bytes
-
-        loop n |  n      == maxN = decodeAll
-               | (n + 1) == maxN = decodeTo n
-        loop n = let
-            req = utf16Required
-                (B.index bytes n)
-                (B.index bytes (n + 1))
-            decodeMore = loop $! n + req
-            in if n + req > maxN
-                then decodeTo n
-                else decodeMore
-
-        decodeTo n = first TE.decodeUtf16LE (B.splitAt n bytes)
-        decodeAll = (TE.decodeUtf16LE bytes, B.empty)
+utf16_le = NewCodec (T.pack "UTF-16-LE") TE.encodeUtf16LE streamUtf16LE
 
 -- |
 -- Since 0.3.0
 utf16_be :: Codec
-utf16_be = Codec name enc dec where
-    name = T.pack "UTF-16-BE"
-    enc text = (TE.encodeUtf16BE text, Nothing)
-    dec bytes = case splitQuickly bytes of
-        Just (text, extra) -> (text, Right extra)
-        Nothing -> splitSlowly TE.decodeUtf16BE bytes
-
-    splitQuickly bytes = maybeDecode (loop 0) where
-        maxN = B.length bytes
-
-        loop n |  n      == maxN = decodeAll
-               | (n + 1) == maxN = decodeTo n
-        loop n = let
-            req = utf16Required
-                (B.index bytes (n + 1))
-                (B.index bytes n)
-            decodeMore = loop $! n + req
-            in if n + req > maxN
-                then decodeTo n
-                else decodeMore
-
-        decodeTo n = first TE.decodeUtf16BE (B.splitAt n bytes)
-        decodeAll = (TE.decodeUtf16BE bytes, B.empty)
-
--- FIXME http://www.unicode.org/faq/utf_bom.html#utf16-7
-utf16Required :: Word8 -> Word8 -> Int
-utf16Required x0 x1 = required where
-    required = if x >= 0xD800 && x <= 0xDBFF
-        then 4
-        else 2
-    x :: Word16
-    x = (fromIntegral x1 `shiftL` 8) .|. fromIntegral x0
+utf16_be = NewCodec (T.pack "UTF-16-BE") TE.encodeUtf16BE streamUtf16BE
 
 -- |
 -- Since 0.3.0
 utf32_le :: Codec
-utf32_le = Codec name enc dec where
-    name = T.pack "UTF-32-LE"
-    enc text = (TE.encodeUtf32LE text, Nothing)
-    dec bs = case utf32SplitBytes TE.decodeUtf32LE bs of
-        Just (text, extra) -> (text, Right extra)
-        Nothing -> splitSlowly TE.decodeUtf32LE bs
+utf32_le = NewCodec (T.pack "UTF-32-LE") TE.encodeUtf32LE streamUtf32LE
 
 -- |
 -- Since 0.3.0
 utf32_be :: Codec
-utf32_be = Codec name enc dec where
-    name = T.pack "UTF-32-BE"
-    enc text = (TE.encodeUtf32BE text, Nothing)
-    dec bs = case utf32SplitBytes TE.decodeUtf32BE bs of
-        Just (text, extra) -> (text, Right extra)
-        Nothing -> splitSlowly TE.decodeUtf32BE bs
-
-utf32SplitBytes :: (B.ByteString -> T.Text)
-                -> B.ByteString
-                -> Maybe (T.Text, B.ByteString)
-utf32SplitBytes dec bytes = split where
-    split = maybeDecode (dec toDecode, extra)
-    len = B.length bytes
-    lenExtra = mod len 4
-
-    lenToDecode = len - lenExtra
-    (toDecode, extra) = if lenExtra == 0
-        then (bytes, B.empty)
-        else B.splitAt lenToDecode bytes
+utf32_be = NewCodec (T.pack "UTF-32-BE") TE.encodeUtf32BE streamUtf32BE
 
 -- |
 -- Since 0.3.0
@@ -367,14 +258,6 @@ iso8859_1 = Codec name enc dec where
             else Just (EncodeException iso8859_1 (T.head unsafe), unsafe)
 
     dec bytes = (T.pack (B8.unpack bytes), Right B.empty)
-
-tryEvaluate :: a -> Either Exc.SomeException a
-tryEvaluate = unsafePerformIO . Exc.try . Exc.evaluate
-
-maybeDecode :: (a, b) -> Maybe (a, b)
-maybeDecode (a, b) = case tryEvaluate a of
-    Left _ -> Nothing
-    Right _ -> Just (a, b)
 
 -- |
 --
