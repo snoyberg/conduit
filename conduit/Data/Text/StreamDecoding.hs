@@ -1,4 +1,4 @@
-{-# LANGUAGE BangPatterns, CPP, Rank2Types #-}
+{-# LANGUAGE Rank2Types #-}
 
 -- |
 -- Module      : Data.Text.Lazy.Encoding.Fusion
@@ -29,41 +29,31 @@
 module Data.Text.StreamDecoding
     (
     -- * Streaming
-    --  streamASCII
       streamUtf8
     , streamUtf16LE
     , streamUtf16BE
     , streamUtf32LE
     , streamUtf32BE
 
-    -- * Unstreaming
-    --, unstream
-
+    -- * Type
     , DecodeResult (..)
     ) where
 
-import qualified Data.Text.Array as A
-import Control.Monad.ST
-import Control.Exception (throw)
-import Data.ByteString.Lazy.Internal (ByteString(..))
-import qualified Data.ByteString as B
-import qualified Data.ByteString.Unsafe as B
-import Data.Text.Internal (textP)
-import Data.Text.Encoding.Error
-import Data.Text.Internal.Unsafe.Char (unsafeChr, unsafeChr8, unsafeChr32)
-import Data.Text.Internal.Unsafe.Shift (shiftL)
-import Data.Word (Word8, Word16, Word32)
-import qualified Data.Text.Internal.Encoding.Utf8 as U8
+import           Control.Monad.ST                  (ST, runST)
+import qualified Data.ByteString                   as B
+import qualified Data.ByteString.Unsafe            as B
+import           Data.Text                         (Text)
+import qualified Data.Text                         as T
+import qualified Data.Text.Array                   as A
+import           Data.Text.Internal                (textP)
 import qualified Data.Text.Internal.Encoding.Utf16 as U16
 import qualified Data.Text.Internal.Encoding.Utf32 as U32
-#if defined(ASSERTS)
-import Control.Exception (assert)
-#endif
-import Data.Text (Text)
-import qualified Data.ByteString.Lazy as L
-import qualified Data.Text.Lazy as TL
-import qualified Data.Text as T
-import Data.Text.Internal.Unsafe.Char (ord, unsafeWrite)
+import qualified Data.Text.Internal.Encoding.Utf8  as U8
+import           Data.Text.Internal.Unsafe.Char    (unsafeChr, unsafeChr32,
+                                                    unsafeChr8)
+import           Data.Text.Internal.Unsafe.Char    (ord, unsafeWrite)
+import           Data.Text.Internal.Unsafe.Shift   (shiftL)
+import           Data.Word                         (Word16, Word32, Word8)
 
 data S = S0
        | S1 {-# UNPACK #-} !Word8
@@ -90,11 +80,13 @@ toBS (S1 a) = B.pack [a]
 toBS (S2 a b) = B.pack [a, b]
 toBS (S3 a b c) = B.pack [a, b, c]
 toBS (S4 a b c d) = B.pack [a, b, c, d]
+{-# INLINE toBS #-}
 
 getText :: Int -> A.MArray s -> ST s Text
 getText j marr = do
     arr <- A.unsafeFreeze marr
     return $! textP arr 0 j
+{-# INLINE getText #-}
 
 addChar :: Status s
         -> (Status s -> ST s b)
@@ -114,6 +106,7 @@ addChar (Status i j size marr ps _) next deltai c
     tooSmall
         | ord c < 0x10000 = j + 1
         | otherwise       = j
+{-# INLINE addChar #-}
 
 handleNull :: (B.ByteString -> DecodeResult)
            -> (forall s. Status s -> ST s DecodeResult)
@@ -129,6 +122,7 @@ handleNull stream f s bs
         let initLen = B.length bs
         marr <- A.new initLen
         f $! Status 0 0 initLen marr bs s
+{-# INLINE handleNull #-}
 
 consume :: Status s
         -> (Status s -> ST s DecodeResult)
@@ -151,6 +145,7 @@ consume (Status i j size marr ps s) next streamStart
     where
         x = B.unsafeIndex ps i
         next' s' = next (Status (i + 1) j size marr ps s')
+{-# INLINE consume #-}
 
 -- | /O(n)/ Convert a lazy 'ByteString' into a 'Stream Char', using
 -- UTF-8 encoding.
