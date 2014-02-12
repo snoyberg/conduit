@@ -68,13 +68,15 @@ Library
                      , directory
   if flag(text11)
       build-depends:   text                     >= 1.1
-      other-modules:   Data.Text.Internal.Unsafe.Char
-                       Data.Text.Internal.Unsafe.Shift
-                       Data.Text.Internal.Internal.Encoding.Utf8
-                       Data.Text.Internal.Internal.Encoding.Utf16
-                       Data.Text.Internal.Internal.Encoding.Utf32
+      hs-source-dirs:  .
   else
       build-depends:   text                     >= 0.11 && < 1.1
+      other-modules:   Data.Text.Internal.Unsafe.Char
+                       Data.Text.Internal.Unsafe.Shift
+                       Data.Text.Internal.Encoding.Utf8
+                       Data.Text.Internal.Encoding.Utf16
+                       Data.Text.Internal.Encoding.Utf32
+      hs-source-dirs:  ., text
   ghc-options:     -Wall
 
 test-suite test
