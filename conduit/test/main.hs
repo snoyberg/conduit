@@ -40,6 +40,7 @@ import Data.Void (Void)
 import qualified Control.Concurrent.MVar as M
 import Control.Monad.Error (catchError, throwError, Error)
 import qualified Data.Map as Map
+import Control.Arrow (first)
 
 (@=?) :: (Eq a, Show a) => a -> a -> IO ()
 (@=?) = flip shouldBe
@@ -458,6 +459,23 @@ main = hspec $ do
             text <- src C.$$ C.await
             text `shouldBe` Just (T.pack $ map toEnum [0..127])
             (src C.$$ CL.sinkNull) `shouldThrow` anyException
+        it "catch UTF8 exceptions" $ do
+            let badBS = "this is good\128\128\0that was bad"
+
+                grabExceptions inner = C.catchC
+                    (inner C.=$= CL.map Right)
+                    (\e -> C.yield (Left (e :: CT.TextException)))
+
+            res <- C.yield badBS C.$$ (,)
+                <$> (grabExceptions (CT.decode CT.utf8) C.=$ CL.consume)
+                <*> CL.consume
+
+            first (map (either (Left . show) Right)) res `shouldBe`
+                ( [ Right "this is good"
+                  , Left $ show $ CT.NewDecodeException "UTF-8" 12 "\128\128\0t"
+                  ]
+                , ["\128\128\0that was bad"]
+                )
 
     describe "text lines" $ do
         it "works across split lines" $

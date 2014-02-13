@@ -171,6 +171,7 @@ decode (NewCodec name _ start) =
 
     onFailure consumed bs t rest = do
         unless (T.null t) (yield t)
+        unless (B.null rest) (leftover rest)
         let consumed' = consumed + B.length bs - B.length rest
         monadThrow $ NewDecodeException name consumed' (B.take 4 rest)
 decode codec =
