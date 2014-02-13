@@ -476,6 +476,42 @@ main = hspec $ do
                   ]
                 , ["\128\128\0that was bad"]
                 )
+        it "catch UTF8 exceptions, pure" $ do
+            let badBS = "this is good\128\128\0that was bad"
+
+                grabExceptions inner = do
+                    res <- C.runExceptionC $ inner C.=$= CL.map Right
+                    case res of
+                        Left e -> C.yield $ Left e
+                        Right () -> return ()
+
+            let res = runIdentity $ C.yield badBS C.$$ (,)
+                        <$> (grabExceptions (CT.decode CT.utf8) C.=$ CL.consume)
+                        <*> CL.consume
+
+            first (map (either (Left . show) Right)) res `shouldBe`
+                ( [ Right "this is good"
+                  , Left $ show $ CT.NewDecodeException "UTF-8" 12 "\128\128\0t"
+                  ]
+                , ["\128\128\0that was bad"]
+                )
+        it "catch UTF8 exceptions, catchExceptionC" $ do
+            let badBS = "this is good\128\128\0that was bad"
+
+                grabExceptions inner = C.catchExceptionC
+                    (inner C.=$= CL.map Right)
+                    (\e -> C.yield $ Left e)
+
+            let res = C.runException_ $ C.yield badBS C.$$ (,)
+                        <$> (grabExceptions (CT.decode CT.utf8) C.=$ CL.consume)
+                        <*> CL.consume
+
+            first (map (either (Left . show) Right)) res `shouldBe`
+                ( [ Right "this is good"
+                  , Left $ show $ CT.NewDecodeException "UTF-8" 12 "\128\128\0t"
+                  ]
+                , ["\128\128\0that was bad"]
+                )
 
     describe "text lines" $ do
         it "works across split lines" $

@@ -13,6 +13,10 @@ module Data.Conduit.Lift (
     catchErrorC,
 --    liftCatchError,
 
+    -- * ExceptionT
+    runExceptionC,
+    catchExceptionC,
+
     -- * MaybeT
     maybeC,
     runMaybeC,
@@ -65,6 +69,7 @@ import Data.Conduit.Internal (ConduitM (..), Pipe (..))
 
 import Control.Monad.Morph (hoist, lift, MFunctor(..), )
 import Control.Monad.Trans.Class (MonadTrans(..))
+import Control.Exception (SomeException)
 
 import Data.Monoid (Monoid(..))
 
@@ -167,6 +172,48 @@ catchErrorC c0 h =
     go (HaveOutput p f o) = HaveOutput (go p) f o
     go (NeedInput x y) = NeedInput (go . x) (go . y)
 {-# INLINABLE catchErrorC #-}
+
+-- | Run 'ExceptionT' in the base monad
+--
+-- Since 1.0.14
+runExceptionC
+  :: Monad m =>
+     ConduitM i o (ExceptionT m) r -> ConduitM i o m (Either SomeException r)
+runExceptionC =
+    ConduitM . go . unConduitM
+  where
+    go (Done r) = Done (Right r)
+    go (PipeM mp) = PipeM $ do
+        eres <- runExceptionT mp
+        return $ case eres of
+            Left e -> Done $ Left e
+            Right p -> go p
+    go (Leftover p i) = Leftover (go p) i
+    go (HaveOutput p f o) = HaveOutput (go p) (runExceptionT f >> return ()) o
+    go (NeedInput x y) = NeedInput (go . x) (go . y)
+{-# INLINABLE runExceptionC #-}
+
+-- | Catch an exception in the base monad
+--
+-- Since 1.0.14
+catchExceptionC
+  :: Monad m =>
+     ConduitM i o (ExceptionT m) r
+     -> (SomeException -> ConduitM i o (ExceptionT m) r)
+     -> ConduitM i o (ExceptionT m) r
+catchExceptionC c0 h =
+    ConduitM $ go $ unConduitM c0
+  where
+    go (Done r) = Done r
+    go (PipeM mp) = PipeM $ do
+        eres <- lift $ runExceptionT mp
+        return $ case eres of
+            Left e -> unConduitM $ h e
+            Right p -> go p
+    go (Leftover p i) = Leftover (go p) i
+    go (HaveOutput p f o) = HaveOutput (go p) f o
+    go (NeedInput x y) = NeedInput (go . x) (go . y)
+{-# INLINABLE catchExceptionC #-}
 
 -- | Wrap the base monad in 'M.MaybeT'
 --
