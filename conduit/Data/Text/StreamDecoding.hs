@@ -151,67 +151,68 @@ consume (Status i j size marr ps s) next streamStart
 -- | /O(n)/ Convert a lazy 'ByteString' into a 'Stream Char', using
 -- UTF-8 encoding.
 streamUtf8 :: B.ByteString -> DecodeResult
-streamUtf8 = streamUtf8Start S0
-
-streamUtf8Start :: S -> B.ByteString -> DecodeResult
-streamUtf8Start s bs | B.null bs =
-    case s of
-        S0 -> DecodeResultSuccess T.empty streamUtf8
-        _  -> DecodeResultFailure T.empty $ toBS s
-streamUtf8Start s0 ps = runST $ do
-    let initLen = B.length ps
-    marr <- A.new (initLen + 1) -- FIXME ensure that this is always large enough
-    let start !i !j
-            | i >= len = do
-                t <- getText j marr
-                return $! DecodeResultSuccess t streamUtf8
-            |                U8.validate1 a       = addChar' 1 (unsafeChr8 a)
-            | i + 1 < len && U8.validate2 a b     = addChar' 2 (U8.chr2 a b)
-            | i + 2 < len && U8.validate3 a b c   = addChar' 3 (U8.chr3 a b c)
-            | i + 3 < len && U8.validate4 a b c d = addChar' 4 (U8.chr4 a b c d)
-            | i + 3 < len = do
-                t <- getText j marr
-                return $! DecodeResultFailure t (B.unsafeDrop i ps)
-            | i + 2 < len = continue (S3 a b c)
-            | i + 1 < len = continue (S2 a b)
-            | otherwise   = continue (S1 a)
-              where
-                a = B.unsafeIndex ps i
-                b = B.unsafeIndex ps (i+1)
-                c = B.unsafeIndex ps (i+2)
-                d = B.unsafeIndex ps (i+3)
-                addChar' deltai c = do
-                    d <- unsafeWrite marr j c
-                    start (i + deltai) (j + d)
-                continue s = do
-                    t <- getText j marr
-                    return $! DecodeResultSuccess t (streamUtf8Start s)
-
-        checkCont s !i | i >= len = return $! DecodeResultSuccess T.empty (streamUtf8Start s)
-        checkCont s !i =
-            case s of
-                S0 -> start i 0
-                S1 a
-                    | U8.validate2 a x     -> addChar' (U8.chr2 a x)
-                    | otherwise            -> checkCont (S2 a x) (i + 1)
-                S2 a b
-                    | U8.validate3 a b x   -> addChar' (U8.chr3 a b x)
-                    | otherwise            -> checkCont (S3 a b x) (i + 1)
-                S3 a b c
-                    | U8.validate4 a b c x -> addChar' (U8.chr4 a b c x)
-                _ -> return $! DecodeResultFailure T.empty
-                            $! B.append (toBS s) (B.unsafeDrop i ps)
-          where
-            x = B.unsafeIndex ps i
-            addChar' c = do
-                d <- unsafeWrite marr 0 c
-                start (i + 1) d
-
-    checkCont s0 0
+streamUtf8 =
+    beginChunk S0
   where
-    len = B.length ps
+    beginChunk :: S -> B.ByteString -> DecodeResult
+    beginChunk s bs | B.null bs =
+        case s of
+            S0 -> DecodeResultSuccess T.empty (beginChunk S0)
+            _  -> DecodeResultFailure T.empty $ toBS s
+    beginChunk s0 ps = runST $ do
+        let initLen = B.length ps
+        marr <- A.new (initLen + 1)
+        let start !i !j
+                | i >= len = do
+                    t <- getText j marr
+                    return $! DecodeResultSuccess t (beginChunk S0)
+                |                U8.validate1 a       = addChar' 1 (unsafeChr8 a)
+                | i + 1 < len && U8.validate2 a b     = addChar' 2 (U8.chr2 a b)
+                | i + 2 < len && U8.validate3 a b c   = addChar' 3 (U8.chr3 a b c)
+                | i + 3 < len && U8.validate4 a b c d = addChar' 4 (U8.chr4 a b c d)
+                | i + 3 < len = do
+                    t <- getText j marr
+                    return $! DecodeResultFailure t (B.unsafeDrop i ps)
+                | i + 2 < len = continue (S3 a b c)
+                | i + 1 < len = continue (S2 a b)
+                | otherwise   = continue (S1 a)
+                  where
+                    a = B.unsafeIndex ps i
+                    b = B.unsafeIndex ps (i+1)
+                    c = B.unsafeIndex ps (i+2)
+                    d = B.unsafeIndex ps (i+3)
+                    addChar' deltai c = do
+                        d <- unsafeWrite marr j c
+                        start (i + deltai) (j + d)
+                    continue s = do
+                        t <- getText j marr
+                        return $! DecodeResultSuccess t (beginChunk s)
+
+            checkCont s !i | i >= len = return $! DecodeResultSuccess T.empty (beginChunk s)
+            checkCont s !i =
+                case s of
+                    S0 -> start i 0
+                    S1 a
+                        | U8.validate2 a x     -> addChar' (U8.chr2 a x)
+                        | otherwise            -> checkCont (S2 a x) (i + 1)
+                    S2 a b
+                        | U8.validate3 a b x   -> addChar' (U8.chr3 a b x)
+                        | otherwise            -> checkCont (S3 a b x) (i + 1)
+                    S3 a b c
+                        | U8.validate4 a b c x -> addChar' (U8.chr4 a b c x)
+                    _ -> return $! DecodeResultFailure T.empty
+                                $! B.append (toBS s) (B.unsafeDrop i ps)
+              where
+                x = B.unsafeIndex ps i
+                addChar' c = do
+                    d <- unsafeWrite marr 0 c
+                    start (i + 1) d
+
+        checkCont s0 0
+      where
+        len = B.length ps
+    {-# INLINE beginChunk #-}
 {-# INLINE [0] streamUtf8 #-}
-{-# INLINE [0] streamUtf8Start #-}
 
 -- | /O(n)/ Convert a 'ByteString' into a 'Stream Char', using little
 -- endian UTF-16 encoding.
