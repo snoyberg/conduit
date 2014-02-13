@@ -33,10 +33,6 @@ flag nohandles
     default: False
     Description: experimental code to use raw system calls in place of handles. Not recommended for general use
 
-flag text11
-    default: False
-    Description: Use text version 1.1, which exports many encoding modules.
-
 Library
   if os(windows)
       cpp-options: -DCABAL_OS_WINDOWS
@@ -53,7 +49,6 @@ Library
                        Data.Conduit.Internal
                        Data.Conduit.Util
                        Data.Conduit.Lift
-  other-modules:       Data.Text.StreamDecoding
   Build-depends:       base                     >= 4.3          && < 5
                      , resourcet                >= 0.4.3        && < 0.5
                      , lifted-base              >= 0.1
@@ -66,17 +61,8 @@ Library
                      , void                     >= 0.5.5
                      , mmorph
                      , directory
-  if flag(text11)
-      build-depends:   text                     >= 1.1
-      hs-source-dirs:  .
-  else
-      build-depends:   text                     >= 0.11 && < 1.1
-      other-modules:   Data.Text.Internal.Unsafe.Char
-                       Data.Text.Internal.Unsafe.Shift
-                       Data.Text.Internal.Encoding.Utf8
-                       Data.Text.Internal.Encoding.Utf16
-                       Data.Text.Internal.Encoding.Utf32
-      hs-source-dirs:  ., text
+                     , text                     >= 0.11
+                     , text-stream-decode
   ghc-options:     -Wall
 
 test-suite test
