@@ -199,7 +199,30 @@ data TextException = DecodeException Codec Word8
                    | LengthExceeded Int
                    | TextException Exc.SomeException
                    | NewDecodeException !T.Text !Int !B.ByteString
-    deriving (Show, Typeable)
+    deriving Typeable
+instance Show TextException where
+    show (DecodeException codec w) = concat
+        [ "Error decoding legacy Data.Conduit.Text codec "
+        , show codec
+        , " when parsing byte: "
+        , show w
+        ]
+    show (EncodeException codec c) = concat
+        [ "Error encoding legacy Data.Conduit.Text codec "
+        , show codec
+        , " when parsing char: "
+        , show c
+        ]
+    show (LengthExceeded i) = "Data.Conduit.Text.linesBounded: line too long: " ++ show i
+    show (TextException se) = "Data.Conduit.Text.TextException: " ++ show se
+    show (NewDecodeException codec consumed next) = concat
+        [ "Data.Conduit.Text.decode: Error decoding stream of "
+        , T.unpack codec
+        , " bytes. Error encountered in stream at offset "
+        , show consumed
+        , ". Encountered at byte sequence "
+        , show next
+        ]
 instance Exc.Exception TextException
 
 -- |
