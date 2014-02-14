@@ -155,27 +155,32 @@ decode :: MonadThrow m => Codec -> Conduit B.ByteString m T.Text
 decode (NewCodec name _ start) =
     loop 0 start
   where
-    loop consumed dec = await >>= maybe (finish consumed dec) (go consumed dec)
+    loop consumed dec =
+        await >>= maybe finish go
+      where
+        finish =
+            case dec B.empty of
+                DecodeResultSuccess _ _ -> return ()
+                DecodeResultFailure t rest -> onFailure B.empty t rest
+        {-# INLINE finish #-}
 
-    finish consumed dec =
-        case dec B.empty of
-            DecodeResultSuccess _ _ -> return ()
-            DecodeResultFailure t rest -> onFailure consumed B.empty t rest
+        go bs | B.null bs = loop consumed dec
+        go bs =
+            case dec bs of
+                DecodeResultSuccess t dec' -> do
+                    let consumed' = consumed + B.length bs
+                        next = do
+                            unless (T.null t) (yield t)
+                            loop consumed' dec'
+                     in consumed' `seq` next
+                DecodeResultFailure t rest -> onFailure bs t rest
 
-    go consumed dec bs | B.null bs = loop consumed dec
-    go consumed dec bs =
-        case dec bs of
-            DecodeResultSuccess t dec' -> do
-                unless (T.null t) (yield t)
-                let consumed' = consumed + B.length bs
-                consumed' `seq` loop consumed' dec'
-            DecodeResultFailure t rest -> onFailure consumed bs t rest
-
-    onFailure consumed bs t rest = do
-        unless (T.null t) (yield t)
-        unless (B.null rest) (leftover rest)
-        let consumed' = consumed + B.length bs - B.length rest
-        monadThrow $ NewDecodeException name consumed' (B.take 4 rest)
+        onFailure bs t rest = do
+            unless (T.null t) (yield t)
+            unless (B.null rest) (leftover rest)
+            let consumed' = consumed + B.length bs - B.length rest
+            monadThrow $ NewDecodeException name consumed' (B.take 4 rest)
+        {-# INLINE onFailure #-}
 decode codec =
     loop id
   where
