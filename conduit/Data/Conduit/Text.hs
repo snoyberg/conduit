@@ -29,6 +29,8 @@ module Data.Conduit.Text
     , drop
     , foldLines
     , withLine
+    , decodeUtf8
+    , encodeUtf8
     ) where
 
 import qualified Prelude
@@ -384,3 +386,49 @@ withLine consumer = toConsumer $ do
                 return x
             drop 1
             return $ Just x
+
+-- | Decode a stream of UTF8-encoded bytes into a stream of text, throwing an
+-- exception on invalid input.
+--
+-- Since 1.0.15
+decodeUtf8 :: MonadThrow m => Conduit B.ByteString m T.Text
+decodeUtf8 = decode utf8
+    {- no meaningful performance advantage
+    CI.ConduitM (loop 0 streamUtf8)
+  where
+    loop consumed dec =
+        CI.NeedInput go finish
+      where
+        finish () =
+            case dec B.empty of
+                DecodeResultSuccess _ _ -> return ()
+                DecodeResultFailure t rest -> onFailure B.empty t rest
+        {-# INLINE finish #-}
+
+        go bs | B.null bs = CI.NeedInput go finish
+        go bs =
+            case dec bs of
+                DecodeResultSuccess t dec' -> do
+                    let consumed' = consumed + B.length bs
+                        next' = loop consumed' dec'
+                        next
+                            | T.null t = next'
+                            | otherwise = CI.HaveOutput next' (return ()) t
+                     in consumed' `seq` next
+                DecodeResultFailure t rest -> onFailure bs t rest
+
+        onFailure bs t rest = do
+            unless (T.null t) (CI.yield t)
+            unless (B.null rest) (CI.leftover rest)
+            let consumed' = consumed + B.length bs - B.length rest
+            monadThrow $ NewDecodeException (T.pack "UTF-8") consumed' (B.take 4 rest)
+        {-# INLINE onFailure #-}
+    -}
+{-# INLINE decodeUtf8 #-}
+
+-- | Encode a stream of text into a stream of bytes.
+--
+-- Since 1.0.15
+encodeUtf8 :: Monad m => Conduit T.Text m B.ByteString
+encodeUtf8 = CL.map TE.encodeUtf8
+{-# INLINE encodeUtf8 #-}
