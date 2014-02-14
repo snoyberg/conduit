@@ -307,7 +307,7 @@ instance MFunctor ResumableSource where
 -- Since 0.5.0
 await :: Pipe l i o u m (Maybe i)
 await = NeedInput (Done . Just) (\_ -> Done Nothing)
-{-# RULES "await >>= maybe" forall x y. await >>= maybe x y = NeedInput y (const x) #-}
+{-# RULES "CI.await >>= maybe" forall x y. await >>= maybe x y = NeedInput y (const x) #-}
 {-# INLINE [1] await #-}
 
 -- | This is similar to @await@, but will return the upstream result value as
@@ -352,9 +352,9 @@ yieldOr o f = HaveOutput (Done ()) f o
 {-# INLINE [1] yieldOr #-}
 
 {-# RULES
-    "yield o >> p" forall o (p :: Pipe l i o u m r). yield o >> p = HaveOutput p (return ()) o
-  ; "mapM_ yield" mapM_ yield = sourceList
-  ; "yieldOr o c >> p" forall o c (p :: Pipe l i o u m r). yieldOr o c >> p = HaveOutput p c o #-}
+    "CI.yield o >> p" forall o (p :: Pipe l i o u m r). yield o >> p = HaveOutput p (return ()) o
+  ; "mapM_ CI.yield" mapM_ yield = sourceList
+  ; "CI.yieldOr o c >> p" forall o c (p :: Pipe l i o u m r). yieldOr o c >> p = HaveOutput p c o #-}
 
 -- | Provide a single piece of leftover input to be consumed by the next pipe
 -- in the current monadic binding.

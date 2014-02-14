@@ -79,7 +79,7 @@ import Control.Monad.Trans.Resource
 import Data.Conduit.Internal hiding (await, awaitForever, yield, yieldOr, leftover, bracketP, addCleanup, transPipe, mapOutput, mapOutputMaybe, mapInput)
 import qualified Data.Conduit.Internal as CI
 import Control.Monad.Morph (hoist)
-import Control.Monad (liftM, forever)
+import Control.Monad (liftM, forever, when, unless)
 import Control.Applicative (Applicative (..))
 import Data.Traversable (Traversable (..))
 
@@ -145,6 +145,8 @@ ConduitM left =$= ConduitM right = ConduitM $ pipeL left right
 -- Since 0.5.0
 await :: Monad m => Consumer i m (Maybe i)
 await = ConduitM CI.await
+{-# RULES "await >>= maybe" forall x y. await >>= maybe x y = ConduitM (NeedInput (unConduitM . y) (unConduitM . const x)) #-}
+{-# INLINE [1] await #-}
 
 -- | Send a value downstream to the next component to consume. If the
 -- downstream component terminates, this call will never return control. If you
@@ -155,6 +157,18 @@ yield :: Monad m
       => o -- ^ output value
       -> ConduitM i o m ()
 yield = ConduitM . CI.yield
+{-# INLINE [1] yield #-}
+
+{-# RULES
+    "yield o >> p" forall o (p :: ConduitM i o m r). yield o >> p = ConduitM (HaveOutput (unConduitM p) (return ()) o)
+  ; "mapM_ yield" mapM_ yield = ConduitM . sourceList
+  ; "yieldOr o c >> p" forall o c (p :: ConduitM i o m r). yieldOr o c >> p =
+        ConduitM (HaveOutput (unConduitM p) c o)
+  ; "when yield next" forall b o p. unless b (yield o) >> p =
+        if b then ConduitM (HaveOutput (unConduitM p) (return ()) o) else p
+  ; "unless yield next" forall b o p. unless b (yield o) >> p =
+        if b then p else ConduitM (HaveOutput (unConduitM p) (return ()) o)
+   #-}
 
 -- | Provide a single piece of leftover input to be consumed by the next
 -- component in the current monadic binding.
@@ -165,6 +179,9 @@ yield = ConduitM . CI.yield
 -- Since 0.5.0
 leftover :: i -> ConduitM i o m ()
 leftover = ConduitM . CI.leftover
+{-# INLINE [1] leftover #-}
+{-# RULES "leftover l >> p" forall l (p :: ConduitM i o m r). leftover l >> p =
+    ConduitM (Leftover (unConduitM p) l) #-}
 
 -- | Perform some allocation and run an inner component. Two guarantees are
 -- given about resource finalization:
@@ -207,6 +224,7 @@ yieldOr :: Monad m
         -> m () -- ^ finalizer
         -> ConduitM i o m ()
 yieldOr o m = ConduitM $ CI.yieldOr o m
+{-# INLINE [1] yieldOr #-}
 
 -- | Wait for input forever, calling the given inner component for each piece of
 -- new input. Returns the upstream result type.
