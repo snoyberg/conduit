@@ -164,7 +164,7 @@ yield = ConduitM . CI.yield
   ; "mapM_ yield" mapM_ yield = ConduitM . sourceList
   ; "yieldOr o c >> p" forall o c (p :: ConduitM i o m r). yieldOr o c >> p =
         ConduitM (HaveOutput (unConduitM p) c o)
-  ; "when yield next" forall b o p. unless b (yield o) >> p =
+  ; "when yield next" forall b o p. when b (yield o) >> p =
         if b then ConduitM (HaveOutput (unConduitM p) (return ()) o) else p
   ; "unless yield next" forall b o p. unless b (yield o) >> p =
         if b then p else ConduitM (HaveOutput (unConduitM p) (return ()) o)
