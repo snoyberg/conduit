@@ -177,7 +177,7 @@ decode (NewCodec name _ start) =
 
         onFailure bs t rest = do
             unless (T.null t) (yield t)
-            unless (B.null rest) (leftover rest)
+            leftover rest -- rest will never be null, no need to check
             let consumed' = consumed + B.length bs - B.length rest
             monadThrow $ NewDecodeException name consumed' (B.take 4 rest)
         {-# INLINE onFailure #-}
