@@ -1,5 +1,5 @@
 Name:                conduit-extra
-Version:             0.1.5
+Version:             0.1.6
 Synopsis:            Experimental helper functions for conduit.
 Description:
     This package is meant as a testing ground for new concepts in conduit. The idea is to have a much lower barrier to entry for this library relative to conduit itself. This way, conduit itself will continue to have a best-practices, minimal, stable API, while people are free to try crazy new features.
@@ -14,6 +14,7 @@ Homepage:            http://github.com/snoyberg/conduit
 
 Library
   Exposed-modules:     Data.Conduit.Extra
+                     , Data.Conduit.Extra.Foldl
                      , Data.Conduit.Extra.Pipes
                      , Data.Conduit.Extra.Resumable
                      , Data.Conduit.Extra.ZipSink
@@ -28,6 +29,7 @@ Library
                      , transformers
                      , vector
                      , void
+                     , foldl
   ghc-options:     -Wall
 
 test-suite test
@@ -46,6 +48,7 @@ test-suite test
                    , text
                    , resourcet
                    , void
+                   , foldl
     ghc-options:     -Wall
 
 source-repository head

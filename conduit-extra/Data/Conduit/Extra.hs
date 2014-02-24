@@ -2,6 +2,7 @@ module Data.Conduit.Extra
     ( module Data.Conduit.Extra.ZipSink
     , module Data.Conduit.Extra.ZipConduit
     , module Data.Conduit.Extra.Resumable
+    , module Data.Conduit.Extra.Foldl
     , fuseLeftovers
     , fuseReturnLeftovers
     ) where
@@ -9,6 +10,7 @@ module Data.Conduit.Extra
 import Data.Conduit.Extra.ZipSink
 import Data.Conduit.Extra.ZipConduit
 import Data.Conduit.Extra.Resumable
+import Data.Conduit.Extra.Foldl
 import Data.Conduit
 import Data.Conduit.Internal (Pipe (..), ConduitM (..))
 import Control.Monad (liftM)
