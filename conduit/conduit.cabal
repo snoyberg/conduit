@@ -1,5 +1,5 @@
 Name:                conduit
-Version:             1.0.15
+Version:             1.0.15.1
 Synopsis:            Streaming data processing library.
 Description:
     @conduit@ is a solution to the streaming data problem, allowing for production, transformation, and consumption of streams of data in constant memory. It is an alternative to lazy I\/O which guarantees deterministic resource handling, and fits in the same general solution space as @enumerator@\/@iteratee@ and @pipes@. For a tutorial, please visit <https://haskell.fpcomplete.com/user/snoyberg/library-documentation/conduit-overview>.
@@ -62,7 +62,7 @@ Library
                      , mmorph
                      , directory
                      , text                     >= 0.11
-                     , text-stream-decode
+                     , text-stream-decode       >= 0.1.0.4      && < 0.2
   ghc-options:     -Wall
 
 test-suite test
@@ -89,6 +89,17 @@ test-suite test
 --    type: exitcode-stdio-1.0
 --    ghc-options: -threaded
 --    build-depends: base, directory, doctest >= 0.8
+
+benchmark utf8-memory-usage
+    type: exitcode-stdio-1.0
+    hs-source-dirs: benchmarks
+    build-depends:  base
+                  , text-stream-decode
+                  , bytestring
+                  , text
+                  , conduit
+    main-is:        utf8-memory-usage.hs
+    ghc-options:    -Wall -O2 -with-rtsopts=-s
 
 source-repository head
   type:     git
