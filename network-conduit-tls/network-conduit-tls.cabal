@@ -27,7 +27,6 @@ library
                     , network
                     , transformers
                     , crypto-api      >= 0.10
-                    , crypto-random-api >= 0.2
                     , cprng-aes
                     , connection
                     , monad-control

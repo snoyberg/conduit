@@ -55,7 +55,6 @@ import Control.Concurrent (forkIO)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.IO.Class (liftIO, MonadIO)
 import qualified Network.TLS.Extra as TLSExtra
-import Crypto.Random.API (getSystemRandomGen, SystemRandom)
 import Network.Socket (Socket)
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Char8 as S8
