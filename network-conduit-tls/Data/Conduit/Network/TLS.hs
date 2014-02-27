@@ -31,27 +31,20 @@ module Data.Conduit.Network.TLS
     ) where
 
 import Prelude hiding (FilePath, readFile)
-import Data.Aeson (FromJSON (parseJSON), (.:), (.:?), (.!=), Value (Object))
 import Control.Applicative ((<$>), (<*>))
-import Control.Monad (mzero, forever)
-import Data.String (fromString)
-import Filesystem.Path.CurrentOS ((</>), FilePath)
+import Control.Monad (forever)
+import Filesystem.Path.CurrentOS (FilePath)
 import Filesystem (readFile)
 import qualified Data.ByteString.Lazy as L
-import qualified Data.Certificate.KeyRSA as KeyRSA
-import qualified Data.PEM as PEM
 import qualified Network.TLS as TLS
-import qualified Data.Certificate.X509 as X509
-import Data.Conduit.Network (HostPreference, Application, bindPort, sinkSocket, acceptSafe, runTCPServerWithHandle, ConnectionHandle(..), serverSettings, sourceSocket)
+import Data.Conduit.Network (HostPreference, Application, sinkSocket, runTCPServerWithHandle, ConnectionHandle(..), serverSettings, sourceSocket)
 import Data.Conduit.Network.Internal (AppData (..))
 import Data.Conduit.Network.TLS.Internal
-import Data.Conduit (($$), yield, awaitForever, Producer, Consumer)
+import Data.Conduit (yield, awaitForever, Producer, Consumer)
 import qualified Data.Conduit.List as CL
-import Data.Either (rights)
-import Network.Socket (sClose, getSocketName, SockAddr (SockAddrInet))
+import Network.Socket (SockAddr (SockAddrInet))
 import Network.Socket.ByteString (recv, sendAll)
-import Control.Exception (bracket, finally)
-import Control.Concurrent (forkIO)
+import Control.Exception (bracket)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.IO.Class (liftIO, MonadIO)
 import qualified Network.TLS.Extra as TLSExtra
@@ -215,27 +208,6 @@ readCreds (TlsCertData iocert iokey) =
         (error . ("Error reading TLS credentials: " ++))
         (return . TLS.Credentials . return)
 
-readCertificates :: TlsCertData -> IO [X509.X509]
-readCertificates certData = do
-    certs <- rights . parseCerts . PEM.pemParseBS <$> getTLSCert certData
-    case certs of
-        []    -> error "no valid certificate found"
-        (_:_) -> return certs
-    where parseCerts (Right pems) = map (X509.decodeCertificate . L.fromChunks . (:[]) . PEM.pemContent)
-                                  $ filter (flip elem ["CERTIFICATE", "TRUSTED CERTIFICATE"] . PEM.pemName) pems
-          parseCerts (Left err) = error $ "cannot parse PEM file: " ++ err
-
-readPrivateKey :: TlsCertData -> IO TLS.PrivKey
-readPrivateKey certData = do
-    pk <- rights . parseKey . PEM.pemParseBS <$> getTLSKey certData
-    case pk of
-        []    -> error "no valid RSA key found"
-        (x:_) -> return x
-
-    where parseKey (Right pems) = map (fmap (TLS.PrivKeyRSA . snd) . KeyRSA.decodePrivate . L.fromChunks . (:[]) . PEM.pemContent)
-                                $ filter ((== "RSA PRIVATE KEY") . PEM.pemName) pems
-          parseKey (Left err) = error $ "Cannot parse PEM file: " ++ err
-
 -- | TLS requires exactly the number of bytes requested to be returned.
 recvExact :: Socket -> Int -> IO S.ByteString
 recvExact socket =
@@ -341,7 +313,6 @@ runTLSClientStartTLS TLSClientConfig {..} app = do
             , NC.connectionUseSecure = Nothing
             , NC.connectionUseSocks = tlsClientSockSettings
             }
-        tlsSettings = tlsClientTLSSettings
     control $ \run -> bracket
         (NC.connectTo context params)
         NC.connectionClose
