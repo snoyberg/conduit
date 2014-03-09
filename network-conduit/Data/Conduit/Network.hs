@@ -175,7 +175,7 @@ clientSettings port host = ClientSettings
 -- | Run an @Application@ by connecting to the specified server.
 --
 -- Since 0.6.0
-runTCPClient :: (MonadIO m, MonadBaseControl IO m) => ClientSettings m -> Application m -> m ()
+runTCPClient :: (MonadIO m, MonadBaseControl IO m) => ClientSettings m -> (AppData m -> m a) -> m a
 runTCPClient (ClientSettings port host) app = control $ \run -> bracket
     (getSocket host port)
     (NS.sClose . fst)
