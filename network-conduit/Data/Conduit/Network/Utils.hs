@@ -32,7 +32,11 @@ getSocket host' port' sockettype = do
 --
 -- * @*4@ means @HostIPv4@
 --
+-- * @!4@ means @HostIPv4Only@
+--
 -- * @*6@ means @HostIPv6@
+--
+-- * @!6@ means @HostIPv6Only@
 data HostPreference =
     HostAny
   | HostIPv4
@@ -48,9 +52,9 @@ instance IsString HostPreference where
     {-
     fromString "*" = HostAny
     fromString "*4" = HostIPv4
-    fromString "!4" = HostIPv4
+    fromString "!4" = HostIPv4Only
     fromString "*6" = HostIPv6
-    fromString "!6" = HostIPv6
+    fromString "!6" = HostIPv6Only
     -}
     fromString s'@('*':s) =
         case s of
