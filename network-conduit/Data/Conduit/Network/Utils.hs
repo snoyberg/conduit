@@ -36,7 +36,9 @@ getSocket host' port' sockettype = do
 data HostPreference =
     HostAny
   | HostIPv4
+  | HostIPv4Only
   | HostIPv6
+  | HostIPv6Only
   | Host String
     deriving (Eq, Ord, Show, Read)
 
@@ -46,13 +48,20 @@ instance IsString HostPreference where
     {-
     fromString "*" = HostAny
     fromString "*4" = HostIPv4
+    fromString "!4" = HostIPv4
     fromString "*6" = HostIPv6
+    fromString "!6" = HostIPv6
     -}
     fromString s'@('*':s) =
         case s of
             [] -> HostAny
             ['4'] -> HostIPv4
             ['6'] -> HostIPv6
+            _ -> Host s'
+    fromString s'@('!':s) =
+        case s of
+            ['4'] -> HostIPv4Only
+            ['6'] -> HostIPv6Only
             _ -> Host s'
     fromString s = Host s
 
@@ -79,8 +88,10 @@ bindPort p s sockettype = do
         addrs6 = filter (\x -> NS.addrFamily x == NS.AF_INET6) addrs
         addrs' =
             case s of
-                HostIPv4 -> addrs4 ++ addrs6
-                HostIPv6 -> addrs6 ++ addrs4
+                HostIPv4     -> addrs4 ++ addrs6
+                HostIPv4Only -> addrs4
+                HostIPv6     -> addrs6 ++ addrs4
+                HostIPv6Only -> addrs6
                 _ -> addrs
 
         tryAddrs (addr1:rest@(_:_)) =
