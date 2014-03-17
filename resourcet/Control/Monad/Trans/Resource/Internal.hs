@@ -14,7 +14,7 @@ module Control.Monad.Trans.Resource.Internal(
   , MonadThrow(..)
   , MonadUnsafeIO(..)
   , ReleaseKey(..)
-  , ReleaseMap(..)\
+  , ReleaseMap(..)
   , ResIO
   , ResourceT(..)
   , stateAlloc
