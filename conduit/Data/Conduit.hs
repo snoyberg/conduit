@@ -48,6 +48,7 @@ module Data.Conduit
     , ($$+)
     , ($$++)
     , ($$+-)
+    , ($=+)
     , unwrapResumable
 
       -- * Flushing
@@ -91,6 +92,7 @@ infixr 2 =$=
 infixr 0 $$+
 infixr 0 $$++
 infixr 0 $$+-
+infixl 1 $=+
 
 -- | The connect operator, which pulls data from a source and pushes to a sink.
 -- If you would like to keep the @Source@ open to be used for other
@@ -306,6 +308,12 @@ rsrc $$+- sink = do
     final
     return res
 {-# INLINE ($$+-) #-}
+
+-- | Left fusion for a resumable source.
+--
+-- Since 1.0.16
+($=+) :: Monad m => ResumableSource m a -> Conduit a m b -> ResumableSource m b
+ResumableSource src final $=+ sink = ResumableSource (src $= sink) final
 
 -- | Provide for a stream of data that can be flushed.
 --
