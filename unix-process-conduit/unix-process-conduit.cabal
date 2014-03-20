@@ -2,9 +2,9 @@
 --  documentation, see http://haskell.org/cabal/users-guide/
 
 name:                unix-process-conduit
-version:             0.2.2.2
-synopsis:            Run processes on Unix systems, with a conduit interface
-description:         This library allows you to provide @conduit@ datatypes for the input and output streams. Note that you must compile your programs with @-threaded@.
+version:             0.2.2.3
+synopsis:            Run processes on Unix systems, with a conduit interface (deprecated)
+description:         Code moved into Keter itself, as that was the only user.
 homepage:            https://github.com/snoyberg/conduit
 license:             MIT
 license-file:        LICENSE
