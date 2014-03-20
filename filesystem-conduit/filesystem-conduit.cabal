@@ -1,7 +1,7 @@
 Name:                filesystem-conduit
-Version:             1.0.0.1
-Synopsis:            Use system-filepath data types with conduits.
-Description:         Provides ability to traverse a folder structure efficiently, as well as convenience wrappers for reading from and writing to files.
+Version:             1.0.0.2
+Synopsis:            Use system-filepath data types with conduits. (deprecated)
+Description:         Please use conduit-combinators, which provides an enhanced version of traverse (sourceDirectoryDeep).
 License:             MIT
 License-file:        LICENSE
 Author:              Michael Snoyman
