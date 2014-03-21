@@ -1,7 +1,7 @@
 Name:                base64-conduit
-Version:             1.0.0
-Synopsis:            Base64-encode and decode streams of bytes.
-Description:         Base64-encode and decode streams of bytes.
+Version:             1.0.0.1
+Synopsis:            Base64-encode and decode streams of bytes. (deprecated)
+Description:         Moved to conduit-combinators
 License:             BSD3
 License-file:        LICENSE
 Author:              Michael Snoyman
