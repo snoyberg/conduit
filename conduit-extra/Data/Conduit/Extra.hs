@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 module Data.Conduit.Extra
     ( module Data.Conduit.Extra.ZipSink
     , module Data.Conduit.Extra.ZipConduit
@@ -15,6 +16,7 @@ import Data.Conduit
 import Data.Conduit.Internal (Pipe (..), ConduitM (..))
 import Control.Monad (liftM)
 
+#if !MIN_VERSION_conduit(1,0,17)
 -- | Same as normal fusion (e.g. @=$=@), except instead of discarding leftovers
 -- from the downstream component, return them.
 --
@@ -63,3 +65,4 @@ fuseLeftovers f left right = do
     (r, bs) <- fuseReturnLeftovers left right
     mapM_ leftover $ reverse $ f bs
     return r
+#endif

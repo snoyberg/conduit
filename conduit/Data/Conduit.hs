@@ -1,4 +1,5 @@
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE DeriveFunctor #-}
 -- | If this is your first time with conduit, you should probably start with
 -- the tutorial:
 -- <https://haskell.fpcomplete.com/user/snoyberg/library-documentation/conduit-overview>.
@@ -51,6 +52,17 @@ module Data.Conduit
     , ($=+)
     , unwrapResumable
 
+      -- ** For @Conduit@s
+    , ResumableConduit
+    , (=$$+)
+    , (=$$++)
+    , (=$$+-)
+    , unwrapResumableConduit
+
+      -- * Fusion with leftovers
+    , fuseLeftovers
+    , fuseReturnLeftovers
+
       -- * Flushing
     , Flush (..)
 
@@ -62,6 +74,10 @@ module Data.Conduit
       -- ** ZipSink
     , ZipSink (..)
     , sequenceSinks
+
+      -- ** ZipConduit
+    , ZipConduit (..)
+    , sequenceConduits
 
       -- * Convenience re-exports
     , ResourceT
@@ -77,6 +93,7 @@ module Data.Conduit
     ) where
 
 import Control.Monad.Trans.Resource
+import Control.Monad.Trans.Class (lift)
 import Data.Conduit.Internal hiding (await, awaitForever, yield, yieldOr, leftover, bracketP, addCleanup, transPipe, mapOutput, mapOutputMaybe, mapInput)
 import qualified Data.Conduit.Internal as CI
 import Control.Monad.Morph (hoist)
@@ -383,3 +400,80 @@ instance Monad m => Applicative (ZipSink i m) where
 -- Since 1.0.13
 sequenceSinks :: (Traversable f, Monad m) => f (Sink i m r) -> Sink i m (f r)
 sequenceSinks = getZipSink . sequenceA . fmap ZipSink
+
+-- | The connect-and-resume operator. This does not close the @Conduit@, but
+-- instead returns it to be used again. This allows a @Conduit@ to be used
+-- incrementally in a large program, without forcing the entire program to live
+-- in the @Sink@ monad.
+--
+-- Leftover data returned from the @Sink@ will be discarded.
+--
+-- Mnemonic: connect + do more.
+--
+-- Since 1.0.17
+(=$$+) :: Monad m => Conduit a m b -> Sink b m r -> Sink a m (ResumableConduit a m b, r)
+(=$$+) conduit = connectResumeConduit (ResumableConduit conduit (return ()))
+{-# INLINE (=$$+) #-}
+
+-- | Continue processing after usage of '=$$+'. Connect a 'ResumableConduit' to
+-- a sink and return the output of the sink together with a new
+-- 'ResumableConduit'.
+--
+-- Since 1.0.17
+(=$$++) :: Monad m => ResumableConduit i m o -> Sink o m r -> Sink i m (ResumableConduit i m o, r)
+(=$$++) = connectResumeConduit
+{-# INLINE (=$$++) #-}
+
+-- | Complete processing of a 'ResumableConduit'. This will run the finalizer
+-- associated with the @ResumableConduit@. In order to guarantee process
+-- resource finalization, you /must/ use this operator after using '=$$+' and
+-- '=$$++'.
+--
+-- Since 1.0.17
+(=$$+-) :: Monad m => ResumableConduit i m o -> Sink o m r -> Sink i m r
+rsrc =$$+- sink = do
+    (ResumableConduit _ final, res) <- connectResumeConduit rsrc sink
+    lift final
+    return res
+{-# INLINE (=$$+-) #-}
+
+
+infixr 0 =$$+
+infixr 0 =$$++
+infixr 0 =$$+-
+
+-- | Provides an alternative @Applicative@ instance for @ConduitM@. In this instance,
+-- every incoming value is provided to all @ConduitM@s, and output is coalesced together.
+-- Leftovers from individual @ConduitM@s will be used within that component, and then discarded
+-- at the end of their computation. Output and finalizers will both be handled in a left-biased manner.
+--
+-- As an example, take the following program:
+--
+-- @
+-- main :: IO ()
+-- main = do
+--     let src = mapM_ yield [1..3 :: Int]
+--         conduit1 = CL.map (+1)
+--         conduit2 = CL.concatMap (replicate 2)
+--         conduit = getZipConduit $ ZipConduit conduit1 <* ZipConduit conduit2
+--         sink = CL.mapM_ print
+--     src $$ conduit =$ sink
+-- @
+--
+-- It will produce the output: 2, 1, 1, 3, 2, 2, 4, 3, 3
+--
+-- Since 1.0.17
+newtype ZipConduit i o m r = ZipConduit { getZipConduit :: ConduitM i o m r }
+    deriving Functor
+instance Monad m => Applicative (ZipConduit i o m) where
+    pure = ZipConduit . pure
+    ZipConduit left <*> ZipConduit right = ZipConduit (zipConduitApp left right)
+
+-- | Provide identical input to all of the @Conduit@s and combine their outputs
+-- into a single stream.
+--
+-- Implemented on top of @ZipConduit@, see that data type for more details.
+--
+-- Since 1.0.17
+sequenceConduits :: (Traversable f, Monad m) => f (ConduitM i o m r) -> ConduitM i o m (f r)
+sequenceConduits = getZipConduit . sequenceA . fmap ZipConduit

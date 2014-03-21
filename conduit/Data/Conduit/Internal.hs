@@ -18,6 +18,7 @@ module Data.Conduit.Internal
     , Consumer
     , Conduit
     , ResumableSource (..)
+    , ResumableConduit (..)
       -- * Primitives
     , await
     , awaitE
@@ -33,10 +34,13 @@ module Data.Conduit.Internal
     , pipe
     , pipeL
     , connectResume
+    , connectResumeConduit
     , runPipe
     , injectLeftovers
     , (>+>)
     , (<+<)
+    , fuseLeftovers
+    , fuseReturnLeftovers
       -- * Generalizing
     , sourceToPipe
     , sinkToPipe
@@ -58,10 +62,12 @@ module Data.Conduit.Internal
     , sourceList
     , withUpstream
     , unwrapResumable
+    , unwrapResumableConduit
     , Data.Conduit.Internal.enumFromTo
     , zipSinks
     , zipSources
     , zipSourcesApp
+    , zipConduitApp
     ) where
 
 import Control.Applicative (Applicative (..))
@@ -913,3 +919,136 @@ zipSourcesApp (ConduitM left0) (ConduitM right0) =
     go (HaveOutput srcx closex x) (HaveOutput srcy closey y) = HaveOutput (go srcx srcy) (closex >> closey) (x y)
     go (NeedInput _ c) right = go (c ()) right
     go left (NeedInput _ c) = go left (c ())
+
+-- |
+--
+-- Since 1.0.17
+zipConduitApp
+    :: Monad m
+    => ConduitM i o m (x -> y)
+    -> ConduitM i o m x
+    -> ConduitM i o m y
+zipConduitApp (ConduitM left0) (ConduitM right0) =
+    ConduitM $ go (return ()) (return ()) (injectLeftovers left0) (injectLeftovers right0)
+  where
+    go _ _ (Done f) (Done x) = Done (f x)
+    go _ finalY (HaveOutput x finalX o) y = HaveOutput
+        (go finalX finalY x y)
+        (finalX >> finalY)
+        o
+    go finalX _ x (HaveOutput y finalY o) = HaveOutput
+        (go finalX finalY x y)
+        (finalX >> finalY)
+        o
+    go _ _ (Leftover _ i) _ = absurd i
+    go _ _ _ (Leftover _ i) = absurd i
+    go finalX finalY (PipeM mx) y = PipeM (flip (go finalX finalY) y `liftM` mx)
+    go finalX finalY x (PipeM my) = PipeM (go finalX finalY x `liftM` my)
+    go finalX finalY (NeedInput px cx) (NeedInput py cy) = NeedInput
+        (\i -> go finalX finalY (px i) (py i))
+        (\u -> go finalX finalY (cx u) (cy u))
+    go finalX finalY (NeedInput px cx) (Done y) = NeedInput
+        (\i -> go finalX finalY (px i) (Done y))
+        (\u -> go finalX finalY (cx u) (Done y))
+    go finalX finalY (Done x) (NeedInput py cy) = NeedInput
+        (\i -> go finalX finalY (Done x) (py i))
+        (\u -> go finalX finalY (Done x) (cy u))
+
+-- | Same as normal fusion (e.g. @=$=@), except instead of discarding leftovers
+-- from the downstream component, return them.
+--
+-- Since 1.0.17
+fuseReturnLeftovers :: Monad m
+                    => ConduitM a b m ()
+                    -> ConduitM b c m r
+                    -> ConduitM a c m (r, [b])
+fuseReturnLeftovers (ConduitM left0) (ConduitM right0) =
+    ConduitM $ goRight (return ()) [] left0 right0
+  where
+    goRight final bs left right =
+        case right of
+            HaveOutput p c o -> HaveOutput (recurse p) (c >> final) o
+            NeedInput rp rc  ->
+                case bs of
+                    [] -> goLeft rp rc final left
+                    b:bs' -> goRight final bs' left (rp b)
+            Done r2          -> PipeM (final >> return (Done (r2, bs)))
+            PipeM mp         -> PipeM (liftM recurse mp)
+            Leftover p b     -> goRight final (b:bs) left p
+      where
+        recurse = goRight final bs left
+
+    goLeft rp rc final left =
+        case left of
+            HaveOutput left' final' o -> goRight final' [] left' (rp o)
+            NeedInput left' lc        -> NeedInput (recurse . left') (recurse . lc)
+            Done r1                   -> goRight (return ()) [] (Done r1) (rc r1)
+            PipeM mp                  -> PipeM (liftM recurse mp)
+            Leftover left' i          -> Leftover (recurse left') i
+      where
+        recurse = goLeft rp rc final
+
+-- | Similar to @fuseReturnLeftovers@, but use the provided function to convert
+-- downstream leftovers to upstream leftovers.
+--
+-- Since 1.0.17
+fuseLeftovers
+    :: Monad m
+    => ([b] -> [a])
+    -> ConduitM a b m ()
+    -> ConduitM b c m r
+    -> ConduitM a c m r
+fuseLeftovers f left right = do
+    (r, bs) <- fuseReturnLeftovers left right
+    ConduitM $ mapM_ leftover $ reverse $ f bs
+    return r
+
+-- | A generalization of 'ResumableSource'. Allows to resume an arbitrary
+-- conduit, keeping its state and using it later (or finalizing it).
+--
+-- Since 1.0.17
+data ResumableConduit i m o =
+    ResumableConduit (Conduit i m o) (m ())
+
+-- | Connect a 'ResumableConduit' to a sink and return the output of the sink
+-- together with a new 'ResumableConduit'.
+--
+-- Since 1.0.17
+connectResumeConduit
+    :: Monad m
+    => ResumableConduit i m o
+    -> Sink o m r
+    -> Sink i m (ResumableConduit i m o, r)
+connectResumeConduit (ResumableConduit (ConduitM left0) leftFinal0) (ConduitM right0) =
+    ConduitM $ goRight leftFinal0 left0 right0
+  where
+    goRight leftFinal left right =
+        case right of
+            HaveOutput _ _ o -> absurd o
+            NeedInput rp rc -> goLeft rp rc leftFinal left
+            Done r2 -> Done (ResumableConduit (ConduitM left) leftFinal, r2)
+            PipeM mp -> PipeM (liftM (goRight leftFinal left) mp)
+            Leftover p i -> goRight leftFinal (HaveOutput left leftFinal i) p
+
+    goLeft rp rc leftFinal left =
+        case left of
+            HaveOutput left' leftFinal' o -> goRight leftFinal' left' (rp o)
+            NeedInput left' lc -> NeedInput (recurse . left') (recurse . lc)
+            Done () -> goRight (return ()) (Done ()) (rc ())
+            PipeM mp -> PipeM (liftM recurse mp)
+            Leftover left' i -> Leftover (recurse left') i -- recurse p
+      where
+        recurse = goLeft rp rc leftFinal
+
+-- | Unwraps a @ResumableConduit@ into a @Conduit@ and a finalizer.
+--
+-- Since 'unwrapResumable' for more information.
+--
+-- Since 1.0.17
+unwrapResumableConduit :: MonadIO m => ResumableConduit i m o -> m (Conduit i m o, m ())
+unwrapResumableConduit (ResumableConduit src final) = do
+    ref <- liftIO $ I.newIORef True
+    let final' = do
+            x <- liftIO $ I.readIORef ref
+            when x final
+    return (liftIO (I.writeIORef ref False) >> src, final')

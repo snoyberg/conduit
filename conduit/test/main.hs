@@ -14,7 +14,7 @@ import qualified Data.Conduit.Lazy as CLazy
 import qualified Data.Conduit.Binary as CB
 import qualified Data.Conduit.Text as CT
 import Data.Conduit (runResourceT)
-import Data.Maybe   (fromMaybe,catMaybes)
+import Data.Maybe   (fromMaybe,catMaybes,fromJust)
 import qualified Data.List as DL
 import Control.Monad.ST (runST)
 import Data.Monoid
@@ -41,6 +41,8 @@ import qualified Control.Concurrent.MVar as M
 import Control.Monad.Error (catchError, throwError, Error)
 import qualified Data.Map as Map
 import Control.Arrow (first)
+import qualified Data.Conduit.ExtraSpec as ES
+import qualified Data.Conduit.Extra.ZipConduitSpec as ZipConduit
 
 (@=?) :: (Eq a, Show a) => a -> a -> IO ()
 (@=?) = flip shouldBe
@@ -1243,6 +1245,23 @@ main = hspec $ do
                 , Map.fromList [(1, 2), (2, 2), (3, 2)]
                 , Map.fromList [(1, 3), (2, 1), (3, 2)]
                 ]
+    describe "zipSink" $ do
+        it "zip equal-sized" $ do
+            x <- runResourceT $
+                    CL.sourceList [1..100] C.$$
+                    C.sequenceSinks [ CL.fold (+) 0,
+                                   (`mod` 101) <$> CL.fold (*) 1 ]
+            x `shouldBe` [5050, 100 :: Integer]
+
+        it "zip distinct sizes" $ do
+            let sink = C.getZipSink $
+                        (*) <$> C.ZipSink (CL.fold (+) 0)
+                            <*> C.ZipSink (Data.Maybe.fromJust <$> C.await)
+            x <- C.runResourceT $ CL.sourceList [100,99..1] C.$$ sink
+            x `shouldBe` (505000 :: Integer)
+
+    ES.spec
+    ZipConduit.spec
 
 it' :: String -> IO () -> Spec
 it' = it

@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE CPP #-}
 module Data.Conduit.Extra.ZipConduit
     ( ZipConduit (..)
     , sequenceConduits
@@ -11,6 +12,7 @@ import Control.Monad (liftM)
 import Control.Applicative (Applicative (..))
 import Data.Traversable (Traversable, sequenceA)
 
+#if !MIN_VERSION_conduit(1,0,17)
 zipConduit :: Monad m
            => ConduitM i o m (x -> y)
            -> ConduitM i o m x
@@ -76,3 +78,4 @@ instance Monad m => Applicative (ZipConduit i o m) where
 -- Since 0.1.5
 sequenceConduits :: (Traversable f, Monad m) => f (ConduitM i o m r) -> ConduitM i o m (f r)
 sequenceConduits = getZipConduit . sequenceA . fmap ZipConduit
+#endif

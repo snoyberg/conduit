@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 module Data.Conduit.Extra.Resumable
     ( ResumableConduit(..)
     , connectResume
@@ -12,6 +13,17 @@ import Data.Conduit
 import Data.Conduit.Internal (ConduitM(..), Pipe(..))
 import Data.Void (absurd)
 
+#if MIN_VERSION_conduit(1,0,17)
+import Data.Conduit.Internal (connectResumeConduit)
+
+-- | Connect a 'ResumableConduit' to a sink and return the output of the sink
+-- together with a new 'ResumableConduit'.
+connectResume :: Monad m
+              => ResumableConduit i m o
+              -> Sink o m r
+              -> Sink i m (ResumableConduit i m o, r)
+connectResume = connectResumeConduit
+#else
 -- | A generalization of 'ResumableSource'. Allows to resume an arbitrary
 -- conduit, keeping its state and using it later (or finalizing it).
 data ResumableConduit i m o =
@@ -77,3 +89,4 @@ rsrc =$$+- sink = do
 infixr 0 =$$+
 infixr 0 =$$++
 infixr 0 =$$+-
+#endif
