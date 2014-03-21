@@ -156,9 +156,6 @@ instance MonadIO m => MonadIO (Pipe l i o u m) where
 instance MonadThrow m => MonadThrow (Pipe l i o u m) where
     monadThrow = lift . monadThrow
 
-instance MonadActive m => MonadActive (Pipe l i o u m) where
-    monadActive = lift monadActive
-
 instance Monad m => Monoid (Pipe l i o u m ()) where
     mempty = return ()
     mappend = (>>)
@@ -228,7 +225,7 @@ instance MonadError e m => MonadError e (Pipe l i o u m) where
 --
 -- Since 1.0.0
 newtype ConduitM i o m r = ConduitM { unConduitM :: Pipe i i o () m r }
-    deriving (Functor, Applicative, Monad, MonadIO, MonadTrans, MonadThrow, MonadActive, MonadResource, MFunctor)
+    deriving (Functor, Applicative, Monad, MonadIO, MonadTrans, MonadThrow, MFunctor)
 
 instance MonadReader r m => MonadReader r (ConduitM i o m) where
     ask = ConduitM ask
@@ -257,6 +254,9 @@ instance MonadError e m => MonadError e (ConduitM i o m) where
 
 instance MonadBase base m => MonadBase base (ConduitM i o m) where
     liftBase = lift . liftBase
+
+instance MonadResource m => MonadResource (ConduitM i o m) where
+    liftResourceT = lift . liftResourceT
 
 instance Monad m => Monoid (ConduitM i o m ()) where
     mempty = return ()

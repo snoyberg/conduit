@@ -12,7 +12,6 @@ module Control.Monad.Trans.Resource.Internal(
   , InvalidAccess(..)
   , MonadResource(..)
   , MonadThrow(..)
-  , MonadUnsafeIO(..)
   , ReleaseKey(..)
   , ReleaseMap(..)
   , ResIO
@@ -91,7 +90,7 @@ import Control.Monad.Morph
 -- unwrapped before calling @runResourceT@.
 --
 -- Since 0.3.0
-class (MonadThrow m, MonadUnsafeIO m, MonadIO m, Applicative m) => MonadResource m where
+class (MonadThrow m, MonadIO m, Applicative m, MonadBase IO m) => MonadResource m where
     -- | Lift a @ResourceT IO@ action into the current @Monad@.
     --
     -- Since 0.4.0
@@ -177,7 +176,7 @@ GOX(Monoid w, Strict.WriterT w)
 #undef GO
 #undef GOX
 
-instance (MonadThrow m, MonadUnsafeIO m, MonadIO m, Applicative m) => MonadResource (ResourceT m) where
+instance (MonadThrow m, MonadBase IO m, MonadIO m, Applicative m) => MonadResource (ResourceT m) where
     liftResourceT = transResourceT liftIO
 
 -- | Transform the monad a @ResourceT@ lives in. This is most often used to
@@ -338,26 +337,6 @@ stateCleanup istate = E.mask_ $ do
   where
     try :: IO a -> IO (Either SomeException a)
     try = E.try
-
-
--- | A @Monad@ based on some monad which allows running of some 'IO' actions,
--- via unsafe calls. This applies to 'IO' and 'ST', for instance.
---
--- Since 0.3.0
-class Monad m => MonadUnsafeIO m where
-    unsafeLiftIO :: IO a -> m a
-
-instance MonadUnsafeIO IO where
-    unsafeLiftIO = id
-
-instance MonadUnsafeIO (ST s) where
-    unsafeLiftIO = unsafeIOToST
-
-instance MonadUnsafeIO (Lazy.ST s) where
-    unsafeLiftIO = LazyUnsafe.unsafeIOToST
-
-instance (MonadTrans t, MonadUnsafeIO m, Monad (t m)) => MonadUnsafeIO (t m) where
-    unsafeLiftIO = lift . unsafeLiftIO
 
 instance Monad m => Functor (ExceptionT m) where
     fmap f = ExceptionT . (liftM . fmap) f . runExceptionT

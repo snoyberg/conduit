@@ -42,9 +42,7 @@ module Control.Monad.Trans.Resource
     , resourceMask
       -- * Type class/associated types
     , MonadResource (..)
-    , MonadUnsafeIO (..)
     , MonadThrow (..)
-    , MonadActive (..)
     , MonadResourceBase
       -- ** Low-level
     , InvalidAccess (..)
@@ -293,50 +291,6 @@ resourceForkIO (ResourceT f) = ResourceT $ \r -> L.mask $ \restore ->
 
 
 
--- | Determine if some monad is still active. This is intended to prevent usage
--- of a monadic state after it has been closed.  This is necessary for such
--- cases as lazy I\/O, where an unevaluated thunk may still refer to a
--- closed @ResourceT@.
---
--- Since 0.3.0
-class Monad m => MonadActive m where
-    monadActive :: m Bool
-
-instance (MonadIO m, MonadActive m) => MonadActive (ResourceT m) where
-    monadActive = ResourceT $ \rmMap -> do
-        rm <- liftIO $ I.readIORef rmMap
-        case rm of
-            ReleaseMapClosed -> return False
-            _ -> monadActive -- recurse
-
-instance MonadActive Identity where
-    monadActive = return True
-
-instance MonadActive IO where
-    monadActive = return True
-
-instance MonadActive (ST s) where
-    monadActive = return True
-
-instance MonadActive (Lazy.ST s) where
-    monadActive = return True
-
-#define GO(T) instance MonadActive m => MonadActive (T m) where monadActive = lift monadActive
-#define GOX(X, T) instance (X, MonadActive m) => MonadActive (T m) where monadActive = lift monadActive
-GO(IdentityT)
-GO(ListT)
-GO(MaybeT)
-GOX(Error e, ErrorT e)
-GO(ReaderT r)
-GO(StateT s)
-GOX(Monoid w, WriterT w)
-GOX(Monoid w, RWST r w s)
-GOX(Monoid w, Strict.RWST r w s)
-GO(Strict.StateT s)
-GOX(Monoid w, Strict.WriterT w)
-#undef GO
-#undef GOX
-
 -- | A @Monad@ which can be used as a base for a @ResourceT@.
 --
 -- A @ResourceT@ has some restrictions on its base monad:
@@ -358,7 +312,7 @@ GOX(Monoid w, Strict.WriterT w)
 --
 -- Since 0.3.2
 #if __GLASGOW_HASKELL__ >= 704
-type MonadResourceBase m = (MonadBaseControl IO m, MonadThrow m, MonadUnsafeIO m, MonadIO m, Applicative m)
+type MonadResourceBase m = (MonadBaseControl IO m, MonadThrow m, MonadBase IO m, MonadIO m, Applicative m)
 #else
 class (MonadBaseControl IO m, MonadThrow m, MonadUnsafeIO m, MonadIO m, Applicative m) => MonadResourceBase m
 instance (MonadBaseControl IO m, MonadThrow m, MonadUnsafeIO m, MonadIO m, Applicative m) => MonadResourceBase m

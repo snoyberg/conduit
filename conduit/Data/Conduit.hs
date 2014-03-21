@@ -83,7 +83,6 @@ module Data.Conduit
     , ResourceT
     , MonadResource
     , MonadThrow (..)
-    , MonadUnsafeIO (..)
     , runResourceT
     , ExceptionT (..)
     , runExceptionT_
