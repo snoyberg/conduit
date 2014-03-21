@@ -2,7 +2,6 @@
 ./conduit
 ./attoparsec-conduit
 ./blaze-builder-conduit
-./zlib-conduit
 ./network-conduit
 ./network-conduit-tls
 ./base64-conduit

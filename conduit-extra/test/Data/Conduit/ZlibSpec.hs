@@ -1,3 +1,5 @@
+module Data.Conduit.ZlibSpec (spec) where
+
 import Test.Hspec
 import Test.Hspec.QuickCheck (prop)
 
@@ -9,22 +11,20 @@ import Data.Monoid
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Lazy as L
 import Data.ByteString.Lazy.Char8 ()
-import Control.Monad.Trans.Resource (runExceptionT_)
 
-main :: IO ()
-main = hspec $ do
-    describe "zlib" $ do
+spec :: Spec
+spec = describe "Data.Conduit.Zlib" $ do
         prop "idempotent" $ \bss' -> runST $ do
             let bss = map S.pack bss'
                 lbs = L.fromChunks bss
                 src = mconcat $ map (CL.sourceList . return) bss
-            outBss <- runExceptionT_ $ src C.$= CZ.gzip C.$= CZ.ungzip C.$$ CL.consume
+            outBss <- C.runExceptionT_ $ src C.$= CZ.gzip C.$= CZ.ungzip C.$$ CL.consume
             return $ lbs == L.fromChunks outBss
         prop "flush" $ \bss' -> runST $ do
             let bss = map S.pack $ filter (not . null) bss'
                 bssC = concatMap (\bs -> [C.Chunk bs, C.Flush]) bss
                 src = mconcat $ map (CL.sourceList . return) bssC
-            outBssC <- runExceptionT_
+            outBssC <- C.runExceptionT_
                      $ src C.$= CZ.compressFlush 5 (CZ.WindowBits 31)
                            C.$= CZ.decompressFlush (CZ.WindowBits 31)
                            C.$$ CL.consume
