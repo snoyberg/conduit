@@ -1,20 +1,20 @@
 {-# LANGUAGE CPP               #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -fno-warn-incomplete-patterns #-}
+module Data.Conduit.AttoparsecSpec (spec) where
 import           Control.Exception                (fromException)
 import           Test.Hspec
 
 import           Control.Applicative              ((<*), (<|>))
 import           Control.Monad
-import           Control.Monad.Trans.Resource
 import qualified Data.Attoparsec.ByteString.Char8
 import qualified Data.Attoparsec.Text
 import           Data.Conduit
 import           Data.Conduit.Attoparsec
 import qualified Data.Conduit.List                as CL
 
-main :: IO ()
-main = hspec $ do
+spec :: Spec
+spec = describe "Data.Conduit.AttoparsecSpec" $ do
     describe "error position" $ do
         it "works for text" $ do
             let input = ["aaa\na", "aaa\n\n", "aaa", "aab\n\naaaa"]

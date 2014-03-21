@@ -1,6 +1,5 @@
 ./resourcet
 ./conduit
-./attoparsec-conduit
 ./network-conduit-tls
 ./base64-conduit
 ./conduit-extra
