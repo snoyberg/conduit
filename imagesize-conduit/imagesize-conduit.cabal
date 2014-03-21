@@ -1,6 +1,6 @@
 Name:                imagesize-conduit
-Version:             1.0.0.1
-Synopsis:            Determine the size of some common image formats.
+Version:             1.0.0.2
+Synopsis:            Determine the size of some common image formats. (deprecated)
 Description:         Currently supports PNG, GIF, and JPEG. This package provides a Sink that will consume the minimum number of bytes necessary to determine the image dimensions.
 License:             BSD3
 License-file:        LICENSE
