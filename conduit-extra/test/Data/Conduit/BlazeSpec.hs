@@ -1,5 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE CPP #-}
+module Data.Conduit.BlazeSpec (spec) where
+
 import Test.Hspec
 import Test.Hspec.QuickCheck (prop)
 
@@ -14,9 +16,9 @@ import Blaze.ByteString.Builder (fromByteString, toLazyByteString, insertLazyByt
 import qualified Data.ByteString.Lazy as L
 import Data.ByteString.Lazy.Char8 ()
 
-main :: IO ()
-main = hspec $ do
-    describe "blaze" $ do
+spec :: Spec
+spec =
+    describe "Data.Conduit.Blaze" $ do
         prop "idempotent to toLazyByteString" $ \bss' -> runST $ do
             let bss = map S.pack bss'
             let builders = map fromByteString bss

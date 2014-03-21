@@ -51,17 +51,22 @@ import qualified Data.ByteString                   as S
 import Blaze.ByteString.Builder.Internal
 import Blaze.ByteString.Builder.Internal.Types
 import Blaze.ByteString.Builder.Internal.Buffer
+import Control.Monad.Primitive (PrimMonad, unsafePrimToPrim)
+import Control.Monad.Base (MonadBase, liftBase)
+
+unsafeLiftIO :: (MonadBase base m, PrimMonad base) => IO a -> m a
+unsafeLiftIO = liftBase . unsafePrimToPrim
 
 -- | Incrementally execute builders and pass on the filled chunks as
 -- bytestrings.
-builderToByteString :: MonadUnsafeIO m => Conduit Builder m S.ByteString
+builderToByteString :: (MonadBase base m, PrimMonad base) => Conduit Builder m S.ByteString
 builderToByteString =
   builderToByteStringWith (allNewBuffersStrategy defaultBufferSize)
 
 -- |
 --
 -- Since 0.0.2
-builderToByteStringFlush :: MonadUnsafeIO m => Conduit (Flush Builder) m (Flush S.ByteString)
+builderToByteStringFlush :: (MonadBase base m, PrimMonad base) => Conduit (Flush Builder) m (Flush S.ByteString)
 builderToByteStringFlush =
   builderToByteStringWithFlush (allNewBuffersStrategy defaultBufferSize)
 
@@ -72,7 +77,7 @@ builderToByteStringFlush =
 -- WARNING: This conduit yields bytestrings that are NOT
 -- referentially transparent. Their content will be overwritten as soon
 -- as control is returned from the inner sink!
-unsafeBuilderToByteString :: MonadUnsafeIO m
+unsafeBuilderToByteString :: (MonadBase base m, PrimMonad base)
                           => IO Buffer  -- action yielding the inital buffer.
                           -> Conduit Builder m S.ByteString
 unsafeBuilderToByteString = builderToByteStringWith . reuseBufferStrategy
@@ -82,7 +87,7 @@ unsafeBuilderToByteString = builderToByteStringWith . reuseBufferStrategy
 -- filled chunks as bytestrings to an inner sink.
 --
 -- INV: All bytestrings passed to the inner sink are non-empty.
-builderToByteStringWith :: MonadUnsafeIO m
+builderToByteStringWith :: (MonadBase base m, PrimMonad base)
                         => BufferAllocStrategy
                         -> Conduit Builder m S.ByteString
 builderToByteStringWith =
@@ -95,12 +100,12 @@ builderToByteStringWith =
 --
 -- Since 0.0.2
 builderToByteStringWithFlush
-    :: MonadUnsafeIO m
+    :: (MonadBase base m, PrimMonad base)
     => BufferAllocStrategy
     -> Conduit (Flush Builder) m (Flush S.ByteString)
 builderToByteStringWithFlush = helper await yield
 
-helper :: (MonadUnsafeIO m, Monad (t m), MonadTrans t)
+helper :: (MonadBase base m, PrimMonad base, Monad (t m), MonadTrans t)
        => t m (Maybe (Flush Builder))
        -> (Flush S.ByteString -> t m ())
        -> BufferAllocStrategy
