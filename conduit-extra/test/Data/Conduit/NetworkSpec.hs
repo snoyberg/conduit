@@ -14,8 +14,8 @@ spec = it "Data.Conduit.Network" $ do
     replicateM_ 10000
         $ runTCPClient (clientSettings 4009 "127.0.0.1") doNothing
 
-echo :: Application IO
+echo :: AppData -> IO ()
 echo ad = appSource ad $$ appSink ad
 
-doNothing :: Application IO
+doNothing :: AppData -> IO ()
 doNothing _ = return ()

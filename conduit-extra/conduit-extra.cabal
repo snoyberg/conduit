@@ -24,14 +24,10 @@ Library
                        Data.Conduit.Lazy
                        Data.Conduit.Network
                        Data.Conduit.Network.UDP
-                       Data.Conduit.Network.Internal
                        Data.Conduit.Text
                        Data.Conduit.Zlib
   if !os(windows)
       Exposed-modules: Data.Conduit.Network.Unix
-                       Data.Conduit.Network.Internal.Unix
-
-  Other-modules:       Data.Conduit.Network.Utils
 
   Build-depends:       base                     >= 4            && < 5
                      , conduit                  >= 1.1          && < 1.2

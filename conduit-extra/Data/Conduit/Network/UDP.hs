@@ -1,7 +1,7 @@
 {-# LANGUAGE RankNTypes #-}
 module Data.Conduit.Network.UDP
     ( -- * UDP message representation
-      Message (..)
+      SN.Message (..)
       -- * Basic utilities
     , sourceSocket
     , sinkSocket
@@ -9,9 +9,7 @@ module Data.Conduit.Network.UDP
     , sinkToSocket
     , sinkAllToSocket
       -- * Helper Utilities
-    , HostPreference (..)
-    , bindPort
-    , getSocket
+    , SN.HostPreference
     ) where
 
 import Data.Conduit
@@ -22,14 +20,7 @@ import Data.ByteString (ByteString)
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad (void)
 import Control.Monad.Trans.Class (lift)
-
-import Data.Conduit.Network.Utils (HostPreference)
-import qualified Data.Conduit.Network.Utils as Utils
-
--- | Representation of a single message
-data Message = Message { msgData :: {-# UNPACK #-} !ByteString
-                       , msgSender :: !SockAddr
-                       }
+import qualified Data.Streaming.Network as SN
 
 -- | Stream messages from the socket.
 --
@@ -37,12 +28,12 @@ data Message = Message { msgData :: {-# UNPACK #-} !ByteString
 -- contains the message payload and the origin address.
 --
 -- This function does /not/ automatically close the socket.
-sourceSocket :: MonadIO m => Socket -> Int -> Producer m Message
+sourceSocket :: MonadIO m => Socket -> Int -> Producer m SN.Message
 sourceSocket socket len = loop
   where
     loop = do
         (bs, addr) <- lift $ liftIO $ recvFrom socket len
-        yield (Message bs addr) >> loop
+        yield (SN.Message bs addr) >> loop
 
 -- | Stream messages to the connected socket.
 --
@@ -67,8 +58,8 @@ sinkAllSocket = sinkSocketHelper sendAll
 -- lost.
 --
 -- This function does /not/ automatically close the socket.
-sinkToSocket :: MonadIO m => Socket -> Consumer Message m ()
-sinkToSocket = sinkSocketHelper (\sock (Message bs addr) -> void $ sendTo sock bs addr)
+sinkToSocket :: MonadIO m => Socket -> Consumer SN.Message m ()
+sinkToSocket = sinkSocketHelper (\sock (SN.Message bs addr) -> void $ sendTo sock bs addr)
 
 -- | Stream messages to the socket.
 --
@@ -77,17 +68,8 @@ sinkToSocket = sinkSocketHelper (\sock (Message bs addr) -> void $ sendTo sock b
 -- multiple packets.
 --
 -- This function does /not/ automatically close the socket.
-sinkAllToSocket :: MonadIO m => Socket -> Consumer Message m ()
-sinkAllToSocket = sinkSocketHelper (\sock (Message bs addr) -> sendAllTo sock bs addr)
-
--- | Attempt to connect to the given host/port.
-getSocket :: String -> Int -> IO (Socket, AddrInfo)
-getSocket host' port' = Utils.getSocket host' port' NS.Datagram
-
--- | Attempt to bind a listening @Socket@ on the given host/port. If no host is
--- given, will use the first address available.
-bindPort :: Int -> HostPreference -> IO Socket
-bindPort p s = Utils.bindPort p s NS.Datagram
+sinkAllToSocket :: MonadIO m => Socket -> Consumer SN.Message m ()
+sinkAllToSocket = sinkSocketHelper (\sock (SN.Message bs addr) -> sendAllTo sock bs addr)
 
 -- Internal
 sinkSocketHelper :: MonadIO m => (Socket -> a -> IO ())
