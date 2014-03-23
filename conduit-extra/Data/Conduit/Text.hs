@@ -48,6 +48,7 @@ import           Data.Typeable (Typeable)
 import Data.Conduit
 import qualified Data.Conduit.List as CL
 import Control.Monad.Trans.Class (lift)
+import Control.Monad.Trans.Resource (MonadThrow (monadThrow))
 import Control.Monad (unless,when)
 import Data.Streaming.Text
 

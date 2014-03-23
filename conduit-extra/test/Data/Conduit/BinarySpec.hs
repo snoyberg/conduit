@@ -137,7 +137,7 @@ spec = describe "Data.Conduit.Binary" $ do
             return $ S8.lines bs == res
 
     describe "sinkCacheLength" $ do
-        it' "works" $ C.runResourceT $ do
+        it' "works" $ runResourceT $ do
             lbs <- liftIO $ L.readFile "test/Data/Conduit/BinarySpec.hs"
             (len, src) <- CB.sourceLbs lbs C.$$ CB.sinkCacheLength
             lbs' <- src C.$$ CB.sinkLbs
@@ -163,7 +163,7 @@ spec = describe "Data.Conduit.Binary" $ do
                 onErr :: MonadIO m => IOException -> m ()
                 onErr _ = liftIO $ I.modifyIORef ref (+ 1)
             contents <- L.readFile "conduit-extra.cabal"
-            res <- C.runResourceT $ src C.$$ CB.sinkLbs
+            res <- runResourceT $ src C.$$ CB.sinkLbs
             res `shouldBe` contents
             errCount <- I.readIORef ref
             errCount `shouldBe` (1 :: Int)
@@ -174,7 +174,7 @@ spec = describe "Data.Conduit.Binary" $ do
                     res2 <- C.tryC $ CB.sourceFile "conduit-extra.cabal"
                     liftIO $ I.writeIORef ref (res1, res2)
             contents <- L.readFile "conduit-extra.cabal"
-            res <- C.runResourceT $ src C.$$ CB.sinkLbs
+            res <- runResourceT $ src C.$$ CB.sinkLbs
             res `shouldBe` contents
             exc <- I.readIORef ref
             case exc :: (Either IOException (), Either IOException ()) of

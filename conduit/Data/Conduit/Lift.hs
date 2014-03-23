@@ -85,6 +85,7 @@ import qualified Control.Monad.Trans.RWS.Strict as RWSS
 import qualified Control.Monad.Trans.State.Lazy as SL
 import qualified Control.Monad.Trans.Writer.Lazy as WL
 import qualified Control.Monad.Trans.RWS.Lazy as RWSL
+import Control.Monad.Trans.Resource (ExceptionT (runExceptionT))
 
 
 catAwaitLifted

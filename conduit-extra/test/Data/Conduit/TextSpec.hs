@@ -18,6 +18,7 @@ import Control.Monad.Trans.Resource
 import qualified Data.ByteString as S
 import qualified Data.Text.Lazy as TL
 import qualified Data.ByteString.Lazy as L
+import Control.Monad.Trans.Resource (runExceptionT_)
 
 spec :: Spec
 spec = describe "Data.Conduit.Text" $ do
@@ -43,7 +44,7 @@ spec = describe "Data.Conduit.Text" $ do
                 prop "raw bytes" $ \bytes ->
                     let lbs = L.pack bytes
                         src = CL.sourceList $ L.toChunks lbs
-                        etl = C.runException $ src C.$= CT.decode cenc C.$$ CL.consume
+                        etl = runException $ src C.$= CT.decode cenc C.$$ CL.consume
                         tl' = tdec lbs
                     in  case etl of
                           (Left _) -> (return $! TL.toStrict tl') `shouldThrow` anyException
@@ -121,7 +122,7 @@ spec = describe "Data.Conduit.Text" $ do
                     (inner C.=$= CL.map Right)
                     (\e -> C.yield $ Left e)
 
-            let res = C.runException_ $ C.yield badBS C.$$ (,)
+            let res = runException_ $ C.yield badBS C.$$ (,)
                         <$> (grabExceptions (CT.decode CT.utf8) C.=$ CL.consume)
                         <*> CL.consume
 
@@ -138,7 +139,7 @@ spec = describe "Data.Conduit.Text" $ do
                     (inner C.=$= CL.map Right)
                     (\e -> C.yield $ Left e)
 
-            let res = C.runException_ $ C.yield badBS C.$$ (,)
+            let res = runException_ $ C.yield badBS C.$$ (,)
                         <$> (grabExceptions CT.decodeUtf8 C.=$ CL.consume)
                         <*> CL.consume
 
@@ -183,7 +184,7 @@ spec = describe "Data.Conduit.Text" $ do
             x <- CL.sourceList ["foobarbaz", error "ignore me"] C.$$ CT.decode CT.utf8 C.=$ CL.head
             x `shouldBe` Just "foobarbaz"
         it "throws an exception when lines are too long" $ do
-            x <- C.runExceptionT $ CL.sourceList ["hello\nworld"] C.$$ CT.linesBounded 4 C.=$ CL.consume
+            x <- runExceptionT $ CL.sourceList ["hello\nworld"] C.$$ CT.linesBounded 4 C.=$ CL.consume
             show x `shouldBe` show (Left $ CT.LengthExceeded 4 :: Either CT.TextException ())
     describe "text decode" $ do
         it' "doesn't throw runtime exceptions" $ do

@@ -78,20 +78,8 @@ module Data.Conduit
       -- ** ZipConduit
     , ZipConduit (..)
     , sequenceConduits
-
-      -- * Convenience re-exports
-    , ResourceT
-    , MonadResource
-    , MonadThrow (..)
-    , runResourceT
-    , ExceptionT (..)
-    , runExceptionT_
-    , runException
-    , runException_
-    , MonadBaseControl
     ) where
 
-import Control.Monad.Trans.Resource
 import Control.Monad.Trans.Class (lift)
 import Data.Conduit.Internal hiding (await, awaitForever, yield, yieldOr, leftover, bracketP, addCleanup, transPipe, mapOutput, mapOutputMaybe, mapInput)
 import qualified Data.Conduit.Internal as CI
@@ -99,6 +87,7 @@ import Control.Monad.Morph (hoist)
 import Control.Monad (liftM, forever, when, unless)
 import Control.Applicative (Applicative (..))
 import Data.Traversable (Traversable (..))
+import Control.Monad.Trans.Resource (MonadResource)
 
 -- Define fixity of all our operators
 infixr 0 $$

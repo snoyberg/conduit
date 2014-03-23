@@ -37,6 +37,7 @@ import qualified Data.Attoparsec.ByteString
 import qualified Data.Attoparsec.Text
 import qualified Data.Attoparsec.Types      as A
 import           Data.Conduit
+import Control.Monad.Trans.Resource (MonadThrow (monadThrow))
 
 -- | The context and message from a 'A.Fail' value.
 data ParseError = ParseError

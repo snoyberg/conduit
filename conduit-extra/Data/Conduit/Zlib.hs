@@ -20,6 +20,7 @@ import Control.Monad (unless, liftM)
 import Control.Monad.Trans.Class (lift, MonadTrans)
 import Control.Monad.Primitive (PrimMonad, unsafePrimToPrim)
 import Control.Monad.Base (MonadBase, liftBase)
+import Control.Monad.Trans.Resource (MonadThrow (monadThrow))
 
 -- | Gzip compression with default parameters.
 gzip :: (MonadThrow m, MonadBase base m, PrimMonad base) => Conduit ByteString m ByteString

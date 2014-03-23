@@ -10,7 +10,7 @@ import qualified Data.Conduit.Lift as C
 import qualified Data.Conduit.Util as C
 import qualified Data.Conduit.Internal as CI
 import qualified Data.Conduit.List as CL
-import Data.Conduit (runResourceT)
+import Control.Monad.Trans.Resource as C (runExceptionT, runResourceT)
 import Data.Maybe   (fromMaybe,catMaybes,fromJust)
 import qualified Data.List as DL
 import Control.Monad.ST (runST)

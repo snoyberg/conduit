@@ -13,7 +13,7 @@ import Data.Conduit
 import Data.Conduit.Internal (Pipe (..), unConduitM)
 import System.IO.Unsafe (unsafeInterleaveIO)
 
-import Control.Monad.Trans.Control (liftBaseOp_)
+import Control.Monad.Trans.Control (MonadBaseControl, liftBaseOp_)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 

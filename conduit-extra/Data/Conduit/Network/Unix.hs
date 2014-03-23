@@ -41,6 +41,7 @@ import Control.Monad.Trans.Control (control)
 import Control.Concurrent (forkIO)
 import System.Directory (removeFile)
 import System.IO.Error (isDoesNotExistError)
+import Control.Monad.Trans.Resource (MonadBaseControl)
 
 -- | Attempt to connect to the given Unix domain socket path.
 getSocket :: FilePath -> IO Socket

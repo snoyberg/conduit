@@ -7,6 +7,7 @@ import           Test.Hspec
 
 import           Control.Applicative              ((<*), (<|>))
 import           Control.Monad
+import           Control.Monad.Trans.Resource (runExceptionT)
 import qualified Data.Attoparsec.ByteString.Char8
 import qualified Data.Attoparsec.Text
 import           Data.Conduit

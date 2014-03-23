@@ -60,6 +60,7 @@ import Foreign.ForeignPtr (touchForeignPtr)
 import Foreign.Ptr (plusPtr)
 import Foreign.Storable (peek)
 import GHC.ForeignPtr           (mallocPlainForeignPtrBytes)
+import Control.Monad.Trans.Resource (MonadResource)
 
 -- | Stream the contents of a file as binary data.
 --
