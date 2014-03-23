@@ -68,6 +68,7 @@ module Data.Conduit.Internal
     , zipSources
     , zipSourcesApp
     , zipConduitApp
+    , passthroughSink
     ) where
 
 import Control.Applicative (Applicative (..))
@@ -1052,3 +1053,40 @@ unwrapResumableConduit (ResumableConduit src final) = do
             x <- liftIO $ I.readIORef ref
             when x final
     return (liftIO (I.writeIORef ref False) >> src, final')
+
+-- | Turn a @Sink@ into a @Conduit@ in the following way:
+--
+-- * All input passed to the @Sink@ is yielded downstream.
+--
+-- * When the @Sink@ finishes processing, the result is passed to the provided to the finalizer function.
+--
+-- Note that the @Sink@ will stop receiving input as soon as the downstream it
+-- is connected to shuts down.
+--
+-- An example usage would be to write the result of a @Sink@ to some mutable
+-- variable while allowing other processing to continue.
+--
+-- Since 1.1.0
+passthroughSink :: Monad m
+                => Sink i m r
+                -> (r -> m ()) -- ^ finalizer
+                -> Conduit i m i
+passthroughSink (ConduitM sink0) final =
+    ConduitM $ go [] sink0
+  where
+    go _ (Done r) = do
+        lift $ final r
+        awaitForever yield
+    go is (Leftover sink i) = go (i:is) sink
+    go _ (HaveOutput _ _ o) = absurd o
+    go is (PipeM mx) = do
+        x <- lift mx
+        go is x
+    go (i:is) (NeedInput next _) = go is (next i)
+    go [] (NeedInput next done) = do
+        mx <- await
+        case mx of
+            Nothing -> go [] (done ())
+            Just x -> do
+                yield x
+                go [] (next x)

@@ -7,7 +7,6 @@ import Test.QuickCheck.Monadic (assert, monadicIO, run)
 import Control.Exception (IOException)
 import qualified Data.Conduit as C
 import qualified Data.Conduit.Lift as C
-import qualified Data.Conduit.Util as C
 import qualified Data.Conduit.Internal as CI
 import qualified Data.Conduit.List as CL
 import Control.Monad.Trans.Resource as C (runExceptionT, runResourceT)
@@ -167,18 +166,18 @@ main = hspec $ do
 
     describe "zipping" $ do
         it "zipping two small lists" $ do
-            res <- runResourceT $ C.zipSources (CL.sourceList [1..10]) (CL.sourceList [11..12]) C.$$ CL.consume
+            res <- runResourceT $ CI.zipSources (CL.sourceList [1..10]) (CL.sourceList [11..12]) C.$$ CL.consume
             res @=? zip [1..10 :: Int] [11..12 :: Int]
 
     describe "zipping sinks" $ do
         it "take all" $ do
-            res <- runResourceT $ CL.sourceList [1..10] C.$$ C.zipSinks CL.consume CL.consume
+            res <- runResourceT $ CL.sourceList [1..10] C.$$ CI.zipSinks CL.consume CL.consume
             res @=? ([1..10 :: Int], [1..10 :: Int])
         it "take fewer on left" $ do
-            res <- runResourceT $ CL.sourceList [1..10] C.$$ C.zipSinks (CL.take 4) CL.consume
+            res <- runResourceT $ CL.sourceList [1..10] C.$$ CI.zipSinks (CL.take 4) CL.consume
             res @=? ([1..4 :: Int], [1..10 :: Int])
         it "take fewer on right" $ do
-            res <- runResourceT $ CL.sourceList [1..10] C.$$ C.zipSinks CL.consume (CL.take 4)
+            res <- runResourceT $ CL.sourceList [1..10] C.$$ CI.zipSinks CL.consume (CL.take 4)
             res @=? ([1..10 :: Int], [1..4 :: Int])
 
     describe "Monad instance for Sink" $ do
