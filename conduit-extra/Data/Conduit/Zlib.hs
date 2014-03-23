@@ -12,12 +12,11 @@ module Data.Conduit.Zlib (
     WindowBits (..), defaultWindowBits
 ) where
 
-import Codec.Zlib
+import Data.Streaming.Zlib
 import Data.Conduit
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as S
-import Control.Exception (try)
-import Control.Monad ((<=<), unless, liftM)
+import Control.Monad (unless, liftM)
 import Control.Monad.Trans.Class (lift, MonadTrans)
 import Control.Monad.Primitive (PrimMonad, unsafePrimToPrim)
 import Control.Monad.Base (MonadBase, liftBase)
@@ -31,13 +30,7 @@ ungzip :: (MonadBase base m, PrimMonad base, MonadThrow m) => Conduit ByteString
 ungzip = decompress (WindowBits 31)
 
 unsafeLiftIO :: (MonadBase base m, PrimMonad base, MonadThrow m) => IO a -> m a
-unsafeLiftIO =
-    either rethrow return <=< unsafeLiftIO' . try
-  where
-    rethrow :: MonadThrow m => ZlibException -> m a
-    rethrow = monadThrow
-
-    unsafeLiftIO' = liftBase . unsafePrimToPrim
+unsafeLiftIO = liftBase . unsafePrimToPrim
 
 -- |
 -- Decompress (inflate) a stream of 'ByteString's. For example:
@@ -78,8 +71,9 @@ helperDecompress await' yield' config =
     goPopper popper = do
         mbs <- lift $ unsafeLiftIO popper
         case mbs of
-            Nothing -> return ()
-            Just bs -> yield' (Chunk bs) >> goPopper popper
+            PRDone -> return ()
+            PRNext bs -> yield' (Chunk bs) >> goPopper popper
+            PRError e -> lift $ monadThrow e
 
     push inf (Chunk x) = do
         popper <- lift $ unsafeLiftIO $ feedInflate inf x
@@ -137,8 +131,9 @@ helperCompress await' yield' level config =
     goPopper popper = do
         mbs <- lift $ unsafeLiftIO popper
         case mbs of
-            Nothing -> return ()
-            Just bs -> yield' (Chunk bs) >> goPopper popper
+            PRDone -> return ()
+            PRNext bs -> yield' (Chunk bs) >> goPopper popper
+            PRError e -> lift $ monadThrow e
 
     push def (Chunk x) = do
         popper <- lift $ unsafeLiftIO $ feedDeflate def x
@@ -147,12 +142,16 @@ helperCompress await' yield' level config =
 
     push def Flush = do
         mchunk <- lift $ unsafeLiftIO $ flushDeflate def
-        maybe (return ()) (yield' . Chunk) mchunk
+        case mchunk of
+            PRDone -> return ()
+            PRNext x -> yield' $ Chunk x
+            PRError e -> lift $ monadThrow e
         yield' Flush
         continue def
 
     close def = do
         mchunk <- lift $ unsafeLiftIO $ finishDeflate def
         case mchunk of
-            Nothing -> return ()
-            Just chunk -> yield' (Chunk chunk) >> close def
+            PRDone -> return ()
+            PRNext chunk -> yield' (Chunk chunk) >> close def
+            PRError e -> lift $ monadThrow e

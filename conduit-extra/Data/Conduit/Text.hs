@@ -29,7 +29,7 @@ module Data.Conduit.Text
     , drop
     , foldLines
     , withLine
-    , decodeUtf8
+    , Data.Conduit.Text.decodeUtf8
     , encodeUtf8
     ) where
 
@@ -49,7 +49,7 @@ import Data.Conduit
 import qualified Data.Conduit.List as CL
 import Control.Monad.Trans.Class (lift)
 import Control.Monad (unless,when)
-import Data.Text.StreamDecoding
+import Data.Streaming.Text
 
 -- | A specific character encoding.
 --
@@ -235,27 +235,27 @@ instance Exc.Exception TextException
 -- |
 -- Since 0.3.0
 utf8 :: Codec
-utf8 = NewCodec (T.pack "UTF-8") TE.encodeUtf8 streamUtf8
+utf8 = NewCodec (T.pack "UTF-8") TE.encodeUtf8 Data.Streaming.Text.decodeUtf8
 
 -- |
 -- Since 0.3.0
 utf16_le :: Codec
-utf16_le = NewCodec (T.pack "UTF-16-LE") TE.encodeUtf16LE streamUtf16LE
+utf16_le = NewCodec (T.pack "UTF-16-LE") TE.encodeUtf16LE decodeUtf16LE
 
 -- |
 -- Since 0.3.0
 utf16_be :: Codec
-utf16_be = NewCodec (T.pack "UTF-16-BE") TE.encodeUtf16BE streamUtf16BE
+utf16_be = NewCodec (T.pack "UTF-16-BE") TE.encodeUtf16BE decodeUtf16BE
 
 -- |
 -- Since 0.3.0
 utf32_le :: Codec
-utf32_le = NewCodec (T.pack "UTF-32-LE") TE.encodeUtf32LE streamUtf32LE
+utf32_le = NewCodec (T.pack "UTF-32-LE") TE.encodeUtf32LE decodeUtf32LE
 
 -- |
 -- Since 0.3.0
 utf32_be :: Codec
-utf32_be = NewCodec (T.pack "UTF-32-BE") TE.encodeUtf32BE streamUtf32BE
+utf32_be = NewCodec (T.pack "UTF-32-BE") TE.encodeUtf32BE decodeUtf32BE
 
 -- |
 -- Since 0.3.0
@@ -399,7 +399,7 @@ withLine consumer = toConsumer $ do
 decodeUtf8 :: MonadThrow m => Conduit B.ByteString m T.Text
 decodeUtf8 = decode utf8
     {- no meaningful performance advantage
-    CI.ConduitM (loop 0 streamUtf8)
+    CI.ConduitM (loop 0 decodeUtf8)
   where
     loop consumed dec =
         CI.NeedInput go finish
