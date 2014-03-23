@@ -29,18 +29,7 @@ Cabal-version:       >=1.8
 Homepage:            http://github.com/snoyberg/conduit
 extra-source-files:  test/main.hs, test/random
 
-flag nohandles
-    default: False
-    Description: experimental code to use raw system calls in place of handles. Not recommended for general use
-
 Library
-  if os(windows)
-      cpp-options: -DCABAL_OS_WINDOWS
-      other-modules: System.Win32File
-  else
-      other-modules: System.PosixFile
-      if flag(nohandles)
-          cpp-options: -DNO_HANDLES
   Exposed-modules:     Data.Conduit
                        Data.Conduit.List
                        Data.Conduit.Internal

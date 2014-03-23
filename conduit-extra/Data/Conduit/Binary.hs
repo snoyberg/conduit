@@ -38,6 +38,7 @@ module Data.Conduit.Binary
     , Data.Conduit.Binary.lines
     ) where
 
+import qualified Data.Streaming.FileRead as FR
 import Prelude hiding (head, take, drop, takeWhile, dropWhile, mapM_)
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Lazy as L
@@ -53,11 +54,6 @@ import Data.Word (Word8, Word64)
 import Control.Applicative ((<$>))
 import System.Directory (getTemporaryDirectory, removeFile)
 import Data.ByteString.Lazy.Internal (defaultChunkSize)
-#if CABAL_OS_WINDOWS
-import qualified System.Win32File as F
-#elif NO_HANDLES
-import qualified System.PosixFile as F
-#endif
 import Data.ByteString.Internal (ByteString (PS), inlinePerformIO)
 import Foreign.ForeignPtr.Unsafe (unsafeForeignPtrToPtr)
 import Foreign.ForeignPtr (touchForeignPtr)
@@ -72,16 +68,16 @@ sourceFile :: MonadResource m
            => FilePath
            -> Producer m S.ByteString
 sourceFile fp =
-#if CABAL_OS_WINDOWS || NO_HANDLES
     bracketP
-        (F.openRead fp)
-         F.close
+        (FR.openFile fp)
+         FR.closeFile
          loop
   where
-    loop h = liftIO (F.read h) >>= maybe (return ()) (\bs -> yield bs >> loop h)
-#else
-    sourceIOHandle (IO.openBinaryFile fp IO.ReadMode)
-#endif
+    loop h = do
+        bs <- liftIO $ FR.readChunk h
+        unless (S.null bs) $ do
+            yield bs
+            loop h
 
 -- | Stream the contents of a 'IO.Handle' as binary data. Note that this
 -- function will /not/ automatically close the @Handle@ when processing
@@ -211,17 +207,7 @@ sourceHandleRange handle offset count = do
 sinkFile :: MonadResource m
          => FilePath
          -> Consumer S.ByteString m ()
-#if NO_HANDLES
-sinkFile fp =
-    bracketP
-        (F.openWrite fp)
-        F.close
-        loop
-  where
-    loop h = awaitForever $ liftIO . F.write h
-#else
 sinkFile fp = sinkIOHandle (IO.openBinaryFile fp IO.WriteMode)
-#endif
 
 -- | Stream the contents of the input to a file, and also send it along the
 -- pipeline. Similar in concept to the Unix command @tee@.
