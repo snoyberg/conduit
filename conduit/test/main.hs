@@ -10,9 +10,6 @@ import qualified Data.Conduit.Lift as C
 import qualified Data.Conduit.Util as C
 import qualified Data.Conduit.Internal as CI
 import qualified Data.Conduit.List as CL
-import qualified Data.Conduit.Lazy as CLazy
-import qualified Data.Conduit.Binary as CB
-import qualified Data.Conduit.Text as CT
 import Data.Conduit (runResourceT)
 import Data.Maybe   (fromMaybe,catMaybes,fromJust)
 import qualified Data.List as DL
@@ -41,7 +38,6 @@ import qualified Control.Concurrent.MVar as M
 import Control.Monad.Error (catchError, throwError, Error)
 import qualified Data.Map as Map
 import Control.Arrow (first)
-import qualified Data.Conduit.ExtraSpec as ES
 import qualified Data.Conduit.Extra.ZipConduitSpec as ZipConduit
 
 (@=?) :: (Eq a, Show a) => a -> a -> IO ()
@@ -168,33 +164,6 @@ main = hspec $ do
                 , CL.sourceList [11..20]
                 ] C.$$ CL.fold (+) 0
             x `shouldBe` sum [1..20]
-
-    describe "file access" $ do
-        it "read" $ do
-            bs <- S.readFile "conduit.cabal"
-            bss <- runResourceT $ CB.sourceFile "conduit.cabal" C.$$ CL.consume
-            bs @=? S.concat bss
-
-        it "read range" $ do
-            S.writeFile "tmp" "0123456789"
-            bss <- runResourceT $ CB.sourceFileRange "tmp" (Just 2) (Just 3) C.$$ CL.consume
-            S.concat bss `shouldBe` "234"
-
-        it "write" $ do
-            runResourceT $ CB.sourceFile "conduit.cabal" C.$$ CB.sinkFile "tmp"
-            bs1 <- S.readFile "conduit.cabal"
-            bs2 <- S.readFile "tmp"
-            bs1 @=? bs2
-
-        it "conduit" $ do
-            runResourceT $ CB.sourceFile "conduit.cabal"
-                C.$= CB.conduitFile "tmp"
-                C.$$ CB.sinkFile "tmp2"
-            bs1 <- S.readFile "conduit.cabal"
-            bs2 <- S.readFile "tmp"
-            bs3 <- S.readFile "tmp2"
-            bs1 @=? bs2
-            bs1 @=? bs3
 
     describe "zipping" $ do
         it "zipping two small lists" $ do
@@ -342,33 +311,6 @@ main = hspec $ do
                 CL.consume
             x `shouldBe` [6..10]
 
-    describe "lazy" $ do
-        it' "works inside a ResourceT" $ runResourceT $ do
-            counter <- liftIO $ I.newIORef 0
-            let incr i = do
-                    istate <- liftIO $ I.newIORef $ Just (i :: Int)
-                    let loop = do
-                            res <- liftIO $ I.atomicModifyIORef istate ((,) Nothing)
-                            case res of
-                                Nothing -> return ()
-                                Just x -> do
-                                    count <- liftIO $ I.atomicModifyIORef counter
-                                        (\j -> (j + 1, j + 1))
-                                    liftIO $ count `shouldBe` i
-                                    C.yield x
-                                    loop
-                    loop
-            nums <- CLazy.lazyConsume $ mconcat $ map incr [1..10]
-            liftIO $ nums `shouldBe` [1..10]
-
-        it' "returns nothing outside ResourceT" $ do
-            bss <- runResourceT $ CLazy.lazyConsume $ CB.sourceFile "test/main.hs"
-            bss `shouldBe` []
-
-        it' "works with pure sources" $ do
-            nums <- CLazy.lazyConsume $ forever $ C.yield 1
-            take 100 nums `shouldBe` replicate 100 (1 :: Int)
-
     describe "sequence" $ do
         it "simple sink" $ do
             let sumSink = do
@@ -404,177 +346,6 @@ main = hspec $ do
                 return (a, b)
             (a, b) `shouldBe` (Just 1, [1..10])
 
-    describe "text" $ do
-        let go enc tenc tdec cenc = describe enc $ do
-                prop "single chunk" $ \chars -> runST $ runExceptionT_ $ do
-                    let tl = TL.pack chars
-                        lbs = tenc tl
-                        src = CL.sourceList $ L.toChunks lbs
-                    ts <- src C.$= CT.decode cenc C.$$ CL.consume
-                    return $ TL.fromChunks ts == tl
-                prop "many chunks" $ \chars -> runIdentity $ runExceptionT_ $ do
-                    let tl = TL.pack chars
-                        lbs = tenc tl
-                        src = mconcat $ map (CL.sourceList . return . S.singleton) $ L.unpack lbs
-
-                    ts <- src C.$= CT.decode cenc C.$$ CL.consume
-                    return $ TL.fromChunks ts == tl
-
-                -- Check whether raw bytes are decoded correctly, in
-                -- particular that Text decoding produces an error if
-                -- and only if Conduit does.
-                prop "raw bytes" $ \bytes ->
-                    let lbs = L.pack bytes
-                        src = CL.sourceList $ L.toChunks lbs
-                        etl = C.runException $ src C.$= CT.decode cenc C.$$ CL.consume
-                        tl' = tdec lbs
-                    in  case etl of
-                          (Left _) -> (return $! TL.toStrict tl') `shouldThrow` anyException
-                          (Right tl) -> TL.fromChunks tl `shouldBe` tl'
-                prop "encoding" $ \chars -> runIdentity $ runExceptionT_ $ do
-                    let tss = map T.pack chars
-                        lbs = tenc $ TL.fromChunks tss
-                        src = mconcat $ map (CL.sourceList . return) tss
-                    bss <- src C.$= CT.encode cenc C.$$ CL.consume
-                    return $ L.fromChunks bss == lbs
-                prop "valid then invalid" $ \x y chars -> runIdentity $ runExceptionT_ $ do
-                    let tss = map T.pack ([x, y]:chars)
-                        ts = T.concat tss
-                        lbs = tenc (TL.fromChunks tss) `L.append` "\0\0\0\0\0\0\0"
-                        src = mapM_ C.yield $ L.toChunks lbs
-                    Just x' <- src C.$$ CT.decode cenc C.=$ C.await
-                    return $ x' `T.isPrefixOf` ts
-        go "utf8" TLE.encodeUtf8 TLE.decodeUtf8 CT.utf8
-        go "utf16_le" TLE.encodeUtf16LE TLE.decodeUtf16LE CT.utf16_le
-        go "utf16_be" TLE.encodeUtf16BE TLE.decodeUtf16BE CT.utf16_be
-        go "utf32_le" TLE.encodeUtf32LE TLE.decodeUtf32LE CT.utf32_le
-        go "utf32_be" TLE.encodeUtf32BE TLE.decodeUtf32BE CT.utf32_be
-        it "mixed utf16 and utf8" $ do
-            let bs = "8\NUL:\NULu\NUL\215\216\217\218"
-                src = C.yield bs C.$= CT.decode CT.utf16_le
-            text <- src C.$$ C.await
-            text `shouldBe` Just "8:u"
-            (src C.$$ CL.sinkNull) `shouldThrow` anyException
-        it "invalid utf8" $ do
-            let bs = S.pack [0..255]
-                src = C.yield bs C.$= CT.decode CT.utf8
-            text <- src C.$$ C.await
-            text `shouldBe` Just (T.pack $ map toEnum [0..127])
-            (src C.$$ CL.sinkNull) `shouldThrow` anyException
-        it "catch UTF8 exceptions" $ do
-            let badBS = "this is good\128\128\0that was bad"
-
-                grabExceptions inner = C.catchC
-                    (inner C.=$= CL.map Right)
-                    (\e -> C.yield (Left (e :: CT.TextException)))
-
-            res <- C.yield badBS C.$$ (,)
-                <$> (grabExceptions (CT.decode CT.utf8) C.=$ CL.consume)
-                <*> CL.consume
-
-            first (map (either (Left . show) Right)) res `shouldBe`
-                ( [ Right "this is good"
-                  , Left $ show $ CT.NewDecodeException "UTF-8" 12 "\128\128\0t"
-                  ]
-                , ["\128\128\0that was bad"]
-                )
-        it "catch UTF8 exceptions, pure" $ do
-            let badBS = "this is good\128\128\0that was bad"
-
-                grabExceptions inner = do
-                    res <- C.runExceptionC $ inner C.=$= CL.map Right
-                    case res of
-                        Left e -> C.yield $ Left e
-                        Right () -> return ()
-
-            let res = runIdentity $ C.yield badBS C.$$ (,)
-                        <$> (grabExceptions (CT.decode CT.utf8) C.=$ CL.consume)
-                        <*> CL.consume
-
-            first (map (either (Left . show) Right)) res `shouldBe`
-                ( [ Right "this is good"
-                  , Left $ show $ CT.NewDecodeException "UTF-8" 12 "\128\128\0t"
-                  ]
-                , ["\128\128\0that was bad"]
-                )
-        it "catch UTF8 exceptions, catchExceptionC" $ do
-            let badBS = "this is good\128\128\0that was bad"
-
-                grabExceptions inner = C.catchExceptionC
-                    (inner C.=$= CL.map Right)
-                    (\e -> C.yield $ Left e)
-
-            let res = C.runException_ $ C.yield badBS C.$$ (,)
-                        <$> (grabExceptions (CT.decode CT.utf8) C.=$ CL.consume)
-                        <*> CL.consume
-
-            first (map (either (Left . show) Right)) res `shouldBe`
-                ( [ Right "this is good"
-                  , Left $ show $ CT.NewDecodeException "UTF-8" 12 "\128\128\0t"
-                  ]
-                , ["\128\128\0that was bad"]
-                )
-        it "catch UTF8 exceptions, catchExceptionC, decodeUtf8" $ do
-            let badBS = "this is good\128\128\0that was bad"
-
-                grabExceptions inner = C.catchExceptionC
-                    (inner C.=$= CL.map Right)
-                    (\e -> C.yield $ Left e)
-
-            let res = C.runException_ $ C.yield badBS C.$$ (,)
-                        <$> (grabExceptions CT.decodeUtf8 C.=$ CL.consume)
-                        <*> CL.consume
-
-            first (map (either (Left . show) Right)) res `shouldBe`
-                ( [ Right "this is good"
-                  , Left $ show $ CT.NewDecodeException "UTF-8" 12 "\128\128\0t"
-                  ]
-                , ["\128\128\0that was bad"]
-                )
-
-    describe "text lines" $ do
-        it "works across split lines" $
-            (CL.sourceList [T.pack "abc", T.pack "d\nef"] C.$= CT.lines C.$$ CL.consume) ==
-                [[T.pack "abcd", T.pack "ef"]]
-        it "works with multiple lines in an item" $
-            (CL.sourceList [T.pack "ab\ncd\ne"] C.$= CT.lines C.$$ CL.consume) ==
-                [[T.pack "ab", T.pack "cd", T.pack "e"]]
-        it "works with ending on a newline" $
-            (CL.sourceList [T.pack "ab\n"] C.$= CT.lines C.$$ CL.consume) ==
-                [[T.pack "ab"]]
-        it "works with ending a middle item on a newline" $
-            (CL.sourceList [T.pack "ab\n", T.pack "cd\ne"] C.$= CT.lines C.$$ CL.consume) ==
-                [[T.pack "ab", T.pack "cd", T.pack "e"]]
-        it "is not too eager" $ do
-            x <- CL.sourceList ["foobarbaz", error "ignore me"] C.$$ CT.decode CT.utf8 C.=$ CL.head
-            x `shouldBe` Just "foobarbaz"
-
-    describe "text lines bounded" $ do
-        it "works across split lines" $
-            (CL.sourceList [T.pack "abc", T.pack "d\nef"] C.$= CT.linesBounded 80 C.$$ CL.consume) ==
-                [[T.pack "abcd", T.pack "ef"]]
-        it "works with multiple lines in an item" $
-            (CL.sourceList [T.pack "ab\ncd\ne"] C.$= CT.linesBounded 80 C.$$ CL.consume) ==
-                [[T.pack "ab", T.pack "cd", T.pack "e"]]
-        it "works with ending on a newline" $
-            (CL.sourceList [T.pack "ab\n"] C.$= CT.linesBounded 80 C.$$ CL.consume) ==
-                [[T.pack "ab"]]
-        it "works with ending a middle item on a newline" $
-            (CL.sourceList [T.pack "ab\n", T.pack "cd\ne"] C.$= CT.linesBounded 80 C.$$ CL.consume) ==
-                [[T.pack "ab", T.pack "cd", T.pack "e"]]
-        it "is not too eager" $ do
-            x <- CL.sourceList ["foobarbaz", error "ignore me"] C.$$ CT.decode CT.utf8 C.=$ CL.head
-            x `shouldBe` Just "foobarbaz"
-        it "throws an exception when lines are too long" $ do
-            x <- C.runExceptionT $ CL.sourceList ["hello\nworld"] C.$$ CT.linesBounded 4 C.=$ CL.consume
-            show x `shouldBe` show (Left $ CT.LengthExceeded 4 :: Either CT.TextException ())
-
-    describe "binary isolate" $ do
-        it "works" $ do
-            bss <- runResourceT $ CL.sourceList (replicate 1000 "X")
-                           C.$= CB.isolate 6
-                           C.$$ CL.consume
-            S.concat bss `shouldBe` "XXXXXX"
     describe "unbuffering" $ do
         it "works" $ do
             x <- runResourceT $ do
@@ -617,97 +388,6 @@ main = hspec $ do
                 C.=$  CL.fold (+) 0
             x `shouldBe` sum [1..10]
 
-
-    describe "properly using binary file reading" $ do
-        it "sourceFile" $ do
-            x <- runResourceT $ CB.sourceFile "test/random" C.$$ CL.consume
-            lbs <- L.readFile "test/random"
-            L.fromChunks x `shouldBe` lbs
-
-    describe "binary head" $ do
-        let go lbs = do
-                x <- CB.head
-                case (x, L.uncons lbs) of
-                    (Nothing, Nothing) -> return True
-                    (Just y, Just (z, lbs'))
-                        | y == z -> go lbs'
-                    _ -> return False
-
-        prop "works" $ \bss' ->
-            let bss = map S.pack bss'
-             in runIdentity $
-                CL.sourceList bss C.$$ go (L.fromChunks bss)
-    describe "binary takeWhile" $ do
-        prop "works" $ \bss' ->
-            let bss = map S.pack bss'
-             in runIdentity $ do
-                bss2 <- CL.sourceList bss C.$$ CB.takeWhile (>= 5) C.=$ CL.consume
-                return $ L.fromChunks bss2 == L.takeWhile (>= 5) (L.fromChunks bss)
-        prop "leftovers present" $ \bss' ->
-            let bss = map S.pack bss'
-             in runIdentity $ do
-                result <- CL.sourceList bss C.$$ do
-                    x <- CB.takeWhile (>= 5) C.=$ CL.consume
-                    y <- CL.consume
-                    return (S.concat x, S.concat y)
-                let expected = S.span (>= 5) $ S.concat bss
-                if result == expected
-                    then return True
-                    else error $ show (S.concat bss, result, expected)
-
-    describe "binary dropWhile" $ do
-        prop "works" $ \bss' ->
-            let bss = map S.pack bss'
-             in runIdentity $ do
-                bss2 <- CL.sourceList bss C.$$ do
-                    CB.dropWhile (< 5)
-                    CL.consume
-                return $ L.fromChunks bss2 == L.dropWhile (< 5) (L.fromChunks bss)
-
-    describe "binary take" $ do
-      let go n l = CL.sourceList l C.$$ do
-          a <- CB.take n
-          b <- CL.consume
-          return (a, b)
-
-      -- Taking nothing should result in an empty Bytestring
-      it "nothing" $ do
-        (a, b) <- runResourceT $ go 0 ["abc", "defg"]
-        a              `shouldBe` L.empty
-        L.fromChunks b `shouldBe` "abcdefg"
-
-      it "normal" $ do
-        (a, b) <- runResourceT $ go 4 ["abc", "defg"]
-        a              `shouldBe` "abcd"
-        L.fromChunks b `shouldBe` "efg"
-
-      -- Taking exactly the data that is available should result in no
-      -- leftover.
-      it "all" $ do
-        (a, b) <- runResourceT $ go 7 ["abc", "defg"]
-        a `shouldBe` "abcdefg"
-        b `shouldBe` []
-
-      -- Take as much as possible.
-      it "more" $ do
-        (a, b) <- runResourceT $ go 10 ["abc", "defg"]
-        a `shouldBe` "abcdefg"
-        b `shouldBe` []
-
-    describe "normalFuseLeft" $ do
-        it "does not double close conduit" $ do
-            x <- runResourceT $ do
-                let src = CL.sourceList ["foobarbazbin"]
-                src C.$= CB.isolate 10 C.$$ CL.head
-            x `shouldBe` Just "foobarbazb"
-
-    describe "binary" $ do
-        prop "lines" $ \bss' -> runIdentity $ do
-            let bss = map S.pack bss'
-                bs = S.concat bss
-                src = CL.sourceList bss
-            res <- src C.$$ CB.lines C.=$ CL.consume
-            return $ S8.lines bs == res
 
     describe "termination" $ do
         it "terminates early" $ do
@@ -982,12 +662,6 @@ main = hspec $ do
             x <- runWriterT $ source C.$$ C.transPipe (`evalStateT` 1) replaceNum1 C.=$ CL.consume
             y <- runWriterT $ source C.$$ C.transPipe (`evalStateT` 1) replaceNum2 C.=$ CL.consume
             x `shouldBe` y
-    describe "text decode" $ do
-        it' "doesn't throw runtime exceptions" $ do
-            let x = runIdentity $ runExceptionT $ C.yield "\x89\x243" C.$$ CT.decode CT.utf8 C.=$ CL.consume
-            case x of
-                Left _ -> return ()
-                Right t -> error $ "This should have failed: " ++ show t
     describe "iterM" $ do
         prop "behavior" $ \l -> monadicIO $ do
             let counter ref = CL.iterM (const $ liftIO $ M.modifyMVar_ ref (\i -> return $! i + 1))
@@ -1021,24 +695,6 @@ main = hspec $ do
                 sink = CL.fold (+) 0
             res <- C.yield 10 C.$$ C.awaitForever (C.toProducer . src) C.=$ (C.toConsumer sink >>= C.yield) C.=$ C.await
             res `shouldBe` Just (sum [1..10])
-
-    describe "sinkCacheLength" $ do
-        it' "works" $ C.runResourceT $ do
-            lbs <- liftIO $ L.readFile "test/main.hs"
-            (len, src) <- CB.sourceLbs lbs C.$$ CB.sinkCacheLength
-            lbs' <- src C.$$ CB.sinkLbs
-            liftIO $ do
-                fromIntegral len `shouldBe` L.length lbs
-                lbs' `shouldBe` lbs
-                fromIntegral len `shouldBe` L.length lbs'
-
-    describe "Data.Conduit.Binary.mapM_" $ do
-        prop "telling works" $ \bytes ->
-            let lbs = L.pack bytes
-                src = CB.sourceLbs lbs
-                sink = CB.mapM_ (tell . return . S.singleton)
-                bss = execWriter $ src C.$$ sink
-             in L.fromChunks bss == lbs
 
     describe "passthroughSink" $ do
         it "works" $ do
@@ -1201,34 +857,6 @@ main = hspec $ do
             res <- src C.$$ sink
             res `shouldBe` [1 :: Int]
 
-    describe "exception handling" $ do
-        it "catchC" $ do
-            ref <- I.newIORef 0
-            let src = do
-                    C.catchC (CB.sourceFile "some-file-that-does-not-exist") onErr
-                    C.handleC onErr $ CB.sourceFile "conduit.cabal"
-                onErr :: MonadIO m => IOException -> m ()
-                onErr _ = liftIO $ I.modifyIORef ref (+ 1)
-            contents <- L.readFile "conduit.cabal"
-            res <- C.runResourceT $ src C.$$ CB.sinkLbs
-            res `shouldBe` contents
-            errCount <- I.readIORef ref
-            errCount `shouldBe` (1 :: Int)
-        it "tryC" $ do
-            ref <- I.newIORef undefined
-            let src = do
-                    res1 <- C.tryC $ CB.sourceFile "some-file-that-does-not-exist"
-                    res2 <- C.tryC $ CB.sourceFile "conduit.cabal"
-                    liftIO $ I.writeIORef ref (res1, res2)
-            contents <- L.readFile "conduit.cabal"
-            res <- C.runResourceT $ src C.$$ CB.sinkLbs
-            res `shouldBe` contents
-            exc <- I.readIORef ref
-            case exc :: (Either IOException (), Either IOException ()) of
-                (Left _, Right ()) ->
-                    return ()
-                _ -> error $ show exc
-
     describe "sequenceSources" $ do
         it "works" $ do
             let src1 = mapM_ C.yield [1, 2, 3 :: Int]
@@ -1260,7 +888,6 @@ main = hspec $ do
             x <- C.runResourceT $ CL.sourceList [100,99..1] C.$$ sink
             x `shouldBe` (505000 :: Integer)
 
-    ES.spec
     ZipConduit.spec
 
 it' :: String -> IO () -> Spec

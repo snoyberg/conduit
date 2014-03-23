@@ -11,6 +11,7 @@ Category:            Data, Conduit
 Build-type:          Simple
 Cabal-version:       >=1.8
 Homepage:            http://github.com/snoyberg/conduit
+extra-source-files:  test/random
 
 Library
   Exposed-modules:     Data.Conduit.Attoparsec
@@ -59,10 +60,22 @@ test-suite test
                    , conduit-extra
                    , base
                    , hspec >= 1.3
+
                    , attoparsec
                    , blaze-builder
                    , bytestring
+                   , resourcet
+                   , text
+                   , transformers
     ghc-options:     -Wall
+    other-modules:   Data.Conduit.AttoparsecSpec
+                     Data.Conduit.BinarySpec
+                     Data.Conduit.BlazeSpec
+                     Data.Conduit.ExtraSpec
+                     Data.Conduit.LazySpec
+                     Data.Conduit.NetworkSpec
+                     Data.Conduit.TextSpec
+                     Data.Conduit.ZlibSpec
 
 source-repository head
   type:     git

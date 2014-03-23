@@ -27,7 +27,7 @@ Category:            Data, Conduit
 Build-type:          Simple
 Cabal-version:       >=1.8
 Homepage:            http://github.com/snoyberg/conduit
-extra-source-files:  test/main.hs, test/random
+extra-source-files:  test/main.hs
 
 Library
   Exposed-modules:     Data.Conduit
