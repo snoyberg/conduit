@@ -56,7 +56,6 @@ test-suite test
     hs-source-dirs: test
     main-is: main.hs
     other-modules: Data.Conduit.Extra.ZipConduitSpec
-                   Data.Conduit.ExtraSpec
     type: exitcode-stdio-1.0
     cpp-options:   -DTEST
     build-depends:   conduit
