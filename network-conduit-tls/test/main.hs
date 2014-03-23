@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 import Test.HUnit
 import Data.Conduit
-import Data.Conduit.Network (HostPreference(..), appSource, appSink)
+import Data.Conduit.Network (appSource, appSink)
 import Data.Conduit.Network.TLS
 import Control.Concurrent (forkIO, threadDelay, killThread)
 import qualified Network.Connection as NC
@@ -19,12 +19,12 @@ testCertificateRaw = "-----BEGIN CERTIFICATE-----\nMIIDBjCCAe4CCQDBE77UEng3SDANB
 
 
 serverConfig :: TLSConfig
-serverConfig = tlsConfigBS HostIPv4 4242 testCertificateRaw testKeyRaw               
+serverConfig = tlsConfigBS "*4" 4242 testCertificateRaw testKeyRaw               
 
-clientConfig :: TLSClientConfig IO
+clientConfig :: TLSClientConfig
 clientConfig = tlsClientConfig 4242 "127.0.0.1"
 
-clientConfigNoCA :: TLSClientConfig IO 
+clientConfigNoCA :: TLSClientConfig
 clientConfigNoCA = clientConfig {tlsClientTLSSettings = NC.TLSSettingsSimple True False False}
 
 testSimpleServerClient :: IO ()

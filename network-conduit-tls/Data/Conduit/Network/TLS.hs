@@ -37,8 +37,9 @@ import Filesystem.Path.CurrentOS (FilePath)
 import Filesystem (readFile)
 import qualified Data.ByteString.Lazy as L
 import qualified Network.TLS as TLS
-import Data.Conduit.Network (HostPreference, Application, sinkSocket, runTCPServerWithHandle, ConnectionHandle(..), serverSettings, sourceSocket)
-import Data.Conduit.Network.Internal (AppData (..))
+import Data.Conduit.Network (sinkSocket, runTCPServerWithHandle, serverSettings, sourceSocket)
+import Data.Streaming.Network.Internal (AppData (..), HostPreference)
+import Data.Streaming.Network (ConnectionHandle, safeRecv)
 import Data.Conduit.Network.TLS.Internal
 import Data.Conduit (yield, awaitForever, Producer, Consumer)
 import qualified Data.Conduit.List as CL
@@ -112,7 +113,7 @@ serverHandshake socket creds = do
             }
         }
 
-runTCPServerTLS :: TLSConfig -> Application IO -> IO ()
+runTCPServerTLS :: TLSConfig -> (AppData -> IO ()) -> IO ()
 runTCPServerTLS TLSConfig{..} app = do
     creds <- readCreds tlsCertData
 
@@ -122,14 +123,14 @@ runTCPServerTLS TLSConfig{..} app = do
       -- convert tls settings to regular conduit network ones
       settings = serverSettings tlsPort tlsHost  -- (const $ return () ) tlsNeedLocalAddr
 
-      wrapApp creds = ConnectionHandle app'
+      wrapApp creds = app'
         where
           app' socket addr mlocal = do
             ctx <- serverHandshake socket creds
             app (tlsAppData ctx addr mlocal)
 
 
-type ApplicationStartTLS = (AppData IO, Application IO -> IO ()) -> IO ()
+type ApplicationStartTLS = (AppData, (AppData -> IO ()) -> IO ()) -> IO ()
 
 -- | run a server un-crypted but also pass a call-back to trigger a StartTLS handshake
 -- on the underlying connection
@@ -151,14 +152,14 @@ runTCPServerStartTLS TLSConfig{..} app = do
       -- convert tls settings to regular conduit network ones
       settings = serverSettings tlsPort tlsHost  -- (const $ return () ) tlsNeedLocalAddr
 
-      wrapApp creds = ConnectionHandle clearapp
+      wrapApp creds = clearapp
         where clearapp socket addr mlocal = let
                 -- setup app data for the clear part of the connection
                 clearData = AppData
-                  { appSource = sourceSocket socket
-                  , appSink = sinkSocket socket
-                  , appSockAddr = addr
-                  , appLocalAddr = mlocal
+                  { appRead' = safeRecv socket 4096
+                  , appWrite' = sendAll socket
+                  , appSockAddr' = addr
+                  , appLocalAddr' = mlocal
                   }
                 -- wrap up the current connection with TLS
                 startTls = \app' -> do
@@ -184,12 +185,12 @@ runTCPServerStartTLS TLSConfig{..} app = do
 tlsAppData :: TLS.Context       -- ^ a TLS context
            -> SockAddr          -- ^ remote address
            -> Maybe SockAddr    -- ^ local address
-           -> AppData IO
+           -> AppData
 tlsAppData ctx addr mlocal = AppData
-    { appSource = forever $ lift (TLS.recvData ctx) >>= yield
-    , appSink = CL.mapM_ $ TLS.sendData ctx . L.fromChunks . return
-    , appSockAddr = addr
-    , appLocalAddr = mlocal
+    { appRead' = TLS.recvData ctx
+    , appWrite' = TLS.sendData ctx . L.fromChunks . return
+    , appSockAddr' = addr
+    , appLocalAddr' = mlocal
     }
 
 -- taken from stunnel example in tls-extra
@@ -225,7 +226,7 @@ recvExact socket =
 -- | Settings type for TLS client connection.
 --
 -- Since 1.0.2
-data TLSClientConfig (m :: * -> *) = TLSClientConfig
+data TLSClientConfig = TLSClientConfig
     { tlsClientPort :: Int
     -- ^
     --
@@ -259,7 +260,7 @@ data TLSClientConfig (m :: * -> *) = TLSClientConfig
 -- Since 1.0.2
 tlsClientConfig :: Int -- ^ port
                 -> S.ByteString -- ^ host
-                -> TLSClientConfig m
+                -> TLSClientConfig
 tlsClientConfig port host = TLSClientConfig
     { tlsClientPort = port
     , tlsClientHost = host
@@ -273,9 +274,9 @@ tlsClientConfig port host = TLSClientConfig
 --
 -- Since 1.0.2
 runTLSClient :: (MonadIO m, MonadBaseControl IO m)
-             => TLSClientConfig m
-             -> Application m
-             -> m ()
+             => TLSClientConfig
+             -> (AppData -> m a)
+             -> m a
 runTLSClient TLSClientConfig {..} app = do
     context <- maybe (liftIO NC.initConnectionContext) return tlsClientConnectionContext
     let params = NC.ConnectionParams
@@ -291,10 +292,10 @@ runTLSClient TLSClientConfig {..} app = do
         (NC.connectTo context params)
         NC.connectionClose
         (\conn -> run $ app AppData
-            { appSource = sourceConnection conn
-            , appSink = sinkConnection conn
-            , appSockAddr = SockAddrInet (fromIntegral tlsClientPort) 0 -- FIXME
-            , appLocalAddr = Nothing
+            { appRead' = NC.connectionGetChunk conn
+            , appWrite' = NC.connectionPut conn
+            , appSockAddr' = SockAddrInet (fromIntegral tlsClientPort) 0 -- FIXME
+            , appLocalAddr' = Nothing
             })
 
 
@@ -302,7 +303,7 @@ runTLSClient TLSClientConfig {..} app = do
 --   but provide also a call back to trigger a StartTLS handshake on the connection
 --
 -- Since 1.0.2
-runTLSClientStartTLS :: TLSClientConfig IO
+runTLSClientStartTLS :: TLSClientConfig
                      -> ApplicationStartTLS
                      -> IO ()
 runTLSClientStartTLS TLSClientConfig {..} app = do
@@ -318,18 +319,18 @@ runTLSClientStartTLS TLSClientConfig {..} app = do
         NC.connectionClose
         (\conn -> run $ app (
             AppData
-            { appSource = sourceConnection conn
-            , appSink = sinkConnection conn
-            , appSockAddr = SockAddrInet (fromIntegral tlsClientPort) 0 -- FIXME
-            , appLocalAddr = Nothing
+            { appRead' = NC.connectionGetChunk conn
+            , appWrite' = NC.connectionPut conn
+            , appSockAddr' = SockAddrInet (fromIntegral tlsClientPort) 0 -- FIXME
+            , appLocalAddr' = Nothing
             }
             , \app' -> do
                  NC.connectionSetSecure context conn tlsClientTLSSettings
                  app' AppData
-                   { appSource = sourceConnection conn
-                   , appSink = sinkConnection conn
-                   , appSockAddr = SockAddrInet (fromIntegral tlsClientPort) 0 -- FIXME
-                   , appLocalAddr = Nothing
+                   { appRead' = NC.connectionGetChunk conn
+                   , appWrite' = NC.connectionPut conn
+                   , appSockAddr' = SockAddrInet (fromIntegral tlsClientPort) 0 -- FIXME
+                   , appLocalAddr' = Nothing
                    }
             )
             )

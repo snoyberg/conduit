@@ -27,6 +27,7 @@ library
                     , connection
                     , monad-control
                     , data-default
+                    , streaming-commons
 
 test-suite test
     hs-source-dirs: test

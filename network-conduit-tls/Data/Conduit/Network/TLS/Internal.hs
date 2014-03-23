@@ -5,7 +5,7 @@ module Data.Conduit.Network.TLS.Internal
     ) where
 
 import Prelude hiding (FilePath)
-import Data.Conduit.Network (HostPreference)
+import Data.Streaming.Network (HostPreference)
 import qualified Data.ByteString as S
 
 -- structure providing access to certificate and key data through call backs 
