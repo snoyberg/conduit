@@ -829,13 +829,13 @@ main = hspec $ do
 
     describe "Data.Conduit.Lift" $ do
         it "execStateC" $ do
-            let sink = C.execStateC 0 $ CL.mapM_ $ modify . (+)
+            let sink = C.execStateLC 0 $ CL.mapM_ $ modify . (+)
                 src = mapM_ C.yield [1..10 :: Int]
             res <- src C.$$ sink
             res `shouldBe` sum [1..10]
 
         it "execWriterC" $ do
-            let sink = C.execWriterC $ CL.mapM_ $ tell . return
+            let sink = C.execWriterLC $ CL.mapM_ $ tell . return
                 src = mapM_ C.yield [1..10 :: Int]
             res <- src C.$$ sink
             res `shouldBe` [1..10]
