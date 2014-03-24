@@ -130,8 +130,11 @@ src $$ sink = do
 --
 -- Leftover data from the @Conduit@ will be discarded.
 --
+-- Note: Since version 1.0.18, this operator has been generalized to be
+-- identical to @=$=@.
+--
 -- Since 0.4.0
-($=) :: Monad m => Source m a -> Conduit a m b -> Source m b
+($=) :: Monad m => Conduit a m b -> ConduitM b c m r -> ConduitM a c m r
 ConduitM src $= ConduitM con = ConduitM $ pipeL src con
 {-# INLINE ($=) #-}
 
@@ -142,8 +145,11 @@ ConduitM src $= ConduitM con = ConduitM $ pipeL src con
 --
 -- Leftover data returned from the @Sink@ will be discarded.
 --
+-- Note: Since version 1.0.18, this operator has been generalized to be
+-- identical to @=$=@.
+--
 -- Since 0.4.0
-(=$) :: Monad m => Conduit a m b -> Sink b m c -> Sink a m c
+(=$) :: Monad m => Conduit a m b -> ConduitM b c m r -> ConduitM a c m r
 ConduitM con =$ ConduitM sink = ConduitM $ pipeL con sink
 {-# INLINE (=$) #-}
 
