@@ -1,3 +1,4 @@
+{-# OPTIONS_HADDOCK not-home #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -19,10 +20,7 @@ module Control.Monad.Trans.Resource.Internal(
   , stateAlloc
   , stateCleanup
   , transResourceT
-  , Resource (..)
-  , Allocated (..)
-  , with
-  , mkResource
+  , register'
 ) where
 
 import Control.Exception (throw,Exception,SomeException)
@@ -404,65 +402,13 @@ instance MonadWriter w m => MonadWriter w (ExceptionT m) where
         Left  l      -> (Left  l, id)
         Right (r, f) -> (Right r, f)
 
-data Allocated a = Allocated !a !(IO ())
-
--- | A method for allocating a scarce resource, providing the means of freeing
--- it when no longer needed. This data type provides
--- @Functor@/@Applicative@/@Monad@ instances for composing different resources
--- together. You can allocate these resources using either the @bracket@
--- pattern (via @with@) or using @ResourceT@ (via @allocateResource@).
---
--- This concept was originally introduced by Gabriel Gonzalez and described at:
--- <http://www.haskellforall.com/2013/06/the-resource-applicative.html>. The
--- implementation in this package is slightly different, due to taking a
--- different approach to async exception safety.
---
--- Since 0.4.10
-newtype Resource a = Resource ((forall b. IO b -> IO b) -> IO (Allocated a))
-    deriving Typeable
-
-instance Functor Resource where
-    fmap = liftM
-instance Applicative Resource where
-    pure = return
-    (<*>) = ap
-
-instance Monad Resource where
-    return a = Resource (\_ -> return (Allocated a (return ())))
-    Resource f >>= g' = Resource $ \restore -> do
-        Allocated x free1 <- f restore
-        let Resource g = g' x
-        Allocated y free2 <- g restore `E.onException` free1
-        return $! Allocated y (free2 `E.finally` free1)
-
-instance MonadIO Resource where
-    liftIO f = Resource $ \restore -> do
-        x <- restore f
-        return $! Allocated x (return ())
-
-instance MonadBase IO Resource where
-    liftBase = liftIO
-
--- | Create a @Resource@ value using the given allocate and free functions.
---
--- Since 0.4.10
-mkResource :: IO a -- ^ allocate the resource
-           -> (a -> IO ()) -- ^ free the resource
-           -> Resource a
-mkResource create free = Resource $ \restore -> do
-    x <- restore create
-    return $! Allocated x (free x)
-
--- | Allocate the given resource and provide it to the provided function. The
--- resource will be freed as soon as the inner block is exited, whether
--- normally or via an exception. This function is similar in function to
--- @bracket@.
---
--- Since 0.4.10
-with :: MonadBaseControl IO m
-     => Resource a
-     -> (a -> m b)
-     -> m b
-with (Resource f) g = control $ \run -> E.mask $ \restore -> do
-    Allocated x free <- f restore
-    run (g x) `E.finally` free
+register' :: I.IORef ReleaseMap
+          -> IO ()
+          -> IO ReleaseKey
+register' istate rel = I.atomicModifyIORef istate $ \rm ->
+    case rm of
+        ReleaseMap key rf m ->
+            ( ReleaseMap (key - 1) rf (IntMap.insert key rel m)
+            , ReleaseKey istate key
+            )
+        ReleaseMapClosed -> throw $ InvalidAccess "register'"

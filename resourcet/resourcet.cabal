@@ -15,6 +15,8 @@ Homepage:            http://github.com/snoyberg/conduit
 Library
   Exposed-modules:     Control.Monad.Trans.Resource
                        Control.Monad.Trans.Resource.Internal
+                       Data.Acquire
+                       Data.Acquire.Internal
   Build-depends:       base                     >= 4.3          && < 5
                      , lifted-base              >= 0.1
                      , transformers-base        >= 0.4.1        && < 0.5

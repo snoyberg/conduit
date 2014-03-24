@@ -56,11 +56,6 @@ module Control.Monad.Trans.Resource
     , withInternalState
     , createInternalState
     , closeInternalState
-      -- * Resource
-    , Resource
-    , mkResource
-    , with
-    , allocateResource
     ) where
 
 import qualified Data.IntMap as IntMap
@@ -138,13 +133,6 @@ allocate :: MonadResource m
          -> m (ReleaseKey, a)
 allocate a = liftResourceT . allocateRIO a
 
--- | Allocate a resource and register an action with the @MonadResource@ to
--- free the resource.
---
--- Since 0.4.10
-allocateResource :: MonadResource m => Resource a -> m (ReleaseKey, a)
-allocateResource = liftResourceT . allocateResourceRIO
-
 -- | Perform asynchronous exception masking.
 --
 -- This is more general then @Control.Exception.mask@, yet more efficient
@@ -160,12 +148,6 @@ allocateRIO acquire rel = ResourceT $ \istate -> liftIO $ E.mask $ \restore -> d
     key <- register' istate $ rel a
     return (key, a)
 
-allocateResourceRIO :: Resource a -> ResourceT IO (ReleaseKey, a)
-allocateResourceRIO (Resource f) = ResourceT $ \istate -> liftIO $ E.mask $ \restore -> do
-    Allocated a free <- f restore
-    key <- register' istate free
-    return (key, a)
-
 registerRIO :: IO () -> ResourceT IO ReleaseKey
 registerRIO rel = ResourceT $ \istate -> liftIO $ register' istate rel
 
@@ -176,17 +158,6 @@ resourceMaskRIO f = ResourceT $ \istate -> liftIO $ E.mask $ \restore ->
   where
     go :: (forall a. IO a -> IO a) -> (forall a. ResourceT IO a -> ResourceT IO a)
     go r (ResourceT g) = ResourceT (\i -> r (g i))
-
-register' :: I.IORef ReleaseMap
-          -> IO ()
-          -> IO ReleaseKey
-register' istate rel = I.atomicModifyIORef istate $ \rm ->
-    case rm of
-        ReleaseMap key rf m ->
-            ( ReleaseMap (key - 1) rf (IntMap.insert key rel m)
-            , ReleaseKey istate key
-            )
-        ReleaseMapClosed -> throw $ InvalidAccess "register'"
 
 
 
