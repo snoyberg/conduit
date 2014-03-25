@@ -94,7 +94,7 @@ module Data.Conduit
 
 import Control.Monad.Trans.Resource
 import Control.Monad.Trans.Class (lift)
-import Data.Conduit.Internal hiding (await, awaitForever, yield, yieldOr, leftover, bracketP, addCleanup, transPipe, mapOutput, mapOutputMaybe, mapInput)
+import Data.Conduit.Internal hiding (await, awaitForever, yield, yieldOr, leftover, bracketP, addCleanup, transPipe, mapOutput, mapOutputMaybe, mapInput, yieldM)
 import qualified Data.Conduit.Internal as CI
 import Control.Monad.Morph (hoist)
 import Control.Monad (liftM, forever, when, unless)
@@ -184,6 +184,10 @@ yield :: Monad m
 yield = ConduitM . CI.yield
 {-# INLINE [1] yield #-}
 
+yieldM :: Monad m => m o -> ConduitM i o m ()
+yieldM = ConduitM . CI.yieldM
+{-# INLINE [1] yieldM #-}
+
 {-# RULES
     "yield o >> p" forall o (p :: ConduitM i o m r). yield o >> p = ConduitM (HaveOutput (unConduitM p) (return ()) o)
   ; "mapM_ yield" mapM_ yield = ConduitM . sourceList
@@ -193,6 +197,7 @@ yield = ConduitM . CI.yield
         if b then ConduitM (HaveOutput (unConduitM p) (return ()) o) else p
   ; "unless yield next" forall b o p. unless b (yield o) >> p =
         if b then p else ConduitM (HaveOutput (unConduitM p) (return ()) o)
+  ; "lift m >>= yield" forall m. lift m >>= yield = yieldM m
    #-}
 
 -- | Provide a single piece of leftover input to be consumed by the next
