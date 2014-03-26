@@ -1,3 +1,6 @@
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE UndecidableInstances #-}
 module Data.Conduit.ZlibSpec (spec) where
 
 import Test.Hspec
@@ -12,6 +15,12 @@ import qualified Data.ByteString as S
 import qualified Data.ByteString.Lazy as L
 import Data.ByteString.Lazy.Char8 ()
 import Control.Monad.Trans.Resource (runExceptionT_)
+import Control.Monad.Trans.Class
+import Control.Monad.Catch.Pure
+import Control.Monad.Base
+
+instance MonadBase base m => MonadBase base (CatchT m) where
+    liftBase = lift . liftBase
 
 spec :: Spec
 spec = describe "Data.Conduit.Zlib" $ do

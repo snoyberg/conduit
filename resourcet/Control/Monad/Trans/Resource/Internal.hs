@@ -9,10 +9,8 @@
 {-# LANGUAGE RankNTypes #-}
 
 module Control.Monad.Trans.Resource.Internal(
-    ExceptionT(..)
-  , InvalidAccess(..)
+    InvalidAccess(..)
   , MonadResource(..)
-  , MonadThrow(..)
   , ReleaseKey(..)
   , ReleaseMap(..)
   , ResIO
@@ -54,6 +52,7 @@ import Control.Monad.IO.Class (MonadIO (..))
 import Control.Monad (liftM, ap)
 import qualified Control.Exception as E
 import Control.Monad.ST (ST)
+import Control.Monad.Catch (MonadThrow (..))
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
 import qualified Data.IORef as I
@@ -138,42 +137,8 @@ instance MonadWriter w m => MonadWriter w (ResourceT m) where
   listen = mapResourceT listen
   pass   = mapResourceT pass
 
--- | A @Monad@ which can throw exceptions. Note that this does not work in a
--- vanilla @ST@ or @Identity@ monad. Instead, you should use the 'ExceptionT'
--- transformer in your stack if you are dealing with a non-@IO@ base monad.
---
--- Since 0.3.0
-class Monad m => MonadThrow m where
-    monadThrow :: E.Exception e => e -> m a
-
-instance MonadThrow IO where
-    monadThrow = E.throwIO
-
-instance MonadThrow Maybe where
-    monadThrow _ = Nothing
-instance MonadThrow (Either SomeException) where
-    monadThrow = Left . E.toException
-instance MonadThrow [] where
-    monadThrow _ = []
-
-#define GO(T) instance (MonadThrow m) => MonadThrow (T m) where monadThrow = lift . monadThrow
-#define GOX(X, T) instance (X, MonadThrow m) => MonadThrow (T m) where monadThrow = lift . monadThrow
-GO(IdentityT)
-GO(ListT)
-GO(MaybeT)
-GOX(Error e, ErrorT e)
-GO(ReaderT r)
-GO(ContT r)
-GO(ResourceT)
-GO(StateT s)
-GOX(Monoid w, WriterT w)
-GOX(Monoid w, RWST r w s)
-GOX(Monoid w, Strict.RWST r w s)
-GO(Strict.StateT s)
-GOX(Monoid w, Strict.WriterT w)
-#undef GO
-#undef GOX
-
+instance MonadThrow m => MonadThrow (ResourceT m) where
+    throwM = lift . throwM
 instance (MonadThrow m, MonadBase IO m, MonadIO m, Applicative m) => MonadResource (ResourceT m) where
     liftResourceT = transResourceT liftIO
 
@@ -279,12 +244,6 @@ instance MonadBaseControl b m => MonadBaseControl b (ResourceT m) where
          liftBaseWith $ \runInBase ->
              f $ liftM StMT . runInBase . (\(ResourceT r) -> r reader'  )
      restoreM (StMT base) = ResourceT $ const $ restoreM base
-instance Monad m => MonadThrow (ExceptionT m) where
-    monadThrow = ExceptionT . return . Left . E.toException
-instance MonadResource m => MonadResource (ExceptionT m) where
-    liftResourceT = lift . liftResourceT
-instance MonadIO m => MonadIO (ExceptionT m) where
-    liftIO = lift . liftIO
 
 #define GO(T) instance (MonadResource m) => MonadResource (T m) where liftResourceT = lift . liftResourceT
 #define GOX(X, T) instance (X, MonadResource m) => MonadResource (T m) where liftResourceT = lift . liftResourceT
@@ -302,13 +261,6 @@ GO(Strict.StateT s)
 GOX(Monoid w, Strict.WriterT w)
 #undef GO
 #undef GOX
-
-
--- | The express purpose of this transformer is to allow non-@IO@-based monad
--- stacks to catch exceptions via the 'MonadThrow' typeclass.
---
--- Since 0.3.0
-newtype ExceptionT m a = ExceptionT { runExceptionT :: m (Either SomeException a) }
 
 stateAlloc :: I.IORef ReleaseMap -> IO ()
 stateAlloc istate = do
@@ -335,72 +287,6 @@ stateCleanup istate = E.mask_ $ do
   where
     try :: IO a -> IO (Either SomeException a)
     try = E.try
-
-instance Monad m => Functor (ExceptionT m) where
-    fmap f = ExceptionT . (liftM . fmap) f . runExceptionT
-instance Monad m => Applicative (ExceptionT m) where
-    pure = ExceptionT . return . Right
-    ExceptionT mf <*> ExceptionT ma = ExceptionT $ do
-        ef <- mf
-        case ef of
-            Left e -> return (Left e)
-            Right f -> do
-                ea <- ma
-                case ea of
-                    Left e -> return (Left e)
-                    Right x -> return (Right (f x))
-instance Monad m => Monad (ExceptionT m) where
-    return = pure
-    ExceptionT ma >>= f = ExceptionT $ do
-        ea <- ma
-        case ea of
-            Left e -> return (Left e)
-            Right a -> runExceptionT (f a)
-instance MonadBase b m => MonadBase b (ExceptionT m) where
-    liftBase = lift . liftBase
-instance MonadTrans ExceptionT where
-    lift = ExceptionT . liftM Right
-instance MonadTransControl ExceptionT where
-    newtype StT ExceptionT a = StExc { unStExc :: Either SomeException a }
-    liftWith f = ExceptionT $ liftM return $ f $ liftM StExc . runExceptionT
-    restoreT = ExceptionT . liftM unStExc
-instance MonadBaseControl b m => MonadBaseControl b (ExceptionT m) where
-    newtype StM (ExceptionT m) a = StE { unStE :: ComposeSt ExceptionT m a }
-    liftBaseWith = defaultLiftBaseWith StE
-    restoreM = defaultRestoreM unStE
-
-instance MonadCont m => MonadCont (ExceptionT m) where
-  callCC f = ExceptionT $
-    callCC $ \c ->
-    runExceptionT (f (\a -> ExceptionT $ c (Right a)))
-
-instance MonadError e m => MonadError e (ExceptionT m) where
-  throwError = lift . throwError
-  catchError r h = ExceptionT $ runExceptionT r `catchError` (runExceptionT . h)
-
-instance MonadRWS r w s m => MonadRWS r w s (ExceptionT m)
-
-instance MonadReader r m => MonadReader r (ExceptionT m) where
-  ask = lift ask
-  local = mapExceptionT . local
-
-mapExceptionT :: (m (Either SomeException a) -> n (Either SomeException b)) -> ExceptionT m a -> ExceptionT n b
-mapExceptionT f = ExceptionT . f . runExceptionT
-
-instance MonadState s m => MonadState s (ExceptionT m) where
-  get = lift get
-  put = lift . put
-
-instance MonadWriter w m => MonadWriter w (ExceptionT m) where
-  tell   = lift . tell
-  listen = mapExceptionT $ \ m -> do
-    (a, w) <- listen m
-    return $! fmap (\ r -> (r, w)) a
-  pass   = mapExceptionT $ \ m -> pass $ do
-    a <- m
-    return $! case a of
-        Left  l      -> (Left  l, id)
-        Right (r, f) -> (Right r, f)
 
 register' :: I.IORef ReleaseMap
           -> IO ()

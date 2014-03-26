@@ -155,7 +155,7 @@ instance MonadIO m => MonadIO (Pipe l i o u m) where
     liftIO = lift . liftIO
 
 instance MonadThrow m => MonadThrow (Pipe l i o u m) where
-    monadThrow = lift . monadThrow
+    throwM = lift . throwM
 
 instance Monad m => Monoid (Pipe l i o u m ()) where
     mempty = return ()

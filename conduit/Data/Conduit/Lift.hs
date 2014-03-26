@@ -13,9 +13,9 @@ module Data.Conduit.Lift (
     catchErrorC,
 --    liftCatchError,
 
-    -- * ExceptionT
-    runExceptionC,
-    catchExceptionC,
+    -- * CatchT
+    runCatchC,
+    catchCatchC,
 
     -- * MaybeT
     maybeC,
@@ -85,7 +85,7 @@ import qualified Control.Monad.Trans.RWS.Strict as RWSS
 import qualified Control.Monad.Trans.State.Lazy as SL
 import qualified Control.Monad.Trans.Writer.Lazy as WL
 import qualified Control.Monad.Trans.RWS.Lazy as RWSL
-import Control.Monad.Trans.Resource (ExceptionT (runExceptionT))
+import Control.Monad.Catch.Pure (CatchT (runCatchT))
 
 
 catAwaitLifted
@@ -174,47 +174,47 @@ catchErrorC c0 h =
     go (NeedInput x y) = NeedInput (go . x) (go . y)
 {-# INLINABLE catchErrorC #-}
 
--- | Run 'ExceptionT' in the base monad
+-- | Run 'CatchT' in the base monad
 --
--- Since 1.0.14
-runExceptionC
+-- Since 1.1.0
+runCatchC
   :: Monad m =>
-     ConduitM i o (ExceptionT m) r -> ConduitM i o m (Either SomeException r)
-runExceptionC =
+     ConduitM i o (CatchT m) r -> ConduitM i o m (Either SomeException r)
+runCatchC =
     ConduitM . go . unConduitM
   where
     go (Done r) = Done (Right r)
     go (PipeM mp) = PipeM $ do
-        eres <- runExceptionT mp
+        eres <- runCatchT mp
         return $ case eres of
             Left e -> Done $ Left e
             Right p -> go p
     go (Leftover p i) = Leftover (go p) i
-    go (HaveOutput p f o) = HaveOutput (go p) (runExceptionT f >> return ()) o
+    go (HaveOutput p f o) = HaveOutput (go p) (runCatchT f >> return ()) o
     go (NeedInput x y) = NeedInput (go . x) (go . y)
-{-# INLINABLE runExceptionC #-}
+{-# INLINABLE runCatchC #-}
 
 -- | Catch an exception in the base monad
 --
--- Since 1.0.14
-catchExceptionC
+-- Since 1.1.0
+catchCatchC
   :: Monad m =>
-     ConduitM i o (ExceptionT m) r
-     -> (SomeException -> ConduitM i o (ExceptionT m) r)
-     -> ConduitM i o (ExceptionT m) r
-catchExceptionC c0 h =
+     ConduitM i o (CatchT m) r
+     -> (SomeException -> ConduitM i o (CatchT m) r)
+     -> ConduitM i o (CatchT m) r
+catchCatchC c0 h =
     ConduitM $ go $ unConduitM c0
   where
     go (Done r) = Done r
     go (PipeM mp) = PipeM $ do
-        eres <- lift $ runExceptionT mp
+        eres <- lift $ runCatchT mp
         return $ case eres of
             Left e -> unConduitM $ h e
             Right p -> go p
     go (Leftover p i) = Leftover (go p) i
     go (HaveOutput p f o) = HaveOutput (go p) f o
     go (NeedInput x y) = NeedInput (go . x) (go . y)
-{-# INLINABLE catchExceptionC #-}
+{-# INLINABLE catchCatchC #-}
 
 -- | Wrap the base monad in 'M.MaybeT'
 --

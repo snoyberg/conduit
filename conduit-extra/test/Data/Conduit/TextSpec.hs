@@ -100,7 +100,7 @@ spec = describe "Data.Conduit.Text" $ do
             let badBS = "this is good\128\128\0that was bad"
 
                 grabExceptions inner = do
-                    res <- C.runExceptionC $ inner C.=$= CL.map Right
+                    res <- C.runCatchC $ inner C.=$= CL.map Right
                     case res of
                         Left e -> C.yield $ Left e
                         Right () -> return ()
@@ -118,7 +118,7 @@ spec = describe "Data.Conduit.Text" $ do
         it "catch UTF8 exceptions, catchExceptionC" $ do
             let badBS = "this is good\128\128\0that was bad"
 
-                grabExceptions inner = C.catchExceptionC
+                grabExceptions inner = C.catchCatchC
                     (inner C.=$= CL.map Right)
                     (\e -> C.yield $ Left e)
 
@@ -135,7 +135,7 @@ spec = describe "Data.Conduit.Text" $ do
         it "catch UTF8 exceptions, catchExceptionC, decodeUtf8" $ do
             let badBS = "this is good\128\128\0that was bad"
 
-                grabExceptions inner = C.catchExceptionC
+                grabExceptions inner = C.catchCatchC
                     (inner C.=$= CL.map Right)
                     (\e -> C.yield $ Left e)
 

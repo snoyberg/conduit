@@ -29,11 +29,6 @@ module Control.Monad.Trans.Resource
       -- * Monad transformation
     , transResourceT
     , joinResourceT
-      -- * A specific Exception transformer
-    , ExceptionT (..)
-    , runExceptionT_
-    , runException
-    , runException_
       -- * Registering/releasing
     , allocate
     , register
@@ -42,7 +37,6 @@ module Control.Monad.Trans.Resource
     , resourceMask
       -- * Type class/associated types
     , MonadResource (..)
-    , MonadThrow (..)
     , MonadResourceBase
       -- ** Low-level
     , InvalidAccess (..)
@@ -56,6 +50,14 @@ module Control.Monad.Trans.Resource
     , withInternalState
     , createInternalState
     , closeInternalState
+      -- * Backwards compatibility
+    , ExceptionT (..)
+    , runExceptionT
+    , runExceptionT_
+    , runException
+    , runException_
+    , MonadThrow (..)
+    , monadThrow
     ) where
 
 import qualified Data.IntMap as IntMap
@@ -92,6 +94,8 @@ import qualified Control.Monad.ST.Lazy as Lazy
 
 import Data.Functor.Identity (Identity, runIdentity)
 import Control.Monad.Morph
+import Control.Monad.Catch (MonadThrow, throwM)
+import Control.Monad.Catch.Pure (CatchT, runCatchT)
 
 
 
@@ -213,7 +217,12 @@ joinResourceT :: ResourceT (ResourceT m) a
               -> ResourceT m a
 joinResourceT (ResourceT f) = ResourceT $ \r -> unResourceT (f r) r
 
+-- | For backwards compatibility.
+type ExceptionT = CatchT
 
+-- | For backwards compatibility.
+runExceptionT :: ExceptionT m a -> m (Either SomeException a)
+runExceptionT = runCatchT
 
 -- | Same as 'runExceptionT', but immediately 'E.throw' any exception returned.
 --
@@ -285,8 +294,8 @@ resourceForkIO (ResourceT f) = ResourceT $ \r -> L.mask $ \restore ->
 #if __GLASGOW_HASKELL__ >= 704
 type MonadResourceBase m = (MonadBaseControl IO m, MonadThrow m, MonadBase IO m, MonadIO m, Applicative m)
 #else
-class (MonadBaseControl IO m, MonadThrow m, MonadUnsafeIO m, MonadIO m, Applicative m) => MonadResourceBase m
-instance (MonadBaseControl IO m, MonadThrow m, MonadUnsafeIO m, MonadIO m, Applicative m) => MonadResourceBase m
+class (MonadBaseControl IO m, MonadThrow m, MonadIO m, Applicative m) => MonadResourceBase m
+instance (MonadBaseControl IO m, MonadThrow m, MonadIO m, Applicative m) => MonadResourceBase m
 #endif
 
 -- $internalState
@@ -336,3 +345,7 @@ runInternalState = unResourceT
 -- Since 0.4.6
 withInternalState :: (InternalState -> m a) -> ResourceT m a
 withInternalState = ResourceT
+
+-- | Backwards compatibility
+monadThrow :: (E.Exception e, MonadThrow m) => e -> m a
+monadThrow = throwM

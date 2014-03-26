@@ -65,9 +65,11 @@ test-suite test
                    , attoparsec
                    , blaze-builder
                    , bytestring
+                   , exceptions
                    , resourcet
                    , text
                    , transformers
+                   , transformers-base
     ghc-options:     -Wall
     other-modules:   Data.Conduit.AttoparsecSpec
                      Data.Conduit.BinarySpec

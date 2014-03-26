@@ -38,6 +38,7 @@ Library
                        Data.Conduit.Lift
   Build-depends:       base                     >= 4.3          && < 5
                      , resourcet                >= 1.1          && < 1.2
+                     , exceptions
                      , lifted-base              >= 0.1
                      , transformers-base        >= 0.4.1        && < 0.5
                      , monad-control            >= 0.3.1        && < 0.4
