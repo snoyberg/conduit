@@ -15,6 +15,7 @@ module Data.Conduit.List
     , unfold
     , enumFromTo
     , iterate
+    , replicateM_
       -- * Sinks
       -- ** Pure
     , fold
@@ -113,6 +114,13 @@ iterate f =
     go
   where
     go a = yield a >> go (f a)
+
+-- |
+--
+-- Since 1.0.18
+replicateM_ :: Monad m => Int -> m a -> Producer m a
+replicateM_ cnt0 = CI.ConduitM . CI.replicateM_ cnt0
+{-# INLINE replicateM_ #-}
 
 -- | A strict left fold.
 --

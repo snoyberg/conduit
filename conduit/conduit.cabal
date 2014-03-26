@@ -35,6 +35,7 @@ Library
   Exposed-modules:     Data.Conduit
                        Data.Conduit.List
                        Data.Conduit.Internal
+                       Data.Conduit.Rewrite
                        Data.Conduit.Lift
   Build-depends:       base                     >= 4.3          && < 5
                      , resourcet                >= 1.1          && < 1.2

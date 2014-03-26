@@ -65,6 +65,7 @@ module Data.Conduit.Internal
     , unwrapResumable
     , unwrapResumableConduit
     , Data.Conduit.Internal.enumFromTo
+    , Data.Conduit.Internal.replicateM_
     , zipSinks
     , zipSources
     , zipSourcesApp
@@ -1097,3 +1098,14 @@ passthroughSink (ConduitM sink0) final =
             Just x -> do
                 yield x
                 go [] (next x)
+
+-- |
+--
+-- Since 1.0.18
+replicateM_ :: Monad m => Int -> m o -> Pipe l i o u m ()
+replicateM_ cnt0 m =
+    loop cnt0
+  where
+    loop 0 = Done ()
+    loop i = PipeM (HaveOutput (loop (i - 1)) (return ()) `liftM` m)
+{-# INLINE replicateM_ #-}
