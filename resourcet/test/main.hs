@@ -1,12 +1,17 @@
+{-# LANGUAGE DeriveDataTypeable  #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
-import Test.Hspec
-import Control.Monad.Trans.Resource
-import Data.IORef
-import Control.Concurrent
-import Control.Monad.IO.Class (liftIO)
-import Control.Concurrent.Lifted (fork)
-import Control.Exception (handle, SomeException)
+import           Control.Concurrent
+import           Control.Concurrent.Lifted    (fork)
+import           Control.Exception            (Exception, MaskingState (MaskedInterruptible),
+                                               getMaskingState, throwIO, try)
+import           Control.Exception            (SomeException, handle)
+import           Control.Monad                (unless)
+import           Control.Monad.IO.Class       (liftIO)
+import           Control.Monad.Trans.Resource
+import           Data.IORef
+import           Data.Typeable                (Typeable)
+import           Test.Hspec
 
 main :: IO ()
 main = hspec $ do
@@ -37,6 +42,22 @@ main = hspec $ do
               unprotect key
             y <- readIORef x
             y `shouldBe` 0
+    it "cleanup actions are masked #144" $ do
+        let checkMasked name = do
+                ms <- getMaskingState
+                unless (ms == MaskedInterruptible) $
+                    error $ show (name, ms)
+        runResourceT $ do
+            register (checkMasked "release") >>= release
+            register (checkMasked "normal")
+        Left Dummy <- try $ runResourceT $ do
+            register (checkMasked "exception")
+            liftIO $ throwIO Dummy
+        return ()
+
+data Dummy = Dummy
+    deriving (Show, Typeable)
+instance Exception Dummy
 
 forkHelper s fork' = describe s $ do
     it "waits for all threads" $ do
