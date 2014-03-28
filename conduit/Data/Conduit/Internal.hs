@@ -24,6 +24,7 @@ module Data.Conduit.Internal
     , awaitE
     , awaitForever
     , yield
+    , yieldM
     , yieldOr
     , leftover
       -- * Finalization
@@ -347,6 +348,10 @@ yield :: Monad m
 yield = HaveOutput (Done ()) (return ())
 {-# INLINE [1] yield #-}
 
+yieldM :: Monad m => m o -> Pipe l i o u m ()
+yieldM = PipeM . liftM (HaveOutput (Done ()) (return ()))
+{-# INLINE [1] yieldM #-}
+
 -- | Similar to @yield@, but additionally takes a finalizer to be run if the
 -- downstream @Pipe@ terminates.
 --
@@ -361,7 +366,9 @@ yieldOr o f = HaveOutput (Done ()) f o
 {-# RULES
     "CI.yield o >> p" forall o (p :: Pipe l i o u m r). yield o >> p = HaveOutput p (return ()) o
   ; "mapM_ CI.yield" mapM_ yield = sourceList
-  ; "CI.yieldOr o c >> p" forall o c (p :: Pipe l i o u m r). yieldOr o c >> p = HaveOutput p c o #-}
+  ; "CI.yieldOr o c >> p" forall o c (p :: Pipe l i o u m r). yieldOr o c >> p = HaveOutput p c o
+  ; "lift m >>= CI.yield" forall m. lift m >>= yield = yieldM m
+  #-}
 
 -- | Provide a single piece of leftover input to be consumed by the next pipe
 -- in the current monadic binding.

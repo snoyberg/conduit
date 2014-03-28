@@ -169,9 +169,9 @@ release' :: I.IORef ReleaseMap
          -> Int
          -> (Maybe (IO ()) -> IO a)
          -> IO a
-release' istate key act = E.mask $ \restore -> do
+release' istate key act = E.mask_ $ do
     maction <- I.atomicModifyIORef istate lookupAction
-    restore (act maction)
+    act maction
   where
     lookupAction rm@(ReleaseMap next rf m) =
         case IntMap.lookup key m of
