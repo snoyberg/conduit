@@ -31,6 +31,8 @@ module Data.Conduit.Network
     , SN.setHost
     , SN.setAfterBind
     , SN.setNeedLocalAddr
+      -- * Types
+    , SN.HostPreference
     ) where
 
 import Prelude hiding (catch)
