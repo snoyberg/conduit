@@ -25,7 +25,7 @@ Library
                      , transformers             >= 0.2.2        && < 0.4
                      , mtl                      >= 2.0          && < 2.2
                      , mmorph
-                     , exceptions               >= 0.4.1        && < 0.5
+                     , exceptions               >= 0.5
   ghc-options:     -Wall
 
 test-suite test
