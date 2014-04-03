@@ -19,7 +19,8 @@ bug-reports:     https://github.com/litherum/cereal-conduit/issues
 
 library
     build-depends: base         >= 4       && < 5
-                 , conduit      >= 1.0.0   && < 1.1
+                 , conduit      >= 1.0.0   && < 1.2
+                 , resourcet    >= 0.4     && < 1.2
                  , cereal       >= 0.4.0.0 && < 0.5
                  , bytestring
                  , transformers >= 0.2.0.0
