@@ -276,7 +276,7 @@ resourceForkIO (ResourceT f) = ResourceT $ \r -> L.mask $ \restore ->
 -- A @ResourceT@ has some restrictions on its base monad:
 --
 -- * @runResourceT@ requires an instance of @MonadBaseControl IO@.
--- * @MonadResource@ requires an instance of @MonadThrow@, @MonadUnsafeIO@, @MonadIO@, and @Applicative@.
+-- * @MonadResource@ requires an instance of @MonadThrow@, @MonadIO@, and @Applicative@.
 --
 -- While any instance of @MonadBaseControl IO@ should be an instance of the
 -- other classes, this is not guaranteed by the type system (e.g., you may have
