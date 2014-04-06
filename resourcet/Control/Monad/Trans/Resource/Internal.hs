@@ -52,13 +52,14 @@ import Control.Monad.IO.Class (MonadIO (..))
 import Control.Monad (liftM, ap)
 import qualified Control.Exception as E
 import Control.Monad.ST (ST)
-import Control.Monad.Catch (MonadThrow (..))
+import Control.Monad.Catch (MonadThrow (..), MonadCatch (..))
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
 import qualified Data.IORef as I
 import Data.Monoid
 import Data.Typeable
 import Data.Word(Word)
+import Prelude hiding (catch)
 
 #if __GLASGOW_HASKELL__ >= 704
 import Control.Monad.ST.Unsafe (unsafeIOToST)
@@ -139,6 +140,14 @@ instance MonadWriter w m => MonadWriter w (ResourceT m) where
 
 instance MonadThrow m => MonadThrow (ResourceT m) where
     throwM = lift . throwM
+instance MonadCatch m => MonadCatch (ResourceT m) where
+  catch (ResourceT m) c =
+      ResourceT $ \r -> m r `catch` \e -> unResourceT (c e) r
+  mask a = ResourceT $ \e -> mask $ \u -> unResourceT (a $ q u) e
+    where q u (ResourceT b) = ResourceT (u . b)
+  uninterruptibleMask a =
+    ResourceT $ \e -> uninterruptibleMask $ \u -> unResourceT (a $ q u) e
+      where q u (ResourceT b) = ResourceT (u . b)
 instance (MonadThrow m, MonadBase IO m, MonadIO m, Applicative m) => MonadResource (ResourceT m) where
     liftResourceT = transResourceT liftIO
 
