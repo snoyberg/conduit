@@ -151,6 +151,12 @@ spec = describe "Data.Conduit.Text" $ do
                 )
 
     describe "text lines" $ do
+        it "yields nothing given nothing" $
+            (CL.sourceList [] C.$= CT.lines C.$$ CL.consume) ==
+                [[]]
+        it "yields nothing given only empty text" $
+            (CL.sourceList [T.empty] C.$= CT.lines C.$$ CL.consume) ==
+                [[]]
         it "works across split lines" $
             (CL.sourceList [T.pack "abc", T.pack "d\nef"] C.$= CT.lines C.$$ CL.consume) ==
                 [[T.pack "abcd", T.pack "ef"]]
@@ -163,11 +169,23 @@ spec = describe "Data.Conduit.Text" $ do
         it "works with ending a middle item on a newline" $
             (CL.sourceList [T.pack "ab\n", T.pack "cd\ne"] C.$= CT.lines C.$$ CL.consume) ==
                 [[T.pack "ab", T.pack "cd", T.pack "e"]]
+        it "works with empty text" $
+            (CL.sourceList [T.pack "ab", T.empty, T.pack "cd"] C.$= CT.lines C.$$ CL.consume) ==
+                [[T.pack "abcd"]]
+        it "works with empty lines" $
+            (CL.sourceList [T.pack "\n\n"] C.$= CT.lines C.$$ CL.consume) ==
+                [[T.empty, T.empty]]
         it "is not too eager" $ do
             x <- CL.sourceList ["foobarbaz", error "ignore me"] C.$$ CT.decode CT.utf8 C.=$ CL.head
             x `shouldBe` Just "foobarbaz"
 
     describe "text lines bounded" $ do
+        it "yields nothing given nothing" $
+            (CL.sourceList [] C.$= CT.linesBounded 80 C.$$ CL.consume) ==
+                [[]]
+        it "yields nothing given only empty text" $
+            (CL.sourceList [T.empty] C.$= CT.linesBounded 80 C.$$ CL.consume) ==
+                [[]]
         it "works across split lines" $
             (CL.sourceList [T.pack "abc", T.pack "d\nef"] C.$= CT.linesBounded 80 C.$$ CL.consume) ==
                 [[T.pack "abcd", T.pack "ef"]]
@@ -180,12 +198,21 @@ spec = describe "Data.Conduit.Text" $ do
         it "works with ending a middle item on a newline" $
             (CL.sourceList [T.pack "ab\n", T.pack "cd\ne"] C.$= CT.linesBounded 80 C.$$ CL.consume) ==
                 [[T.pack "ab", T.pack "cd", T.pack "e"]]
+        it "works with empty text" $
+            (CL.sourceList [T.pack "ab", T.empty, T.pack "cd"] C.$= CT.linesBounded 80 C.$$ CL.consume) ==
+                [[T.pack "abcd"]]
+        it "works with empty lines" $
+            (CL.sourceList [T.pack "\n\n"] C.$= CT.linesBounded 80 C.$$ CL.consume) ==
+                [[T.empty, T.empty]]
         it "is not too eager" $ do
             x <- CL.sourceList ["foobarbaz", error "ignore me"] C.$$ CT.decode CT.utf8 C.=$ CL.head
             x `shouldBe` Just "foobarbaz"
         it "throws an exception when lines are too long" $ do
             x <- runExceptionT $ CL.sourceList ["hello\nworld"] C.$$ CT.linesBounded 4 C.=$ CL.consume
             show x `shouldBe` show (Left $ CT.LengthExceeded 4 :: Either CT.TextException ())
+        it "works with infinite input" $ do
+            x <- runExceptionT $ CL.sourceList (cycle [T.pack "hello"]) C.$$ CT.linesBounded 256 C.=$ CL.consume
+            show x `shouldBe` show (Left $ CT.LengthExceeded 256 :: Either CT.TextException ())
     describe "text decode" $ do
         it' "doesn't throw runtime exceptions" $ do
             let x = runIdentity $ runExceptionT $ C.yield "\x89\x243" C.$$ CT.decode CT.utf8 C.=$ CL.consume
