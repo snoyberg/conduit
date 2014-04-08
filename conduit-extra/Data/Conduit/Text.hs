@@ -49,7 +49,7 @@ import Data.Conduit
 import qualified Data.Conduit.List as CL
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Resource (MonadThrow, monadThrow)
-import Control.Monad (unless,when)
+import Control.Monad (unless)
 import Data.Streaming.Text
 
 -- | A specific character encoding.
@@ -80,22 +80,19 @@ instance Show Codec where
 -- Since 0.4.1
 lines :: Monad m => Conduit T.Text m T.Text
 lines =
-    loop id
+    awaitText T.empty
   where
-    loop front = await >>= maybe (finish front) (go front)
+    awaitText buf = await >>= maybe (finish buf) (process buf)
 
-    finish front =
-        let final = front T.empty
-         in unless (T.null final) (yield final)
+    finish buf = unless (T.null buf) (yield buf)
 
-    go sofar more =
-        case T.uncons second of
-            Just (_, second') -> yield (sofar first') >> go id second'
-            Nothing ->
-                let rest = sofar more
-                 in loop $ T.append rest
-      where
-        (first', second) = T.break (== '\n') more
+    process buf text = yieldLines $ buf `T.append` text
+
+    yieldLines buf =
+      let (line, rest) = T.break (== '\n') buf
+      in  case T.uncons rest of
+            Just (_, rest') -> yield line >> yieldLines rest'
+            _ -> awaitText line
 
 
 
@@ -110,30 +107,22 @@ lines =
 -- require large amounts of memory if consumed.
 linesBounded :: MonadThrow m => Int -> Conduit T.Text m T.Text
 linesBounded maxLineLen =
-    loop 0 id
+    awaitText 0 T.empty
   where
-    loop len front = await >>= maybe (finish front) (go len front)
+    awaitText len buf = await >>= maybe (finish buf) (process len buf)
 
-    finish front =
-        let final = front T.empty
-         in unless (T.null final) (yield final)
-    go len sofar more =
-        case T.uncons second of
-            Just (_, second') -> do
-                let toYield = sofar first'
-                    len' = len + T.length first'
-                when (len' > maxLineLen)
-                    (lift $ monadThrow (LengthExceeded maxLineLen))
-                yield toYield
-                go 0 id second'
-            Nothing -> do
-                let len' = len + T.length more
-                when (len' > maxLineLen) $
-                    (lift $ monadThrow (LengthExceeded maxLineLen))
-                let rest = sofar more
-                loop len' $ T.append rest
-      where
-        (first', second) = T.break (== '\n') more
+    finish buf = unless (T.null buf) (yield buf)
+
+    process len buf text =
+      let (line, rest) = T.break (== '\n') text
+          len' = len + T.length line
+      in  if len' > maxLineLen
+            then lift $ monadThrow (LengthExceeded maxLineLen)
+            else case T.uncons rest of
+                   Just (_, rest') ->
+                     yield (buf `T.append` line) >> process 0 T.empty rest'
+                   _ ->
+                     awaitText len' $ buf `T.append` text
 
 
 
