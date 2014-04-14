@@ -12,6 +12,7 @@ import           Control.Monad.Trans.Resource
 import           Data.IORef
 import           Data.Typeable                (Typeable)
 import           Test.Hspec
+import           Data.Acquire
 
 main :: IO ()
 main = hspec $ do
@@ -54,6 +55,40 @@ main = hspec $ do
             register (checkMasked "exception")
             liftIO $ throwIO Dummy
         return ()
+    describe "mkAcquireType" $ do
+        describe "ResourceT" $ do
+            it "early" $ do
+                ref <- newIORef Nothing
+                let acq = mkAcquireType (return ()) $ \() -> writeIORef ref . Just
+                runResourceT $ do
+                    (releaseKey, ()) <- allocateAcquire acq
+                    release releaseKey
+                readIORef ref >>= (`shouldBe` Just ReleaseEarly)
+            it "normal" $ do
+                ref <- newIORef Nothing
+                let acq = mkAcquireType (return ()) $ \() -> writeIORef ref . Just
+                runResourceT $ do
+                    (_releaseKey, ()) <- allocateAcquire acq
+                    return ()
+                readIORef ref >>= (`shouldBe` Just ReleaseNormal)
+            it "exception" $ do
+                ref <- newIORef Nothing
+                let acq = mkAcquireType (return ()) $ \() -> writeIORef ref . Just
+                Left Dummy <- try $ runResourceT $ do
+                    (_releaseKey, ()) <- allocateAcquire acq
+                    liftIO $ throwIO Dummy
+                readIORef ref >>= (`shouldBe` Just ReleaseException)
+        describe "with" $ do
+            it "normal" $ do
+                ref <- newIORef Nothing
+                let acq = mkAcquireType (return ()) $ \() -> writeIORef ref . Just
+                with acq $ const $ return ()
+                readIORef ref >>= (`shouldBe` Just ReleaseNormal)
+            it "exception" $ do
+                ref <- newIORef Nothing
+                let acq = mkAcquireType (return ()) $ \() -> writeIORef ref . Just
+                Left Dummy <- try $ with acq $ const $ throwIO Dummy
+                readIORef ref >>= (`shouldBe` Just ReleaseException)
 
 data Dummy = Dummy
     deriving (Show, Typeable)

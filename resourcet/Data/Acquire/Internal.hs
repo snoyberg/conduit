@@ -8,6 +8,8 @@ module Data.Acquire.Internal
     , Allocated (..)
     , with
     , mkAcquire
+    , ReleaseType (..)
+    , mkAcquireType
     ) where
 
 import Control.Applicative (Applicative (..))
@@ -18,7 +20,15 @@ import qualified Control.Exception.Lifted as E
 import Data.Typeable (Typeable)
 import Control.Monad (liftM, ap)
 
-data Allocated a = Allocated !a !(IO ())
+-- | The way in which a release is called.
+--
+-- Since 1.1.2
+data ReleaseType = ReleaseEarly
+                 | ReleaseNormal
+                 | ReleaseException
+    deriving (Show, Read, Eq, Ord, Enum, Bounded, Typeable)
+
+data Allocated a = Allocated !a !(ReleaseType -> IO ())
 
 -- | A method for acquiring a scarce resource, providing the means of freeing
 -- it when no longer needed. This data type provides
@@ -42,17 +52,17 @@ instance Applicative Acquire where
     (<*>) = ap
 
 instance Monad Acquire where
-    return a = Acquire (\_ -> return (Allocated a (return ())))
+    return a = Acquire (\_ -> return (Allocated a (const $ return ())))
     Acquire f >>= g' = Acquire $ \restore -> do
         Allocated x free1 <- f restore
         let Acquire g = g' x
-        Allocated y free2 <- g restore `E.onException` free1
-        return $! Allocated y (free2 `E.finally` free1)
+        Allocated y free2 <- g restore `E.onException` free1 ReleaseException
+        return $! Allocated y (\rt -> free2 rt `E.finally` free1 rt)
 
 instance MonadIO Acquire where
     liftIO f = Acquire $ \restore -> do
         x <- restore f
-        return $! Allocated x (return ())
+        return $! Allocated x (const $ return ())
 
 instance MonadBase IO Acquire where
     liftBase = liftIO
@@ -64,6 +74,19 @@ mkAcquire :: IO a -- ^ acquire the resource
           -> (a -> IO ()) -- ^ free the resource
           -> Acquire a
 mkAcquire create free = Acquire $ \restore -> do
+    x <- restore create
+    return $! Allocated x (const $ free x)
+
+-- | Same as 'mkAcquire', but the cleanup function will be informed of /how/
+-- cleanup was initiated. This allows you to distinguish, for example, between
+-- normal and exceptional exits.
+--
+-- Since 1.1.2
+mkAcquireType
+    :: IO a -- ^ acquire the resource
+    -> (a -> ReleaseType -> IO ()) -- ^ free the resource
+    -> Acquire a
+mkAcquireType create free = Acquire $ \restore -> do
     x <- restore create
     return $! Allocated x (free x)
 
@@ -79,4 +102,6 @@ with :: MonadBaseControl IO m
      -> m b
 with (Acquire f) g = control $ \run -> E.mask $ \restore -> do
     Allocated x free <- f restore
-    run (g x) `E.finally` free
+    res <- run (g x) `E.onException` free ReleaseException
+    free ReleaseNormal
+    return res

@@ -4,7 +4,9 @@ module Data.Acquire
     ( Acquire
     , with
     , mkAcquire
+    , mkAcquireType
     , allocateAcquire
+    , ReleaseType (..)
     ) where
 
 import Control.Monad.Trans.Resource.Internal
@@ -28,5 +30,5 @@ allocateAcquire = liftResourceT . allocateAcquireRIO
 allocateAcquireRIO :: Acquire a -> ResourceT IO (ReleaseKey, a)
 allocateAcquireRIO (Acquire f) = ResourceT $ \istate -> liftIO $ E.mask $ \restore -> do
     Allocated a free <- f restore
-    key <- register' istate free
+    key <- registerType istate free
     return (key, a)

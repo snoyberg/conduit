@@ -96,7 +96,7 @@ import Data.Functor.Identity (Identity, runIdentity)
 import Control.Monad.Morph
 import Control.Monad.Catch (MonadThrow, throwM)
 import Control.Monad.Catch.Pure (CatchT, runCatchT)
-
+import Data.Acquire.Internal (ReleaseType (..))
 
 
 
@@ -178,7 +178,7 @@ release' istate key act = E.mask_ $ do
             Nothing -> (rm, Nothing)
             Just action ->
                 ( ReleaseMap next rf $ IntMap.delete key m
-                , Just action
+                , Just (action ReleaseEarly)
                 )
     -- We tried to call release, but since the state is already closed, we
     -- can assume that the release action was already called. Previously,
@@ -197,13 +197,26 @@ release' istate key act = E.mask_ $ do
 --
 -- Since 0.3.0
 runResourceT :: MonadBaseControl IO m => ResourceT m a -> m a
-runResourceT (ResourceT r) = do
+runResourceT (ResourceT r) = control $ \run -> do
     istate <- createInternalState
-    r istate `finally` stateCleanup istate
+    E.mask $ \restore -> do
+        res <- restore (run (r istate)) `E.onException`
+            stateCleanup ReleaseException istate
+        stateCleanup ReleaseNormal istate
+        return res
 
-bracket_ :: MonadBaseControl IO m => IO () -> IO () -> m a -> m a
-bracket_ alloc cleanup inside =
-    control $ \run -> E.bracket_ alloc cleanup (run inside)
+bracket_ :: MonadBaseControl IO m
+         => IO () -- ^ allocate
+         -> IO () -- ^ normal cleanup
+         -> IO () -- ^ exceptional cleanup
+         -> m a
+         -> m a
+bracket_ alloc cleanupNormal cleanupExc inside =
+    control $ \run -> E.mask $ \restore -> do
+        alloc
+        res <- restore (run inside) `E.onException` cleanupExc
+        cleanupNormal
+        return res
 
 finally :: MonadBaseControl IO m => m a -> IO () -> m a
 finally action cleanup =
@@ -264,9 +277,11 @@ resourceForkIO (ResourceT f) = ResourceT $ \r -> L.mask $ \restore ->
     bracket_
         (stateAlloc r)
         (return ())
+        (return ())
         (liftBaseDiscard forkIO $ bracket_
             (return ())
-            (stateCleanup r)
+            (stateCleanup ReleaseNormal r)
+            (stateCleanup ReleaseException r)
             (restore $ f r))
 
 
@@ -321,7 +336,7 @@ createInternalState = liftBase
 --
 -- Since 0.4.9
 closeInternalState :: MonadBase IO m => InternalState -> m ()
-closeInternalState = liftBase . stateCleanup
+closeInternalState = liftBase . stateCleanup ReleaseNormal
 
 -- | Get the internal state of the current @ResourceT@.
 --

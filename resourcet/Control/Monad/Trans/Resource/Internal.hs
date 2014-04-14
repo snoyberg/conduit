@@ -19,6 +19,7 @@ module Control.Monad.Trans.Resource.Internal(
   , stateCleanup
   , transResourceT
   , register'
+  , registerType
 ) where
 
 import Control.Exception (throw,Exception,SomeException)
@@ -60,6 +61,7 @@ import Data.Monoid
 import Data.Typeable
 import Data.Word(Word)
 import Prelude hiding (catch)
+import Data.Acquire.Internal (ReleaseType (..))
 
 #if __GLASGOW_HASKELL__ >= 704
 import Control.Monad.ST.Unsafe (unsafeIOToST)
@@ -106,7 +108,7 @@ type RefCount = Word
 type NextKey = Int
 
 data ReleaseMap =
-    ReleaseMap !NextKey !RefCount !(IntMap (IO ()))
+    ReleaseMap !NextKey !RefCount !(IntMap (ReleaseType -> IO ()))
   | ReleaseMapClosed
 
 -- | Convenient alias for @ResourceT IO@.
@@ -279,8 +281,8 @@ stateAlloc istate = do
                 (ReleaseMap nk (rf + 1) m, ())
             ReleaseMapClosed -> throw $ InvalidAccess "stateAlloc"
 
-stateCleanup :: I.IORef ReleaseMap -> IO ()
-stateCleanup istate = E.mask_ $ do
+stateCleanup :: ReleaseType -> I.IORef ReleaseMap -> IO ()
+stateCleanup rtype istate = E.mask_ $ do
     mm <- I.atomicModifyIORef istate $ \rm ->
         case rm of
             ReleaseMap nk rf m ->
@@ -291,7 +293,7 @@ stateCleanup istate = E.mask_ $ do
             ReleaseMapClosed -> throw $ InvalidAccess "stateCleanup"
     case mm of
         Just m ->
-            mapM_ (\x -> try x >> return ()) $ IntMap.elems m
+            mapM_ (\x -> try (x rtype) >> return ()) $ IntMap.elems m
         Nothing -> return ()
   where
     try :: IO a -> IO (Either SomeException a)
@@ -301,6 +303,20 @@ register' :: I.IORef ReleaseMap
           -> IO ()
           -> IO ReleaseKey
 register' istate rel = I.atomicModifyIORef istate $ \rm ->
+    case rm of
+        ReleaseMap key rf m ->
+            ( ReleaseMap (key - 1) rf (IntMap.insert key (const rel) m)
+            , ReleaseKey istate key
+            )
+        ReleaseMapClosed -> throw $ InvalidAccess "register'"
+
+-- |
+--
+-- Since 1.1.2
+registerType :: I.IORef ReleaseMap
+             -> (ReleaseType -> IO ())
+             -> IO ReleaseKey
+registerType istate rel = I.atomicModifyIORef istate $ \rm ->
     case rm of
         ReleaseMap key rf m ->
             ( ReleaseMap (key - 1) rf (IntMap.insert key rel m)
