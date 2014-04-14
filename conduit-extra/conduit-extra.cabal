@@ -1,5 +1,5 @@
 Name:                conduit-extra
-Version:             1.1.0
+Version:             1.1.0.1
 Synopsis:            Batteries included conduit: adapters for common libraries.
 Description:
     The conduit package itself maintains relative small dependencies. The purpose of this package is to collect commonly used utility functions wrapping other library dependencies, without depending on heavier-weight dependencies. The basic idea is that this package should only depend on haskell-platform packages and conduit.
@@ -44,7 +44,7 @@ Library
                      , blaze-builder            >= 0.3          && < 0.4
                      , directory
                      , filepath
-                     , network                  >= 2.3          && < 2.5
+                     , network                  >= 2.3
                      , primitive                >= 0.5          && < 0.6
                      , resourcet                >= 1.1          && < 1.2
                      , streaming-commons        >= 0.1          && < 0.2
