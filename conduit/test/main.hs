@@ -4,25 +4,17 @@ import Test.Hspec
 import Test.Hspec.QuickCheck (prop)
 import Test.QuickCheck.Monadic (assert, monadicIO, run)
 
-import Control.Exception (IOException)
 import qualified Data.Conduit as C
 import qualified Data.Conduit.Lift as C
 import qualified Data.Conduit.Internal as CI
 import qualified Data.Conduit.List as CL
-import Control.Monad.Trans.Resource as C (runExceptionT, runResourceT)
+import Control.Monad.Trans.Resource as C (runResourceT)
 import Data.Maybe   (fromMaybe,catMaybes,fromJust)
 import qualified Data.List as DL
 import Control.Monad.ST (runST)
 import Data.Monoid
-import qualified Data.ByteString as S
-import qualified Data.ByteString.Char8 as S8
 import qualified Data.IORef as I
-import qualified Data.ByteString.Lazy as L
-import Data.ByteString.Lazy.Char8 ()
-import qualified Data.Text as T
-import qualified Data.Text.Lazy as TL
-import qualified Data.Text.Lazy.Encoding as TLE
-import Control.Monad.Trans.Resource (runExceptionT, runExceptionT_, allocate, resourceForkIO)
+import Control.Monad.Trans.Resource (allocate, resourceForkIO)
 import Control.Concurrent (threadDelay, killThread)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.Trans.Class (lift)
@@ -36,7 +28,6 @@ import Data.Void (Void)
 import qualified Control.Concurrent.MVar as M
 import Control.Monad.Error (catchError, throwError, Error)
 import qualified Data.Map as Map
-import Control.Arrow (first)
 import qualified Data.Conduit.Extra.ZipConduitSpec as ZipConduit
 
 (@=?) :: (Eq a, Show a) => a -> a -> IO ()
