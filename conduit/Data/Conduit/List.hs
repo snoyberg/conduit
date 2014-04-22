@@ -72,7 +72,7 @@ import Data.Monoid (Monoid, mempty, mappend)
 import qualified Data.Foldable as F
 import Data.Conduit
 import qualified Data.Conduit.Internal as CI
-import Control.Monad (when, (<=<), liftM)
+import Control.Monad (when, (<=<), liftM, void)
 import Control.Monad.Trans.Class (lift)
 
 -- | Generate a source from a seed value.
@@ -342,37 +342,49 @@ concatMapM f = awaitForever $ sourceList <=< lift . f
 --
 -- Since 0.3.0
 concatMapAccum :: Monad m => (a -> accum -> (accum, [b])) -> accum -> Conduit a m b
-concatMapAccum f x0 = scanl f x0 =$= concat
+concatMapAccum f x0 = void (mapAccum f x0) =$= concat
+
+-- | Analog of @mapAccumL@ for lists.
+mapAccum :: Monad m => (a -> s -> (s, b)) -> s -> ConduitM a b m s
+mapAccum f =
+    loop
+  where
+    loop s = await >>= maybe (return s) go
+      where
+        go a = case f a s of
+                 (s', b) -> yield b >> loop s'
+
+-- | Monadic `mapAccum`.
+mapAccumM :: Monad m => (a -> s -> m (s, b)) -> s -> ConduitM a b m s
+mapAccumM f =
+    loop
+  where
+    loop s = await >>= maybe (return s) go
+      where
+        go a = do (s', b) <- lift $ f a s
+                  yield b
+                  loop s'
 
 -- | Analog of 'Prelude.scanl' for lists.
 --
 -- Since 1.0.6
-scanl :: Monad m => (a -> s -> (s,b)) -> s -> Conduit a m b
+scanl :: Monad m => (a -> b -> b) -> b -> ConduitM a b m b
 scanl f =
-    loop
-  where
-    loop s = await >>= maybe (return ()) go
-      where
-        go a = case f a s of
-                 (s',b) -> yield b >> loop s'
+    mapAccum $ \a b -> let b' = f a b in (b', b')
 
--- | Monadic scanl.
+-- | Monadic @scanl@.
 --
 -- Since 1.0.6
-scanlM :: Monad m => (a -> s -> m (s,b)) -> s -> Conduit a m b
+scanlM :: Monad m => (a -> b -> m b) -> b -> ConduitM a b m b
 scanlM f =
-    loop
-  where
-    loop s = await >>= maybe (return ()) go
-      where
-        go a = do (s',b) <- lift $ f a s
-                  yield b >> loop s'
+    mapAccumM $ \a b -> do b' <- f a b
+                           return (b', b')
 
 -- | 'concatMapM' with an accumulator.
 --
 -- Since 0.3.0
 concatMapAccumM :: Monad m => (a -> accum -> m (accum, [b])) -> accum -> Conduit a m b
-concatMapAccumM f x0 = scanlM f x0 =$= concat
+concatMapAccumM f x0 = void (mapAccumM f x0) =$= concat
 
 
 -- | Generalization of 'mapMaybe' and 'concatMap'. It applies function
