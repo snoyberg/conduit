@@ -363,6 +363,8 @@ scanlM f s = void $ mapAccumM f s
 {-# DEPRECATED scanlM "Use mapAccumM instead" #-}
 
 -- | Analog of @mapAccumL@ for lists.
+--
+-- Since 1.1.1
 mapAccum :: Monad m => (a -> s -> (s, b)) -> s -> ConduitM a b m s
 mapAccum f =
     loop
@@ -373,6 +375,8 @@ mapAccum f =
                  (s', b) -> yield b >> loop s'
 
 -- | Monadic `mapAccum`.
+--
+-- Since 1.1.1
 mapAccumM :: Monad m => (a -> s -> m (s, b)) -> s -> ConduitM a b m s
 mapAccumM f =
     loop
@@ -384,13 +388,15 @@ mapAccumM f =
                   loop s'
 
 -- | Analog of 'Prelude.scanl' for lists.
+--
+-- Since 1.1.1
 scan :: Monad m => (a -> b -> b) -> b -> ConduitM a b m b
 scan f =
     mapAccum $ \a b -> let b' = f a b in (b', b')
 
 -- | Monadic @scanl@.
 --
--- Since 1.0.6
+-- Since 1.1.1
 scanM :: Monad m => (a -> b -> m b) -> b -> ConduitM a b m b
 scanM f =
     mapAccumM $ \a b -> do b' <- f a b
