@@ -39,6 +39,8 @@ module Data.Conduit.List
     , concatMap
     , concatMapAccum
     , scanl
+    , scan
+    , mapAccum
     , groupBy
     , isolate
     , filter
@@ -46,6 +48,8 @@ module Data.Conduit.List
     , mapM
     , iterM
     , scanlM
+    , scanM
+    , mapAccumM
     , mapMaybeM
     , mapFoldableM
     , concatMapM
@@ -344,6 +348,20 @@ concatMapM f = awaitForever $ sourceList <=< lift . f
 concatMapAccum :: Monad m => (a -> accum -> (accum, [b])) -> accum -> Conduit a m b
 concatMapAccum f x0 = void (mapAccum f x0) =$= concat
 
+-- | Deprecated synonym for @mapAccum@
+--
+-- Since 1.0.6
+scanl :: Monad m => (a -> s -> (s, b)) -> s -> Conduit a m b
+scanl f s = void $ mapAccum f s
+{-# DEPRECATED scanl "Use mapAccum instead" #-}
+
+-- | Deprecated synonym for @mapAccumM@
+--
+-- Since 1.0.6
+scanlM :: Monad m => (a -> s -> m (s, b)) -> s -> Conduit a m b
+scanlM f s = void $ mapAccumM f s
+{-# DEPRECATED scanlM "Use mapAccumM instead" #-}
+
 -- | Analog of @mapAccumL@ for lists.
 mapAccum :: Monad m => (a -> s -> (s, b)) -> s -> ConduitM a b m s
 mapAccum f =
@@ -366,17 +384,15 @@ mapAccumM f =
                   loop s'
 
 -- | Analog of 'Prelude.scanl' for lists.
---
--- Since 1.0.6
-scanl :: Monad m => (a -> b -> b) -> b -> ConduitM a b m b
-scanl f =
+scan :: Monad m => (a -> b -> b) -> b -> ConduitM a b m b
+scan f =
     mapAccum $ \a b -> let b' = f a b in (b', b')
 
 -- | Monadic @scanl@.
 --
 -- Since 1.0.6
-scanlM :: Monad m => (a -> b -> m b) -> b -> ConduitM a b m b
-scanlM f =
+scanM :: Monad m => (a -> b -> m b) -> b -> ConduitM a b m b
+scanM f =
     mapAccumM $ \a b -> do b' <- f a b
                            return (b', b')
 
