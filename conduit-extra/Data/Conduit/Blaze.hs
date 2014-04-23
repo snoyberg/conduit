@@ -53,6 +53,7 @@ import Blaze.ByteString.Builder.Internal.Types
 import Blaze.ByteString.Builder.Internal.Buffer
 import Control.Monad.Primitive (PrimMonad, unsafePrimToPrim)
 import Control.Monad.Base (MonadBase, liftBase)
+import Data.Streaming.Blaze
 
 unsafeLiftIO :: (MonadBase base m, PrimMonad base) => IO a -> m a
 unsafeLiftIO = liftBase . unsafePrimToPrim
@@ -61,14 +62,14 @@ unsafeLiftIO = liftBase . unsafePrimToPrim
 -- bytestrings.
 builderToByteString :: (MonadBase base m, PrimMonad base) => Conduit Builder m S.ByteString
 builderToByteString =
-  builderToByteStringWith (allNewBuffersStrategy defaultBufferSize)
+  builderToByteStringWith defaultStrategy
 
 -- |
 --
 -- Since 0.0.2
 builderToByteStringFlush :: (MonadBase base m, PrimMonad base) => Conduit (Flush Builder) m (Flush S.ByteString)
 builderToByteStringFlush =
-  builderToByteStringWithFlush (allNewBuffersStrategy defaultBufferSize)
+  builderToByteStringWithFlush defaultStrategy
 
 -- | Incrementally execute builders on the given buffer and pass on the filled
 -- chunks as bytestrings. Note that, if the given buffer is too small for the
@@ -110,46 +111,26 @@ helper :: (MonadBase base m, PrimMonad base, Monad (t m), MonadTrans t)
        -> (Flush S.ByteString -> t m ())
        -> BufferAllocStrategy
        -> t m ()
-helper await' yield' (ioBufInit, nextBuf) =
-    loop ioBufInit
-  where
-    loop ioBuf = do
-        await' >>= maybe (close ioBuf) (cont' ioBuf)
-
-    cont' ioBuf Flush = push ioBuf flush $ \ioBuf' -> yield' Flush >> loop ioBuf'
-    cont' ioBuf (Chunk builder) = push ioBuf builder loop
-
-    close ioBuf = do
-        buf <- lift $ unsafeLiftIO $ ioBuf
-        maybe (return ()) (yield' . Chunk) (unsafeFreezeNonEmptyBuffer buf)
-
-    push ioBuf0 x continue = do
-        go (unBuilder x (buildStep finalStep)) ioBuf0
-      where
-        finalStep !(BufRange pf _) = return $ Done pf ()
-
-        go bStep ioBuf = do
-            !buf   <- lift $ unsafeLiftIO $ ioBuf
-            signal <- lift $ unsafeLiftIO $ execBuildStep bStep buf
-            case signal of
-                Done op' _ -> continue $ return $ updateEndOfSlice buf op'
-                BufferFull minSize op' bStep' -> do
-                    let buf' = updateEndOfSlice buf op'
-                        {-# INLINE cont #-}
-                        cont = do
-                            -- sequencing the computation of the next buffer
-                            -- construction here ensures that the reference to the
-                            -- foreign pointer `fp` is lost as soon as possible.
-                            ioBuf' <- lift $ unsafeLiftIO $ nextBuf minSize buf'
-                            go bStep' ioBuf'
-                    case unsafeFreezeNonEmptyBuffer buf' of
-                        Nothing -> return ()
-                        Just bs -> yield' (Chunk bs)
-                    cont
-                InsertByteString op' bs bStep' -> do
-                    let buf' = updateEndOfSlice buf op'
-                    case unsafeFreezeNonEmptyBuffer buf' of
-                        Nothing -> return ()
-                        Just bs' -> yield' $ Chunk bs'
-                    unless (S.null bs) $ yield' $ Chunk bs
-                    lift (unsafeLiftIO $ nextBuf 1 buf') >>= go bStep'
+helper await' yield' strat = do
+    (recv, finish) <- lift $ unsafeLiftIO $ newBlazeRecv strat
+    let loop = await' >>= maybe finish' cont
+        finish' = do
+            mbs <- lift $ unsafeLiftIO finish
+            maybe (return ()) (yield' . Chunk) mbs
+        cont fbuilder = do
+            let builder =
+                    case fbuilder of
+                        Flush -> flush
+                        Chunk b -> b
+            popper <- lift $ unsafeLiftIO $ recv builder
+            let cont' = do
+                    bs <- lift $ unsafeLiftIO popper
+                    unless (S.null bs) $ do
+                        yield' (Chunk bs)
+                        cont'
+            cont'
+            case fbuilder of
+                Flush -> yield' Flush
+                Chunk _ -> return ()
+            loop
+    loop
