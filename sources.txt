@@ -2,3 +2,4 @@
 ./conduit
 ./network-conduit-tls
 ./conduit-extra
+./cereal-conduit

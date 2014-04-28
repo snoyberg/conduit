@@ -1,9 +1,9 @@
 name:            cereal-conduit
-version:         0.7.2.1
+version:         0.7.2.2
 license:         BSD3
 license-file:    LICENSE
 author:          Myles C. Maxfield <myles.maxfield@gmail.com>
-maintainer:      Myles C. Maxfield <myles.maxfield@gmail.com>
+maintainer:      Michael Snoyman
 synopsis:        Turn Data.Serialize Gets and Puts into Sources, Sinks, and Conduits
 description:
     Turn Data.Serialize Gets and Puts into Sources, Sinks, and Conduits.
@@ -14,8 +14,8 @@ category:        Conduit
 stability:       Experimental
 cabal-version:   >= 1.8
 build-type:      Simple
-homepage:        https://github.com/litherum/cereal-conduit
-bug-reports:     https://github.com/litherum/cereal-conduit/issues
+homepage:        https://github.com/snoyberg/conduit
+bug-reports:     https://github.com/snoyberg/conduit/issues
 
 library
     build-depends: base         >= 4       && < 5
@@ -43,4 +43,4 @@ Test-Suite test-cereal-conduit
 
 source-repository head
   type:     git
-  location: git://github.com/litherum/cereal-conduit.git
+  location: git://github.com/snoyberg/conduit.git
