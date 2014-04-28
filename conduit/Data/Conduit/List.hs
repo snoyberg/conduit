@@ -13,6 +13,7 @@ module Data.Conduit.List
       sourceList
     , sourceNull
     , unfold
+    , unfoldM
     , enumFromTo
     , iterate
       -- * Sinks
@@ -91,6 +92,22 @@ unfold f =
   where
     go seed =
         case f seed of
+            Just (a, seed') -> yield a >> go seed'
+            Nothing -> return ()
+
+-- | A monadic unfold.
+--
+-- Since 1.1.2
+unfoldM :: Monad m
+        => (b -> m (Maybe (a, b)))
+        -> b
+        -> Producer m a
+unfoldM f =
+    go
+  where
+    go seed = do
+        mres <- lift $ f seed
+        case mres of
             Just (a, seed') -> yield a >> go seed'
             Nothing -> return ()
 
