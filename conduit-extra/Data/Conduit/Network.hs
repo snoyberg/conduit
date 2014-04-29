@@ -41,6 +41,7 @@ import qualified Network.Socket as NS
 import Network.Socket (Socket)
 import Network.Socket.ByteString (sendAll, recv)
 import Data.ByteString (ByteString)
+import qualified GHC.Conc as Conc (yield)
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Char8 as S8
 import Control.Monad.IO.Class (MonadIO (liftIO))
@@ -92,4 +93,4 @@ appSource ad =
             loop
 
 appSink :: (SN.HasReadWrite ad, MonadIO m) => ad -> Consumer ByteString m ()
-appSink ad = awaitForever $ liftIO . SN.appWrite ad
+appSink ad = awaitForever $ \d -> liftIO $ SN.appWrite ad d >> Conc.yield
