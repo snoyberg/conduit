@@ -53,7 +53,11 @@ import Control.Monad.IO.Class (MonadIO (..))
 import Control.Monad (liftM, ap)
 import qualified Control.Exception as E
 import Control.Monad.ST (ST)
-import Control.Monad.Catch (MonadThrow (..), MonadCatch (..))
+import Control.Monad.Catch (MonadThrow (..), MonadCatch (..)
+#if MIN_VERSION_exceptions(0,6,0)
+    , MonadMask (..)
+#endif
+    )
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
 import qualified Data.IORef as I
@@ -145,6 +149,9 @@ instance MonadThrow m => MonadThrow (ResourceT m) where
 instance MonadCatch m => MonadCatch (ResourceT m) where
   catch (ResourceT m) c =
       ResourceT $ \r -> m r `catch` \e -> unResourceT (c e) r
+#if MIN_VERSION_exceptions(0,6,0)
+instance MonadMask m => MonadMask (ResourceT m) where
+#endif
   mask a = ResourceT $ \e -> mask $ \u -> unResourceT (a $ q u) e
     where q u (ResourceT b) = ResourceT (u . b)
   uninterruptibleMask a =
