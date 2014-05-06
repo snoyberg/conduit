@@ -143,6 +143,15 @@ main = hspec $ do
             let y = DL.unfoldr f seed
             x `shouldBe` y
 
+    describe "unfoldM" $ do
+        it "works" $ do
+            let f 0 = Nothing
+                f i = Just (show i, i - 1)
+                seed = 10 :: Int
+            x <- CL.unfoldM (return . f) seed C.$$ CL.consume
+            let y = DL.unfoldr f seed
+            x `shouldBe` y
+
     describe "Monoid instance for Source" $ do
         it "mappend" $ do
             x <- runResourceT $ (CL.sourceList [1..5 :: Int] `mappend` CL.sourceList [6..10]) C.$$ CL.fold (+) 0
