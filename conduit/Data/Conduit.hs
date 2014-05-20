@@ -52,6 +52,7 @@ module Data.Conduit
     , ($$+-)
     , ($=+)
     , unwrapResumable
+    , closeResumableSource
 
       -- ** For @Conduit@s
     , ResumableConduit
@@ -331,6 +332,15 @@ rsrc $$+- sink = do
 -- Since 1.0.16
 ($=+) :: Monad m => ResumableSource m a -> Conduit a m b -> ResumableSource m b
 ResumableSource src final $=+ sink = ResumableSource (src $= sink) final
+
+-- | Execute the finalizer associated with a @ResumableSource@, rendering the
+-- @ResumableSource@ invalid for further use.
+--
+-- This is just a more explicit version of @$$+- return ()@.
+--
+-- Since 1.1.3
+closeResumableSource :: Monad m => ResumableSource m a -> m ()
+closeResumableSource = ($$+- return ())
 
 -- | Provide for a stream of data that can be flushed.
 --
