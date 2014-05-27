@@ -64,6 +64,8 @@ module Data.Conduit.Internal
     , withUpstream
     , unwrapResumable
     , unwrapResumableConduit
+    , newResumableSource
+    , newResumableConduit
     , Data.Conduit.Internal.enumFromTo
     , zipSinks
     , zipSources
@@ -724,6 +726,10 @@ unwrapResumable (ResumableSource src final) = do
             x <- liftIO $ I.readIORef ref
             when x final
     return (liftIO (I.writeIORef ref False) >> src, final')
+
+newResumableSource :: Monad m => Source m o -> ResumableSource m o
+newResumableSource s = ResumableSource s (return ())
+
 infixr 9 <+<
 infixl 9 >+>
 
@@ -1060,6 +1066,9 @@ unwrapResumableConduit (ResumableConduit src final) = do
             x <- liftIO $ I.readIORef ref
             when x final
     return (liftIO (I.writeIORef ref False) >> src, final')
+
+newResumableConduit :: Monad m => Conduit i m o -> ResumableConduit i m o
+newResumableConduit c = ResumableConduit c (return ())
 
 -- | Turn a @Sink@ into a @Conduit@ in the following way:
 --
