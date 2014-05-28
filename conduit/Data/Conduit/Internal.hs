@@ -727,6 +727,9 @@ unwrapResumable (ResumableSource src final) = do
             when x final
     return (liftIO (I.writeIORef ref False) >> src, final')
 
+-- | Turn a @Source@ into a @ResumableSource@ with no attached finalizer.
+--
+-- Since 1.1.4
 newResumableSource :: Monad m => Source m o -> ResumableSource m o
 newResumableSource s = ResumableSource s (return ())
 
@@ -1067,6 +1070,9 @@ unwrapResumableConduit (ResumableConduit src final) = do
             when x final
     return (liftIO (I.writeIORef ref False) >> src, final')
 
+-- | Turn a @Conduit@ into a @ResumableConduit@ with no attached finalizer.
+--
+-- Since 1.1.4
 newResumableConduit :: Monad m => Conduit i m o -> ResumableConduit i m o
 newResumableConduit c = ResumableConduit c (return ())
 

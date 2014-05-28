@@ -47,6 +47,7 @@ module Data.Conduit
 
       -- * Connect-and-resume
     , ResumableSource
+    , newResumableSource
     , ($$+)
     , ($$++)
     , ($$+-)
@@ -56,6 +57,7 @@ module Data.Conduit
 
       -- ** For @Conduit@s
     , ResumableConduit
+    , newResumableConduit
     , (=$$+)
     , (=$$++)
     , (=$$+-)
