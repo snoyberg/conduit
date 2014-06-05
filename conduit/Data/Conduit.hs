@@ -16,6 +16,10 @@ module Data.Conduit
     , (=$)
     , (=$=)
 
+      -- *** Fuse with upstream results
+    , fuseBoth
+    , fuseUpstream
+
       -- ** Primitives
     , await
     , yield
@@ -489,3 +493,21 @@ instance Monad m => Applicative (ZipConduit i o m) where
 -- Since 1.0.17
 sequenceConduits :: (Traversable f, Monad m) => f (ConduitM i o m r) -> ConduitM i o m (f r)
 sequenceConduits = getZipConduit . sequenceA . fmap ZipConduit
+
+-- | Fuse two @ConduitM@s together, and provide the return value of both. Note
+-- that this will force the entire upstream @ConduitM@ to be run to produce the
+-- result value, even if the downstream terminates early.
+--
+-- Since 1.1.5
+fuseBoth :: Monad m => ConduitM a b m r1 -> ConduitM b c m r2 -> ConduitM a c m (r1, r2)
+fuseBoth (ConduitM up) (ConduitM down) =
+    ConduitM $ pipeL up (withUpstream $ generalizeUpstream down)
+{-# INLINE fuseBoth #-}
+
+-- | Same as @fuseBoth@, but ignore the return value from the downstream
+-- @Conduit@. Same caveats of forced consumption apply.
+--
+-- Since 1.1.5
+fuseUpstream :: Monad m => ConduitM a b m r -> Conduit b m c -> ConduitM a c m r
+fuseUpstream up down = fmap fst (fuseBoth up down)
+{-# INLINE fuseUpstream #-}

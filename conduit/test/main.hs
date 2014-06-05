@@ -887,6 +887,18 @@ main = hspec $ do
             x <- C.runResourceT $ CL.sourceList [100,99..1] C.$$ sink
             x `shouldBe` (505000 :: Integer)
 
+    describe "upstream results" $ do
+        it "fuseBoth" $ do
+            let upstream = do
+                    C.yield ("hello" :: String)
+                    CL.isolate 5 C.=$= CL.fold (+) 0
+                downstream = C.fuseBoth upstream CL.consume
+            res <- CL.sourceList [1..10 :: Int] C.$$ do
+                (x, y) <- downstream
+                z <- CL.consume
+                return (x, y, z)
+            res `shouldBe` (sum [1..5], ["hello"], [6..10])
+
     ZipConduit.spec
 
 it' :: String -> IO () -> Spec

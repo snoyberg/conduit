@@ -72,6 +72,7 @@ module Data.Conduit.Internal
     , zipSourcesApp
     , zipConduitApp
     , passthroughSink
+    , generalizeUpstream
     ) where
 
 import Control.Applicative (Applicative (..))
@@ -1112,3 +1113,17 @@ passthroughSink (ConduitM sink0) final =
             Just x -> do
                 yield x
                 go [] (next x)
+
+-- | Generalize the upstream return value for a @Pipe@ from unit to any type.
+--
+-- Since 1.1.5
+generalizeUpstream :: Monad m => Pipe l i o () m r -> Pipe l i o u m r
+generalizeUpstream =
+    go
+  where
+    go (HaveOutput p f o) = HaveOutput (go p) f o
+    go (NeedInput x y) = NeedInput (go . x) (\_ -> go (y ()))
+    go (Done r) = Done r
+    go (PipeM mp) = PipeM (liftM go mp)
+    go (Leftover p l) = Leftover (go p) l
+{-# INLINE generalizeUpstream #-}
