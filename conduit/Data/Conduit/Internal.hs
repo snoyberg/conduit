@@ -92,6 +92,9 @@ import Control.Monad.Trans.Resource
 import qualified GHC.Exts
 import qualified Data.IORef as I
 import Control.Monad.Morph (MFunctor (..))
+#if MIN_VERSION_exceptions(0, 6, 0)
+import qualified Control.Monad.Catch as Catch
+#endif
 
 -- | The underlying datatype for all the types in this package.  In has six
 -- type parameters:
@@ -160,6 +163,19 @@ instance MonadIO m => MonadIO (Pipe l i o u m) where
 
 instance MonadThrow m => MonadThrow (Pipe l i o u m) where
     throwM = lift . throwM
+
+#if MIN_VERSION_exceptions(0, 6, 0)
+instance Catch.MonadCatch m => Catch.MonadCatch (Pipe l i o u m) where
+    catch p0 onErr =
+        go p0
+      where
+        go (Done r) = Done r
+        go (PipeM mp) = PipeM $ Catch.catch (liftM go mp) (return . onErr)
+        go (Leftover p i) = Leftover (go p) i
+        go (NeedInput x y) = NeedInput (go . x) (go . y)
+        go (HaveOutput p c o) = HaveOutput (go p) c o
+    {-# INLINE catch #-}
+#endif
 
 instance Monad m => Monoid (Pipe l i o u m ()) where
     mempty = return ()
@@ -230,7 +246,11 @@ instance MonadError e m => MonadError e (Pipe l i o u m) where
 --
 -- Since 1.0.0
 newtype ConduitM i o m r = ConduitM { unConduitM :: Pipe i i o () m r }
-    deriving (Functor, Applicative, Monad, MonadIO, MonadTrans, MonadThrow, MFunctor)
+    deriving (Functor, Applicative, Monad, MonadIO, MonadTrans, MonadThrow, MFunctor
+#if MIN_VERSION_exceptions(0, 6, 0)
+    , Catch.MonadCatch
+#endif
+    )
 
 instance MonadReader r m => MonadReader r (ConduitM i o m) where
     ask = ConduitM ask

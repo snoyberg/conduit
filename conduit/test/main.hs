@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE DeriveDataTypeable #-}
 import Test.Hspec
 import Test.Hspec.QuickCheck (prop)
 import Test.QuickCheck.Monadic (assert, monadicIO, run)
@@ -8,6 +9,7 @@ import qualified Data.Conduit as C
 import qualified Data.Conduit.Lift as C
 import qualified Data.Conduit.Internal as CI
 import qualified Data.Conduit.List as CL
+import Data.Typeable (Typeable)
 import Control.Monad.Trans.Resource as C (runResourceT)
 import Data.Maybe   (fromMaybe,catMaybes,fromJust)
 import qualified Data.List as DL
@@ -22,6 +24,7 @@ import Control.Monad.Trans.Writer (execWriter, tell, runWriterT)
 import Control.Monad.Trans.State (evalStateT, get, put, modify)
 import Control.Monad.Trans.Maybe (MaybeT (..))
 import Control.Applicative (pure, (<$>), (<*>))
+import qualified Control.Monad.Catch as Catch
 import Data.Functor.Identity (Identity,runIdentity)
 import Control.Monad (forever, void)
 import Data.Void (Void)
@@ -899,11 +902,23 @@ main = hspec $ do
                 return (x, y, z)
             res `shouldBe` (sum [1..5], ["hello"], [6..10])
 
+    describe "catching exceptions" $ do
+        it "works" $ do
+            let src = do
+                    C.yield 1
+                    () <- Catch.throwM DummyError
+                    C.yield 2
+                src' = do
+                    Catch.catch src (\DummyError -> C.yield (3 :: Int))
+            res <- src' C.$$ CL.consume
+            res `shouldBe` [1, 3]
+
     ZipConduit.spec
 
 it' :: String -> IO () -> Spec
 it' = it
 
 data DummyError = DummyError
-    deriving (Show, Eq)
+    deriving (Show, Eq, Typeable)
 instance Error DummyError
+instance Catch.Exception DummyError
