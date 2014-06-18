@@ -88,6 +88,7 @@ import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Base (MonadBase (liftBase))
 import Data.Void (Void, absurd)
 import Data.Monoid (Monoid (mappend, mempty))
+import Data.String
 import Control.Monad.Trans.Resource
 import qualified GHC.Exts
 import qualified Data.IORef as I
@@ -292,6 +293,9 @@ instance Monad m => Monoid (ConduitM i o m ()) where
 --
 -- Since 0.5.0
 type Source m o = ConduitM () o m ()
+
+instance (Monad m, IsString a) => IsString (Source m a) where
+    fromString = ConduitM . yield . fromString
 
 -- | A component which produces a stream of output values, regardless of the
 -- input stream. A @Producer@ is a generalization of a @Source@, and can be
