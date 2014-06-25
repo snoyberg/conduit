@@ -30,6 +30,7 @@ module Data.Conduit.Text
     , foldLines
     , withLine
     , Data.Conduit.Text.decodeUtf8
+    , decodeUtf8Lenient
     , encodeUtf8
     ) where
 
@@ -136,14 +137,15 @@ encode codec = CL.mapM $ \t -> do
     let (bs, mexc) = codecEncode codec t
     maybe (return bs) (monadThrow . fst) mexc
 
-
--- | Convert bytes into text, using the provided codec. If the codec is
--- not capable of decoding an input byte sequence, an exception will be thrown.
---
--- Since 0.3.0
-decode :: MonadThrow m => Codec -> Conduit B.ByteString m T.Text
-decode (NewCodec name _ start) =
-    loop 0 start
+decodeNew
+    :: Monad m
+    => (Int -> B.ByteString -> T.Text -> B.ByteString -> Conduit B.ByteString m T.Text)
+    -> t
+    -> Int
+    -> (B.ByteString -> DecodeResult)
+    -> Conduit B.ByteString m T.Text
+decodeNew onFailure name =
+    loop
   where
     loop consumed dec =
         await >>= maybe finish go
@@ -151,7 +153,7 @@ decode (NewCodec name _ start) =
         finish =
             case dec B.empty of
                 DecodeResultSuccess _ _ -> return ()
-                DecodeResultFailure t rest -> onFailure B.empty t rest
+                DecodeResultFailure t rest -> onFailure consumed B.empty t rest
         {-# INLINE finish #-}
 
         go bs | B.null bs = loop consumed dec
@@ -163,14 +165,39 @@ decode (NewCodec name _ start) =
                             unless (T.null t) (yield t)
                             loop consumed' dec'
                      in consumed' `seq` next
-                DecodeResultFailure t rest -> onFailure bs t rest
+                DecodeResultFailure t rest -> onFailure consumed bs t rest
 
-        onFailure bs t rest = do
-            unless (T.null t) (yield t)
-            leftover rest -- rest will never be null, no need to check
-            let consumed' = consumed + B.length bs - B.length rest
-            monadThrow $ NewDecodeException name consumed' (B.take 4 rest)
-        {-# INLINE onFailure #-}
+-- | Decode a stream of UTF8 data, and replace invalid bytes with the Unicode
+-- replacement character.
+--
+-- Since 1.1.1
+decodeUtf8Lenient :: Monad m => Conduit B.ByteString m T.Text
+decodeUtf8Lenient =
+    decodeNew onFailure "UTF8-lenient" 0 Data.Streaming.Text.decodeUtf8
+  where
+    onFailure _consumed _bs t rest = do
+        unless (T.null t) (yield t)
+        case B.uncons rest of
+            Nothing -> return ()
+            Just (_, rest') -> do
+                unless (B.null rest') (leftover rest')
+                yield $ T.singleton '\xFFFD'
+        decodeUtf8Lenient
+
+-- | Convert bytes into text, using the provided codec. If the codec is
+-- not capable of decoding an input byte sequence, an exception will be thrown.
+--
+-- Since 0.3.0
+decode :: MonadThrow m => Codec -> Conduit B.ByteString m T.Text
+decode (NewCodec name _ start) =
+    decodeNew onFailure name 0 start
+  where
+    onFailure consumed bs t rest = do
+        unless (T.null t) (yield t)
+        leftover rest -- rest will never be null, no need to check
+        let consumed' = consumed + B.length bs - B.length rest
+        monadThrow $ NewDecodeException name consumed' (B.take 4 rest)
+    {-# INLINE onFailure #-}
 decode codec =
     loop id
   where

@@ -10,6 +10,8 @@ import Test.Hspec.QuickCheck
 import Data.Monoid
 import Control.Monad.ST
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as TE
+import qualified Data.Text.Encoding.Error as TEE
 import qualified Data.Text.Lazy.Encoding as TLE
 import Data.Functor.Identity
 import Control.Arrow
@@ -149,6 +151,12 @@ spec = describe "Data.Conduit.Text" $ do
                   ]
                 , ["\128\128\0that was bad"]
                 )
+        prop "lenient UTF8 decoding" $ \good1 good2 -> do
+            let bss = [TE.encodeUtf8 $ T.pack good1, "\128\129\130", TE.encodeUtf8 $ T.pack good2]
+                bs = S.concat bss
+                expected = TE.decodeUtf8With TEE.lenientDecode bs
+                actual = runIdentity $ mapM_ C.yield bss C.$$ CT.decodeUtf8Lenient C.=$ CL.consume
+            T.concat actual `shouldBe` expected
 
     describe "text lines" $ do
         it "yields nothing given nothing" $
