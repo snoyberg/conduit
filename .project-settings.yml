@@ -4,13 +4,9 @@ module-template: ! 'module MODULE_NAME where
 extensions: {}
 environment: ghc-7.4.2-unstable
 cabal-file: project.cabal
-hidden-packages: monads-tf crypto-random
 version: 1
 extra-packages: ''
 ghc-args: []
 excluded-modules:
-- http-conduit-parsers/Data/Conduit/HTTP.hs
 - network-conduit-tls/Data/Conduit/Network/TLS.hs
 - network-conduit-tls/Data/Conduit/Network/TLS/Internal.hs
-- unix-process-conduit/Data/Conduit/Process/Unix.hs
-- unix-process-conduit/test/Data/Conduit/Process/UnixSpec.hs
