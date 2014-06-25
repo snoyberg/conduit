@@ -100,9 +100,9 @@ spec = describe "Data.Conduit.Binary" $ do
 
     describe "binary take" $ do
       let go n l = CL.sourceList l C.$$ do
-          a <- CB.take n
-          b <- CL.consume
-          return (a, b)
+              a <- CB.take n
+              b <- CL.consume
+              return (a, b)
 
       -- Taking nothing should result in an empty Bytestring
       it "nothing" $ do
