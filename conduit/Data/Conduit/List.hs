@@ -43,6 +43,7 @@ module Data.Conduit.List
     , scan
     , mapAccum
     , groupBy
+    , groupOn1
     , isolate
     , filter
       -- ** Monadic
@@ -467,6 +468,35 @@ groupBy f =
         go y
             | f x y     = loop (rest . (y:)) x
             | otherwise = yield (x : rest []) >> loop id y
+
+
+-- 'groupOn1' is similar to @groupBy id@
+--
+-- returns a pair, indicating there are always 1 or more items in the grouping.
+-- This is designed to be converted into a NonEmpty structure
+-- but it avoids a dependency on another package
+--
+-- > import Data.List.NonEmpty
+-- >
+-- > groupOn1 :: (Monad m, Eq b) => (a -> b) -> Conduit a m (NonEmpty a)
+-- > groupOn1 f = CL.groupOn1 f =$= CL.map (uncurry (:|))
+--
+-- Since 1.1.7
+groupOn1 :: (Monad m, Eq b)
+         => (a -> b)
+         -> Conduit a m (a, [a])
+groupOn1 f =
+    start
+  where
+    start = await >>= maybe (return ()) (loop id)
+
+    loop rest x =
+        await >>= maybe (yield (x, rest [])) go
+      where
+        go y
+            | f x == f y = loop (rest . (y:)) x
+            | otherwise  = yield (x, rest []) >> loop id y
+
 
 -- | Ensure that the inner sink consumes no more than the given number of
 -- values. Note this this does /not/ ensure that the sink consumes all of those

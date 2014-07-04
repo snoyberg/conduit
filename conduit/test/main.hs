@@ -245,6 +245,21 @@ main = hspec $ do
                     C.=$ CL.consume
             x `shouldBe` DL.groupBy (==) input
 
+        it "groupOn1" $ do
+            let input = [1::Int, 1, 2, 3, 3, 3, 4, 5, 5]
+            x <- runResourceT $ CL.sourceList input
+                    C.$$ CL.groupOn1 id
+                    C.=$ CL.consume
+            x `shouldBe` [(1,[1]), (2, []), (3,[3,3]), (4,[]), (5, [5])]
+
+        it "groupOn1 (nondup begin/end)" $ do
+            let input = [1::Int, 2, 3, 3, 3, 4, 5]
+            x <- runResourceT $ CL.sourceList input
+                    C.$$ CL.groupOn1 id
+                    C.=$ CL.consume
+            x `shouldBe` [(1,[]), (2, []), (3,[3,3]), (4,[]), (5, [])]
+
+
         it "mapMaybe" $ do
             let input = [Just (1::Int), Nothing, Just 2, Nothing, Just 3]
             x <- runResourceT $ CL.sourceList input
