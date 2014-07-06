@@ -470,7 +470,7 @@ groupBy f =
             | otherwise = yield (x : rest []) >> loop id y
 
 
--- 'groupOn1' is similar to @groupBy id@
+-- | 'groupOn1' is similar to @groupBy id@
 --
 -- returns a pair, indicating there are always 1 or more items in the grouping.
 -- This is designed to be converted into a NonEmpty structure
