@@ -24,6 +24,7 @@ Library
                        Data.Conduit.Lazy
                        Data.Conduit.Network
                        Data.Conduit.Network.UDP
+                       Data.Conduit.Process
                        Data.Conduit.Text
                        Data.Conduit.Zlib
   if !os(windows)
@@ -78,6 +79,7 @@ test-suite test
                      Data.Conduit.FilesystemSpec
                      Data.Conduit.LazySpec
                      Data.Conduit.NetworkSpec
+                     Data.Conduit.ProcessSpec
                      Data.Conduit.TextSpec
                      Data.Conduit.ZlibSpec
 
