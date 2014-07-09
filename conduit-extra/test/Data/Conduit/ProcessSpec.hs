@@ -11,6 +11,8 @@ import qualified Data.ByteString.Lazy as L
 import qualified Data.ByteString as S
 import System.Exit
 import Control.Concurrent (threadDelay)
+import Control.Monad.IO.Class (liftIO)
+import Control.Exception (throwIO)
 
 main :: IO ()
 main = hspec spec
@@ -37,6 +39,24 @@ spec = describe "Data.Conduit.Process" $ do
 
         ec <- waitForConduitProcess cph
         ec `shouldBe` ExitSuccess
+
+    let sourceCmd :: String -> Source IO S.ByteString
+        sourceCmd cmd = do
+            (ClosedStream, (source, close), ClosedStream, cph) <- conduitProcess (shell cmd)
+            flip addCleanup source $ const $ do
+                close
+                ec <- waitForConduitProcess cph
+                case ec of
+                    ExitSuccess -> return ()
+                    _ -> liftIO $ throwIO ec
+
+    it "handles sub-process exit code" $ do
+        (sourceCmd "exit 0" $$ CL.sinkNull)
+                `shouldReturn` ()
+        (sourceCmd "exit 11" $$ CL.sinkNull)
+                `shouldThrow` (== ExitFailure 11)
+        (sourceCmd "exit 12" $$ CL.sinkNull)
+                `shouldThrow` (== ExitFailure 12)
 #endif
     it "blocking vs non-blocking" $ do
         (ClosedStream, ClosedStream, ClosedStream, cph) <- conduitProcess (shell "sleep 1")
