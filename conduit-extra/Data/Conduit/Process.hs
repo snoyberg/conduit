@@ -22,11 +22,14 @@ module Data.Conduit.Process
     , OutputSink
       -- * Reexport
     , module System.Process
+      -- * Deprecated compatibility functions
+    , sourceCmd
     ) where
 
 import System.Process
 import Control.Concurrent.STM (TMVar, atomically, newEmptyTMVar, putTMVar, STM, readTMVar, tryReadTMVar)
-import System.Exit (ExitCode)
+import Control.Exception (throwIO)
+import System.Exit (ExitCode (ExitSuccess))
 import Control.Concurrent (forkIO)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import System.IO (Handle, hClose)
@@ -166,3 +169,18 @@ conduitProcess cp = liftIO $ do
         <*> getStdout stdoutH
         <*> getStderr stderrH
         <*> return (ConduitProcessHandle ph ec)
+
+-- | This function is dangerous, and should not be used. The running of the
+-- process is completely dependent on whether or not you consume input from it,
+-- which is an unintuitive and flimsy abstraction. Please move over to using
+-- @conduitProcess@ instead.
+sourceCmd :: MonadIO m => String -> Source m ByteString
+sourceCmd cmd = do
+    (ClosedStream, (source, close), ClosedStream, cph) <- conduitProcess (shell cmd)
+    flip addCleanup source $ const $ do
+        close
+        ec <- waitForConduitProcess cph
+        case ec of
+            ExitSuccess -> return ()
+            _ -> liftIO $ throwIO ec
+{-# DEPRECATED sourceCmd "Please use conduitProcess instead" #-}
