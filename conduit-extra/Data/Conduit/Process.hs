@@ -4,10 +4,15 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 -- | A full tutorial for this module is available on FP School of Haskell:
 -- <https://www.fpcomplete.com/user/snoyberg/library-documentation/data-conduit-process>.
+--
+-- Note that this is a very thin layer around the @Data.Streaming.Process@ module. In particular, it:
+--
+-- * Provides orphan instances for conduit
+--
+-- * Provides some useful helper functions
 module Data.Conduit.Process
     ( -- * Functions
-      conduitProcess
-    , sourceCmdWithConsumer
+      sourceCmdWithConsumer
     , sourceProcessWithConsumer
       -- * Reexport
     , module Data.Streaming.Process
@@ -32,19 +37,6 @@ instance (r ~ (), MonadIO m, o ~ ByteString) => OutputSink (ConduitM i o m r) wh
 instance (r ~ (), r' ~ (), MonadIO m, MonadIO n, o ~ ByteString) => OutputSink (ConduitM i o m r, n r') where
     osStdStream = (\(Just h) -> return (sourceHandle h, liftIO $ hClose h), Just CreatePipe)
 
--- | The primary function for running a process. Note that, with the
--- exception of 'UseProvidedHandle', the values for @std_in@, @std_out@
--- and @std_err@ will be ignored by this function.
---
--- Note that this simply reexports 'streamingProcess' under a different
--- name.
---
--- Since 1.1.2
-conduitProcess :: (MonadIO m, InputSource stdin, OutputSink stdout, OutputSink stderr)
-               => CreateProcess
-               -> m (stdin, stdout, stderr, StreamingProcessHandle)
-conduitProcess = streamingProcess
-
 -- | Given a @CreateProcess@, run the process, with its output being used as a
 -- @Source@ to feed the provided @Consumer@. Once the process has completed,
 -- return a tuple of the @ExitCode@ from the process and the output collected
@@ -53,7 +45,7 @@ conduitProcess = streamingProcess
 -- Since 1.1.2
 sourceProcessWithConsumer :: MonadIO m => CreateProcess -> Consumer ByteString m a -> m (ExitCode, a)
 sourceProcessWithConsumer cp consumer = do
-    (ClosedStream, (source, close), ClosedStream, cph) <- conduitProcess cp
+    (ClosedStream, (source, close), ClosedStream, cph) <- streamingProcess cp
     res <- source $$ consumer
     close
     ec <- waitForStreamingProcess cph

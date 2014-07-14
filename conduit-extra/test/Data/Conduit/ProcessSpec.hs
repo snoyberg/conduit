@@ -20,7 +20,7 @@ spec = describe "Data.Conduit.Process" $ do
 #ifndef WINDOWS
     prop "cat" $ \wss -> do
         let lbs = L.fromChunks $ map S.pack wss
-        ((sink, closeStdin), source, Inherited, cph) <- conduitProcess (shell "cat")
+        ((sink, closeStdin), source, Inherited, cph) <- streamingProcess (shell "cat")
         ((), bss) <- concurrently
             (do
                 mapM_ yield (L.toChunks lbs) $$ sink
@@ -31,7 +31,7 @@ spec = describe "Data.Conduit.Process" $ do
         ec `shouldBe` ExitSuccess
 
     it "closed stream" $ do
-        (ClosedStream, source, Inherited, cph) <- conduitProcess (shell "cat")
+        (ClosedStream, source, Inherited, cph) <- streamingProcess (shell "cat")
         bss <- source $$ CL.consume
         bss `shouldBe` []
 
@@ -47,7 +47,7 @@ spec = describe "Data.Conduit.Process" $ do
                 `shouldReturn` (ExitFailure 12, ())
 #endif
     it "blocking vs non-blocking" $ do
-        (ClosedStream, ClosedStream, ClosedStream, cph) <- conduitProcess (shell "sleep 1")
+        (ClosedStream, ClosedStream, ClosedStream, cph) <- streamingProcess (shell "sleep 1")
 
         mec1 <- getStreamingProcessExitCode cph
         mec1 `shouldBe` Nothing
