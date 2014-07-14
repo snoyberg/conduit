@@ -1,10 +1,13 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE RankNTypes #-}
 -- | A full tutorial for this module is available on FP School of Haskell:
 -- <https://www.fpcomplete.com/user/snoyberg/library-documentation/data-conduit-process>.
 module Data.Conduit.Process
     ( -- * Functions
       conduitProcess
+    , sourceCmdWithConsumer
+    , sourceProcessWithConsumer
       -- * Specialized streaming types
     , Inherited (..)
     , ClosedStream (..)
@@ -22,14 +25,11 @@ module Data.Conduit.Process
     , OutputSink
       -- * Reexport
     , module System.Process
-      -- * Deprecated compatibility functions
-    , sourceCmd
     ) where
 
 import System.Process
 import Control.Concurrent.STM (TMVar, atomically, newEmptyTMVar, putTMVar, STM, readTMVar, tryReadTMVar)
-import Control.Exception (throwIO)
-import System.Exit (ExitCode (ExitSuccess))
+import System.Exit (ExitCode (..))
 import Control.Concurrent (forkIO)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import System.IO (Handle, hClose)
@@ -170,17 +170,23 @@ conduitProcess cp = liftIO $ do
         <*> getStderr stderrH
         <*> return (ConduitProcessHandle ph ec)
 
--- | This function is dangerous, and should not be used. The running of the
--- process is completely dependent on whether or not you consume input from it,
--- which is an unintuitive and flimsy abstraction. Please move over to using
--- @conduitProcess@ instead.
-sourceCmd :: MonadIO m => String -> Source m ByteString
-sourceCmd cmd = do
-    (ClosedStream, (source, close), ClosedStream, cph) <- conduitProcess (shell cmd)
-    flip addCleanup source $ const $ do
-        close
-        ec <- waitForConduitProcess cph
-        case ec of
-            ExitSuccess -> return ()
-            _ -> liftIO $ throwIO ec
-{-# DEPRECATED sourceCmd "Please use conduitProcess instead" #-}
+-- | Given a @CreateProcess@, run the process, with its output being used as a
+-- @Source@ to feed the provided @Consumer@. Once the process has completed,
+-- return a tuple of the @ExitCode@ from the process and the output collected
+-- from the @Consumer@.
+--
+-- Since 1.1.2
+sourceProcessWithConsumer :: MonadIO m => CreateProcess -> Consumer ByteString m a -> m (ExitCode, a)
+sourceProcessWithConsumer cp consumer = do
+    (ClosedStream, (source, close), ClosedStream, cph) <- conduitProcess cp
+    res <- source $$ consumer
+    close
+    ec <- waitForConduitProcess cph
+    return (ec, res)
+
+-- | Like @sourceProcessWithConsumer@ but providing the command to be run as
+-- a @String@.
+--
+-- Since 1.1.2
+sourceCmdWithConsumer :: MonadIO m => String -> Consumer ByteString m a -> m (ExitCode, a)
+sourceCmdWithConsumer cmd = sourceProcessWithConsumer (shell cmd)
