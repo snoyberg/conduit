@@ -50,7 +50,7 @@ Library
                      , process
                      , resourcet                >= 1.1
                      , stm
-                     , streaming-commons        >= 0.1.2
+                     , streaming-commons        >= 0.1.4
 
   ghc-options:     -Wall
 

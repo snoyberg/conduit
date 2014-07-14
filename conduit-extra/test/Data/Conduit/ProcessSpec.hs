@@ -27,7 +27,7 @@ spec = describe "Data.Conduit.Process" $ do
                 closeStdin)
             (source $$ CL.consume)
         L.fromChunks bss `shouldBe` lbs
-        ec <- waitForConduitProcess cph
+        ec <- waitForStreamingProcess cph
         ec `shouldBe` ExitSuccess
 
     it "closed stream" $ do
@@ -35,7 +35,7 @@ spec = describe "Data.Conduit.Process" $ do
         bss <- source $$ CL.consume
         bss `shouldBe` []
 
-        ec <- waitForConduitProcess cph
+        ec <- waitForStreamingProcess cph
         ec `shouldBe` ExitSuccess
 
     it "handles sub-process exit code" $ do
@@ -49,13 +49,13 @@ spec = describe "Data.Conduit.Process" $ do
     it "blocking vs non-blocking" $ do
         (ClosedStream, ClosedStream, ClosedStream, cph) <- conduitProcess (shell "sleep 1")
 
-        mec1 <- getConduitProcessExitCode cph
+        mec1 <- getStreamingProcessExitCode cph
         mec1 `shouldBe` Nothing
 
         threadDelay 1500000
 
-        mec2 <- getConduitProcessExitCode cph
+        mec2 <- getStreamingProcessExitCode cph
         mec2 `shouldBe` Just ExitSuccess
 
-        ec <- waitForConduitProcess cph
+        ec <- waitForStreamingProcess cph
         ec `shouldBe` ExitSuccess
