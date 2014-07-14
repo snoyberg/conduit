@@ -39,12 +39,12 @@ spec = describe "Data.Conduit.Process" $ do
         ec `shouldBe` ExitSuccess
 
     it "handles sub-process exit code" $ do
-        (sourceCmd "exit 0" $$ CL.sinkNull)
-                `shouldReturn` ()
-        (sourceCmd "exit 11" $$ CL.sinkNull)
-                `shouldThrow` (== ExitFailure 11)
-        (sourceCmd "exit 12" $$ CL.sinkNull)
-                `shouldThrow` (== ExitFailure 12)
+        (sourceCmdWithConsumer "exit 0" CL.sinkNull)
+                `shouldReturn` (ExitSuccess, ())
+        (sourceCmdWithConsumer "exit 11" CL.sinkNull)
+                `shouldReturn` (ExitFailure 11, ())
+        (sourceCmdWithConsumer "exit 12" CL.sinkNull)
+                `shouldReturn` (ExitFailure 12, ())
 #endif
     it "blocking vs non-blocking" $ do
         (ClosedStream, ClosedStream, ClosedStream, cph) <- conduitProcess (shell "sleep 1")
