@@ -23,6 +23,7 @@ Library
                        Data.Conduit.Filesystem
                        Data.Conduit.Lazy
                        Data.Conduit.Network
+                       Data.Conduit.Network.TCP
                        Data.Conduit.Network.UDP
                        Data.Conduit.Process
                        Data.Conduit.Text
