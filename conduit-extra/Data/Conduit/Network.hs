@@ -17,10 +17,12 @@ module Data.Conduit.Network
     , serverSettings
     , SN.runTCPServer
     , SN.runTCPServerWithHandle
+    , runGeneralTCPServer
       -- ** Client
     , SN.ClientSettings
     , clientSettings
     , SN.runTCPClient
+    , runGeneralTCPClient
       -- ** Getters
     , SN.getPort
     , SN.getHost
@@ -46,8 +48,8 @@ import qualified Data.ByteString as S
 import qualified Data.ByteString.Char8 as S8
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Exception (throwIO, SomeException, try, finally, bracket, IOException, catch)
-import Control.Monad (forever, unless)
-import Control.Monad.Trans.Control (MonadBaseControl, control)
+import Control.Monad (forever, unless, void)
+import Control.Monad.Trans.Control (MonadBaseControl, control, liftBaseWith)
 import Control.Monad.Trans.Class (lift)
 import Control.Concurrent (forkIO, threadDelay, newEmptyMVar, putMVar, takeMVar)
 import qualified Data.Streaming.Network as SN
@@ -94,3 +96,33 @@ appSource ad =
 
 appSink :: (SN.HasReadWrite ad, MonadIO m) => ad -> Consumer ByteString m ()
 appSink ad = awaitForever $ \d -> liftIO $ SN.appWrite ad d >> Conc.yield
+
+-- | Run a general TCP server
+--
+-- Same as 'SN.runTCPServer', except monad can be any instance of
+-- 'MonadBaseControl' 'IO'.
+--
+-- Note that any changes to the monadic state performed by individual
+-- client handlers will be discarded. If you have mutable state you want
+-- to share among multiple handlers, you need to use some kind of mutable
+-- variables.
+--
+-- Since 1.1.3
+runGeneralTCPServer :: MonadBaseControl IO m
+                    => SN.ServerSettings
+                    -> (SN.AppData -> m ())
+                    -> m ()
+runGeneralTCPServer set f = liftBaseWith $ \run ->
+    SN.runTCPServer set $ void . run . f
+
+-- | Run a general TCP client
+--
+-- Same as 'SN.runTCPClient', except monad can be any instance of 'MonadBaseControl' 'IO'.
+--
+-- Since 1.1.3
+runGeneralTCPClient :: MonadBaseControl IO m
+                    => SN.ClientSettings
+                    -> (SN.AppData -> m a)
+                    -> m a
+runGeneralTCPClient set f = control $ \run ->
+    SN.runTCPClient set $ run . f
