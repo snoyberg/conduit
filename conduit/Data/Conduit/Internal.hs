@@ -138,13 +138,17 @@ data Pipe l i o u m r =
 
 instance Monad m => Functor (Pipe l i o u m) where
     fmap = liftM
+    {-# INLINE fmap #-}
 
 instance Monad m => Applicative (Pipe l i o u m) where
     pure = return
+    {-# INLINE pure #-}
     (<*>) = ap
+    {-# INLINE (<*>) #-}
 
 instance Monad m => Monad (Pipe l i o u m) where
     return = Done
+    {-# INLINE return #-}
 
     HaveOutput p c o >>= fp = HaveOutput (p >>= fp)            c          o
     NeedInput p c    >>= fp = NeedInput  (p >=> fp)            (c >=> fp)
@@ -154,15 +158,19 @@ instance Monad m => Monad (Pipe l i o u m) where
 
 instance MonadBase base m => MonadBase base (Pipe l i o u m) where
     liftBase = lift . liftBase
+    {-# INLINE liftBase #-}
 
 instance MonadTrans (Pipe l i o u) where
     lift mr = PipeM (Done `liftM` mr)
+    {-# INLINE [1] lift #-}
 
 instance MonadIO m => MonadIO (Pipe l i o u m) where
     liftIO = lift . liftIO
+    {-# INLINE liftIO #-}
 
 instance MonadThrow m => MonadThrow (Pipe l i o u m) where
     throwM = lift . throwM
+    {-# INLINE throwM #-}
 
 #if MIN_VERSION_exceptions(0, 6, 0)
 instance Catch.MonadCatch m => Catch.MonadCatch (Pipe l i o u m) where
@@ -179,13 +187,17 @@ instance Catch.MonadCatch m => Catch.MonadCatch (Pipe l i o u m) where
 
 instance Monad m => Monoid (Pipe l i o u m ()) where
     mempty = return ()
+    {-# INLINE mempty #-}
     mappend = (>>)
+    {-# INLINE mappend #-}
 
 instance MonadResource m => MonadResource (Pipe l i o u m) where
     liftResourceT = lift . liftResourceT
+    {-# INLINE liftResourceT #-}
 
 instance MonadReader r m => MonadReader r (Pipe l i o u m) where
     ask = lift ask
+    {-# INLINE ask #-}
     local f (HaveOutput p c o) = HaveOutput (local f p) c o
     local f (NeedInput p c) = NeedInput (\i -> local f (p i)) (\u -> local f (c u))
     local _ (Done x) = Done x
@@ -246,7 +258,7 @@ instance MonadError e m => MonadError e (Pipe l i o u m) where
 --
 -- Since 1.0.0
 newtype ConduitM i o m r = ConduitM { unConduitM :: Pipe i i o () m r }
-    deriving (Functor, Applicative, Monad, MonadIO, MonadTrans, MonadThrow, MFunctor
+    deriving (Functor, Applicative, Monad, MonadIO, MonadThrow, MFunctor
 #if MIN_VERSION_exceptions(0, 6, 0)
     , Catch.MonadCatch
 #endif
@@ -279,13 +291,21 @@ instance MonadError e m => MonadError e (ConduitM i o m) where
 
 instance MonadBase base m => MonadBase base (ConduitM i o m) where
     liftBase = lift . liftBase
+    {-# INLINE liftBase #-}
+
+instance MonadTrans (ConduitM i o) where
+    lift mr = ConduitM (PipeM (Done `liftM` mr))
+    {-# INLINE [1] lift #-}
 
 instance MonadResource m => MonadResource (ConduitM i o m) where
     liftResourceT = lift . liftResourceT
+    {-# INLINE liftResourceT #-}
 
 instance Monad m => Monoid (ConduitM i o m ()) where
     mempty = return ()
+    {-# INLINE mempty #-}
     mappend = (>>)
+    {-# INLINE mappend #-}
 
 -- | Provides a stream of output values, without consuming any input or
 -- producing a final result.
@@ -1147,3 +1167,9 @@ generalizeUpstream =
     go (PipeM mp) = PipeM (liftM go mp)
     go (Leftover p l) = Leftover (go p) l
 {-# INLINE generalizeUpstream #-}
+
+{-# RULES "Pipe: lift x >>= f" forall m f. lift m >>= f = PipeM (liftM f m) #-}
+{-# RULES "Pipe: lift x >> f" forall m f. lift m >> f = PipeM (liftM (\_ -> f) m) #-}
+
+{-# RULES "ConduitM: lift x >>= f" forall m f. lift m >>= f = ConduitM (PipeM (liftM (unConduitM . f) m)) #-}
+{-# RULES "ConduitM: lift x >> f" forall m f. lift m >> f = ConduitM (PipeM (liftM (\_ -> unConduitM f) m)) #-}
