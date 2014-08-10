@@ -8,6 +8,7 @@ import Data.List (foldl')
 import Control.Monad (foldM)
 import Data.IORef
 import Data.Functor.Identity (runIdentity)
+import qualified Data.Vector as V
 
 upper :: Int
 upper = 10000
@@ -35,6 +36,8 @@ main = do
         , bench "conduit IO" $ whnfIO $ do
             upper' <- readIORef upperRef
             CL.enumFromTo 1 upper' $$ CL.foldM plusM 0
+        , bench "vector" $ flip whnf upper $ \upper' ->
+            V.sum (V.enumFromTo 1 upper')
         ]
 
 sumC :: (Num a, Monad m) => Consumer a m a
