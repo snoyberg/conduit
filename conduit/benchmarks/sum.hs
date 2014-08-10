@@ -8,7 +8,6 @@ import Data.List (foldl')
 import Control.Monad (foldM)
 import Data.IORef
 import Data.Functor.Identity (runIdentity)
-import Control.Monad.Trans.Class (lift)
 
 upper :: Int
 upper = 10000
