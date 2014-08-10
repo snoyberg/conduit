@@ -169,6 +169,7 @@ foldM f =
         go a = do
             accum' <- lift $ f accum a
             accum' `seq` loop accum'
+{-# INLINEABLE foldM #-}
 
 -- | A monoidal strict left fold.
 --
