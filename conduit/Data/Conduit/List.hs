@@ -152,6 +152,23 @@ fold f =
         go a =
             let accum' = f accum a
              in accum' `seq` loop accum'
+{-# INLINEABLE [1] fold #-}
+
+connectFold :: Monad m => Source m a -> (b -> a -> b) -> b -> m b -- FIXME replace with better, more general function
+connectFold (CI.ConduitM src0) f =
+    go src0
+  where
+    go (CI.Done ()) b = return b
+    go (CI.HaveOutput src _ a) b =
+        let b' = f b a
+         in b' `seq` go src b'
+    go (CI.NeedInput _ c) b = go (c ()) b
+    go (CI.Leftover src ()) b = go src b
+    go (CI.PipeM msrc) b = do
+        src <- msrc
+        go src b
+{-# INLINE connectFold #-}
+{-# RULES "$$ fold" forall src f b. src $$ fold f b = connectFold src f b #-}
 
 -- | A monadic strict left fold.
 --
@@ -173,7 +190,7 @@ foldM f =
             return (loop accum')
 {-# INLINEABLE [1] foldM #-}
 
-connectFoldM :: Monad m => Source m a -> (b -> a -> m b) -> b -> m b
+connectFoldM :: Monad m => Source m a -> (b -> a -> m b) -> b -> m b -- FIXME replace with better, more general function
 connectFoldM (CI.ConduitM src0) f =
     go src0
   where

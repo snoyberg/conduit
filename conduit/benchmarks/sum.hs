@@ -36,9 +36,6 @@ main = do
         , bench "conduit IO" $ whnfIO $ do
             upper' <- readIORef upperRef
             CL.enumFromTo 1 upper' $$ CL.foldM plusM 0
-        , bench "conduit IO local" $ whnfIO $ do
-            upper' <- readIORef upperRef
-            CL.enumFromTo 1 upper' $$ localFoldM plusM 0
         ]
 
 sumC :: (Num a, Monad m) => Consumer a m a
@@ -67,16 +64,3 @@ sumMC =
         next i = PipeM $ do
             total' <- plusM total i
             total' `seq` return (go total')
-
-localFoldM :: Monad m
-      => (b -> a -> m b)
-      -> b
-      -> Consumer a m b
-localFoldM f =
-    loop
-  where
-    loop accum =
-        await >>= maybe (return accum) go
-      where
-        go !a = lift (f accum a) >>= loop
-{-# INLINEABLE localFoldM #-}
