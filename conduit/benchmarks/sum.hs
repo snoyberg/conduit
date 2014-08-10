@@ -1,3 +1,5 @@
+{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE RankNTypes #-}
 import Criterion.Main
 import Data.Conduit
 import Data.Conduit.Internal (ConduitM (..), Pipe (..))
@@ -6,6 +8,7 @@ import Data.List (foldl')
 import Control.Monad (foldM)
 import Data.IORef
 import Data.Functor.Identity (runIdentity)
+import Control.Monad.Trans.Class (lift)
 
 upper :: Int
 upper = 10000
@@ -24,15 +27,18 @@ main = do
             foldM plusM 0 [1..upper']
         , bench "conduit pure" $ flip whnf upper $ \upper' ->
             runIdentity (CL.enumFromTo 1 upper' $$ CL.fold (+) 0)
-        , bench "conduit IO" $ whnfIO $ do
-            upper' <- readIORef upperRef
-            CL.enumFromTo 1 upper' $$ CL.foldM plusM 0
         , bench "conduit pure unrolled" $ whnfIO $ do
             upper' <- readIORef upperRef
             CL.enumFromTo 1 upper' $$ sumC
         , bench "conduit IO unrolled" $ whnfIO $ do
             upper' <- readIORef upperRef
             CL.enumFromTo 1 upper' $$ sumMC
+        , bench "conduit IO" $ whnfIO $ do
+            upper' <- readIORef upperRef
+            CL.enumFromTo 1 upper' $$ CL.foldM plusM 0
+        , bench "conduit IO local" $ whnfIO $ do
+            upper' <- readIORef upperRef
+            CL.enumFromTo 1 upper' $$ localFoldM plusM 0
         ]
 
 sumC :: (Num a, Monad m) => Consumer a m a
@@ -61,3 +67,16 @@ sumMC =
         next i = PipeM $ do
             total' <- plusM total i
             total' `seq` return (go total')
+
+localFoldM :: Monad m
+      => (b -> a -> m b)
+      -> b
+      -> Consumer a m b
+localFoldM f =
+    loop
+  where
+    loop accum =
+        await >>= maybe (return accum) go
+      where
+        go !a = lift (f accum a) >>= loop
+{-# INLINEABLE localFoldM #-}

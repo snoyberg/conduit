@@ -1,4 +1,5 @@
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE BangPatterns #-}
 -- | Higher-level functions to interact with the elements of a stream. Most of
 -- these are based on list functions.
 --
@@ -161,14 +162,16 @@ foldM :: Monad m
       -> b
       -> Consumer a m b
 foldM f =
-    loop
+    CI.ConduitM . loop
   where
-    loop accum = do
-        await >>= maybe (return accum) go
+    loop accum =
+        CI.NeedInput next done
       where
-        go a = do
-            accum' <- lift $ f accum a
-            accum' `seq` loop accum'
+        done () = CI.Done accum
+
+        next a = CI.PipeM $ do
+            !accum' <- f accum a
+            return (loop accum')
 {-# INLINEABLE foldM #-}
 
 -- | A monoidal strict left fold.
