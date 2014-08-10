@@ -1,4 +1,5 @@
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE BangPatterns #-}
 -- | Higher-level functions to interact with the elements of a stream. Most of
 -- these are based on list functions.
 --
@@ -128,6 +129,24 @@ enumFromTo :: (Enum a, Eq a, Monad m)
 enumFromTo x = CI.ConduitM . CI.enumFromTo x
 {-# INLINE enumFromTo #-}
 
+enumFromToFold :: (Enum a, Eq a, Monad m) -- FIXME far too specific
+               => a
+               -> a
+               -> (b -> a -> b)
+               -> b
+               -> m b
+enumFromToFold x0 y f =
+    go x0
+  where
+    go !x !b
+        | x == y = return Prelude.$! f b x
+        | otherwise = go (Prelude.succ x) (f b x)
+{-# INLINE enumFromToFold #-}
+
+{-# RULES "enumFromToFold" forall x y f b.
+        enumFromTo x y $$ fold f b = enumFromToFold x y f b
+  #-}
+
 -- | Produces an infinite stream of repeated applications of f to x.
 iterate :: Monad m => (a -> a) -> a -> Producer m a
 iterate f =
@@ -151,6 +170,23 @@ fold f =
         go a =
             let accum' = f accum a
              in accum' `seq` loop accum'
+{-# INLINEABLE [1] fold #-}
+
+connectFold :: Monad m => Source m a -> (b -> a -> b) -> b -> m b -- FIXME replace with better, more general function
+connectFold (CI.ConduitM src0) f =
+    go src0
+  where
+    go (CI.Done ()) b = return b
+    go (CI.HaveOutput src _ a) b =
+        let b' = f b a
+         in b' `seq` go src b'
+    go (CI.NeedInput _ c) b = go (c ()) b
+    go (CI.Leftover src ()) b = go src b
+    go (CI.PipeM msrc) b = do
+        src <- msrc
+        go src b
+{-# INLINE connectFold #-}
+{-# RULES "$$ fold" forall src f b. src $$ fold f b = connectFold src f b #-}
 
 -- | A monadic strict left fold.
 --
@@ -168,7 +204,23 @@ foldM f =
         go a = do
             accum' <- lift $ f accum a
             accum' `seq` loop accum'
-{-# INLINEABLE foldM #-}
+{-# INLINEABLE [1] foldM #-}
+
+connectFoldM :: Monad m => Source m a -> (b -> a -> m b) -> b -> m b -- FIXME replace with better, more general function
+connectFoldM (CI.ConduitM src0) f =
+    go src0
+  where
+    go (CI.Done ()) b = return b
+    go (CI.HaveOutput src _ a) b = do
+        !b' <- f b a
+        go src b'
+    go (CI.NeedInput _ c) b = go (c ()) b
+    go (CI.Leftover src ()) b = go src b
+    go (CI.PipeM msrc) b = do
+        src <- msrc
+        go src b
+{-# INLINE connectFoldM #-}
+{-# RULES "$$ foldM" forall src f b. src $$ foldM f b = connectFoldM src f b #-}
 
 -- | A monoidal strict left fold.
 --
