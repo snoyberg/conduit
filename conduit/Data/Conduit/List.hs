@@ -171,7 +171,23 @@ foldM f =
         next a = CI.PipeM $ do
             !accum' <- f accum a
             return (loop accum')
-{-# INLINEABLE foldM #-}
+{-# INLINEABLE [1] foldM #-}
+
+connectFoldM :: Monad m => Source m a -> (b -> a -> m b) -> b -> m b
+connectFoldM (CI.ConduitM src0) f =
+    go src0
+  where
+    go (CI.Done ()) b = return b
+    go (CI.HaveOutput src _ a) b = do
+        !b' <- f b a
+        go src b'
+    go (CI.NeedInput _ c) b = go (c ()) b
+    go (CI.Leftover src ()) b = go src b
+    go (CI.PipeM msrc) b = do
+        src <- msrc
+        go src b
+{-# INLINE connectFoldM #-}
+{-# RULES "$$ foldM" forall src f b. src $$ foldM f b = connectFoldM src f b #-}
 
 -- | A monoidal strict left fold.
 --
