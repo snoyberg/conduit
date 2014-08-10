@@ -6,7 +6,7 @@ import Criterion.Main
 import Data.IORef
 import Control.Monad (replicateM_)
 import Data.Conduit.List (sinkNull)
-import Control.Monad (liftM, (>=>))
+import Control.Monad (liftM)
 import Control.Monad.Codensity
 
 start, count :: Int
