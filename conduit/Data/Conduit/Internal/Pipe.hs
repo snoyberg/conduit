@@ -47,7 +47,7 @@ module Data.Conduit.Internal.Pipe
 
 import Control.Applicative (Applicative (..))
 import Control.Exception.Lifted as E (Exception, catch)
-import Control.Monad ((>=>), liftM, ap, when, liftM2)
+import Control.Monad ((>=>), liftM, ap)
 import Control.Monad.Error.Class(MonadError(..))
 import Control.Monad.Reader.Class(MonadReader(..))
 import Control.Monad.RWS.Class(MonadRWS())
@@ -60,7 +60,6 @@ import Data.Void (Void, absurd)
 import Data.Monoid (Monoid (mappend, mempty))
 import Control.Monad.Trans.Resource
 import qualified GHC.Exts
-import qualified Data.IORef as I
 import Control.Monad.Morph (MFunctor (..))
 #if MIN_VERSION_exceptions(0, 6, 0)
 import qualified Control.Monad.Catch as Catch
@@ -275,10 +274,11 @@ yieldOr o f = HaveOutput (Done ()) f o
 
 {-# RULES
     "CI.yield o >> p" forall o (p :: Pipe l i o u m r). yield o >> p = HaveOutput p (return ()) o
-  ; "mapM_ CI.yield" mapM_ yield = sourceList
   ; "CI.yieldOr o c >> p" forall o c (p :: Pipe l i o u m r). yieldOr o c >> p = HaveOutput p c o
   ; "lift m >>= CI.yield" forall m. lift m >>= yield = yieldM m
   #-}
+  -- FIXME: Too much inlining on mapM_, can't enforce; "mapM_ CI.yield" mapM_ yield = sourceList
+  -- Maybe we can get a rewrite rule on foldr instead? Need a benchmark to back this up.
 
 -- | Provide a single piece of leftover input to be consumed by the next pipe
 -- in the current monadic binding.

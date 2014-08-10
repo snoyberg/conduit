@@ -82,8 +82,8 @@ module Data.Conduit.Internal.Conduit
     ) where
 
 import Control.Applicative (Applicative (..))
-import Control.Exception.Lifted as E (Exception, catch)
-import Control.Monad ((>=>), liftM, ap, when, liftM2)
+import Control.Exception.Lifted as E (Exception)
+import Control.Monad (liftM, when, liftM2)
 import Control.Monad.Error.Class(MonadError(..))
 import Control.Monad.Reader.Class(MonadReader(..))
 import Control.Monad.RWS.Class(MonadRWS())
@@ -95,20 +95,15 @@ import Control.Monad.Base (MonadBase (liftBase))
 import Data.Void (Void, absurd)
 import Data.Monoid (Monoid (mappend, mempty))
 import Control.Monad.Trans.Resource
-import qualified GHC.Exts
 import qualified Data.IORef as I
 import Control.Monad.Morph (MFunctor (..))
+import Data.Conduit.Internal.Pipe hiding (yield, mapOutput, leftover, yieldM, yieldOr, await, awaitForever)
+import qualified Data.Conduit.Internal.Pipe as CI
+import Control.Monad (forever, unless)
+import Data.Traversable (Traversable (..))
 #if MIN_VERSION_exceptions(0, 6, 0)
 import qualified Control.Monad.Catch as Catch
 #endif
-import Data.Conduit.Internal.Pipe hiding (yield, mapOutput, leftover, yieldM, yieldOr, await, awaitForever)
-import Control.Monad.Trans.Class (lift)
-import qualified Data.Conduit.Internal.Pipe as CI
-import Control.Monad.Morph (hoist)
-import Control.Monad (liftM, forever, when, unless)
-import Control.Applicative (Applicative (..))
-import Data.Traversable (Traversable (..))
-import Control.Monad.Trans.Resource (MonadResource)
 
 -- | Core datatype of the conduit package. This type represents a general
 -- component which can consume a stream of input values @i@, produce a stream
@@ -616,9 +611,6 @@ passthroughSink (ConduitM sink0) final =
                 CI.yield x
                 go [] (next x)
 
-{-# RULES "ConduitM: lift x >>= f" forall m f. lift m >>= f = ConduitM (PipeM (liftM (unConduitM . f) m)) #-}
-{-# RULES "ConduitM: lift x >> f" forall m f. lift m >> f = ConduitM (PipeM (liftM (\_ -> unConduitM f) m)) #-}
-
 -- Define fixity of all our operators
 infixr 0 $$
 infixl 1 $=
@@ -639,7 +631,7 @@ src $$ sink = do
     (rsrc, res) <- src $$+ sink
     rsrc $$+- return ()
     return res
-{-# INLINE ($$) #-}
+{-# INLINE [1] ($$) #-}
 
 -- | Left fuse, combining a source and a conduit together into a new source.
 --
@@ -653,7 +645,7 @@ src $$ sink = do
 --
 -- Since 0.4.0
 ($=) :: Monad m => Conduit a m b -> ConduitM b c m r -> ConduitM a c m r
-ConduitM src $= ConduitM con = ConduitM $ pipeL src con
+($=) = (=$=)
 {-# INLINE ($=) #-}
 
 -- | Right fuse, combining a conduit and a sink together into a new sink.
@@ -668,7 +660,7 @@ ConduitM src $= ConduitM con = ConduitM $ pipeL src con
 --
 -- Since 0.4.0
 (=$) :: Monad m => Conduit a m b -> ConduitM b c m r -> ConduitM a c m r
-ConduitM con =$ ConduitM sink = ConduitM $ pipeL con sink
+(=$) = (=$=)
 {-# INLINE (=$) #-}
 
 -- | Fusion operator, combining two @Conduit@s together into a new @Conduit@.
@@ -680,7 +672,7 @@ ConduitM con =$ ConduitM sink = ConduitM $ pipeL con sink
 -- Since 0.4.0
 (=$=) :: Monad m => Conduit a m b -> ConduitM b c m r -> ConduitM a c m r
 ConduitM left =$= ConduitM right = ConduitM $ pipeL left right
-{-# INLINE (=$=) #-}
+{-# INLINE [1] (=$=) #-}
 
 -- | Wait for a single input value from upstream. If no data is available,
 -- returns @Nothing@.
@@ -688,7 +680,6 @@ ConduitM left =$= ConduitM right = ConduitM $ pipeL left right
 -- Since 0.5.0
 await :: Monad m => Consumer i m (Maybe i)
 await = ConduitM CI.await
-{-# RULES "await >>= maybe" forall x y. await >>= maybe x y = ConduitM (NeedInput (unConduitM . y) (unConduitM . const x)) #-}
 {-# INLINE [1] await #-}
 
 -- | Send a value downstream to the next component to consume. If the
@@ -706,17 +697,7 @@ yieldM :: Monad m => m o -> ConduitM i o m ()
 yieldM = ConduitM . CI.yieldM
 {-# INLINE [1] yieldM #-}
 
-{-# RULES
-    "yield o >> p" forall o (p :: ConduitM i o m r). yield o >> p = ConduitM (HaveOutput (unConduitM p) (return ()) o)
-  ; "mapM_ yield" mapM_ yield = ConduitM . sourceList
-  ; "yieldOr o c >> p" forall o c (p :: ConduitM i o m r). yieldOr o c >> p =
-        ConduitM (HaveOutput (unConduitM p) c o)
-  ; "when yield next" forall b o p. when b (yield o) >> p =
-        if b then ConduitM (HaveOutput (unConduitM p) (return ()) o) else p
-  ; "unless yield next" forall b o p. unless b (yield o) >> p =
-        if b then p else ConduitM (HaveOutput (unConduitM p) (return ()) o)
-  ; "lift m >>= yield" forall m. lift m >>= yield = yieldM m
-   #-}
+  -- FIXME rule won't fire, see FIXME in .Pipe; "mapM_ yield" mapM_ yield = ConduitM . sourceList
 
 -- | Provide a single piece of leftover input to be consumed by the next
 -- component in the current monadic binding.
@@ -728,8 +709,6 @@ yieldM = ConduitM . CI.yieldM
 leftover :: i -> ConduitM i o m ()
 leftover = ConduitM . CI.leftover
 {-# INLINE [1] leftover #-}
-{-# RULES "leftover l >> p" forall l (p :: ConduitM i o m r). leftover l >> p =
-    ConduitM (Leftover (unConduitM p) l) #-}
 
 -- | Perform some allocation and run an inner component. Two guarantees are
 -- given about resource finalization:
@@ -1033,3 +1012,21 @@ fuseBoth (ConduitM up) (ConduitM down) =
 fuseUpstream :: Monad m => ConduitM a b m r -> Conduit b m c -> ConduitM a c m r
 fuseUpstream up down = fmap fst (fuseBoth up down)
 {-# INLINE fuseUpstream #-}
+
+-- Rewrite rules
+
+{-# RULES "ConduitM: lift x >>= f" forall m f. lift m >>= f = ConduitM (PipeM (liftM (unConduitM . f) m)) #-}
+{-# RULES "ConduitM: lift x >> f" forall m f. lift m >> f = ConduitM (PipeM (liftM (\_ -> unConduitM f) m)) #-}
+{-# RULES "await >>= maybe" forall x y. await >>= maybe x y = ConduitM (NeedInput (unConduitM . y) (unConduitM . const x)) #-}
+{-# RULES
+    "yield o >> p" forall o (p :: ConduitM i o m r). yield o >> p = ConduitM (HaveOutput (unConduitM p) (return ()) o)
+  ; "yieldOr o c >> p" forall o c (p :: ConduitM i o m r). yieldOr o c >> p =
+        ConduitM (HaveOutput (unConduitM p) c o)
+  ; "when yield next" forall b o p. when b (yield o) >> p =
+        if b then ConduitM (HaveOutput (unConduitM p) (return ()) o) else p
+  ; "unless yield next" forall b o p. unless b (yield o) >> p =
+        if b then p else ConduitM (HaveOutput (unConduitM p) (return ()) o)
+  ; "lift m >>= yield" forall m. lift m >>= yield = yieldM m
+   #-}
+{-# RULES "leftover l >> p" forall l (p :: ConduitM i o m r). leftover l >> p =
+    ConduitM (Leftover (unConduitM p) l) #-}

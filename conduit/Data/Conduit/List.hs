@@ -69,9 +69,8 @@ import Prelude
     , (>>=)
     , seq
     , otherwise
-    , Enum (succ), Eq
+    , Enum, Eq
     , maybe
-    , either
     , (<=)
     )
 import Data.Monoid (Monoid, mempty, mappend)
@@ -271,7 +270,6 @@ map f = awaitForever $ yield . f
 {-# INLINE [1] map #-}
 
 -- Since a Source never has any leftovers, fusion rules on it are safe.
-{-# RULES "source/map fusion $=" forall f src. src $= map f = mapFuseRight src f #-}
 {-# RULES "source/map fusion =$=" forall f src. src =$= map f = mapFuseRight src f #-}
 
 mapFuseRight :: Monad m => Source m a -> (a -> b) -> Source m b
@@ -539,7 +537,6 @@ filterFuseRight (CI.ConduitM src) f =
 -- Intermediate finalizers are dropped, but this is acceptable: the next
 -- yielded value would be demanded by downstream in any event, and that new
 -- finalizer will always override the existing finalizer.
-{-# RULES "source/filter fusion $=" forall f src. src $= filter f = filterFuseRight src f #-}
 {-# RULES "source/filter fusion =$=" forall f src. src =$= filter f = filterFuseRight src f #-}
 {-# INLINE filterFuseRight #-}
 
