@@ -25,8 +25,6 @@ main = do
         , bench "foldM" $ whnfIO $ do
             upper' <- readIORef upperRef
             foldM plusM 0 [1..upper']
-        , bench "conduit pure" $ flip whnf upper $ \upper' ->
-            runIdentity (CL.enumFromTo 1 upper' $$ CL.fold (+) 0)
         , bench "conduit pure unrolled" $ whnfIO $ do
             upper' <- readIORef upperRef
             CL.enumFromTo 1 upper' $$ sumC
@@ -38,6 +36,13 @@ main = do
             CL.enumFromTo 1 upper' $$ CL.foldM plusM 0
         , bench "vector" $ flip whnf upper $ \upper' ->
             V.sum (V.enumFromTo 1 upper')
+        , bench "low level" $ flip whnf upper $ \upper' ->
+            let go !x !b
+                    | x == upper' = b
+                    | otherwise = go (succ x) (b + x)
+             in go 1 0
+        , bench "conduit pure" $ flip whnf upper $ \upper' ->
+            runIdentity (CL.enumFromTo 1 upper' $$ CL.fold (+) 0)
         ]
 
 sumC :: (Num a, Monad m) => Consumer a m a

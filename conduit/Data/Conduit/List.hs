@@ -129,6 +129,24 @@ enumFromTo :: (Enum a, Eq a, Monad m)
 enumFromTo x = CI.ConduitM . CI.enumFromTo x
 {-# INLINE enumFromTo #-}
 
+enumFromToFold :: (Enum a, Eq a, Monad m) -- FIXME far too specific
+               => a
+               -> a
+               -> (b -> a -> b)
+               -> b
+               -> m b
+enumFromToFold x0 y f =
+    go x0
+  where
+    go !x !b
+        | x == y = return Prelude.$! f b x
+        | otherwise = go (Prelude.succ x) (f b x)
+{-# INLINE enumFromToFold #-}
+
+{-# RULES "enumFromToFold" forall x y f b.
+        enumFromTo x y $$ fold f b = enumFromToFold x y f b
+  #-}
+
 -- | Produces an infinite stream of repeated applications of f to x.
 iterate :: Monad m => (a -> a) -> a -> Producer m a
 iterate f =
