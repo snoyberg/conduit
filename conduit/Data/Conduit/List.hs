@@ -1,4 +1,5 @@
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE BangPatterns #-}
 -- | Higher-level functions to interact with the elements of a stream. Most of
 -- these are based on list functions.
@@ -16,6 +17,7 @@ module Data.Conduit.List
     , unfold
     , unfoldM
     , enumFromTo
+    , enumFromToSS
     , iterate
       -- * Sinks
       -- ** Pure
@@ -128,6 +130,50 @@ enumFromTo :: (Enum a, Eq a, Monad m)
            -> Producer m a
 enumFromTo x = CI.ConduitM . CI.enumFromTo x
 {-# INLINE enumFromTo #-}
+
+enumFromToSS :: (Enum a, Eq a, Monad m)
+           => a
+           -> a
+           -> Producer m a
+enumFromToSS x0 y = sourceState (eftStep x0 y)
+{-# INLINE enumFromToSS #-}
+-- FIXME why is this necessary to get rules to fire?
+{-# RULES "enumFromToSS is sourceState" forall x y.
+        enumFromToSS x y = sourceState (eftStep x y)
+  #-}
+
+eftStep :: (Enum a, Eq a) => a -> a -> Stream a
+eftStep x0 y =
+    Stream go x0
+  where
+    go x _ more done
+        | x == y = done x
+        | otherwise = more x (Prelude.succ x)
+{-# INLINE eftStep #-}
+
+data Stream a = forall s. Stream (forall r. s -> r -> (a -> s -> r) -> (a -> r) -> r) s
+
+sourceState :: Monad m => Stream a -> Producer m a
+sourceState (Stream f s0) =
+    go s0
+  where
+    go s = f s (return ()) (\a s' -> yield a >> go s') yield
+{-# NOINLINE sourceState #-}
+
+sourceStateFold :: Monad m
+                => Stream a
+                -> (b -> a -> b)
+                -> b
+                -> m b
+sourceStateFold (Stream step s0) f b0 =
+    go s0 b0
+  where
+    go s !b = step s (return b) (\a s' -> go s' (f b a)) (\a -> return Prelude.$! f b a)
+
+{-# INLINE sourceStateFold #-}
+{-# RULES "sourceStateFold" forall s f b.
+        sourceState s $$ fold f b = sourceStateFold s f b
+  #-}
 
 enumFromToFold :: (Enum a, Eq a, Monad m) -- FIXME far too specific
                => a
