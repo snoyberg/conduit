@@ -16,7 +16,6 @@ module Data.Conduit.List
     , unfold
     , unfoldM
     , enumFromTo
-    , enumFromToSS
     , iterate
       -- * Sinks
       -- ** Pure
@@ -128,18 +127,11 @@ enumFromTo :: (Enum a, Eq a, Monad m)
            => a
            -> a
            -> Producer m a
-enumFromTo x = CI.ConduitM . CI.enumFromTo x
+enumFromTo = \x0 y -> sourceStream (eftStep x0 y)
 {-# INLINE enumFromTo #-}
-
-enumFromToSS :: (Enum a, Eq a, Monad m)
-           => a
-           -> a
-           -> Producer m a
-enumFromToSS = \x0 y -> sourceStream (eftStep x0 y)
-{-# INLINE enumFromToSS #-}
 -- FIXME why is this necessary to get rules to fire?
-{-# RULES "enumFromToSS is sourceStream" forall x y.
-        enumFromToSS x y = sourceStream (eftStep x y)
+{-# RULES "enumFromTo is sourceStream" forall x y.
+        enumFromTo x y = sourceStream (eftStep x y)
   #-}
 
 eftStep :: (Enum a, Eq a) => a -> a -> SourceStream a
@@ -150,24 +142,6 @@ eftStep x0 y =
         | x == y = done x
         | otherwise = more x (Prelude.succ x)
 {-# INLINE eftStep #-}
-
-enumFromToFold :: (Enum a, Eq a, Monad m) -- FIXME far too specific
-               => a
-               -> a
-               -> (b -> a -> b)
-               -> b
-               -> m b
-enumFromToFold x0 y f =
-    go x0
-  where
-    go !x !b
-        | x == y = return Prelude.$! f b x
-        | otherwise = go (Prelude.succ x) (f b x)
-{-# INLINE enumFromToFold #-}
-
-{-# RULES "enumFromToFold" forall x y f b.
-        enumFromTo x y $$ fold f b = enumFromToFold x y f b
-  #-}
 
 -- | Produces an infinite stream of repeated applications of f to x.
 iterate :: Monad m => (a -> a) -> a -> Producer m a

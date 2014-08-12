@@ -43,8 +43,6 @@ main = do
              in go 1 0
         , bench "conduit pure" $ flip whnf upper $ \upper' ->
             runIdentity (CL.enumFromTo 1 upper' $$ CL.fold (+) 0)
-        , bench "conduit pure sourceState" $ flip whnf upper $ \upper' ->
-            runIdentity (CL.enumFromToSS 1 upper' $$ CL.fold (+) 0)
         ]
 
 sumC :: (Num a, Monad m) => Consumer a m a
