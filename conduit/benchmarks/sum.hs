@@ -31,9 +31,6 @@ main = do
         , bench "conduit IO unrolled" $ whnfIO $ do
             upper' <- readIORef upperRef
             CL.enumFromTo 1 upper' $$ sumMC
-        , bench "conduit IO" $ whnfIO $ do
-            upper' <- readIORef upperRef
-            CL.enumFromTo 1 upper' $$ CL.foldM plusM 0
         , bench "vector" $ flip whnf upper $ \upper' ->
             V.sum (V.enumFromTo 1 upper')
         , bench "low level" $ flip whnf upper $ \upper' ->
@@ -43,6 +40,9 @@ main = do
              in go 1 0
         , bench "conduit pure" $ flip whnf upper $ \upper' ->
             runIdentity (CL.enumFromTo 1 upper' $$ CL.fold (+) 0)
+        , bench "conduit IO" $ whnfIO $ do
+            upper' <- readIORef upperRef
+            CL.enumFromTo 1 upper' $$ CL.foldM plusM 0
         ]
 
 sumC :: (Num a, Monad m) => Consumer a m a

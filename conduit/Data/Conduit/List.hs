@@ -160,9 +160,7 @@ fold :: Monad m
 fold = \f b -> sinkFold f b id
 {-# INLINE fold #-}
 -- FIXME why is this necessary to get rules to fire?
-{-# RULES "fold is sink" forall f b.
-        fold f b = sinkFold f b id
-  #-}
+{-# RULES "fold is sinkFold" forall f b. fold f b = sinkFold f b id #-}
 
 connectFold :: Monad m => Source m a -> (b -> a -> b) -> b -> m b -- FIXME replace with better, more general function
 connectFold (CI.ConduitM src0) f =
@@ -187,18 +185,10 @@ foldM :: Monad m
       => (b -> a -> m b)
       -> b
       -> Consumer a m b
-foldM f =
-    CI.ConduitM . loop
-  where
-    loop accum =
-        CI.NeedInput next done
-      where
-        done () = CI.Done accum
-
-        next a = CI.PipeM $ do
-            !accum' <- f accum a
-            return (loop accum')
-{-# INLINEABLE [1] foldM #-}
+foldM f b = sinkFoldM f (return b) return
+{-# INLINE foldM #-}
+-- FIXME why is this necessary to get rules to fire?
+{-# RULES "foldM is sinkFoldM" forall f b. foldM f b = sinkFoldM f (return b) return #-}
 
 connectFoldM :: Monad m => Source m a -> (b -> a -> m b) -> b -> m b -- FIXME replace with better, more general function
 connectFoldM (CI.ConduitM src0) f =
