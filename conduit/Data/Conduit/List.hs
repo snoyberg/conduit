@@ -1,5 +1,4 @@
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE BangPatterns #-}
 -- | Higher-level functions to interact with the elements of a stream. Most of
 -- these are based on list functions.
@@ -79,6 +78,7 @@ import Prelude
 import Data.Monoid (Monoid, mempty, mappend)
 import qualified Data.Foldable as F
 import Data.Conduit
+import Data.Conduit.Fusion
 import qualified Data.Conduit.Internal as CI
 import Control.Monad (when, (<=<), liftM, void)
 import Control.Monad.Trans.Class (lift)
@@ -135,45 +135,21 @@ enumFromToSS :: (Enum a, Eq a, Monad m)
            => a
            -> a
            -> Producer m a
-enumFromToSS x0 y = sourceState (eftStep x0 y)
+enumFromToSS = \x0 y -> sourceStream (eftStep x0 y)
 {-# INLINE enumFromToSS #-}
 -- FIXME why is this necessary to get rules to fire?
-{-# RULES "enumFromToSS is sourceState" forall x y.
-        enumFromToSS x y = sourceState (eftStep x y)
+{-# RULES "enumFromToSS is sourceStream" forall x y.
+        enumFromToSS x y = sourceStream (eftStep x y)
   #-}
 
-eftStep :: (Enum a, Eq a) => a -> a -> Stream a
+eftStep :: (Enum a, Eq a) => a -> a -> SourceStream a
 eftStep x0 y =
-    Stream go x0
+    SourceStream go x0
   where
     go x _ more done
         | x == y = done x
         | otherwise = more x (Prelude.succ x)
 {-# INLINE eftStep #-}
-
-data Stream a = forall s. Stream (forall r. s -> r -> (a -> s -> r) -> (a -> r) -> r) s
-
-sourceState :: Monad m => Stream a -> Producer m a
-sourceState (Stream f s0) =
-    go s0
-  where
-    go s = f s (return ()) (\a s' -> yield a >> go s') yield
-{-# NOINLINE sourceState #-}
-
-sourceStateFold :: Monad m
-                => Stream a
-                -> (b -> a -> b)
-                -> b
-                -> m b
-sourceStateFold (Stream step s0) f b0 =
-    go s0 b0
-  where
-    go s !b = step s (return b) (\a s' -> go s' (f b a)) (\a -> return Prelude.$! f b a)
-
-{-# INLINE sourceStateFold #-}
-{-# RULES "sourceStateFold" forall s f b.
-        sourceState s $$ fold f b = sourceStateFold s f b
-  #-}
 
 enumFromToFold :: (Enum a, Eq a, Monad m) -- FIXME far too specific
                => a
@@ -207,16 +183,12 @@ fold :: Monad m
      => (b -> a -> b)
      -> b
      -> Consumer a m b
-fold f =
-    loop
-  where
-    loop accum =
-        await >>= maybe (return accum) go
-      where
-        go a =
-            let accum' = f accum a
-             in accum' `seq` loop accum'
-{-# INLINEABLE [1] fold #-}
+fold = \f b -> sinkFold f b id
+{-# INLINE fold #-}
+-- FIXME why is this necessary to get rules to fire?
+{-# RULES "fold is sink" forall f b.
+        fold f b = sinkFold f b id
+  #-}
 
 connectFold :: Monad m => Source m a -> (b -> a -> b) -> b -> m b -- FIXME replace with better, more general function
 connectFold (CI.ConduitM src0) f =

@@ -19,6 +19,7 @@ Library
                        Data.Conduit.List
                        Data.Conduit.Internal
                        Data.Conduit.Lift
+                       Data.Conduit.Fusion
   other-modules:       Data.Conduit.Internal.Pipe
                        Data.Conduit.Internal.Conduit
   Build-depends:       base                     >= 4.3          && < 5
