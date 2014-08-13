@@ -44,4 +44,11 @@ main = hspec $ do
                  =$= C.take 5
                  =$= C.foldl' (+) 0
         actual `shouldBe` expected
+    it "take/monadic compisition" $ do
+        let sink = do
+                x <- C.take 5 =$= sinkList
+                y <- sinkList
+                return (x, y :: [Int])
+        res <- runConduit $ C.enumFromTo 1 10 =$= sink
+        res `shouldBe` ([1..5], [6..10])
     -- FIXME add some finalization test

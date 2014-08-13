@@ -30,19 +30,61 @@ newtype ConduitM i o m r = ConduitM
     { unConduitM :: forall x. Stream m i x -> Stream m o (Stream m i x, r)
     }
 
-{-
 instance Monad m => Monad (ConduitM i o m) where
-    return
--}
+    return r = ConduitM $ \up -> emptyStream (up, r)
+    ConduitM f >>= g = ConduitM $ \up ->
+        fixBind g $ f up
+
+fixBind :: Monad m
+        => (a -> ConduitM i o m b)
+        -> Stream m o (Stream m i x, a)
+        -> Stream m o (Stream m i x, b)
+fixBind g (Stream step1 ms1 cleanup1) =
+    Stream step (liftM Left ms1) cleanup
+  where
+    step (Left s) = do
+        res <- step1 s
+        case res of
+            Yield o s' -> return $ Yield o (Left s')
+            Skip s' -> return $ Skip $ Left s'
+            Done (up, a) ->
+                case g a of
+                    ConduitM g' -> return $ Skip $ Right $ g' up
+    step (Right (Stream step' ms cleanup)) = do
+        res <- ms >>= step'
+        case res of
+            Done x -> return $ Done x
+            Skip s' -> return $ Skip $ Right $ Stream step' (return s') cleanup
+            Yield o s' -> return $ Yield o $ Right $ Stream step' (return s') cleanup
+
+    cleanup (Left s) = cleanup1 s
+    cleanup (Right (Stream _ ms cleanup)) = ms >>= cleanup
 
 (=$=) :: Monad m => ConduitM a b m () -> ConduitM b c m r -> ConduitM a c m r
 ConduitM x =$= ConduitM y = ConduitM (fmap (first collapseStream) . y . x)
 {-# INLINE (=$=) #-}
 
 collapseStream :: Monad m
-               => Stream m b (Stream m a x, ())
+               => Stream m b (Stream m a x, ()) -- FIXME we need to be able to early terminate upstream
                -> Stream m a x
-collapseStream = error "collapseStream"
+collapseStream (Stream step ms0 cleanup) =
+    Stream step' ms (\(Stream _ s f) -> s >>= f)
+  where
+    step' (Stream f s cleanup) = do
+        res <- s >>= f
+        return $ case res of
+            Done r -> Done r
+            Skip s' -> Skip $ Stream f (return s') cleanup
+            Yield a s' -> Yield a $ Stream f (return s') cleanup
+    ms = do
+        s <- ms0
+        (str, ()) <- exhaust s
+        return str
+
+    exhaust s = do
+        res <- step s
+        case res of
+            Done x -> return x
 
 runConduit :: Monad m => ConduitM () Void m r -> m r
 runConduit (ConduitM f) =
@@ -175,3 +217,4 @@ takeS cnt0 (Stream step ms0 cleanup) =
                 Done x -> return $ Done (emptyStream x, ())
                 Yield a s' -> return $ Yield a (s', cnt - 1)
                 Skip s' -> return $ Skip (s', cnt)
+{-# INLINE takeS #-}
