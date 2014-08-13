@@ -7,8 +7,9 @@ module Data.StreamConduit where
 
 import Prelude hiding (map, enumFromTo, mapM, take)
 import Data.Void (Void, absurd)
-import Control.Monad (liftM)
+import Control.Monad (liftM, ap)
 import Control.Arrow (first)
+import Control.Applicative (Applicative (..))
 
 data Step s o r
     = Done r
@@ -26,6 +27,13 @@ instance Monad m => Functor (Stream m o) where
 emptyStream :: Monad m => r -> Stream m o r
 emptyStream r = Stream (const $ return $ Done r) (return ()) (const $ return ())
 
+singletonStream :: Monad m => o -> r -> Stream m o r
+singletonStream o r =
+    Stream step (return False) (const $ return ())
+  where
+    step False = return $ Yield o True
+    step True  = return $ Done r
+
 newtype ConduitM i o m r = ConduitM
     { unConduitM :: forall x. Stream m i x -> Stream m o (Stream m i x, r)
     }
@@ -34,6 +42,11 @@ instance Monad m => Monad (ConduitM i o m) where
     return r = ConduitM $ \up -> emptyStream (up, r)
     ConduitM f >>= g = ConduitM $ \up ->
         fixBind g $ f up
+instance Monad m => Functor (ConduitM i o m) where
+    fmap = liftM
+instance Monad m => Applicative (ConduitM i o m) where
+    pure = return
+    (<*>) = ap
 
 fixBind :: Monad m
         => (a -> ConduitM i o m b)
@@ -63,6 +76,23 @@ fixBind g (Stream step1 ms1 cleanup1) =
 (=$=) :: Monad m => ConduitM a b m () -> ConduitM b c m r -> ConduitM a c m r
 ConduitM x =$= ConduitM y = ConduitM (fmap (first collapseStream) . y . x)
 {-# INLINE (=$=) #-}
+
+yield :: Monad m => o -> ConduitM i o m ()
+yield o = ConduitM $ \up -> singletonStream o (up, ())
+
+await :: Monad m => ConduitM i o m (Maybe i)
+await = ConduitM awaitS
+
+awaitS :: Monad m => Stream m i x -> Stream m o (Stream m i x, Maybe i)
+awaitS (Stream step ms0 cleanup) =
+    Stream step' ms0 cleanup
+  where
+    step' s = do
+        res <- step s
+        return $ case res of
+            Done x -> Done (emptyStream x, Nothing)
+            Skip s' -> Skip s'
+            Yield i s' -> Done (Stream step (return s') cleanup, Just i)
 
 collapseStream :: Monad m
                => Stream m b (Stream m a x, ()) -- FIXME we need to be able to early terminate upstream

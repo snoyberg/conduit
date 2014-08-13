@@ -7,6 +7,7 @@ import qualified Prelude as P
 import Prelude
 import Data.Functor.Identity
 import qualified Data.List as P (foldl')
+import Control.Monad (replicateM)
 
 main :: IO ()
 main = hspec $ do
@@ -51,4 +52,13 @@ main = hspec $ do
                 return (x, y :: [Int])
         res <- runConduit $ C.enumFromTo 1 10 =$= sink
         res `shouldBe` ([1..5], [6..10])
+    prop "mapM_ yield works" $ \is -> do
+        res <- runConduit $ mapM_ yield is =$= sinkList
+        res `shouldBe` (is :: [Int])
+    prop "mapM_ await works" $ \is -> do
+        res <- runConduit $ mapM_ yield is =$= do
+            x <- replicateM (length is) await
+            y <- replicateM 5 await
+            return (x, y)
+        res `shouldBe` (P.map Just is :: [Maybe Int], replicate 5 Nothing)
     -- FIXME add some finalization test
