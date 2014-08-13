@@ -72,6 +72,7 @@ test-suite test
 --     ghc-options:    -Wall -O2 -with-rtsopts=-s
 
 benchmark lift-rewrite
+    buildable: False
     type: exitcode-stdio-1.0
     hs-source-dirs: benchmarks
     build-depends:  base
