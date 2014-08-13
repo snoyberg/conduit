@@ -32,4 +32,16 @@ main = hspec $ do
                  =$= C.map (+ 1)
                  =$= C.foldl' (+) 0
         actual `shouldBe` expected
+    prop "enumFromTo/map/take/foldl'" $ \x' y' -> do
+        let (x, y)
+                | x' < y' = (x' :: Int, y')
+                | otherwise = (y', x')
+            expected = P.foldl' (+) 0 $ P.take 5 $ P.map (+ 1) $ P.enumFromTo x y
+            actual = runIdentity
+                   $ runConduit
+                   $ C.enumFromTo x y
+                 =$= C.map (+ 1)
+                 =$= C.take 5
+                 =$= C.foldl' (+) 0
+        actual `shouldBe` expected
     -- FIXME add some finalization test
