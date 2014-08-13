@@ -19,17 +19,16 @@ data Step s o r
 data Stream m o r = forall s. Stream
     (s -> m (Step s o r))
     (m s)
-    (s -> m ()) -- cleanup
 
 instance Monad m => Functor (Stream m o) where
-    fmap f (Stream step ms cleanup) = Stream (liftM (fmap f) . step) ms cleanup
+    fmap f (Stream step ms) = Stream (liftM (fmap f) . step) ms
 
 emptyStream :: Monad m => r -> Stream m o r
-emptyStream r = Stream (const $ return $ Done r) (return ()) (const $ return ())
+emptyStream r = Stream (const $ return $ Done r) (return ())
 
 singletonStream :: Monad m => o -> r -> Stream m o r
 singletonStream o r =
-    Stream step (return False) (const $ return ())
+    Stream step (return False)
   where
     step False = return $ Yield o True
     step True  = return $ Done r
@@ -52,8 +51,8 @@ fixBind :: Monad m
         => (a -> ConduitM i o m b)
         -> Stream m o (Stream m i x, a)
         -> Stream m o (Stream m i x, b)
-fixBind g (Stream step1 ms1 cleanup1) =
-    Stream step (liftM Left ms1) cleanup
+fixBind g (Stream step1 ms1) =
+    Stream step (liftM Left ms1)
   where
     step (Left s) = do
         res <- step1 s
@@ -63,15 +62,12 @@ fixBind g (Stream step1 ms1 cleanup1) =
             Done (up, a) ->
                 case g a of
                     ConduitM g' -> return $ Skip $ Right $ g' up
-    step (Right (Stream step' ms cleanup)) = do
+    step (Right (Stream step' ms)) = do
         res <- ms >>= step'
         case res of
             Done x -> return $ Done x
-            Skip s' -> return $ Skip $ Right $ Stream step' (return s') cleanup
-            Yield o s' -> return $ Yield o $ Right $ Stream step' (return s') cleanup
-
-    cleanup (Left s) = cleanup1 s
-    cleanup (Right (Stream _ ms cleanup)) = ms >>= cleanup
+            Skip s' -> return $ Skip $ Right $ Stream step' (return s')
+            Yield o s' -> return $ Yield o $ Right $ Stream step' (return s')
 
 (=$=) :: Monad m => ConduitM a b m () -> ConduitM b c m r -> ConduitM a c m r
 ConduitM x =$= ConduitM y = ConduitM (fmap (first collapseStream) . y . x)
@@ -84,28 +80,28 @@ await :: Monad m => ConduitM i o m (Maybe i)
 await = ConduitM awaitS
 
 awaitS :: Monad m => Stream m i x -> Stream m o (Stream m i x, Maybe i)
-awaitS (Stream step ms0 cleanup) =
-    Stream step' ms0 cleanup
+awaitS (Stream step ms0) =
+    Stream step' ms0
   where
     step' s = do
         res <- step s
         return $ case res of
             Done x -> Done (emptyStream x, Nothing)
             Skip s' -> Skip s'
-            Yield i s' -> Done (Stream step (return s') cleanup, Just i)
+            Yield i s' -> Done (Stream step (return s'), Just i)
 
 collapseStream :: Monad m
                => Stream m b (Stream m a x, ()) -- FIXME we need to be able to early terminate upstream
                -> Stream m a x
-collapseStream (Stream step ms0 cleanup) =
-    Stream step' ms (\(Stream _ s f) -> s >>= f)
+collapseStream (Stream step ms0) =
+    Stream step' ms
   where
-    step' (Stream f s cleanup) = do
+    step' (Stream f s) = do
         res <- s >>= f
         return $ case res of
             Done r -> Done r
-            Skip s' -> Skip $ Stream f (return s') cleanup
-            Yield a s' -> Yield a $ Stream f (return s') cleanup
+            Skip s' -> Skip $ Stream f (return s')
+            Yield a s' -> Yield a $ Stream f (return s')
     ms = do
         s <- ms0
         (str, ()) <- exhaust s
@@ -120,7 +116,7 @@ runConduit :: Monad m => ConduitM () Void m r -> m r
 runConduit (ConduitM f) =
     go $ f $ emptyStream ()
   where
-    go (Stream step ms0 _) =
+    go (Stream step ms0) =
         ms0 >>= loop
       where
         loop s = do
@@ -137,8 +133,8 @@ map f = ConduitM (mapS f)
 {-# INLINE map #-}
 
 mapS :: Monad m => (a -> b) -> Stream m a x -> Stream m b (Stream m a x, ())
-mapS f (Stream step ms0 cleanup) =
-    Stream step' ms0 cleanup
+mapS f (Stream step ms0) =
+    Stream step' ms0
   where
     step' s = do
         res <- step s
@@ -153,8 +149,8 @@ mapM f = ConduitM (mapMS f)
 {-# INLINE mapM #-}
 
 mapMS :: Monad m => (a -> m b) -> Stream m a x -> Stream m b (Stream m a x, ())
-mapMS f (Stream step ms0 cleanup) =
-    Stream step' ms0 cleanup
+mapMS f (Stream step ms0) =
+    Stream step' ms0
   where
     step' s = do
         res <- step s
@@ -175,7 +171,7 @@ enumFromToS :: (Ord a, Enum a, Monad m)
             -> Stream m i x
             -> Stream m a (Stream m i x, ())
 enumFromToS x y upstream =
-    Stream (return . step) (return x) (const $ return ())
+    Stream (return . step) (return x)
   where
     step x
         | x > y = Done (upstream, ())
@@ -186,8 +182,8 @@ sinkList = ConduitM sinkListS
 {-# INLINE sinkList #-}
 
 sinkListS :: Monad m => Stream m i x -> Stream m o (Stream m i x, [i])
-sinkListS (Stream step ms0 cleanup) =
-    Stream step' (liftM (, id) ms0) (cleanup . fst)
+sinkListS (Stream step ms0) =
+    Stream step' (liftM (, id) ms0)
   where
     step' (s, front) = do
         res <- step s
@@ -202,8 +198,8 @@ foldl' f b = ConduitM (foldl'S f b)
 {-# INLINE foldl' #-}
 
 foldl'S :: Monad m => (b -> a -> b) -> b -> Stream m a x -> Stream m o (Stream m a x, b)
-foldl'S f b0 (Stream step ms0 cleanup) =
-    Stream step' (liftM (, b0) ms0) (cleanup . fst)
+foldl'S f b0 (Stream step ms0) =
+    Stream step' (liftM (, b0) ms0)
   where
     step' (s, !b) = do
         res <- step s
@@ -218,8 +214,8 @@ foldM' f b = ConduitM (foldM'S f b)
 {-# INLINE foldM' #-}
 
 foldM'S :: Monad m => (b -> a -> m b) -> b -> Stream m a x -> Stream m o (Stream m a x, b)
-foldM'S f b0 (Stream step ms0 cleanup) =
-    Stream step' (liftM (, b0) ms0) (cleanup . fst)
+foldM'S f b0 (Stream step ms0) =
+    Stream step' (liftM (, b0) ms0)
   where
     step' (s, !b) = do
         res <- step s
@@ -236,11 +232,11 @@ take i = ConduitM (takeS i)
 {-# INLINE take #-}
 
 takeS :: Monad m => Int -> Stream m a x -> Stream m a (Stream m a x, ())
-takeS cnt0 (Stream step ms0 cleanup) =
-    Stream step' (liftM (, cnt0) ms0) (cleanup . fst)
+takeS cnt0 (Stream step ms0) =
+    Stream step' (liftM (, cnt0) ms0)
   where
     step' (s, cnt)
-        | cnt <= 0 = return $ Done (Stream step (return s) cleanup, ())
+        | cnt <= 0 = return $ Done (Stream step (return s), ())
         | otherwise = do
             res <- step s
             case res of
