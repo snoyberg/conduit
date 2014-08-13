@@ -11,14 +11,13 @@ import Control.Monad (liftM, ap)
 import Control.Arrow (first)
 import Control.Applicative (Applicative (..))
 
-data Step s m o r
+data Step s o r
     = Done r
     | Skip s
     | Yield o s
-    | Switch (Stream m o r)
     deriving Functor
 data Stream m o r = forall s. Stream
-    (s -> m (Step s m o r))
+    (s -> m (Step s o r))
     (m s)
     (s -> m ()) -- cleanup
 
@@ -53,18 +52,26 @@ fixBind :: Monad m
         => (a -> ConduitM i o m b)
         -> Stream m o (Stream m i x, a)
         -> Stream m o (Stream m i x, b)
-fixBind g (Stream step1 ms1 cleanup) =
-    Stream step ms1 cleanup
+fixBind g (Stream step1 ms1 cleanup1) =
+    Stream step (liftM Left ms1) cleanup
   where
-    step s = do
+    step (Left s) = do
         res <- step1 s
         case res of
-            Yield o s' -> return $ Yield o s'
-            Skip s' -> return $ Skip s'
+            Yield o s' -> return $ Yield o (Left s')
+            Skip s' -> return $ Skip $ Left s'
             Done (up, a) ->
                 case g a of
-                    ConduitM g' -> return $ Switch $ g' up
-            Switch stream -> return $ Switch $ fixBind g stream
+                    ConduitM g' -> return $ Skip $ Right $ g' up
+    step (Right (Stream step' ms cleanup)) = do
+        res <- ms >>= step'
+        case res of
+            Done x -> return $ Done x
+            Skip s' -> return $ Skip $ Right $ Stream step' (return s') cleanup
+            Yield o s' -> return $ Yield o $ Right $ Stream step' (return s') cleanup
+
+    cleanup (Left s) = cleanup1 s
+    cleanup (Right (Stream _ ms cleanup)) = ms >>= cleanup
 
 (=$=) :: Monad m => ConduitM a b m () -> ConduitM b c m r -> ConduitM a c m r
 ConduitM x =$= ConduitM y = ConduitM (fmap (first collapseStream) . y . x)
@@ -86,7 +93,6 @@ awaitS (Stream step ms0 cleanup) =
             Done x -> Done (emptyStream x, Nothing)
             Skip s' -> Skip s'
             Yield i s' -> Done (Stream step (return s') cleanup, Just i)
-            Switch stream -> Switch $ awaitS stream
 
 collapseStream :: Monad m
                => Stream m b (Stream m a x, ()) -- FIXME we need to be able to early terminate upstream
@@ -123,7 +129,6 @@ runConduit (ConduitM f) =
                 Done (_, r) -> return r
                 Skip s' -> loop s'
                 Yield _ s' -> loop s'
-                Switch stream -> go stream
                 -- FIXME why doesn't this work? Yield o _ -> absurd o
 {-# INLINE runConduit #-}
 
@@ -141,7 +146,6 @@ mapS f (Stream step ms0 cleanup) =
             Done x -> Done (emptyStream x, ())
             Skip s' -> Skip s'
             Yield a s' -> Yield (f a) s'
-            Switch stream -> Switch $ mapS f stream
 {-# INLINE mapS #-}
 
 mapM :: Monad m => (a -> m b) -> ConduitM a b m ()
@@ -178,12 +182,12 @@ enumFromToS x y upstream =
         | otherwise = Yield x (succ x)
 
 sinkList :: Monad m => ConduitM i o m [i]
-sinkList = ConduitM (sinkListS id)
+sinkList = ConduitM sinkListS
 {-# INLINE sinkList #-}
 
-sinkListS :: Monad m => ([i] -> [i]) -> Stream m i x -> Stream m o (Stream m i x, [i])
-sinkListS front (Stream step ms0 cleanup) =
-    Stream step' (liftM (, front) ms0) (cleanup . fst)
+sinkListS :: Monad m => Stream m i x -> Stream m o (Stream m i x, [i])
+sinkListS (Stream step ms0 cleanup) =
+    Stream step' (liftM (, id) ms0) (cleanup . fst)
   where
     step' (s, front) = do
         res <- step s
@@ -191,7 +195,6 @@ sinkListS front (Stream step ms0 cleanup) =
             Done x -> Done (emptyStream x, front [])
             Skip s' -> Skip (s', front)
             Yield i s' -> Skip (s', front . (i:))
-            Switch stream -> Switch $ sinkListS front stream
 {-# INLINE sinkListS #-}
 
 foldl' :: Monad m => (b -> a -> b) -> b -> ConduitM a o m b
@@ -208,7 +211,6 @@ foldl'S f b0 (Stream step ms0 cleanup) =
             Done x -> Done (emptyStream x, b)
             Skip s' -> Skip (s', b)
             Yield a s' -> Skip (s', f b a)
-            Switch stream -> Switch $ foldl'S f b stream
 {-# INLINE foldl'S #-}
 
 foldM' :: Monad m => (b -> a -> m b) -> b -> ConduitM a o m b
