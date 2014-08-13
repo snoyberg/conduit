@@ -30,6 +30,7 @@ module Data.Conduit.Internal.Conduit
     , yieldM
     , yieldOr
     , leftover
+    , runConduit
       -- ** Composition
     , connectResume
     , connectResumeConduit
@@ -829,6 +830,13 @@ yieldM mo = lift mo >>= yield
 leftover :: i -> ConduitM i o m ()
 leftover i = ConduitM $ \rest -> Leftover (rest ()) i
 {-# INLINE leftover #-}
+
+-- | Run a pipeline until processing completes.
+--
+-- Since 1.2.1
+runConduit :: Monad m => ConduitM () Void m r -> m r
+runConduit (ConduitM p) = runPipe $ injectLeftovers $ p Done
+{-# INLINE [0] runConduit #-}
 
 -- | Perform some allocation and run an inner component. Two guarantees are
 -- given about resource finalization:

@@ -51,6 +51,28 @@ fuseStream (StreamConduit a x) (StreamConduit b y) = StreamConduit (a =$= b) (y 
         unstream left =$= unstream right = unstream (fuseStream left right)
   #-}
 
+runStream :: Monad m
+          => StreamConduit () Void m r
+          -> m r
+runStream (StreamConduit _ f) =
+    run $ f $ Stream emptyStep (return ())
+  where
+    emptyStep _ = return $ Stop ()
+    run (Stream step ms0) =
+        ms0 >>= loop
+      where
+        loop s = do
+            res <- step s
+            case res of
+                Stop r -> return r
+                Skip s' -> loop s'
+                Emit _ o -> absurd o
+{-# INLINE runStream #-}
+
+{-# RULES "runStream" forall stream.
+        runConduit (unstream stream) = runStream stream
+  #-}
+
 connectStream :: Monad m
               => StreamConduit () i    m ()
               -> StreamConduit i  Void m r

@@ -42,6 +42,13 @@ main = defaultMain
            $$ CL.map (* 2)
            =$ CL.map (+ 1)
            =$ CL.fold (+) 0
+    , bench "runConduit, completely fused" $ flip whnf upper0 $ \upper ->
+        runIdentity
+            $ runConduit
+            $ CL.enumFromTo 1 upper
+          =$= CL.map (* 2)
+          =$= CL.map (+ 1)
+          =$= CL.fold (+) 0
     , bench "completely unfused" $ flip whnf upper0 $ \upper ->
         runIdentity
             $ enumFromToC 1 upper

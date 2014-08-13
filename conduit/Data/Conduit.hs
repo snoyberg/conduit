@@ -24,6 +24,7 @@ module Data.Conduit
     , await
     , yield
     , leftover
+    , runConduit
 
       -- ** Finalization
     , bracketP
