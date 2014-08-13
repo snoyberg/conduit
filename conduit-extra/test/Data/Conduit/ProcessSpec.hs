@@ -54,8 +54,17 @@ spec = describe "Data.Conduit.Process" $ do
 
         threadDelay 1500000
 
-        mec2 <- getStreamingProcessExitCode cph
-        mec2 `shouldBe` Just ExitSuccess
+        -- For slow systems where sleep may take longer than 1.5 seconds, do
+        -- this in a loop.
+        let loop 0 = error "Took too long for sleep to exit, your system is acting funny"
+            loop i = do
+                mec2 <- getStreamingProcessExitCode cph
+                case mec2 of
+                    Nothing -> do
+                        threadDelay 500000
+                        loop (pred i)
+                    Just _ -> mec2 `shouldBe` Just ExitSuccess
+        loop 5
 
         ec <- waitForStreamingProcess cph
         ec `shouldBe` ExitSuccess
