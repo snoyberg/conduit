@@ -14,17 +14,18 @@ module Data.Conduit.Fusion
 import Data.Conduit.Internal.Conduit
 import Control.Monad.Trans.Class (lift)
 
-data Step s a
+data Step m s a
     = StepDone
     | StepSkip !s
     | StepYield !a !s
+    | StepM (m s)
 
-data SourceStream a = forall s. SourceStream
-    (s -> Step s a)
+data SourceStream m a = forall s. SourceStream
+    (s -> Step m s a)
     !s
 
 sourceStream :: Monad m
-             => SourceStream a
+             => SourceStream m a
              -> Producer m a
 sourceStream (SourceStream f s0) =
     go s0
@@ -34,6 +35,7 @@ sourceStream (SourceStream f s0) =
             StepDone -> return ()
             StepSkip s' -> go s'
             StepYield a s' -> yield a >> go s'
+            StepM ms -> lift ms >>= go
 {-# INLINE [0] sourceStream #-}
 
 sinkFold
@@ -63,30 +65,32 @@ sinkFoldM f s0 final =
 -- Fusion
 
 -- sourceStream + sinkFold
-sourceStreamFold :: SourceStream a
+sourceStreamFold :: Monad m
+                 => SourceStream m a
                  -> (s -> a -> s)
                  -> s
                  -> (s -> b)
-                 -> b
+                 -> m b
 sourceStreamFold (SourceStream step s0) f b0 g =
     go s0 b0
   where
     go s !b =
         case step s of
-            StepDone -> g b
+            StepDone -> return $! g b
             StepSkip s' -> go s' b
             StepYield a s' -> go s' (f b a)
+            StepM ms -> ms >>= flip go b
 {-# INLINE sourceStreamFold #-}
 {-# RULES "sourceStreamFold" forall s f b g.
-        sourceStream s $$ sinkFold f b g = return $! sourceStreamFold s f b g
+        sourceStream s $$ sinkFold f b g = sourceStreamFold s f b g
   #-}
 {-# RULES "sourceStreamFold" forall s f b g.
-        sourceStream s =$= sinkFold f b g = return $! sourceStreamFold s f b g
+        sourceStream s =$= sinkFold f b g = lift (sourceStreamFold s f b g)
   #-}
 
 -- sourceStream + sinkFoldM
 sourceStreamFoldM :: Monad m
-                  => SourceStream a
+                  => SourceStream m a
                   -> (s -> a -> m s)
                   -> m s
                   -> (s -> m b)
@@ -99,6 +103,7 @@ sourceStreamFoldM (SourceStream step s0) f b0 g =
             StepDone -> g b
             StepSkip s' -> go s' b
             StepYield a s' -> f b a >>= go s'
+            StepM ms -> ms >>= flip go b
 {-# INLINE sourceStreamFoldM #-}
 {-# RULES "sourceStreamFoldM" forall s f b g.
         sourceStream s $$ sinkFoldM f b g = sourceStreamFoldM s f b g

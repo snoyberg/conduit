@@ -134,7 +134,7 @@ enumFromTo = \x0 y -> sourceStream (eftStep x0 y)
         enumFromTo x y = sourceStream (eftStep x y)
   #-}
 
-eftStep :: (Enum a, Prelude.Ord a) => a -> a -> SourceStream a
+eftStep :: (Enum a, Prelude.Ord a) => a -> a -> SourceStream m a
 eftStep x0 y =
     SourceStream go x0
   where
