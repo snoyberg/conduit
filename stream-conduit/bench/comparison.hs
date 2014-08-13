@@ -6,9 +6,14 @@ import qualified Data.Vector.Unboxed as VU
 import Criterion.Main
 import Data.Functor.Identity (runIdentity)
 import Data.IORef
+import qualified Data.Conduit as C
+import qualified Data.Conduit.List as C
 
 upper0 :: Int
 upper0 = 10000
+
+upper1 :: Int
+upper1 = 100
 
 main :: IO ()
 main = do
@@ -53,5 +58,21 @@ main = do
                 let go !t 10001 = t
                     go !t i = go (t + i) (succ i)
                  in go 0 1
+            , bench "conduit, pure" $ flip whnf upper0 $ \upper ->
+                runIdentity $ C.enumFromTo 1 upper
+                         C.$$ C.map (+ 1)
+                         C.=$ C.fold (+) 0
+            ]
+        , bgroup "monadic composition"
+            [ bench "StreamConduit" $ flip whnf upper1 $ \upper ->
+                let src = mapM_ (\u -> SC.enumFromTo 1 u) [1..upper]
+                 in runIdentity $ SC.runConduit
+                                $ src SC.=$= SC.map (+ 1) SC.=$= SC.foldl' (+) 0
+            , bench "conduit" $ flip whnf upper1 $ \upper ->
+                let src = mapM_ (\u -> C.enumFromTo 1 u) [1..upper]
+                 in runIdentity $ src C.$$ C.map (+ 1) C.=$ C.fold (+) 0
+            ]
+        , bgroup "lots of yield and await"
+            [
             ]
         ]
