@@ -4,6 +4,7 @@
 module Data.Conduit.Fusion
     ( -- * Producers
       SourceStream (..)
+    , Step (..)
     , sourceStream
       -- * Consumers
     , sinkFold
@@ -13,13 +14,14 @@ module Data.Conduit.Fusion
 import Data.Conduit.Internal.Conduit
 import Control.Monad.Trans.Class (lift)
 
+data Step s a
+    = StepDone
+    | StepSkip !s
+    | StepYield !a !s
+
 data SourceStream a = forall s. SourceStream
-    (forall r. s
-        -> r -- ^ end of stream
-        -> (a -> s -> r) -- ^ new element and new state
-        -> (a -> r) -- ^ final element
-        -> r)
-    s
+    (s -> Step s a)
+    !s
 
 sourceStream :: Monad m
              => SourceStream a
@@ -27,7 +29,11 @@ sourceStream :: Monad m
 sourceStream (SourceStream f s0) =
     go s0
   where
-    go s = f s (return ()) (\a s' -> yield a >> go s') yield
+    go s =
+        case f s of
+            StepDone -> return ()
+            StepSkip s' -> go s'
+            StepYield a s' -> yield a >> go s'
 {-# INLINE [0] sourceStream #-}
 
 sinkFold
@@ -66,10 +72,11 @@ sourceStreamFold :: Monad m
 sourceStreamFold (SourceStream step s0) f b0 g =
     go s0 b0
   where
-    go s !b = step s
-        (return $! g b)
-        (\a s' -> go s' (f b a))
-        (\a -> return $! g (f b a))
+    go s !b =
+        case step s of
+            StepDone -> return $! g b
+            StepSkip s' -> go s' b
+            StepYield a s' -> go s' (f b a)
 {-# INLINE sourceStreamFold #-}
 {-# RULES "sourceStreamFold" forall s f b g.
         sourceStream s $$ sinkFold f b g = sourceStreamFold s f b g
@@ -85,10 +92,11 @@ sourceStreamFoldM :: Monad m
 sourceStreamFoldM (SourceStream step s0) f b0 g =
     b0 >>= go s0
   where
-    go s !b = step s
-        (g b)
-        (\a s' -> f b a >>= go s')
-        (\a -> f b a >>= g)
+    go s !b =
+        case step s of
+            StepDone -> g b
+            StepSkip s' -> go s' b
+            StepYield a s' -> f b a >>= go s'
 {-# INLINE sourceStreamFoldM #-}
 {-# RULES "sourceStreamFoldM" forall s f b g.
         sourceStream s $$ sinkFoldM f b g = sourceStreamFoldM s f b g

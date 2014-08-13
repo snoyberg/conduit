@@ -123,7 +123,7 @@ sourceList = Prelude.mapM_ yield
 -- structures.
 --
 -- Since 0.4.2
-enumFromTo :: (Enum a, Eq a, Monad m)
+enumFromTo :: (Enum a, Prelude.Ord a, Monad m)
            => a
            -> a
            -> Producer m a
@@ -134,13 +134,13 @@ enumFromTo = \x0 y -> sourceStream (eftStep x0 y)
         enumFromTo x y = sourceStream (eftStep x y)
   #-}
 
-eftStep :: (Enum a, Eq a) => a -> a -> SourceStream a
+eftStep :: (Enum a, Prelude.Ord a) => a -> a -> SourceStream a
 eftStep x0 y =
     SourceStream go x0
   where
-    go x _ more done
-        | x == y = done x
-        | otherwise = more x (Prelude.succ x)
+    go x
+        | x <= y= StepYield x (Prelude.succ x)
+        | otherwise = StepDone
 {-# INLINE eftStep #-}
 
 -- | Produces an infinite stream of repeated applications of f to x.
