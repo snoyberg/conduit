@@ -63,23 +63,25 @@ sinkFoldM f s0 final =
 -- Fusion
 
 -- sourceStream + sinkFold
-sourceStreamFold :: Monad m
-                 => SourceStream a
+sourceStreamFold :: SourceStream a
                  -> (s -> a -> s)
                  -> s
                  -> (s -> b)
-                 -> m b
+                 -> b
 sourceStreamFold (SourceStream step s0) f b0 g =
     go s0 b0
   where
     go s !b =
         case step s of
-            StepDone -> return $! g b
+            StepDone -> g b
             StepSkip s' -> go s' b
             StepYield a s' -> go s' (f b a)
 {-# INLINE sourceStreamFold #-}
 {-# RULES "sourceStreamFold" forall s f b g.
-        sourceStream s $$ sinkFold f b g = sourceStreamFold s f b g
+        sourceStream s $$ sinkFold f b g = return $! sourceStreamFold s f b g
+  #-}
+{-# RULES "sourceStreamFold" forall s f b g.
+        sourceStream s =$= sinkFold f b g = return $! sourceStreamFold s f b g
   #-}
 
 -- sourceStream + sinkFoldM

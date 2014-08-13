@@ -19,7 +19,8 @@ plusM x y = return $! x + y
 main :: IO ()
 main = do
     upperRef <- newIORef upper
-    defaultMain $ reverse
+    defaultMain
+      [ bgroup "just connect" $ reverse
         [ bench "foldl'" $ flip whnf upper $ \upper' ->
             foldl' (+) 0 [1..upper']
         , bench "foldM" $ whnfIO $ do
@@ -35,7 +36,7 @@ main = do
             V.sum (V.enumFromTo 1 upper')
         , bench "low level" $ flip whnf upper $ \upper' ->
             let go !x !b
-                    | x == upper' = b
+                    | x > upper' = b
                     | otherwise = go (succ x) (b + x)
              in go 1 0
         , bench "conduit pure" $ flip whnf upper $ \upper' ->
@@ -43,7 +44,36 @@ main = do
         , bench "conduit IO" $ whnfIO $ do
             upper' <- readIORef upperRef
             CL.enumFromTo 1 upper' $$ CL.foldM plusM 0
+        , bench "conduit pure, runConduit" $ flip whnf upper $ \upper' ->
+            runIdentity
+                $ runConduit
+                $ CL.enumFromTo 1 upper'
+              =$= CL.fold (+) 0
         ]
+      , bgroup "connect + map" $ reverse
+        [ bench "low level" $ flip whnf upper $ \upper' ->
+            let go !x !b
+                    | x > upper' = b
+                    | otherwise = go (succ x) (b + x + 1)
+             in go 1 0
+        , bench "conduit pure, left" $ flip whnf upper $ \upper' ->
+            runIdentity
+                $ CL.enumFromTo 1 upper'
+               $= CL.map (+ 1)
+               $$ CL.fold (+) 0
+        , bench "conduit pure, right" $ flip whnf upper $ \upper' ->
+            runIdentity
+                $ CL.enumFromTo 1 upper'
+               $$ CL.map (+ 1)
+               =$ CL.fold (+) 0
+        , bench "conduit pure, runConduit" $ flip whnf upper $ \upper' ->
+            runIdentity
+                $ runConduit
+                $ CL.enumFromTo 1 upper'
+               =$ CL.map (+ 1)
+               =$ CL.fold (+) 0
+        ]
+      ]
 
 sumC :: (Num a, Monad m) => Consumer a m a
 sumC =
