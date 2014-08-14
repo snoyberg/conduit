@@ -1,4 +1,4 @@
-{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE BangPatterns #-}
@@ -10,237 +10,249 @@ import Data.Void (Void, absurd)
 import Control.Monad (liftM, ap)
 import Control.Arrow (first)
 import Control.Applicative (Applicative (..))
+import Unsafe.Coerce (unsafeCoerce)
 
 data Step s o r
     = Done r
     | Skip s
     | Yield o s
     deriving Functor
-data Stream m o r = forall s. Stream
-    (s -> m (Step s o r))
-    (m s)
+data Stream m o r where
+    Stream :: (s -> m (Step s o r))
+           -> m s
+           -> Stream m o r
 
 instance Monad m => Functor (Stream m o) where
     fmap f (Stream step ms) = Stream (liftM (fmap f) . step) ms
 
-emptyStream :: Monad m => r -> Stream m o r
-emptyStream r = Stream (const $ return $ Done r) (return ())
-
-singletonStream :: Monad m => o -> r -> Stream m o r
-singletonStream o r =
-    Stream step (return False)
+runConduit :: Monad m => ConduitM () Void m r -> m r
+runConduit (ConduitM ms0 step') =
+    ms0 (return $ error "runConduit: initial state forced") >>= loop
   where
-    step False = return $ Yield o True
-    step True  = return $ Done r
+    step = step' (const $ return $ Done $ error $ "runConduit: final result forced")
+    loop s = do
+        res <- step s
+        case res of
+            Done (_, r) -> return r
+            Skip s' -> loop s'
+            Yield o _ -> absurd o
+{-# INLINE runConduit #-}
 
-newtype ConduitM i o m r = ConduitM
-    { unConduitM :: forall x. Stream m i x -> Stream m o (Stream m i x, r)
+(=$=) :: Monad m
+      => ConduitM a b m ()
+      -> ConduitM b c m r
+      -> ConduitM a c m r
+left =$= right =
+    ConduitM state step
+  where
+    (stateL, stepL) = toNoBind left
+    (stateR, stepR) = toNoBind right
+    state = stateR . unsafeCoerce . stateL
+
+    step step' = helper stepR stepL step' -- unsafeCoerce $ stepR (unsafeCoerce $ liftM (fmap snd) . stepL step')
+{-# INLINE (=$=) #-}
+
+helper :: Monad m
+       => ((s0 -> m (Step s0 b ())) -> s1 -> m (Step s1 c (Either (m s0) (),  r)))
+       -> ((s1 -> m (Step s1 a ())) -> s0 -> m (Step s0 b (Either (m s1) (), ())))
+       -> ((s1 -> m (Step s1 a ())) -> s1 -> m (Step s1 c (Either (m s1) (),  r)))
+helper stepR stepL stepU sR =
+    error "helper" -- stepR (\sL -> stepL stepU sL) sR
+
+toNoBind :: Monad m
+         => ConduitM i o m r
+         -> (m s -> m t,
+           (s -> m (Step s i ()))
+            -> t
+            -> m (Step t o (Either (m s) (), r)))
+toNoBind (ConduitM x y) = unsafeCoerce (x, y)
+--toNoBind (ConduitBind f) = toNoBind $ f return
+
+toBind :: ConduitM i o m r
+       -> ((r -> ConduitM i o m b) -> ConduitM i o m b)
+toBind (ConduitM state step) = error "toBind"
+--toBind (ConduitBind f) = f
+
+data ConduitM i o m r =
+    forall s t. ConduitM
+        (m s -> m t)
+        ((s -> m (Step s i ()))
+            -> t
+            -> m (Step t o (Either (m s) (), r)))
+
+    {-
+    | forall s. ConduitBind
+        (m s -> m t)
+        (forall b.
+            (s -> m (Step s i ()))
+         -> (Either (m s) (), r)
+         -> 
+            ((r -> ConduitM i o m b) -> ConduitM i o m b))
+        -}
+
+newtype Cont s i m o b = Cont
+    { unCont :: (s -> m (Step s i ()))
+             -> m (Step (Cont s i m o b) o (Either (m s) (), b))
     }
 
 instance Monad m => Monad (ConduitM i o m) where
-    return r = ConduitM $ \up -> emptyStream (up, r)
+    return r = ConduitM return $ \_ ms -> return $ Done (Left ms, r)
+    ConduitM stateL stepL >>= f =
+        ConduitM state step'
+      where
+        state ms = do
+            t <- stateL ms
+            return $ go stepHelperFull t
+
+        go stepUpHelper t = Cont $ \stepUp' -> do
+            res <- stepL (stepUpHelper stepUp') t
+            case res of
+                Skip t' -> return $ Skip $ go stepUpHelper t'
+                Yield o t' -> return $ Yield o $ go stepUpHelper t'
+                Done (ems, r) ->
+                    case f r of
+                        ConduitM stateR stepR ->
+                            case ems of
+                                Left ms -> do
+                                    t' <- stateR $ liftM unsafeCoerce ms
+                                    return $ Skip $ go2 (unsafeCoerce stepR) stepUpHelper t'
+                                Right () -> do
+                                    t' <- stateR $ return $ error ">>=: state value forced"
+                                    return $ Skip $ go2 stepR stepHelperEmpty t'
+
+        go2 stepR stepUpHelper t = Cont $ \stepUp' -> do
+            res <- stepR (stepUpHelper stepUp') t
+            return $ case res of
+                Skip t' -> Skip $ go2 stepR stepUpHelper t'
+                Yield o t' -> Yield o $ go2 stepR stepUpHelper t'
+                Done x -> Done $ unsafeCoerce x
+
+        step' step f = unCont f step
+
+        stepHelperFull step s = do
+            res <- step s
+            return $ case res of
+                Done x -> Done x
+                Skip s' -> Skip s'
+                Yield i s' -> Yield i s'
+
+        stepHelperEmpty _ _ = return $ Done ()
+
+    --f >>= g = ConduitBind $ \c -> toBind f (\a -> toBind (g a) c)
+    {-
     ConduitM f >>= g = ConduitM $ \up ->
         fixBind g $ f up
+        -}
 instance Monad m => Functor (ConduitM i o m) where
     fmap = liftM
 instance Monad m => Applicative (ConduitM i o m) where
     pure = return
     (<*>) = ap
 
-fixBind :: Monad m
-        => (a -> ConduitM i o m b)
-        -> Stream m o (Stream m i x, a)
-        -> Stream m o (Stream m i x, b)
-fixBind g (Stream step1 ms1) =
-    Stream step (liftM Left ms1)
-  where
-    step (Left s) = do
-        res <- step1 s
-        case res of
-            Yield o s' -> return $ Yield o (Left s')
-            Skip s' -> return $ Skip $ Left s'
-            Done (up, a) ->
-                case g a of
-                    ConduitM g' -> return $ Skip $ Right $ g' up
-    step (Right (Stream step' ms)) = do
-        res <- ms >>= step'
-        case res of
-            Done x -> return $ Done x
-            Skip s' -> return $ Skip $ Right $ Stream step' (return s')
-            Yield o s' -> return $ Yield o $ Right $ Stream step' (return s')
-
-(=$=) :: Monad m => ConduitM a b m () -> ConduitM b c m r -> ConduitM a c m r
-ConduitM x =$= ConduitM y = ConduitM (fmap (first collapseStream) . y . x)
-{-# INLINE (=$=) #-}
-
 yield :: Monad m => o -> ConduitM i o m ()
-yield o = ConduitM $ \up -> singletonStream o (up, ())
+yield o =
+    ConduitM (return . (, False)) step
+  where
+    step _ (s, False) = return $ Yield o (s, True)
+    step _ (s, True) = return $ Done (Left s, ())
+{-# INLINE yield #-}
 
 await :: Monad m => ConduitM i o m (Maybe i)
-await = ConduitM awaitS
-
-awaitS :: Monad m => Stream m i x -> Stream m o (Stream m i x, Maybe i)
-awaitS (Stream step ms0) =
-    Stream step' ms0
+await =
+    ConduitM id step'
   where
-    step' s = do
+    step' step s = do
         res <- step s
         return $ case res of
-            Done x -> Done (emptyStream x, Nothing)
+            Done x -> Done (Right x, Nothing)
             Skip s' -> Skip s'
-            Yield i s' -> Done (Stream step (return s'), Just i)
-
-collapseStream :: Monad m
-               => Stream m b (Stream m a x, ()) -- FIXME we need to be able to early terminate upstream
-               -> Stream m a x
-collapseStream (Stream step ms0) =
-    Stream step' ms
-  where
-    step' (Stream f s) = do
-        res <- s >>= f
-        return $ case res of
-            Done r -> Done r
-            Skip s' -> Skip $ Stream f (return s')
-            Yield a s' -> Yield a $ Stream f (return s')
-    ms = do
-        s <- ms0
-        (str, ()) <- exhaust s
-        return str
-
-    exhaust s = do
-        res <- step s
-        case res of
-            Done x -> return x
-
-runConduit :: Monad m => ConduitM () Void m r -> m r
-runConduit (ConduitM f) =
-    go $ f $ emptyStream ()
-  where
-    go (Stream step ms0) =
-        ms0 >>= loop
-      where
-        loop s = do
-            res <- step s
-            case res of
-                Done (_, r) -> return r
-                Skip s' -> loop s'
-                Yield _ s' -> loop s'
-                -- FIXME why doesn't this work? Yield o _ -> absurd o
-{-# INLINE runConduit #-}
+            Yield i s' -> Done (Left (return s'), Just i)
+{-# INLINE await #-}
 
 map :: Monad m => (a -> b) -> ConduitM a b m ()
-map f = ConduitM (mapS f)
-{-# INLINE map #-}
-
-mapS :: Monad m => (a -> b) -> Stream m a x -> Stream m b (Stream m a x, ())
-mapS f (Stream step ms0) =
-    Stream step' ms0
+map f =
+    ConduitM id step'
   where
-    step' s = do
+    step' step s = do
         res <- step s
         return $ case res of
-            Done x -> Done (emptyStream x, ())
+            Done x -> Done (Right x, ())
             Skip s' -> Skip s'
             Yield a s' -> Yield (f a) s'
-{-# INLINE mapS #-}
+
+{-# INLINE map #-}
 
 mapM :: Monad m => (a -> m b) -> ConduitM a b m ()
-mapM f = ConduitM (mapMS f)
-{-# INLINE mapM #-}
-
-mapMS :: Monad m => (a -> m b) -> Stream m a x -> Stream m b (Stream m a x, ())
-mapMS f (Stream step ms0) =
-    Stream step' ms0
+mapM f =
+    ConduitM id step'
   where
-    step' s = do
+    step' step s = do
         res <- step s
         case res of
-            Done x -> return $ Done (emptyStream x, ())
+            Done x -> return $ Done (Right x, ())
             Skip s' -> return $ Skip s'
             Yield a s' -> do
                 b <- f a
                 return $ Yield b s'
-{-# INLINE mapMS #-}
+{-# INLINE mapM #-}
 
 enumFromTo :: (Ord a, Enum a, Monad m) => a -> a -> ConduitM i a m ()
-enumFromTo x y = ConduitM $ enumFromToS x y
-
-enumFromToS :: (Ord a, Enum a, Monad m)
-            => a
-            -> a
-            -> Stream m i x
-            -> Stream m a (Stream m i x, ())
-enumFromToS x y upstream =
-    Stream (return . step) (return x)
+enumFromTo x0 y =
+    ConduitM (return . (, x0)) step
   where
-    step x
-        | x > y = Done (upstream, ())
-        | otherwise = Yield x (succ x)
+    step _ (s, x)
+        | x > y = return $ Done (Left s, ())
+        | otherwise = return $ Yield x (s, succ x)
+{-# INLINE enumFromTo #-}
 
 sinkList :: Monad m => ConduitM i o m [i]
-sinkList = ConduitM sinkListS
-{-# INLINE sinkList #-}
-
-sinkListS :: Monad m => Stream m i x -> Stream m o (Stream m i x, [i])
-sinkListS (Stream step ms0) =
-    Stream step' (liftM (, id) ms0)
+sinkList =
+    ConduitM (liftM (, id)) step'
   where
-    step' (s, front) = do
+    step' step (s, front) = do
         res <- step s
         return $ case res of
-            Done x -> Done (emptyStream x, front [])
+            Done x -> Done (Right x, front [])
             Skip s' -> Skip (s', front)
             Yield i s' -> Skip (s', front . (i:))
-{-# INLINE sinkListS #-}
+{-# INLINE sinkList #-}
 
 foldl' :: Monad m => (b -> a -> b) -> b -> ConduitM a o m b
-foldl' f b = ConduitM (foldl'S f b)
-{-# INLINE foldl' #-}
-
-foldl'S :: Monad m => (b -> a -> b) -> b -> Stream m a x -> Stream m o (Stream m a x, b)
-foldl'S f b0 (Stream step ms0) =
-    Stream step' (liftM (, b0) ms0)
+foldl' f b0 =
+    ConduitM (liftM (, b0)) step'
   where
-    step' (s, !b) = do
+    step' step (s, !b) = do
         res <- step s
         return $ case res of
-            Done x -> Done (emptyStream x, b)
+            Done x -> Done (Right x, b)
             Skip s' -> Skip (s', b)
             Yield a s' -> Skip (s', f b a)
-{-# INLINE foldl'S #-}
+{-# INLINE foldl' #-}
 
 foldM' :: Monad m => (b -> a -> m b) -> b -> ConduitM a o m b
-foldM' f b = ConduitM (foldM'S f b)
-{-# INLINE foldM' #-}
-
-foldM'S :: Monad m => (b -> a -> m b) -> b -> Stream m a x -> Stream m o (Stream m a x, b)
-foldM'S f b0 (Stream step ms0) =
-    Stream step' (liftM (, b0) ms0)
+foldM' f b0 =
+    ConduitM (liftM (, b0)) step'
   where
-    step' (s, !b) = do
+    step' step (s, !b) = do
         res <- step s
         case res of
-            Done x -> return $ Done (emptyStream x, b)
+            Done x -> return $ Done (Right x, b)
             Skip s' -> return $ Skip (s', b)
             Yield a s' -> do
                 !b' <- f b a
                 return $ Skip (s', b')
-{-# INLINE foldM'S #-}
+{-# INLINE foldM' #-}
 
 take :: Monad m => Int -> ConduitM a a m ()
-take i = ConduitM (takeS i)
-{-# INLINE take #-}
-
-takeS :: Monad m => Int -> Stream m a x -> Stream m a (Stream m a x, ())
-takeS cnt0 (Stream step ms0) =
-    Stream step' (liftM (, cnt0) ms0)
+take cnt0 =
+    ConduitM (liftM (, cnt0)) step'
   where
-    step' (s, cnt)
-        | cnt <= 0 = return $ Done (Stream step (return s), ())
+    step' step (s, cnt)
+        | cnt <= 0 = return $ Done (Left $ return s, ())
         | otherwise = do
             res <- step s
-            case res of
-                Done x -> return $ Done (emptyStream x, ())
-                Yield a s' -> return $ Yield a (s', cnt - 1)
-                Skip s' -> return $ Skip (s', cnt)
-{-# INLINE takeS #-}
+            return $ case res of
+                Done x -> Done (Right x, ())
+                Yield a s' -> Yield a (s', cnt - 1)
+                Skip s' -> Skip (s', cnt)
+{-# INLINE take #-}
