@@ -1022,17 +1022,11 @@ fuseUpstream up down = fmap fst (fuseBoth up down)
 {-# RULES "ConduitM: lift x >>= f" forall m f. lift m >>= f = ConduitM (PipeM (liftM (unConduitM . f) m)) #-}
 {-# RULES "ConduitM: lift x >> f" forall m f. lift m >> f = ConduitM (PipeM (liftM (\_ -> unConduitM f) m)) #-}
 
-{- FIXME Can't get these rules to be accepted by GHC, see:
+{-# RULES "ConduitM: liftIO x >>= f" forall m (f :: MonadIO m => a -> ConduitM i o m r). liftIO m >>= f = ConduitM (PipeM (liftM (unConduitM . f) (liftIO m))) #-}
+{-# RULES "ConduitM: liftIO x >> f" forall m (f :: MonadIO m => ConduitM i o m r). liftIO m >> f = ConduitM (PipeM (liftM (\_ -> unConduitM f) (liftIO m))) #-}
 
-http://stackoverflow.com/questions/25324040/ghc-rewrite-rules-with-class-constraints
-
-{-# RULES "ConduitM: liftIO x >>= f" forall (m :: IO a) f. liftIO m >>= f = liftIOBind m f #-}
-{-# RULES "ConduitM: liftIO x >> f" forall m f. liftIO m >> f = ConduitM (PipeM (liftM (\_ -> unConduitM f) (liftIO m))) #-}
-
-{-# RULES "ConduitM: liftBase x >>= f" forall m f. liftBase m >>= f = ConduitM (PipeM (liftM (unConduitM . f) (liftBase m))) #-}
-{-# RULES "ConduitM: liftBase x >> f" forall m f. liftBase m >> f = ConduitM (PipeM (liftM (\_ -> unConduitM f) (liftBase m))) #-}
-
--}
+{-# RULES "ConduitM: liftBase x >>= f" forall m (f :: MonadBase b m => a -> ConduitM i o m r). liftBase m >>= f = ConduitM (PipeM (liftM (unConduitM . f) (liftBase m))) #-}
+{-# RULES "ConduitM: liftBase x >> f" forall m (f :: MonadBase b m => ConduitM i o m r). liftBase m >> f = ConduitM (PipeM (liftM (\_ -> unConduitM f) (liftBase m))) #-}
 
 {-# RULES "await >>= maybe" forall x y. await >>= maybe x y = ConduitM (NeedInput (unConduitM . y) (unConduitM . const x)) #-}
 {-# RULES
