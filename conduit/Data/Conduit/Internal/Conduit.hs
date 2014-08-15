@@ -113,11 +113,15 @@ import qualified Control.Monad.Catch as Catch
 --
 -- Since 1.0.0
 newtype ConduitM i o m r = ConduitM { unConduitM :: Pipe i i o () m r }
-    deriving (Functor, Applicative, Monad, MonadIO, MonadThrow, MFunctor
+    deriving (Functor, Applicative, Monad, MonadThrow, MFunctor
 #if MIN_VERSION_exceptions(0, 6, 0)
     , Catch.MonadCatch
 #endif
     )
+
+instance MonadIO m => MonadIO (ConduitM i o m) where
+    liftIO = lift . liftIO
+    {-# INLINE liftIO #-}
 
 instance MonadReader r m => MonadReader r (ConduitM i o m) where
     ask = ConduitM ask
