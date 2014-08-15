@@ -57,16 +57,31 @@ test-suite test
 --    ghc-options: -threaded
 --    build-depends: base, directory, doctest >= 0.8
 
-benchmark utf8-memory-usage
+-- benchmark utf8-memory-usage
+--     type: exitcode-stdio-1.0
+--     hs-source-dirs: benchmarks
+--     build-depends:  base
+--                   , text-stream-decode
+--                   , bytestring
+--                   , text
+--                   , conduit
+--     main-is:        utf8-memory-usage.hs
+--     ghc-options:    -Wall -O2 -with-rtsopts=-s
+
+benchmark optimize-201408
     type: exitcode-stdio-1.0
     hs-source-dirs: benchmarks
     build-depends:  base
-                  , text-stream-decode
-                  , bytestring
-                  , text
                   , conduit
-    main-is:        utf8-memory-usage.hs
-    ghc-options:    -Wall -O2 -with-rtsopts=-s
+                  , vector
+                  , deepseq
+                  , containers
+                  , transformers
+                  , hspec
+                  , mwc-random
+                  , criterion
+    main-is:        optimize-201408.hs
+    ghc-options:    -Wall -O2 -rtsopts
 
 source-repository head
   type:     git
