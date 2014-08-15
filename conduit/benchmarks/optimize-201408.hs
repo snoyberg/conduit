@@ -7,9 +7,13 @@
 import           Control.DeepSeq
 import           Control.Monad               (foldM)
 import           Control.Monad               (when)
+import           Control.Monad.Codensity     (lowerCodensity)
 import           Control.Monad.IO.Class      (MonadIO, liftIO)
+import           Control.Monad.Trans.Class   (lift)
 import           Criterion.Main
 import           Data.Conduit
+import           Data.Conduit.Internal       (ConduitM (..), Pipe (..))
+import qualified Data.Conduit.Internal       as CI
 import qualified Data.Conduit.List           as CL
 import qualified Data.Foldable               as F
 import           Data.Functor.Identity       (runIdentity)
@@ -116,8 +120,40 @@ monteCarloTB = return $ TBGroup "monte carlo"
                         | otherwise = t
                 go (i - 1) t'
         go count (0 :: Int)
-    , TBIOTest "conduit" closeEnough $ do
+    , TBIOTest "conduit, ConduitM primitives" closeEnough $ do
         successes <- sourceRandomN count
+                  $$ CL.fold (\t (x, y) ->
+                                if (x*x + y*(y :: Double) < 1)
+                                    then t + 1
+                                    else t)
+                        (0 :: Int)
+        return $ fromIntegral successes / fromIntegral count * 4
+    , TBIOTest "conduit, ConduitM primitives, Codensity" closeEnough $ lowerCodensity $ do
+        successes <- sourceRandomN count
+                  $$ CL.fold (\t (x, y) ->
+                                if (x*x + y*(y :: Double) < 1)
+                                    then t + 1
+                                    else t)
+                        (0 :: Int)
+        return $ fromIntegral successes / fromIntegral count * 4
+    , TBIOTest "conduit, ConduitM primitives, explicit binding order" closeEnough $ do
+        successes <- sourceRandomNBind count
+                  $$ CL.fold (\t (x, y) ->
+                                if (x*x + y*(y :: Double) < 1)
+                                    then t + 1
+                                    else t)
+                        (0 :: Int)
+        return $ fromIntegral successes / fromIntegral count * 4
+    , TBIOTest "conduit, Pipe primitives" closeEnough $ do
+        successes <- sourceRandomNPipe count
+                  $$ CL.fold (\t (x, y) ->
+                                if (x*x + y*(y :: Double) < 1)
+                                    then t + 1
+                                    else t)
+                        (0 :: Int)
+        return $ fromIntegral successes / fromIntegral count * 4
+    , TBIOTest "conduit, Pipe constructos" closeEnough $ do
+        successes <- sourceRandomNConstr count
                   $$ CL.fold (\t (x, y) ->
                                 if (x*x + y*(y :: Double) < 1)
                                     then t + 1
@@ -137,9 +173,31 @@ sourceRandomN cnt0 = do
     gen <- liftIO MWC.createSystemRandom
     let loop 0 = return ()
         loop cnt = do
-            x <- liftIO $ MWC.uniform gen
-            yield x
-            loop (cnt - 1)
+            liftIO (MWC.uniform gen) >>= yield >> loop (cnt - 1)
+    loop cnt0
+
+sourceRandomNBind :: (MWC.Variate a, MonadIO m) => Int -> Source m a
+sourceRandomNBind cnt0 = lift (liftIO MWC.createSystemRandom) >>= \gen ->
+    let loop 0 = return ()
+        loop cnt = do
+            lift (liftIO $ MWC.uniform gen) >>= (\o -> yield o >> loop (cnt - 1))
+     in loop cnt0
+
+sourceRandomNPipe :: (MWC.Variate a, MonadIO m) => Int -> Source m a
+sourceRandomNPipe cnt0 = ConduitM $ do
+    gen <- liftIO MWC.createSystemRandom
+    let loop 0 = return ()
+        loop cnt = do
+            liftIO (MWC.uniform gen) >>= CI.yield >> loop (cnt - 1)
+    loop cnt0
+
+sourceRandomNConstr :: (MWC.Variate a, MonadIO m) => Int -> Source m a
+sourceRandomNConstr cnt0 = ConduitM $ PipeM $ do
+    gen <- liftIO MWC.createSystemRandom
+    let loop 0 = return $ Done ()
+        loop cnt = do
+            x <- liftIO (MWC.uniform gen)
+            return $ HaveOutput (PipeM $ loop (cnt - 1)) (return ()) x
     loop cnt0
 
 -----------------------------------------------------------------------

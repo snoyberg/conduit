@@ -82,6 +82,7 @@ benchmark optimize-201408
                   , hspec
                   , mwc-random
                   , criterion
+                  , kan-extensions
     main-is:        optimize-201408.hs
     ghc-options:    -Wall -O2 -rtsopts
 
