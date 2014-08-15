@@ -11,6 +11,9 @@ module Data.Conduit.Internal.Fusion
       -- ** Consumer
     , streamConsumerM
     , foldStream
+    , foldStreamS
+    , Unstream (..)
+    , streamConsumer
     --, foldMStream
     ) where
 
@@ -56,9 +59,11 @@ streamProducerId (Stream step ms0) =
 {-# INLINE [0] streamProducerId #-}
 
 data Unstream i m r = forall s. Unstream
-    (s -> i -> m (Either s r))
+    --(s -> i -> m (Either s r))
+    (s -> i -> m s)
     (s -> m r)
     (m s)
+    --(m (Either s r))
 
 streamConsumerM :: Monad m
                 => Unstream i m r
@@ -71,9 +76,7 @@ streamConsumerM (Unstream step final ms0) =
       where
         more i = PipeM $ do
             res <- step s i
-            case res of
-                Left s' -> return $ loop s'
-                Right r -> return $ Done r
+            return $ loop res
         done () = PipeM $ liftM Done $ final s
 {-# INLINE [0] streamConsumerM #-}
 
@@ -86,27 +89,37 @@ streamConsumerId (Unstream step final ms0) =
     loop s =
         NeedInput more done
       where
-        more i =
-            case runIdentity $ step s i of
-                Left s' -> loop s'
-                Right r -> Done r
+        more i = loop $ runIdentity $ step s i
         done () = Done $ runIdentity $ final s
 {-# INLINE [0] streamConsumerId #-}
 
-{-
 streamConsumer :: Monad m
-                => (forall t. (MonadTrans t, Monad (t m)) => t m (Maybe i) -> t m r)
-                -> Stream m i -> m r
-streamConsumer = error "streamConsumer"
-{-# INLINE streamConsumer #-}
-{-# RULES "streamConsumer" forall s f. streamProducerM s $$ streamConsumerM f = streamConsumer f s #-}
--}
-
-foldStream f b0 =
-    streamConsumerId $ Unstream step return (return b0)
+                => Stream m i
+                -> Unstream i m r
+                -> m r
+streamConsumer (Stream stepP mp0) (Unstream stepC final mc0) = do
+    p0 <- mp0
+    c0 <- mc0
+    loop p0 c0
   where
-    step !b a = return $ Left $ f b a
-{-# INLINE foldStream #-}
+    loop p c = do
+        resP <- stepP p
+        case resP of
+            Skip p' -> loop p' c
+            Emit p' i -> stepC c i >>= loop p'
+            Stop -> final c
+{-# INLINE streamConsumer #-}
+{-# RULES "streamConsumer" forall s u. streamProducerM s $$ streamConsumerM u = streamConsumer s u #-}
+
+foldStream f b0 = streamConsumerM (foldStreamS f b0)
+{-# INLINE [0] foldStream #-}
+{-# RULES "$$ foldStream" forall s f b. streamProducerM s $$ foldStream f b = streamConsumer s (foldStreamS f b) #-}
+
+foldStreamS f b0 =
+    Unstream step return (return b0)
+  where
+    step !b a = return $ f b a
+{-# INLINE foldStreamS #-}
 
 {-
 foldMStream f b0 = streamConsumerM $ \step s0 ->

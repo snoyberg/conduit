@@ -60,14 +60,7 @@ runTestBench tbs = do
 
 main :: IO ()
 main = runTestBench =<< sequence
-    [ sumTB
-    , monteCarloTB
-    , fmap (TBGroup "sliding window") $ sequence
-        [ slidingWindow 10
-        , slidingWindow 30
-        , slidingWindow 100
-        , slidingWindow 1000
-        ]
+    [ monteCarloTB
     ]
 
 -----------------------------------------------------------------------
@@ -111,7 +104,16 @@ sumTB = do
 
 monteCarloTB :: IO TestBench
 monteCarloTB = return $ TBGroup "monte carlo"
-    [ TBIOTest "conduit, stream fusion" closeEnough $ do
+    [ TBIOTest "conduit, stream fusion explicit" closeEnough $ do
+        successes <- CI.streamConsumer
+            (sourceRandomNStreamS count)
+                  (CI.foldStreamS (\t (x, y) ->
+                                if (x*x + y*(y :: Double) < 1)
+                                    then t + 1
+                                    else t)
+                        (0 :: Int))
+        return $ fromIntegral successes / fromIntegral count * 4
+    , TBIOTest "conduit, stream fusion" closeEnough $ do
         successes <- sourceRandomNStream count
                   $$ CI.foldStream (\t (x, y) ->
                                 if (x*x + y*(y :: Double) < 1)
@@ -196,6 +198,14 @@ sourceRandomN cnt0 = do
 sourceRandomNStream :: (MWC.Variate a, MonadIO m) => Int -> Source m a
 sourceRandomNStream cnt0 =
     CI.streamProducerM $ CI.Stream step (liftIO $ fmap (, cnt0) MWC.createSystemRandom)
+  where
+    step (_, 0) = return CI.Stop
+    step (gen, i) = do
+        o <- liftIO $ MWC.uniform gen
+        return $ CI.Emit (gen, i - 1) o
+
+sourceRandomNStreamS cnt0 =
+    CI.Stream step (liftIO $ fmap (, cnt0) MWC.createSystemRandom)
   where
     step (_, 0) = return CI.Stop
     step (gen, i) = do
