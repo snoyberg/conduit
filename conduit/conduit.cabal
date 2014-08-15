@@ -21,6 +21,7 @@ Library
                        Data.Conduit.Lift
   other-modules:       Data.Conduit.Internal.Pipe
                        Data.Conduit.Internal.Conduit
+                       Data.Conduit.Internal.Fusion
   Build-depends:       base                     >= 4.3          && < 5
                      , resourcet                >= 1.1          && < 1.2
                      , exceptions

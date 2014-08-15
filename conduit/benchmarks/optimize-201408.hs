@@ -2,6 +2,7 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleContexts          #-}
 {-# LANGUAGE MultiParamTypeClasses     #-}
+{-# LANGUAGE TupleSections             #-}
 -- Collection of three benchmarks: a simple integral sum, monte carlo analysis,
 -- and sliding vector.
 import           Control.DeepSeq
@@ -120,6 +121,14 @@ monteCarloTB = return $ TBGroup "monte carlo"
                         | otherwise = t
                 go (i - 1) t'
         go count (0 :: Int)
+    , TBIOTest "conduit, stream" closeEnough $ do
+        successes <- sourceRandomNStream count
+                  $$ CL.fold (\t (x, y) ->
+                                if (x*x + y*(y :: Double) < 1)
+                                    then t + 1
+                                    else t)
+                        (0 :: Int)
+        return $ fromIntegral successes / fromIntegral count * 4
     , TBIOTest "conduit, ConduitM primitives" closeEnough $ do
         successes <- sourceRandomN count
                   $$ CL.fold (\t (x, y) ->
@@ -175,6 +184,15 @@ sourceRandomN cnt0 = do
         loop cnt = do
             liftIO (MWC.uniform gen) >>= yield >> loop (cnt - 1)
     loop cnt0
+
+sourceRandomNStream :: (MWC.Variate a, MonadIO m) => Int -> Source m a
+sourceRandomNStream cnt0 =
+    CI.streamProducerM $ CI.Stream step (liftIO $ fmap (, cnt0) MWC.createSystemRandom)
+  where
+    step (_, 0) = return CI.Stop
+    step (gen, i) = do
+        o <- liftIO $ MWC.uniform gen
+        return $ CI.Emit (gen, i - 1) o
 
 sourceRandomNBind :: (MWC.Variate a, MonadIO m) => Int -> Source m a
 sourceRandomNBind cnt0 = lift (liftIO MWC.createSystemRandom) >>= \gen ->
