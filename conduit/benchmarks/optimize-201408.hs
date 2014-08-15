@@ -249,8 +249,8 @@ swConduitSeq window upperRef t0 f final = do
     upper <- readIORef upperRef
 
     t <- CL.enumFromTo 1 upper
-        $$ slidingWindowC window
-        =$ CL.fold f t0
+        $= slidingWindowC window
+        $$ CL.fold f t0
     return $! final t
 
 swConduitVector :: V.Vector v Int
@@ -264,8 +264,8 @@ swConduitVector window upperRef t0 f final = do
     upper <- readIORef upperRef
 
     t <- CL.enumFromTo 1 upper
-        $$ slidingVectorC window
-        =$ CL.fold f t0
+        $= slidingVectorC window
+        $$ CL.fold f t0
     return $! final t
 
 slidingWindowC :: Monad m => Int -> Conduit a m (Seq.Seq a)
