@@ -1021,6 +1021,19 @@ fuseUpstream up down = fmap fst (fuseBoth up down)
 
 {-# RULES "ConduitM: lift x >>= f" forall m f. lift m >>= f = ConduitM (PipeM (liftM (unConduitM . f) m)) #-}
 {-# RULES "ConduitM: lift x >> f" forall m f. lift m >> f = ConduitM (PipeM (liftM (\_ -> unConduitM f) m)) #-}
+
+{- FIXME Can't get these rules to be accepted by GHC, see:
+
+http://stackoverflow.com/questions/25324040/ghc-rewrite-rules-with-class-constraints
+
+{-# RULES "ConduitM: liftIO x >>= f" forall (m :: IO a) f. liftIO m >>= f = liftIOBind m f #-}
+{-# RULES "ConduitM: liftIO x >> f" forall m f. liftIO m >> f = ConduitM (PipeM (liftM (\_ -> unConduitM f) (liftIO m))) #-}
+
+{-# RULES "ConduitM: liftBase x >>= f" forall m f. liftBase m >>= f = ConduitM (PipeM (liftM (unConduitM . f) (liftBase m))) #-}
+{-# RULES "ConduitM: liftBase x >> f" forall m f. liftBase m >> f = ConduitM (PipeM (liftM (\_ -> unConduitM f) (liftBase m))) #-}
+
+-}
+
 {-# RULES "await >>= maybe" forall x y. await >>= maybe x y = ConduitM (NeedInput (unConduitM . y) (unConduitM . const x)) #-}
 {-# RULES
     "yield o >> p" forall o (p :: ConduitM i o m r). yield o >> p = ConduitM (HaveOutput (unConduitM p) (return ()) o)
