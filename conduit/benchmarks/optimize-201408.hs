@@ -111,7 +111,15 @@ sumTB = do
 
 monteCarloTB :: IO TestBench
 monteCarloTB = return $ TBGroup "monte carlo"
-    [ TBIOTest "low level" closeEnough $ do
+    [ TBIOTest "conduit, stream fusion" closeEnough $ do
+        successes <- sourceRandomNStream count
+                  $$ CI.foldStream (\t (x, y) ->
+                                if (x*x + y*(y :: Double) < 1)
+                                    then t + 1
+                                    else t)
+                        (0 :: Int)
+        return $ fromIntegral successes / fromIntegral count * 4
+    , TBIOTest "low level" closeEnough $ do
         gen <- MWC.createSystemRandom
         let go 0 !t = return $! fromIntegral t / fromIntegral count * 4
             go i !t = do
