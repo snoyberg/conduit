@@ -45,7 +45,7 @@ import qualified Data.IORef as I
 -- Since 0.3.0
 lazyConsume :: (MonadBaseControl IO m, MonadActive m) => Source m a -> m [a]
 lazyConsume =
-    go . unConduitM
+    go . flip unConduitM Done
   where
     go (Done _) = return []
     go (HaveOutput src _ x) = do
