@@ -170,7 +170,7 @@ instance MonadReader r m => MonadReader r (Pipe l i o u m) where
     local f (HaveOutput p c o) = HaveOutput (local f p) c o
     local f (NeedInput p c) = NeedInput (\i -> local f (p i)) (\u -> local f (c u))
     local _ (Done x) = Done x
-    local f (PipeM mp) = PipeM (local f mp)
+    local f (PipeM mp) = PipeM (liftM (local f) $ local f mp)
     local f (Leftover p i) = Leftover (local f p) i
 
 -- Provided for doctest
@@ -481,7 +481,7 @@ mapOutputMaybe :: Monad m => (o1 -> Maybe o2) -> Pipe l i o1 u m r -> Pipe l i o
 mapOutputMaybe f =
     go
   where
-    go (HaveOutput p c o) = maybe id (\o' p' -> HaveOutput p' c o') (f o) (mapOutputMaybe f p)
+    go (HaveOutput p c o) = maybe id (\o' p' -> HaveOutput p' c o') (f o) (go p)
     go (NeedInput p c) = NeedInput (go . p) (go . c)
     go (Done r) = Done r
     go (PipeM mp) = PipeM (liftM (go) mp)

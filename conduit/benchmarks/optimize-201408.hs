@@ -210,17 +210,17 @@ sourceRandomNBind cnt0 = lift (liftIO MWC.createSystemRandom) >>= \gen ->
      in loop cnt0
 
 sourceRandomNPipe :: (MWC.Variate a, MonadIO m) => Int -> Source m a
-sourceRandomNPipe cnt0 = ConduitM $ do
+sourceRandomNPipe cnt0 = ConduitM $ \rest -> do
     gen <- liftIO MWC.createSystemRandom
-    let loop 0 = return ()
+    let loop 0 = rest ()
         loop cnt = do
             liftIO (MWC.uniform gen) >>= CI.yield >> loop (cnt - 1)
     loop cnt0
 
 sourceRandomNConstr :: (MWC.Variate a, MonadIO m) => Int -> Source m a
-sourceRandomNConstr cnt0 = ConduitM $ PipeM $ do
+sourceRandomNConstr cnt0 = ConduitM $ \rest -> PipeM $ do
     gen <- liftIO MWC.createSystemRandom
-    let loop 0 = return $ Done ()
+    let loop 0 = return $ rest ()
         loop cnt = do
             x <- liftIO (MWC.uniform gen)
             return $ HaveOutput (PipeM $ loop (cnt - 1)) (return ()) x

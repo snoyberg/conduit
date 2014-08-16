@@ -34,25 +34,24 @@ data Stream m o = forall s. Stream
 
 streamProducerM :: Monad m => Stream m o -> Producer m o
 streamProducerM (Stream step ms0) =
-    ConduitM $ PipeM $ ms0 >>= loop
-  where
-    loop s = do
-        res <- step s
-        case res of
-            Emit s' o -> return $ HaveOutput (PipeM $ loop s') (return ()) o
-            Skip s' -> loop s'
-            Stop -> return $ Done ()
+    ConduitM $ \rest ->
+        let loop s = do
+                res <- step s
+                case res of
+                    Emit s' o -> return $ HaveOutput (PipeM $ loop s') (return ()) o
+                    Skip s' -> loop s'
+                    Stop -> return $ rest ()
+        in PipeM $ ms0 >>= loop
 {-# INLINE [0] streamProducerM #-}
 
 streamProducerId :: Monad m => Stream Identity o -> Producer m o
-streamProducerId (Stream step ms0) =
-    ConduitM $ loop $ runIdentity ms0
-  where
+streamProducerId (Stream step ms0) = ConduitM $ \rest -> let
     loop s =
         case runIdentity $ step s of
             Emit s' o -> HaveOutput (loop s') (return ()) o
             Skip s' -> loop s'
-            Stop -> Done ()
+            Stop -> rest ()
+    in loop $ runIdentity ms0
 {-# INLINE [0] streamProducerId #-}
 
 data Unstream i m r = forall s. Unstream
@@ -63,9 +62,7 @@ data Unstream i m r = forall s. Unstream
 streamConsumerM :: Monad m
                 => Unstream i m r
                 -> Consumer i m r
-streamConsumerM (Unstream step final ms0) =
-    ConduitM $ PipeM $ ms0 >>= return . loop
-  where
+streamConsumerM (Unstream step final ms0) = ConduitM $ \rest -> let
     loop s =
         NeedInput more done
       where
@@ -73,24 +70,25 @@ streamConsumerM (Unstream step final ms0) =
             res <- step s i
             case res of
                 Left s' -> return $ loop s'
-                Right r -> return $ Done r
-        done () = PipeM $ liftM Done $ final s
+                Right r -> return $ rest r
+        done () = PipeM $ liftM rest $ final s
+    in PipeM $ ms0 >>= return . loop
 {-# INLINE [0] streamConsumerM #-}
 
 streamConsumerId :: Monad m
                  => Unstream i Identity r
                  -> Consumer i m r
 streamConsumerId (Unstream step final ms0) =
-    ConduitM $ loop (runIdentity ms0)
-  where
-    loop s =
-        NeedInput more done
-      where
-        more i =
-            case runIdentity $ step s i of
-                Left s' -> loop s'
-                Right r -> Done r
-        done () = Done $ runIdentity $ final s
+    ConduitM $ \rest ->
+        let loop s =
+                NeedInput more done
+              where
+                more i =
+                    case runIdentity $ step s i of
+                        Left s' -> loop s'
+                        Right r -> rest r
+                done () = rest $ runIdentity $ final s
+         in loop (runIdentity ms0)
 {-# INLINE [0] streamConsumerId #-}
 
 {-

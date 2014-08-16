@@ -138,18 +138,18 @@ errorC p = do
 runErrorC
   :: (Monad m, E.Error e) =>
      ConduitM i o (E.ErrorT e m) r -> ConduitM i o m (Either e r)
-runErrorC =
-    ConduitM . go . unConduitM
-  where
-    go (Done r) = Done (Right r)
-    go (PipeM mp) = PipeM $ do
-        eres <- E.runErrorT mp
-        return $ case eres of
-            Left e -> Done $ Left e
-            Right p -> go p
-    go (Leftover p i) = Leftover (go p) i
-    go (HaveOutput p f o) = HaveOutput (go p) (E.runErrorT f >> return ()) o
-    go (NeedInput x y) = NeedInput (go . x) (go . y)
+runErrorC (ConduitM c0) =
+    ConduitM $ \rest ->
+        let go (Done r) = rest (Right r)
+            go (PipeM mp) = PipeM $ do
+                eres <- E.runErrorT mp
+                return $ case eres of
+                    Left e -> rest $ Left e
+                    Right p -> go p
+            go (Leftover p i) = Leftover (go p) i
+            go (HaveOutput p f o) = HaveOutput (go p) (E.runErrorT f >> return ()) o
+            go (NeedInput x y) = NeedInput (go . x) (go . y)
+         in go (c0 Done)
 {-# INLINABLE runErrorC #-}
 
 -- | Catch an error in the base monad
@@ -161,17 +161,18 @@ catchErrorC
      -> (e -> ConduitM i o (E.ErrorT e m) r)
      -> ConduitM i o (E.ErrorT e m) r
 catchErrorC c0 h =
-    ConduitM $ go $ unConduitM c0
+    ConduitM $ \rest ->
+        let go (Done r) = rest r
+            go (PipeM mp) = PipeM $ do
+                eres <- lift $ E.runErrorT mp
+                return $ case eres of
+                    Left e -> unConduitM (h e) rest
+                    Right p -> go p
+            go (Leftover p i) = Leftover (go p) i
+            go (HaveOutput p f o) = HaveOutput (go p) f o
+            go (NeedInput x y) = NeedInput (go . x) (go . y)
+         in go $ unConduitM c0 Done
   where
-    go (Done r) = Done r
-    go (PipeM mp) = PipeM $ do
-        eres <- lift $ E.runErrorT mp
-        return $ case eres of
-            Left e -> unConduitM $ h e
-            Right p -> go p
-    go (Leftover p i) = Leftover (go p) i
-    go (HaveOutput p f o) = HaveOutput (go p) f o
-    go (NeedInput x y) = NeedInput (go . x) (go . y)
 {-# INLINABLE catchErrorC #-}
 
 -- | Run 'CatchT' in the base monad
@@ -180,18 +181,18 @@ catchErrorC c0 h =
 runCatchC
   :: Monad m =>
      ConduitM i o (CatchT m) r -> ConduitM i o m (Either SomeException r)
-runCatchC =
-    ConduitM . go . unConduitM
-  where
-    go (Done r) = Done (Right r)
-    go (PipeM mp) = PipeM $ do
-        eres <- runCatchT mp
-        return $ case eres of
-            Left e -> Done $ Left e
-            Right p -> go p
-    go (Leftover p i) = Leftover (go p) i
-    go (HaveOutput p f o) = HaveOutput (go p) (runCatchT f >> return ()) o
-    go (NeedInput x y) = NeedInput (go . x) (go . y)
+runCatchC c0 =
+    ConduitM $ \rest ->
+        let go (Done r) = rest (Right r)
+            go (PipeM mp) = PipeM $ do
+                eres <- runCatchT mp
+                return $ case eres of
+                    Left e -> rest $ Left e
+                    Right p -> go p
+            go (Leftover p i) = Leftover (go p) i
+            go (HaveOutput p f o) = HaveOutput (go p) (runCatchT f >> return ()) o
+            go (NeedInput x y) = NeedInput (go . x) (go . y)
+         in go $ unConduitM c0 Done
 {-# INLINABLE runCatchC #-}
 
 -- | Catch an exception in the base monad
@@ -202,18 +203,18 @@ catchCatchC
      ConduitM i o (CatchT m) r
      -> (SomeException -> ConduitM i o (CatchT m) r)
      -> ConduitM i o (CatchT m) r
-catchCatchC c0 h =
-    ConduitM $ go $ unConduitM c0
-  where
-    go (Done r) = Done r
-    go (PipeM mp) = PipeM $ do
-        eres <- lift $ runCatchT mp
-        return $ case eres of
-            Left e -> unConduitM $ h e
-            Right p -> go p
-    go (Leftover p i) = Leftover (go p) i
-    go (HaveOutput p f o) = HaveOutput (go p) f o
-    go (NeedInput x y) = NeedInput (go . x) (go . y)
+catchCatchC (ConduitM c0) h =
+    ConduitM $ \rest ->
+        let go (Done r) = rest r
+            go (PipeM mp) = PipeM $ do
+                eres <- lift $ runCatchT mp
+                return $ case eres of
+                    Left e -> unConduitM (h e) rest
+                    Right p -> go p
+            go (Leftover p i) = Leftover (go p) i
+            go (HaveOutput p f o) = HaveOutput (go p) f o
+            go (NeedInput x y) = NeedInput (go . x) (go . y)
+         in go (c0 Done)
 {-# INLINABLE catchCatchC #-}
 
 -- | Wrap the base monad in 'M.MaybeT'
@@ -235,18 +236,18 @@ maybeC p = do
 runMaybeC
   :: Monad m =>
      ConduitM i o (M.MaybeT m) r -> ConduitM i o m (Maybe r)
-runMaybeC =
-    ConduitM . go . unConduitM
-  where
-    go (Done r) = Done (Just r)
-    go (PipeM mp) = PipeM $ do
-        mres <- M.runMaybeT mp
-        return $ case mres of
-            Nothing -> Done Nothing
-            Just p -> go p
-    go (Leftover p i) = Leftover (go p) i
-    go (HaveOutput p c o) = HaveOutput (go p) (M.runMaybeT c >> return ()) o
-    go (NeedInput x y) = NeedInput (go . x) (go . y)
+runMaybeC (ConduitM c0) =
+    ConduitM $ \rest ->
+        let go (Done r) = rest (Just r)
+            go (PipeM mp) = PipeM $ do
+                mres <- M.runMaybeT mp
+                return $ case mres of
+                    Nothing -> rest Nothing
+                    Just p -> go p
+            go (Leftover p i) = Leftover (go p) i
+            go (HaveOutput p c o) = HaveOutput (go p) (M.runMaybeT c >> return ()) o
+            go (NeedInput x y) = NeedInput (go . x) (go . y)
+         in go (c0 Done)
 {-# INLINABLE runMaybeC #-}
 
 -- | Wrap the base monad in 'R.ReaderT'
@@ -293,16 +294,16 @@ thread :: Monad m
        -> s
        -> ConduitM i o (t m) r
        -> ConduitM i o m res
-thread toRes runM s0 =
-    ConduitM . go s0 . unConduitM
-  where
-    go s (Done r) = Done (toRes r s)
-    go s (PipeM mp) = PipeM $ do
-        (p, s') <- runM mp s
-        return $ go s' p
-    go s (Leftover p i) = Leftover (go s p) i
-    go s (NeedInput x y) = NeedInput (go s . x) (go s . y)
-    go s (HaveOutput p f o) = HaveOutput (go s p) (runM f s >> return ()) o
+thread toRes runM s0 (ConduitM c0) =
+    ConduitM $ \rest ->
+        let go s (Done r) = rest (toRes r s)
+            go s (PipeM mp) = PipeM $ do
+                (p, s') <- runM mp s
+                return $ go s' p
+            go s (Leftover p i) = Leftover (go s p) i
+            go s (NeedInput x y) = NeedInput (go s . x) (go s . y)
+            go s (HaveOutput p f o) = HaveOutput (go s p) (runM f s >> return ()) o
+         in go s0 (c0 Done)
 {-# INLINABLE thread #-}
 
 -- | Run 'SL.StateT' in the base monad
@@ -568,4 +569,3 @@ execRWSC
 execRWSC i s p = fmap f $ runRWSC i s p
   where f x = let (_, s2, w2) = x in (s2, w2)
 {-# INLINABLE execRWSC #-}
-

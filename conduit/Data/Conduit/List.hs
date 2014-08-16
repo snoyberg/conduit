@@ -78,6 +78,7 @@ import Data.Monoid (Monoid, mempty, mappend)
 import qualified Data.Foldable as F
 import Data.Conduit
 import qualified Data.Conduit.Internal as CI
+import qualified Data.Conduit.Internal.Conduit as CIC
 import Control.Monad (when, (<=<), liftM, void)
 import Control.Monad.Trans.Class (lift)
 
@@ -126,7 +127,12 @@ enumFromTo :: (Enum a, Eq a, Monad m)
            => a
            -> a
            -> Producer m a
-enumFromTo x = CI.ConduitM . CI.enumFromTo x
+enumFromTo x0 y =
+    loop x0
+  where
+    loop x
+        | x == y = yield x
+        | otherwise = yield x >> loop (Prelude.succ x)
 {-# INLINE enumFromTo #-}
 
 enumFromToFold :: (Enum a, Eq a, Monad m) -- FIXME far too specific
@@ -174,7 +180,7 @@ fold f =
 
 connectFold :: Monad m => Source m a -> (b -> a -> b) -> b -> m b -- FIXME replace with better, more general function
 connectFold (CI.ConduitM src0) f =
-    go src0
+    go (src0 CI.Done)
   where
     go (CI.Done ()) b = return b
     go (CI.HaveOutput src _ a) b =
@@ -208,7 +214,7 @@ foldM f =
 
 connectFoldM :: Monad m => Source m a -> (b -> a -> m b) -> b -> m b -- FIXME replace with better, more general function
 connectFoldM (CI.ConduitM src0) f =
-    go src0
+    go (src0 CI.Done)
   where
     go (CI.Done ()) b = return b
     go (CI.HaveOutput src _ a) b = do
@@ -255,7 +261,7 @@ mapM_ f = awaitForever $ lift . f
 
 srcMapM_ :: Monad m => Source m a -> (a -> m ()) -> m ()
 srcMapM_ (CI.ConduitM src) f =
-    go src
+    go (src CI.Done)
   where
     go (CI.Done ()) = return ()
     go (CI.PipeM mp) = mp >>= go
@@ -325,7 +331,7 @@ map f = awaitForever $ yield . f
 {-# RULES "source/map fusion =$=" forall f src. src =$= map f = mapFuseRight src f #-}
 
 mapFuseRight :: Monad m => Source m a -> (a -> b) -> Source m b
-mapFuseRight (CI.ConduitM src) f = CI.ConduitM (CI.mapOutput f src)
+mapFuseRight src f = CIC.mapOutput f src
 {-# INLINE mapFuseRight #-}
 
 {-
@@ -576,16 +582,15 @@ filter :: Monad m => (a -> Bool) -> Conduit a m a
 filter f = awaitForever $ \i -> when (f i) (yield i)
 
 filterFuseRight :: Monad m => Source m a -> (a -> Bool) -> Source m a
-filterFuseRight (CI.ConduitM src) f =
-    CI.ConduitM (go src)
-  where
-    go (CI.Done ()) = CI.Done ()
+filterFuseRight (CI.ConduitM src) f = CI.ConduitM $ \rest -> let
+    go (CI.Done ()) = rest ()
     go (CI.PipeM mp) = CI.PipeM (liftM go mp)
     go (CI.Leftover p i) = CI.Leftover (go p) i
     go (CI.HaveOutput p c o)
         | f o = CI.HaveOutput (go p) c o
         | otherwise = go p
     go (CI.NeedInput p c) = CI.NeedInput (go . p) (go . c)
+    in go (src CI.Done)
 -- Intermediate finalizers are dropped, but this is acceptable: the next
 -- yielded value would be demanded by downstream in any event, and that new
 -- finalizer will always override the existing finalizer.
@@ -602,7 +607,7 @@ sinkNull = awaitForever $ \_ -> return ()
 
 srcSinkNull :: Monad m => Source m a -> m ()
 srcSinkNull (CI.ConduitM src) =
-    go src
+    go (src CI.Done)
   where
     go (CI.Done ()) = return ()
     go (CI.PipeM mp) = mp >>= go
