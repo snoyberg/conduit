@@ -29,7 +29,6 @@ import           Control.Exception          (Exception)
 import           Control.Monad              (unless)
 import qualified Data.ByteString            as B
 import qualified Data.Text                  as T
-import qualified Data.Text.Internal         as TI
 import           Data.Typeable              (Typeable)
 import           Prelude                    hiding (lines)
 
@@ -103,8 +102,7 @@ instance AttoparsecInput T.Text where
       where
         f (Position l c) ch | ch == '\n' = Position (l + 1) 0
                             | otherwise = Position l (c + 1)
-    stripFromEnd (TI.Text arr1 off1 len1) (TI.Text _ _ len2) =
-        TI.textP arr1 off1 (len1 - len2)
+    stripFromEnd t1 t2 = T.dropEnd (T.length t2) t1
 
 -- | Convert an Attoparsec 'A.Parser' into a 'Sink'. The parser will
 -- be streamed bytes until it returns 'A.Done' or 'A.Fail'.
