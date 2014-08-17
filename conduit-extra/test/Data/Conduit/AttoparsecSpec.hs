@@ -89,6 +89,18 @@ spec = describe "Data.Conduit.AttoparsecSpec" $ do
                     case fromException e of
                         Just pe -> do
                             errorPosition pe `shouldBe` Position badLine badCol
+        it "works for first line" $ do
+            let input = ["aab\na", "aaa\n\n", "aaa", "aab\n\naaaa"]
+                badLine = 1
+                badCol = 3
+                parser = Data.Attoparsec.Text.endOfInput <|> (Data.Attoparsec.Text.notChar 'b' >> parser)
+                sink = sinkParser parser
+            ea <- runExceptionT $ CL.sourceList input $$ sink
+            case ea of
+                Left e ->
+                    case fromException e of
+                        Just pe -> do
+                            errorPosition pe `shouldBe` Position badLine badCol
 
     describe "conduitParser" $ do
         it "parses a repeated stream" $ do
