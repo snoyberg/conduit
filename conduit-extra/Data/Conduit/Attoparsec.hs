@@ -124,7 +124,7 @@ sinkParser = fmap snd . sinkParserPosErr (Position 1 1)
 -- Since 0.5.0
 conduitParser :: (AttoparsecInput a, MonadThrow m) => A.Parser a b -> Conduit a m (PositionRange, b)
 conduitParser parser =
-    conduit $ Position 1 0
+    conduit $ Position 1 1
        where
          conduit !pos = await >>= maybe (return ()) go
              where
@@ -151,7 +151,7 @@ conduitParserEither
     => A.Parser a b
     -> Conduit a m (Either ParseError (PositionRange, b))
 conduitParserEither parser =
-    conduit $ Position 1 0
+    conduit $ Position 1 1
   where
     conduit !pos = await >>= maybe (return ()) go
       where

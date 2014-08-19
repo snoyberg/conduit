@@ -1,5 +1,6 @@
 {-# LANGUAGE CPP               #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TupleSections     #-}
 {-# OPTIONS_GHC -fno-warn-incomplete-patterns #-}
 module Data.Conduit.AttoparsecSpec (spec) where
 import           Control.Exception                (fromException)
@@ -111,10 +112,23 @@ spec = describe "Data.Conduit.AttoparsecSpec" $ do
             let chk a = case a of
                           Left{} -> False
                           Right (_, xs) -> xs == "aaa"
-                chkp 1 = (PositionRange (Position 1 0) (Position 2 1))
                 chkp l = (PositionRange (Position l 1) (Position (l+1) 1))
             forM_ ea $ \ a -> a `shouldSatisfy` chk :: Expectation
             forM_ (zip ea [1..]) $ \ (Right (pos, _), l) -> pos `shouldBe` chkp l
             length ea `shouldBe` 4
 
+        it "positions on first line" $ do
+            results <- yield "hihihi\nhihi"
+                $$ conduitParser (Data.Attoparsec.Text.string "\n" <|> Data.Attoparsec.Text.string "hi")
+                =$ CL.consume
+            let f (a, b, c, d, e) = (PositionRange (Position a b) (Position c d), e)
+            results `shouldBe` map f
+                [ (1, 1, 1, 3, "hi")
+                , (1, 3, 1, 5, "hi")
+                , (1, 5, 1, 7, "hi")
 
+                , (1, 7, 2, 1, "\n")
+
+                , (2, 1, 2, 3, "hi")
+                , (2, 3, 2, 5, "hi")
+                ]
