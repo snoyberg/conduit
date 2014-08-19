@@ -30,8 +30,9 @@ data Step s o r
 
 data Stream m o r = forall s. Stream
     (s -> m (Step s o r))
-    (m s)
+    (m s) -- FIXME investigate performance advantages of this
 
+-- FIXME investigate if slimming down the number of constructors helps or hurts performance
 data StreamConduit i o m r
     = SCSource  (ConduitM i o m r) (Stream m o r)
     | SCConduit (ConduitM i o m r) (Stream m i () -> Stream m o r)
@@ -48,6 +49,9 @@ fuseStream :: Monad m
            -> StreamConduit b c m r
            -> StreamConduit a c m r
 fuseStream left (SCSource c s) = SCSource (unstream left =$= c) s
+fuseStream (SCSource a x) (SCConduit b y) = SCSource (a =$= b) (y x)
+fuseStream (SCConduit a x) (SCConduit b y) = SCConduit (a =$= b) (y . x)
+fuseStream (SCConduit a x) (SCSink b y) = SCSink (a =$= b) (y . x)
 {-# INLINE fuseStream #-}
 
 {-# RULES "fuseStream" forall left right.
@@ -63,6 +67,24 @@ connectStream (SCSource _ stream) (SCSink _ f) = f stream
 
 {-# RULES "connectStream" forall left right.
         unstream left $$ unstream right = connectStream left right
+  #-}
+
+connectConduitStream
+    :: Monad m
+    => ConduitM      () i    m ()
+    -> StreamConduit i  Void m r
+    -> m r
+connectConduitStream (ConduitM src0) (SCSink _ f) =
+    f (Stream step (return $ src0 Done))
+  where
+    step (Done ()) = return $ Stop ()
+    step (Leftover p ()) = return $ Skip p
+    step (PipeM mp) = liftM Skip mp
+    step (NeedInput _ p) = return $ Skip $ p ()
+    step (HaveOutput p _ i) = return $ Emit p i
+
+{-# RULES "connectConduitStream" forall left right.
+        left $$ unstream right = connectConduitStream left right
   #-}
 
 streamToStreamConduit
