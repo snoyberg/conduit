@@ -3,6 +3,7 @@
 {-# LANGUAGE FlexibleContexts          #-}
 {-# LANGUAGE MultiParamTypeClasses     #-}
 {-# LANGUAGE TupleSections             #-}
+{-# LANGUAGE RankNTypes                #-}
 -- Collection of three benchmarks: a simple integral sum, monte carlo analysis,
 -- and sliding vector.
 import           Control.DeepSeq
@@ -113,7 +114,7 @@ monteCarloTB :: IO TestBench
 monteCarloTB = return $ TBGroup "monte carlo"
     [ TBIOTest "conduit, stream fusion" closeEnough $ do
         successes <- sourceRandomNStream count
-                  $$ CI.foldStream (\t (x, y) ->
+                  $$ foldStream (\t (x, y) ->
                                 if (x*x + y*(y :: Double) < 1)
                                     then t + 1
                                     else t)
@@ -195,12 +196,30 @@ sourceRandomN cnt0 = do
 
 sourceRandomNStream :: (MWC.Variate a, MonadIO m) => Int -> Source m a
 sourceRandomNStream cnt0 =
-    CI.streamProducerM $ CI.Stream step (liftIO $ fmap (, cnt0) MWC.createSystemRandom)
+    CI.unstream $ CI.streamToStreamConduit $ CI.Stream step ms
   where
-    step (_, 0) = return CI.Stop
+    ms = liftIO $ fmap (, cnt0) MWC.createSystemRandom
+
+    step (_, 0) = return (CI.Stop ())
     step (gen, i) = do
         o <- liftIO $ MWC.uniform gen
         return $ CI.Emit (gen, i - 1) o
+{-# INLINE sourceRandomNStream #-}
+
+foldStream :: Monad m => (b -> a -> b) -> b -> Consumer a m b
+foldStream f b0 =
+    CI.unstream $ CI.SCSink (CL.fold f b0) $ start
+  where
+    start (CI.Stream step ms0) =
+        ms0 >>= loop b0
+      where
+        loop !b s = do
+            res <- step s
+            case res of
+                CI.Stop () -> return b
+                CI.Skip s' -> loop b s'
+                CI.Emit s' a -> loop (f b a) s'
+{-# INLINE foldStream #-}
 
 sourceRandomNBind :: (MWC.Variate a, MonadIO m) => Int -> Source m a
 sourceRandomNBind cnt0 = lift (liftIO MWC.createSystemRandom) >>= \gen ->

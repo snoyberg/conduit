@@ -5,13 +5,12 @@ module Data.Conduit.Internal.Fusion
     ( -- ** Types
       Step (..)
     , Stream (..)
-      -- ** Producer
-    , streamProducerM
-    , streamProducerId
-      -- ** Consumer
-    , streamConsumerM
-    , foldStream
-    --, foldMStream
+    , StreamConduit (..)
+      -- ** Functions
+    , unstream
+    , fuseStream
+    , connectStream
+    , streamToStreamConduit
     ) where
 
 import Data.Conduit.Internal.Conduit
@@ -20,99 +19,65 @@ import Data.Functor.Identity (Identity (runIdentity))
 import Control.Monad.Trans.Identity (IdentityT, runIdentityT)
 import Control.Monad.Trans.Class (MonadTrans, lift)
 import Control.Monad (liftM)
+import Data.Void (Void)
 
 -- | This is the same as stream fusion\'s Step. Constructors are renamed to
 -- avoid confusion with conduit names.
-data Step s o
+data Step s o r
     = Emit s o
     | Skip s
-    | Stop
+    | Stop r
 
-data Stream m o = forall s. Stream
-    (s -> m (Step s o))
+data Stream m o r = forall s. Stream
+    (s -> m (Step s o r))
     (m s)
 
-streamProducerM :: Monad m => Stream m o -> Producer m o
-streamProducerM (Stream step ms0) =
-    ConduitM $ \rest ->
+data StreamConduit i o m r
+    = SCSource  (ConduitM i o m r) (Stream m o r)
+    | SCConduit (ConduitM i o m r) (Stream m i () -> Stream m o r)
+    | SCSink    (ConduitM i o m r) (Stream m i () -> m r)
+
+unstream :: StreamConduit i o m r -> ConduitM i o m r
+unstream (SCSource  c _) = c
+unstream (SCConduit c _) = c
+unstream (SCSink    c _) = c
+{-# INLINE [0] unstream #-}
+
+fuseStream :: Monad m
+           => StreamConduit a b m ()
+           -> StreamConduit b c m r
+           -> StreamConduit a c m r
+fuseStream left (SCSource c s) = SCSource (unstream left =$= c) s
+{-# INLINE fuseStream #-}
+
+{-# RULES "fuseStream" forall left right.
+        unstream left =$= unstream right = unstream (fuseStream left right)
+  #-}
+
+connectStream :: Monad m
+              => StreamConduit () i    m ()
+              -> StreamConduit i  Void m r
+              -> m r
+connectStream (SCSource _ stream) (SCSink _ f) = f stream
+{-# INLINE connectStream #-}
+
+{-# RULES "connectStream" forall left right.
+        unstream left $$ unstream right = connectStream left right
+  #-}
+
+streamToStreamConduit
+    :: Monad m
+    => Stream m o ()
+    -> StreamConduit i o m ()
+streamToStreamConduit str@(Stream step ms0) =
+    SCSource con str
+  where
+    con = ConduitM $ \rest -> PipeM $ do
+        s0 <- ms0
         let loop s = do
                 res <- step s
                 case res of
+                    Stop () -> return $ rest ()
                     Emit s' o -> return $ HaveOutput (PipeM $ loop s') (return ()) o
                     Skip s' -> loop s'
-                    Stop -> return $ rest ()
-        in PipeM $ ms0 >>= loop
-{-# INLINE [0] streamProducerM #-}
-
-streamProducerId :: Monad m => Stream Identity o -> Producer m o
-streamProducerId (Stream step ms0) = ConduitM $ \rest -> let
-    loop s =
-        case runIdentity $ step s of
-            Emit s' o -> HaveOutput (loop s') (return ()) o
-            Skip s' -> loop s'
-            Stop -> rest ()
-    in loop $ runIdentity ms0
-{-# INLINE [0] streamProducerId #-}
-
-data Unstream i m r = forall s. Unstream
-    (s -> i -> m (Either s r))
-    (s -> m r)
-    (m s)
-
-streamConsumerM :: Monad m
-                => Unstream i m r
-                -> Consumer i m r
-streamConsumerM (Unstream step final ms0) = ConduitM $ \rest -> let
-    loop s =
-        NeedInput more done
-      where
-        more i = PipeM $ do
-            res <- step s i
-            case res of
-                Left s' -> return $ loop s'
-                Right r -> return $ rest r
-        done () = PipeM $ liftM rest $ final s
-    in PipeM $ ms0 >>= return . loop
-{-# INLINE [0] streamConsumerM #-}
-
-streamConsumerId :: Monad m
-                 => Unstream i Identity r
-                 -> Consumer i m r
-streamConsumerId (Unstream step final ms0) =
-    ConduitM $ \rest ->
-        let loop s =
-                NeedInput more done
-              where
-                more i =
-                    case runIdentity $ step s i of
-                        Left s' -> loop s'
-                        Right r -> rest r
-                done () = rest $ runIdentity $ final s
-         in loop (runIdentity ms0)
-{-# INLINE [0] streamConsumerId #-}
-
-{-
-streamConsumer :: Monad m
-                => (forall t. (MonadTrans t, Monad (t m)) => t m (Maybe i) -> t m r)
-                -> Stream m i -> m r
-streamConsumer = error "streamConsumer"
-{-# INLINE streamConsumer #-}
-{-# RULES "streamConsumer" forall s f. streamProducerM s $$ streamConsumerM f = streamConsumer f s #-}
--}
-
-foldStream f b0 =
-    streamConsumerId $ Unstream step return (return b0)
-  where
-    step !b a = return $ Left $ f b a
-{-# INLINE foldStream #-}
-
-{-
-foldMStream f b0 = streamConsumerM $ \step s0 ->
-    let loop !b s = do
-            res <- step s
-            case res of
-                Emit s' a -> lift (f b a) >>= flip loop s'
-                Skip s' -> loop b s'
-                Stop -> return b
-     in loop b0 s0
-     -}
+        loop s0
