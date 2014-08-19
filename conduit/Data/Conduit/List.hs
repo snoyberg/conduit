@@ -79,6 +79,7 @@ import qualified Data.Foldable as F
 import Data.Conduit
 import qualified Data.Conduit.Internal as CI
 import qualified Data.Conduit.Internal.Conduit as CIC
+import Data.Conduit.Internal.Fusion
 import Control.Monad (when, (<=<), liftM, void)
 import Control.Monad.Trans.Class (lift)
 
@@ -123,16 +124,20 @@ sourceList = Prelude.mapM_ yield
 -- structures.
 --
 -- Since 0.4.2
-enumFromTo :: (Enum a, Eq a, Monad m)
+enumFromTo :: (Enum a, Prelude.Ord a, Monad m)
            => a
            -> a
            -> Producer m a
 enumFromTo x0 y =
-    loop x0
+    unstream $ SCSource (loopC x0) (Stream step (return x0))
   where
-    loop x
+    loopC x
         | x == y = yield x
-        | otherwise = yield x >> loop (Prelude.succ x)
+        | otherwise = yield x >> loopC (Prelude.succ x)
+
+    step x = return $ if x Prelude.> y
+        then Stop ()
+        else Emit (Prelude.succ x) x
 {-# INLINE enumFromTo #-}
 
 enumFromToFold :: (Enum a, Eq a, Monad m) -- FIXME far too specific
@@ -149,10 +154,6 @@ enumFromToFold x0 y f =
         | otherwise = go (Prelude.succ x) (f b x)
 {-# INLINE enumFromToFold #-}
 
-{-# RULES "enumFromToFold" forall x y f b.
-        enumFromTo x y $$ fold f b = enumFromToFold x y f b
-  #-}
-
 -- | Produces an infinite stream of repeated applications of f to x.
 iterate :: Monad m => (a -> a) -> a -> Producer m a
 iterate f =
@@ -167,32 +168,20 @@ fold :: Monad m
      => (b -> a -> b)
      -> b
      -> Consumer a m b
-fold f =
-    loop
+fold f b0 =
+    unstream $ SCSink (loopC b0) foldS
   where
-    loop accum =
-        await >>= maybe (return accum) go
+    loopC !accum = await >>= maybe (return accum) (loopC . f accum)
+    foldS (Stream step ms0) =
+        ms0 >>= loopS b0
       where
-        go a =
-            let accum' = f accum a
-             in accum' `seq` loop accum'
-{-# INLINEABLE [1] fold #-}
-
-connectFold :: Monad m => Source m a -> (b -> a -> b) -> b -> m b -- FIXME replace with better, more general function
-connectFold (CI.ConduitM src0) f =
-    go (src0 CI.Done)
-  where
-    go (CI.Done ()) b = return b
-    go (CI.HaveOutput src _ a) b =
-        let b' = f b a
-         in b' `seq` go src b'
-    go (CI.NeedInput _ c) b = go (c ()) b
-    go (CI.Leftover src ()) b = go src b
-    go (CI.PipeM msrc) b = do
-        src <- msrc
-        go src b
-{-# INLINE connectFold #-}
-{-# RULES "$$ fold" forall src f b. src $$ fold f b = connectFold src f b #-}
+        loopS !b s = do
+            res <- step s
+            case res of
+                Stop () -> return b
+                Skip s' -> loopS b s'
+                Emit s' a -> loopS (f b a) s'
+{-# INLINE fold #-}
 
 -- | A monadic strict left fold.
 --
@@ -324,15 +313,28 @@ peek = await >>= maybe (return Nothing) (\x -> leftover x >> return (Just x))
 --
 -- Since 0.3.0
 map :: Monad m => (a -> b) -> Conduit a m b
-map f = awaitForever $ yield . f
-{-# INLINE [1] map #-}
+map f =
+    unstream $ SCConduit (awaitForever $ yield . f) mapS
+  where
+    mapS (Stream step ms0) =
+        Stream step' ms0
+      where
+        step' s = do
+            res <- step s
+            return $ case res of
+                Stop r -> Stop r
+                Emit s' a -> Emit s' (f a)
+                Skip s' -> Skip s'
+{-# INLINE map #-}
 
 -- Since a Source never has any leftovers, fusion rules on it are safe.
+{-
 {-# RULES "source/map fusion =$=" forall f src. src =$= map f = mapFuseRight src f #-}
 
 mapFuseRight :: Monad m => Source m a -> (a -> b) -> Source m b
 mapFuseRight src f = CIC.mapOutput f src
 {-# INLINE mapFuseRight #-}
+-}
 
 {-
 
