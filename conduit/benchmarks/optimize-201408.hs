@@ -62,6 +62,7 @@ runTestBench tbs = do
 main :: IO ()
 main = runTestBench =<< sequence
     [ sumTB
+    , mapSumTB
     , monteCarloTB
     , fmap (TBGroup "sliding window") $ sequence
         [ slidingWindow 10
@@ -107,6 +108,45 @@ sumTB = do
     expected = sum [1..upper0]
 
     plusM x y = return $! x + y
+
+-----------------------------------------------------------------------
+
+mapSumTB :: IO TestBench
+mapSumTB = return $ TBGroup "map + sum"
+    [ TBPure "boxed vectors" upper0 expected
+        $ \upper -> VB.foldl' (+) 0
+                  $ VB.map (+ 1)
+                  $ VB.map (* 2)
+                  $ VB.enumFromTo 1 upper
+    , TBPure "unboxed vectors" upper0 expected
+        $ \upper -> VU.foldl' (+) 0
+                  $ VU.map (+ 1)
+                  $ VU.map (* 2)
+                  $ VU.enumFromTo 1 upper
+    , TBPure "conduit, connect1" upper0 expected $ \upper -> runIdentity
+        $ CL.enumFromTo 1 upper
+       $$ CL.map (* 2)
+      =$= CL.map (+ 1)
+      =$= CL.fold (+) 0
+    , TBPure "conduit, connect2" upper0 expected $ \upper -> runIdentity
+        $ CL.enumFromTo 1 upper
+      =$= CL.map (* 2)
+       $$ CL.map (+ 1)
+      =$= CL.fold (+) 0
+    , TBPure "conduit, connect3" upper0 expected $ \upper -> runIdentity
+        $ CL.enumFromTo 1 upper
+      =$= CL.map (* 2)
+      =$= CL.map (+ 1)
+       $$ CL.fold (+) 0
+    , TBPure "conduit, inner fuse" upper0 expected $ \upper -> runIdentity
+        $ CL.enumFromTo 1 upper
+      =$= (CL.map (* 2)
+      =$= CL.map (+ 1))
+       $$ CL.fold (+) 0
+    ]
+  where
+    upper0 = 10000 :: Int
+    expected = sum $ map (+ 1) $ map (* 2) [1..upper0]
 
 -----------------------------------------------------------------------
 
