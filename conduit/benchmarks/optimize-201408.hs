@@ -155,9 +155,10 @@ mapSumTB = return $ TBGroup "map + sum"
 
 monteCarloTB :: IO TestBench
 monteCarloTB = return $ TBGroup "monte carlo"
-    [ TBIOTest "conduit, stream fusion" closeEnough $ do
-        successes <- sourceRandomNStream count
-                  $$ foldStream (\t (x, y) ->
+    [ TBIOTest "conduit" closeEnough $ do
+        gen <- MWC.createSystemRandom
+        successes <- CL.replicateM count (MWC.uniform gen)
+                  $$ CL.fold (\t (x, y) ->
                                 if (x*x + y*(y :: Double) < 1)
                                     then t + 1
                                     else t)
@@ -173,54 +174,6 @@ monteCarloTB = return $ TBGroup "monte carlo"
                         | otherwise = t
                 go (i - 1) t'
         go count (0 :: Int)
-    , TBIOTest "conduit, stream" closeEnough $ do
-        successes <- sourceRandomNStream count
-                  $$ CL.fold (\t (x, y) ->
-                                if (x*x + y*(y :: Double) < 1)
-                                    then t + 1
-                                    else t)
-                        (0 :: Int)
-        return $ fromIntegral successes / fromIntegral count * 4
-    , TBIOTest "conduit, ConduitM primitives" closeEnough $ do
-        successes <- sourceRandomN count
-                  $$ CL.fold (\t (x, y) ->
-                                if (x*x + y*(y :: Double) < 1)
-                                    then t + 1
-                                    else t)
-                        (0 :: Int)
-        return $ fromIntegral successes / fromIntegral count * 4
-    , TBIOTest "conduit, ConduitM primitives, Codensity" closeEnough $ lowerCodensity $ do
-        successes <- sourceRandomN count
-                  $$ CL.fold (\t (x, y) ->
-                                if (x*x + y*(y :: Double) < 1)
-                                    then t + 1
-                                    else t)
-                        (0 :: Int)
-        return $ fromIntegral successes / fromIntegral count * 4
-    , TBIOTest "conduit, ConduitM primitives, explicit binding order" closeEnough $ do
-        successes <- sourceRandomNBind count
-                  $$ CL.fold (\t (x, y) ->
-                                if (x*x + y*(y :: Double) < 1)
-                                    then t + 1
-                                    else t)
-                        (0 :: Int)
-        return $ fromIntegral successes / fromIntegral count * 4
-    , TBIOTest "conduit, Pipe primitives" closeEnough $ do
-        successes <- sourceRandomNPipe count
-                  $$ CL.fold (\t (x, y) ->
-                                if (x*x + y*(y :: Double) < 1)
-                                    then t + 1
-                                    else t)
-                        (0 :: Int)
-        return $ fromIntegral successes / fromIntegral count * 4
-    , TBIOTest "conduit, Pipe constructos" closeEnough $ do
-        successes <- sourceRandomNConstr count
-                  $$ CL.fold (\t (x, y) ->
-                                if (x*x + y*(y :: Double) < 1)
-                                    then t + 1
-                                    else t)
-                        (0 :: Int)
-        return $ fromIntegral successes / fromIntegral count * 4
     ]
   where
     count = 100000 :: Int
@@ -228,65 +181,6 @@ monteCarloTB = return $ TBGroup "monte carlo"
     closeEnough x
         | abs (x - 3.14159 :: Double) < 0.2 = return ()
         | otherwise = error $ "Monte carlo analysis too inaccurate: " ++ show x
-
-sourceRandomN :: (MWC.Variate a, MonadIO m) => Int -> Source m a
-sourceRandomN cnt0 = do
-    gen <- liftIO MWC.createSystemRandom
-    let loop 0 = return ()
-        loop cnt = do
-            liftIO (MWC.uniform gen) >>= yield >> loop (cnt - 1)
-    loop cnt0
-
-sourceRandomNStream :: (MWC.Variate a, MonadIO m) => Int -> Source m a
-sourceRandomNStream cnt0 =
-    CI.unstream $ CI.streamToStreamConduit $ CI.Stream step ms
-  where
-    ms = liftIO $ fmap (, cnt0) MWC.createSystemRandom
-
-    step (_, 0) = return (CI.Stop ())
-    step (gen, i) = do
-        o <- liftIO $ MWC.uniform gen
-        return $ CI.Emit (gen, i - 1) o
-{-# INLINE sourceRandomNStream #-}
-
-foldStream :: Monad m => (b -> a -> b) -> b -> Consumer a m b
-foldStream f b0 =
-    CI.unstream $ CI.StreamConduit (CL.fold f b0) $ start
-  where
-    start (CI.Stream step ms0) =
-        CI.Stream step' ((b0,) `liftM` ms0)
-      where
-        step' (!b, s) = do
-            res <- step s
-            return $ case res of
-                CI.Stop () -> CI.Stop b
-                CI.Skip s' -> CI.Skip (b, s')
-                CI.Emit s' a -> CI.Skip (f b a, s')
-{-# INLINE foldStream #-}
-
-sourceRandomNBind :: (MWC.Variate a, MonadIO m) => Int -> Source m a
-sourceRandomNBind cnt0 = lift (liftIO MWC.createSystemRandom) >>= \gen ->
-    let loop 0 = return ()
-        loop cnt = do
-            lift (liftIO $ MWC.uniform gen) >>= (\o -> yield o >> loop (cnt - 1))
-     in loop cnt0
-
-sourceRandomNPipe :: (MWC.Variate a, MonadIO m) => Int -> Source m a
-sourceRandomNPipe cnt0 = ConduitM $ \rest -> do
-    gen <- liftIO MWC.createSystemRandom
-    let loop 0 = rest ()
-        loop cnt = do
-            liftIO (MWC.uniform gen) >>= CI.yield >> loop (cnt - 1)
-    loop cnt0
-
-sourceRandomNConstr :: (MWC.Variate a, MonadIO m) => Int -> Source m a
-sourceRandomNConstr cnt0 = ConduitM $ \rest -> PipeM $ do
-    gen <- liftIO MWC.createSystemRandom
-    let loop 0 = return $ rest ()
-        loop cnt = do
-            x <- liftIO (MWC.uniform gen)
-            return $ HaveOutput (PipeM $ loop (cnt - 1)) (return ()) x
-    loop cnt0
 
 -----------------------------------------------------------------------
 
