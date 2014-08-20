@@ -237,7 +237,7 @@ foldMC f =
         go a = do
             accum' <- lift $ f accum a
             accum' `seq` loop accum'
-{-# INLINEABLE foldMC #-}
+{-# INLINE foldMC #-}
 
 foldMS :: Monad m => (b -> a -> m b) -> b -> Stream m a () -> Stream m o b
 foldMS f b0 (Stream step ms0) =

@@ -88,6 +88,9 @@ sumTB = do
                     | x > upper = t
                     | otherwise = go (x + 1) (t + x)
              in go 1 0
+        , TBIO "boxed vectors, I/O" expected $ do
+            upper <- readIORef upperRef
+            VB.foldM' plusM 0 $ VB.enumFromTo 1 upper
         , TBPure "boxed vectors" upper0 expected
             $ \upper -> VB.foldl' (+) 0 (VB.enumFromTo 1 upper)
         , TBPure "unboxed vectors" upper0 expected
