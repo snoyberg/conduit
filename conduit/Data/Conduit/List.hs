@@ -79,7 +79,6 @@ import Data.Monoid (Monoid, mempty, mappend)
 import qualified Data.Foldable as F
 import Data.Conduit
 import qualified Data.Conduit.Internal as CI
-import qualified Data.Conduit.Internal.Conduit as CIC
 import Data.Conduit.Internal.Fusion
 import Control.Monad (when, (<=<), liftM, void)
 import Control.Monad.Trans.Class (lift)
@@ -157,7 +156,7 @@ enumFromToS x0 y =
     step x = return $ if x Prelude.> y
         then Stop ()
         else Emit (Prelude.succ x) x
-{-# INLINE enumFromToS #-}
+{-# INLINE [0] enumFromToS #-}
 
 enumFromToS_int :: (Prelude.Integral a, Monad m) => a -> a -> Stream m a ()
 enumFromToS_int x0 y = x0 `seq` y `seq` Stream step (return x0)
@@ -219,7 +218,17 @@ foldM :: Monad m
       => (b -> a -> m b)
       -> b
       -> Consumer a m b
-foldM f =
+foldM = foldMC
+{-# INLINE [0] foldM #-}
+{-# RULES "unstream foldM" forall f b.
+        foldM f b = unstream (StreamConduit (foldMC f b) (foldMS f b))
+  #-}
+
+foldMC :: Monad m
+       => (b -> a -> m b)
+       -> b
+       -> Consumer a m b
+foldMC f =
     loop
   where
     loop accum = do
@@ -228,9 +237,40 @@ foldM f =
         go a = do
             accum' <- lift $ f accum a
             accum' `seq` loop accum'
-{-# INLINEABLE [1] foldM #-}
+{-# INLINEABLE foldMC #-}
 
-connectFoldM :: Monad m => Source m a -> (b -> a -> m b) -> b -> m b -- FIXME replace with better, more general function
+foldMS :: Monad m => (b -> a -> m b) -> b -> Stream m a () -> Stream m o b
+foldMS f b0 (Stream step ms0) =
+    Stream step' (liftM (b0, ) ms0)
+  where
+    step' (!b, s) = do
+        res <- step s
+        case res of
+            Stop () -> return $ Stop b
+            Skip s' -> return $ Skip (b, s')
+            Emit s' a -> do
+                b' <- f b a
+                return $ Skip (b', s')
+{-# INLINE foldMS #-}
+
+-----------------------------------------------------------------
+-- These are for cases where- for whatever reason- stream fusion cannot be
+-- applied.
+connectFold :: Monad m => Source m a -> (b -> a -> b) -> b -> m b
+connectFold (CI.ConduitM src0) f =
+    go (src0 CI.Done)
+  where
+    go (CI.Done ()) b = return b
+    go (CI.HaveOutput src _ a) b = go src Prelude.$! f b a
+    go (CI.NeedInput _ c) b = go (c ()) b
+    go (CI.Leftover src ()) b = go src b
+    go (CI.PipeM msrc) b = do
+        src <- msrc
+        go src b
+{-# INLINE connectFold #-}
+{-# RULES "$$ fold" forall src f b. src $$ fold f b = connectFold src f b #-}
+
+connectFoldM :: Monad m => Source m a -> (b -> a -> m b) -> b -> m b
 connectFoldM (CI.ConduitM src0) f =
     go (src0 CI.Done)
   where
@@ -245,6 +285,7 @@ connectFoldM (CI.ConduitM src0) f =
         go src b
 {-# INLINE connectFoldM #-}
 {-# RULES "$$ foldM" forall src f b. src $$ foldM f b = connectFoldM src f b #-}
+-----------------------------------------------------------------
 
 -- | A monoidal strict left fold.
 --
