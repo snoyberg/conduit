@@ -561,6 +561,20 @@ main = hspec $ do
             res <- CL.iterate (+ 1) (1 :: Int) C.$$ CL.isolate 10 C.=$ CL.fold (+) 0
             res `shouldBe` sum [1..10]
 
+    prop "replicate" $ \cnt' -> do
+        let cnt = min cnt' 100
+        res <- CL.replicate cnt () C.$$ CL.consume
+        res `shouldBe` replicate cnt ()
+
+    prop "replicateM" $ \cnt' -> do
+        ref <- I.newIORef 0
+        let cnt = min cnt' 100
+        res <- CL.replicateM cnt (I.modifyIORef ref (+ 1)) C.$$ CL.consume
+        res `shouldBe` replicate cnt ()
+
+        ref' <- I.readIORef ref
+        ref' `shouldBe` (if cnt' <= 0 then 0 else cnt)
+
     describe "unwrapResumable" $ do
         it' "works" $ do
             ref <- I.newIORef (0 :: Int)

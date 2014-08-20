@@ -18,6 +18,8 @@ module Data.Conduit.List
     , unfoldM
     , enumFromTo
     , iterate
+    , replicate
+    , replicateM
       -- * Sinks
       -- ** Pure
     , fold
@@ -123,6 +125,8 @@ sourceList = Prelude.mapM_ yield
 -- combining with @sourceList@ since this avoids any intermediate data
 -- structures.
 --
+-- Subject to fusion
+--
 -- Since 0.4.2
 enumFromTo :: (Enum a, Prelude.Ord a, Monad m)
            => a
@@ -176,7 +180,67 @@ iterate f =
   where
     go a = yield a >> go (f a)
 
+-- | Replicate a single value the given number of times.
+--
+-- Subject to fusion
+--
+-- Since 1.2.0
+replicate :: Monad m => Int -> a -> Producer m a
+replicate = replicateC
+{-# INLINE [0] replicate #-}
+{-# RULES "unstream replicate" forall i a.
+     replicate i a = unstream (StreamConduit (replicateC i a) (\_ -> replicateS i a))
+  #-}
+
+replicateC :: Monad m => Int -> a -> Producer m a
+replicateC cnt0 a =
+    loop cnt0
+  where
+    loop i
+        | i <= 0 = return ()
+        | otherwise = yield a >> loop (i - 1)
+{-# INLINE replicateC #-}
+
+replicateS :: Monad m => Int -> a -> Stream m a ()
+replicateS cnt0 a =
+    Stream step (return cnt0)
+  where
+    step cnt
+        | cnt <= 0  = return $ Stop ()
+        | otherwise = return $ Emit (cnt - 1) a
+{-# INLINE replicateS #-}
+
+-- | Replicate a monadic value the given number of times.
+--
+-- Since 1.2.0
+replicateM :: Monad m => Int -> m a -> Producer m a
+replicateM = replicateMC
+{-# INLINE [0] replicateM #-}
+{-# RULES "unstream replicateM" forall i a.
+     replicateM i a = unstream (StreamConduit (replicateMC i a) (\_ -> replicateMS i a))
+  #-}
+
+replicateMC :: Monad m => Int -> m a -> Producer m a
+replicateMC cnt0 ma =
+    loop cnt0
+  where
+    loop i
+        | i <= 0 = return ()
+        | otherwise = lift ma >>= yield >> loop (i - 1)
+{-# INLINE replicateMC #-}
+
+replicateMS :: Monad m => Int -> m a -> Stream m a ()
+replicateMS cnt0 ma =
+    Stream step (return cnt0)
+  where
+    step cnt
+        | cnt <= 0  = return $ Stop ()
+        | otherwise = Emit (cnt - 1) `liftM` ma
+{-# INLINE replicateMS #-}
+
 -- | A strict left fold.
+--
+-- Subject to fusion
 --
 -- Since 0.3.0
 fold :: Monad m
@@ -212,6 +276,8 @@ foldS f b0 (Stream step ms0) =
 {-# INLINE foldS #-}
 
 -- | A monadic strict left fold.
+--
+-- Subject to fusion
 --
 -- Since 0.3.0
 foldM :: Monad m
@@ -380,6 +446,8 @@ peek :: Monad m => Consumer a m (Maybe a)
 peek = await >>= maybe (return Nothing) (\x -> leftover x >> return (Just x))
 
 -- | Apply a transformation to all values in a stream.
+--
+-- Subject to fusion
 --
 -- Since 0.3.0
 map :: Monad m => (a -> b) -> Conduit a m b
@@ -583,12 +651,32 @@ mapFoldableM f = awaitForever $ F.mapM_ yield <=< lift . f
 -- will pull all values into memory. For a lazy variant, see
 -- "Data.Conduit.Lazy".
 --
+-- Subject to fusion
+--
 -- Since 0.3.0
 consume :: Monad m => Consumer a m [a]
-consume =
+consume = consumeC
+{-# INLINE [0] consume #-}
+{-# RULES "unstream consume" consume = unstream (StreamConduit consumeC consumeS) #-}
+
+consumeC :: Monad m => Consumer a m [a]
+consumeC =
     loop id
   where
     loop front = await >>= maybe (return $ front []) (\x -> loop $ front . (x:))
+{-# INLINE consumeC #-}
+
+consumeS :: Monad m => Stream m a () -> Stream m o [a]
+consumeS (Stream step ms0) =
+    Stream step' (liftM (id,) ms0)
+  where
+    step' (front, s) = do
+        res <- step s
+        return $ case res of
+            Stop () -> Stop (front [])
+            Skip s' -> Skip (front, s')
+            Emit s' a -> Skip (front . (a:), s')
+{-# INLINE consumeS #-}
 
 -- | Grouping input according to an equality function.
 --
