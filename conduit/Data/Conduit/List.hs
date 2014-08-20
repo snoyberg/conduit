@@ -159,6 +159,17 @@ enumFromToS x0 y =
         else Emit (Prelude.succ x) x
 {-# INLINE enumFromToS #-}
 
+enumFromToS_int :: (Prelude.Integral a, Monad m) => a -> a -> Stream m a ()
+enumFromToS_int x0 y = x0 `seq` y `seq` Stream step (return x0)
+  where
+    step x | x <= y    = return $ Emit (x Prelude.+ 1) x
+           | otherwise = return $ Stop ()
+{-# INLINE enumFromToS_int #-}
+
+{-# RULES "enumFromTo<Int>"
+      enumFromToS = enumFromToS_int :: Monad m => Int -> Int -> Stream m Int ()
+  #-}
+
 -- | Produces an infinite stream of repeated applications of f to x.
 iterate :: Monad m => (a -> a) -> a -> Producer m a
 iterate f =

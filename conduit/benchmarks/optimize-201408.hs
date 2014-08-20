@@ -8,7 +8,7 @@
 -- and sliding vector.
 import           Control.DeepSeq
 import           Control.Monad               (foldM)
-import           Control.Monad               (when)
+import           Control.Monad               (when, liftM)
 import           Control.Monad.Codensity     (lowerCodensity)
 import           Control.Monad.IO.Class      (MonadIO, liftIO)
 import           Control.Monad.Trans.Class   (lift)
@@ -248,17 +248,17 @@ sourceRandomNStream cnt0 =
 
 foldStream :: Monad m => (b -> a -> b) -> b -> Consumer a m b
 foldStream f b0 =
-    CI.unstream $ CI.SCSink (CL.fold f b0) $ start
+    CI.unstream $ CI.StreamConduit (CL.fold f b0) $ start
   where
     start (CI.Stream step ms0) =
-        ms0 >>= loop b0
+        CI.Stream step' ((b0,) `liftM` ms0)
       where
-        loop !b s = do
+        step' (!b, s) = do
             res <- step s
-            case res of
-                CI.Stop () -> return b
-                CI.Skip s' -> loop b s'
-                CI.Emit s' a -> loop (f b a) s'
+            return $ case res of
+                CI.Stop () -> CI.Stop b
+                CI.Skip s' -> CI.Skip (b, s')
+                CI.Emit s' a -> CI.Skip (f b a, s')
 {-# INLINE foldStream #-}
 
 sourceRandomNBind :: (MWC.Variate a, MonadIO m) => Int -> Source m a
