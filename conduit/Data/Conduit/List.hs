@@ -383,19 +383,27 @@ peek = await >>= maybe (return Nothing) (\x -> leftover x >> return (Just x))
 --
 -- Since 0.3.0
 map :: Monad m => (a -> b) -> Conduit a m b
-map f =
-    unstream $ StreamConduit (awaitForever $ yield . f) mapS
+map = mapC
+{-# INLINE [0] map #-}
+{-# RULES "unstream map" forall f.
+    map f = unstream (StreamConduit (mapC f) (mapS f))
+  #-}
+
+mapC :: Monad m => (a -> b) -> Conduit a m b
+mapC f = awaitForever $ yield . f
+{-# INLINE mapC #-}
+
+mapS :: Monad m => (a -> b) -> Stream m a r -> Stream m b r
+mapS f (Stream step ms0) =
+    Stream step' ms0
   where
-    mapS (Stream step ms0) =
-        Stream step' ms0
-      where
-        step' s = do
-            res <- step s
-            return $ case res of
-                Stop r -> Stop r
-                Emit s' a -> Emit s' (f a)
-                Skip s' -> Skip s'
-{-# INLINE map #-}
+    step' s = do
+        res <- step s
+        return $ case res of
+            Stop r -> Stop r
+            Emit s' a -> Emit s' (f a)
+            Skip s' -> Skip s'
+{-# INLINE mapS #-}
 
 -- Since a Source never has any leftovers, fusion rules on it are safe.
 {-
