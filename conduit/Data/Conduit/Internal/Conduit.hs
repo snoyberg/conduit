@@ -179,6 +179,10 @@ instance MonadReader r m => MonadReader r (ConduitM i o m) where
             go (Leftover p i) = Leftover (go p) i
          in go (c0 Done)
 
+#ifndef MIN_VERSION_mtl
+#define MIN_VERSION_mtl(x, y, z) 0
+#endif
+
 instance MonadWriter w m => MonadWriter w (ConduitM i o m) where
 #if MIN_VERSION_mtl(2, 1, 0)
     writer = lift . writer

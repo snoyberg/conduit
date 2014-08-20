@@ -61,9 +61,7 @@ import Data.Monoid (Monoid (mappend, mempty))
 import Control.Monad.Trans.Resource
 import qualified GHC.Exts
 import Control.Monad.Morph (MFunctor (..))
-#if MIN_VERSION_exceptions(0, 6, 0)
 import qualified Control.Monad.Catch as Catch
-#endif
 
 -- | The underlying datatype for all the types in this package.  In has six
 -- type parameters:
@@ -141,7 +139,6 @@ instance MonadThrow m => MonadThrow (Pipe l i o u m) where
     throwM = lift . throwM
     {-# INLINE throwM #-}
 
-#if MIN_VERSION_exceptions(0, 6, 0)
 instance Catch.MonadCatch m => Catch.MonadCatch (Pipe l i o u m) where
     catch p0 onErr =
         go p0
@@ -152,7 +149,6 @@ instance Catch.MonadCatch m => Catch.MonadCatch (Pipe l i o u m) where
         go (NeedInput x y) = NeedInput (go . x) (go . y)
         go (HaveOutput p c o) = HaveOutput (go p) c o
     {-# INLINE catch #-}
-#endif
 
 instance Monad m => Monoid (Pipe l i o u m ()) where
     mempty = return ()
