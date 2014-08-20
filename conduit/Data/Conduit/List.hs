@@ -128,31 +128,35 @@ enumFromTo :: (Enum a, Prelude.Ord a, Monad m)
            => a
            -> a
            -> Producer m a
-enumFromTo x0 y =
-    unstream $ SCSource (loopC x0) (Stream step (return x0))
-  where
-    loopC x
-        | x == y = yield x
-        | otherwise = yield x >> loopC (Prelude.succ x)
+enumFromTo = enumFromToC
+{-# INLINE [0] enumFromTo #-}
+{-# RULES "unstream enumFromTo" forall x y.
+    enumFromTo x y = unstream (SCSource (enumFromToC x y) (enumFromToS x y))
+  #-}
 
+enumFromToC :: (Enum a, Prelude.Ord a, Monad m)
+            => a
+            -> a
+            -> Producer m a
+enumFromToC x0 y =
+    loop x0
+  where
+    loop x
+        | x == y = yield x
+        | otherwise = yield x >> loop (Prelude.succ x)
+{-# INLINE [0] enumFromToC #-}
+
+enumFromToS :: (Enum a, Prelude.Ord a, Monad m)
+            => a
+            -> a
+            -> Stream m a ()
+enumFromToS x0 y =
+    Stream step (return x0)
+  where
     step x = return $ if x Prelude.> y
         then Stop ()
         else Emit (Prelude.succ x) x
-{-# INLINE enumFromTo #-}
-
-enumFromToFold :: (Enum a, Eq a, Monad m) -- FIXME far too specific
-               => a
-               -> a
-               -> (b -> a -> b)
-               -> b
-               -> m b
-enumFromToFold x0 y f =
-    go x0
-  where
-    go !x !b
-        | x == y = return Prelude.$! f b x
-        | otherwise = go (Prelude.succ x) (f b x)
-{-# INLINE enumFromToFold #-}
+{-# INLINE enumFromToS #-}
 
 -- | Produces an infinite stream of repeated applications of f to x.
 iterate :: Monad m => (a -> a) -> a -> Producer m a
@@ -168,20 +172,33 @@ fold :: Monad m
      => (b -> a -> b)
      -> b
      -> Consumer a m b
-fold f b0 =
-    unstream $ SCSink (loopC b0) foldS
+fold = foldC
+{-# INLINE [0] fold #-}
+{-# RULES "unstream fold" forall f b.
+        fold f b = unstream (SCSink (foldC f b) (foldS f b))
+  #-}
+
+foldC :: Monad m
+      => (b -> a -> b)
+      -> b
+      -> Consumer a m b
+foldC f =
+    loop
   where
-    loopC !accum = await >>= maybe (return accum) (loopC . f accum)
-    foldS (Stream step ms0) =
-        ms0 >>= loopS b0
-      where
-        loopS !b s = do
-            res <- step s
-            case res of
-                Stop () -> return b
-                Skip s' -> loopS b s'
-                Emit s' a -> loopS (f b a) s'
-{-# INLINE fold #-}
+    loop !accum = await >>= maybe (return accum) (loop . f accum)
+{-# INLINE foldC #-}
+
+foldS :: Monad m => (b -> a -> b) -> b -> Stream m a () -> m b
+foldS f b0 (Stream step ms0) =
+    ms0 >>= loopS b0
+  where
+    loopS !b s = do
+        res <- step s
+        case res of
+            Stop () -> return b
+            Skip s' -> loopS b s'
+            Emit s' a -> loopS (f b a) s'
+{-# INLINE foldS #-}
 
 -- | A monadic strict left fold.
 --

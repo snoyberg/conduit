@@ -69,24 +69,6 @@ connectStream (SCSource _ stream) (SCSink _ f) = f stream
         unstream left $$ unstream right = connectStream left right
   #-}
 
-connectConduitStream
-    :: Monad m
-    => ConduitM      () i    m ()
-    -> StreamConduit i  Void m r
-    -> m r
-connectConduitStream (ConduitM src0) (SCSink _ f) =
-    f (Stream step (return $ src0 Done))
-  where
-    step (Done ()) = return $ Stop ()
-    step (Leftover p ()) = return $ Skip p
-    step (PipeM mp) = liftM Skip mp
-    step (NeedInput _ p) = return $ Skip $ p ()
-    step (HaveOutput p _ i) = return $ Emit p i
-
-{-# RULES "connectConduitStream" forall left right.
-        left $$ unstream right = connectConduitStream left right
-  #-}
-
 streamToStreamConduit
     :: Monad m
     => Stream m o ()
