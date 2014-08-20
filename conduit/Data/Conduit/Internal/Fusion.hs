@@ -30,7 +30,7 @@ data Step s o r
 
 data Stream m o r = forall s. Stream
     (s -> m (Step s o r))
-    (m s) -- FIXME investigate performance advantages of this
+    (m s)
 
 -- FIXME investigate if slimming down the number of constructors helps or hurts performance
 data StreamConduit i o m r
