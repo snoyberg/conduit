@@ -1,5 +1,6 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE TupleSections #-}
 -- | Higher-level functions to interact with the elements of a stream. Most of
 -- these are based on list functions.
 --
@@ -131,7 +132,7 @@ enumFromTo :: (Enum a, Prelude.Ord a, Monad m)
 enumFromTo = enumFromToC
 {-# INLINE [0] enumFromTo #-}
 {-# RULES "unstream enumFromTo" forall x y.
-    enumFromTo x y = unstream (SCSource (enumFromToC x y) (enumFromToS x y))
+    enumFromTo x y = unstream (StreamConduit (enumFromToC x y) (\_ -> enumFromToS x y))
   #-}
 
 enumFromToC :: (Enum a, Prelude.Ord a, Monad m)
@@ -175,7 +176,7 @@ fold :: Monad m
 fold = foldC
 {-# INLINE [0] fold #-}
 {-# RULES "unstream fold" forall f b.
-        fold f b = unstream (SCSink (foldC f b) (foldS f b))
+        fold f b = unstream (StreamConduit (foldC f b) (foldS f b))
   #-}
 
 foldC :: Monad m
@@ -188,16 +189,16 @@ foldC f =
     loop !accum = await >>= maybe (return accum) (loop . f accum)
 {-# INLINE foldC #-}
 
-foldS :: Monad m => (b -> a -> b) -> b -> Stream m a () -> m b
+foldS :: Monad m => (b -> a -> b) -> b -> Stream m a () -> Stream m o b
 foldS f b0 (Stream step ms0) =
-    ms0 >>= loopS b0
+    Stream step' (liftM (b0, ) ms0)
   where
-    loopS !b s = do
+    step' (!b, s) = do
         res <- step s
-        case res of
-            Stop () -> return b
-            Skip s' -> loopS b s'
-            Emit s' a -> loopS (f b a) s'
+        return $ case res of
+            Stop () -> Stop b
+            Skip s' -> Skip (b, s')
+            Emit s' a -> Skip (f b a, s')
 {-# INLINE foldS #-}
 
 -- | A monadic strict left fold.
@@ -331,7 +332,7 @@ peek = await >>= maybe (return Nothing) (\x -> leftover x >> return (Just x))
 -- Since 0.3.0
 map :: Monad m => (a -> b) -> Conduit a m b
 map f =
-    unstream $ SCConduit (awaitForever $ yield . f) mapS
+    unstream $ StreamConduit (awaitForever $ yield . f) mapS
   where
     mapS (Stream step ms0) =
         Stream step' ms0

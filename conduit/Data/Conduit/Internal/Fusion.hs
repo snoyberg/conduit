@@ -19,7 +19,7 @@ import Data.Functor.Identity (Identity (runIdentity))
 import Control.Monad.Trans.Identity (IdentityT, runIdentityT)
 import Control.Monad.Trans.Class (MonadTrans, lift)
 import Control.Monad (liftM)
-import Data.Void (Void)
+import Data.Void (Void, absurd)
 
 -- | This is the same as stream fusion\'s Step. Constructors are renamed to
 -- avoid confusion with conduit names.
@@ -32,26 +32,19 @@ data Stream m o r = forall s. Stream
     (s -> m (Step s o r))
     (m s)
 
--- FIXME investigate if slimming down the number of constructors helps or hurts performance
-data StreamConduit i o m r
-    = SCSource  (ConduitM i o m r) (Stream m o r)
-    | SCConduit (ConduitM i o m r) (Stream m i () -> Stream m o r)
-    | SCSink    (ConduitM i o m r) (Stream m i () -> m r)
+data StreamConduit i o m r = StreamConduit
+    (ConduitM i o m r)
+    (Stream m i () -> Stream m o r)
 
 unstream :: StreamConduit i o m r -> ConduitM i o m r
-unstream (SCSource  c _) = c
-unstream (SCConduit c _) = c
-unstream (SCSink    c _) = c
+unstream (StreamConduit c _) = c
 {-# INLINE [0] unstream #-}
 
 fuseStream :: Monad m
            => StreamConduit a b m ()
            -> StreamConduit b c m r
            -> StreamConduit a c m r
-fuseStream left (SCSource c s) = SCSource (unstream left =$= c) s
-fuseStream (SCSource a x) (SCConduit b y) = SCSource (a =$= b) (y x)
-fuseStream (SCConduit a x) (SCConduit b y) = SCConduit (a =$= b) (y . x)
-fuseStream (SCConduit a x) (SCSink b y) = SCSink (a =$= b) (y . x)
+fuseStream (StreamConduit a x) (StreamConduit b y) = StreamConduit (a =$= b) (y . x)
 {-# INLINE fuseStream #-}
 
 {-# RULES "fuseStream" forall left right.
@@ -62,7 +55,19 @@ connectStream :: Monad m
               => StreamConduit () i    m ()
               -> StreamConduit i  Void m r
               -> m r
-connectStream (SCSource _ stream) (SCSink _ f) = f stream
+connectStream (StreamConduit _ stream) (StreamConduit _ f) =
+    run $ f $ stream $ Stream emptyStep (return ())
+  where
+    emptyStep _ = return $ Stop ()
+    run (Stream step ms0) =
+        ms0 >>= loop
+      where
+        loop s = do
+            res <- step s
+            case res of
+                Stop r -> return r
+                Skip s' -> loop s'
+                Emit _ o -> absurd o
 {-# INLINE connectStream #-}
 
 {-# RULES "connectStream" forall left right.
@@ -74,7 +79,7 @@ streamToStreamConduit
     => Stream m o ()
     -> StreamConduit i o m ()
 streamToStreamConduit str@(Stream step ms0) =
-    SCSource con str
+    StreamConduit con (const str)
   where
     con = ConduitM $ \rest -> PipeM $ do
         s0 <- ms0
