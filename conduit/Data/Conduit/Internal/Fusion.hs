@@ -74,6 +74,31 @@ connectStream (StreamConduit _ stream) (StreamConduit _ f) =
         unstream left $$ unstream right = connectStream left right
   #-}
 
+connectStream1 :: Monad m
+               => StreamConduit () i    m ()
+               -> ConduitM      i  Void m r
+               -> m r
+connectStream1 (StreamConduit _ fstream) (ConduitM sink0) =
+    case fstream $ Stream (const $ return $ Stop ()) (return ()) of
+        Stream step ms0 ->
+            let loop _ (Done r) _ = return r
+                loop ls (PipeM mp) s = mp >>= flip (loop ls) s
+                loop ls (Leftover p l) s = loop (l:ls) p s
+                loop _ (HaveOutput _ _ o) _ = absurd o
+                loop (l:ls) (NeedInput p _) s = loop ls (p l) s
+                loop [] (NeedInput p c) s = do
+                    res <- step s
+                    case res of
+                        Stop () -> loop [] (c ()) s
+                        Skip s' -> loop [] (NeedInput p c) s'
+                        Emit s' i -> loop [] (p i) s'
+             in ms0 >>= loop [] (sink0 Done)
+{-# INLINE connectStream1 #-}
+
+{-# RULES "connectStream1" forall left right.
+        unstream left $$ right = connectStream1 left right
+  #-}
+
 streamToStreamConduit
     :: Monad m
     => Stream m o ()
