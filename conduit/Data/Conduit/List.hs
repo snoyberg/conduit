@@ -509,9 +509,31 @@ differences based on leftovers.
 -- If you do not need the transformed values, and instead just want the monadic
 -- side-effects of running the action, see 'mapM_'.
 --
+-- Subject to fusion
+--
 -- Since 0.3.0
 mapM :: Monad m => (a -> m b) -> Conduit a m b
-mapM f = awaitForever $ yield <=< lift . f
+mapM = mapMC
+{-# INLINE [0] mapM #-}
+{-# RULES "unstream mapM" forall f.
+    mapM f = unstream (StreamConduit (mapMC f) (mapMS f))
+  #-}
+
+mapMC :: Monad m => (a -> m b) -> Conduit a m b
+mapMC f = awaitForever $ \a -> lift (f a) >>= yield
+{-# INLINE mapMC #-}
+
+mapMS :: Monad m => (a -> m b) -> Stream m a r -> Stream m b r
+mapMS f (Stream step ms0) =
+    Stream step' ms0
+  where
+    step' s = do
+        res <- step s
+        case res of
+            Stop r -> return $ Stop r
+            Emit s' a -> Emit s' `liftM` f a
+            Skip s' -> return $ Skip s'
+{-# INLINE mapMS #-}
 
 -- | Apply a monadic action on all values in a stream.
 --
