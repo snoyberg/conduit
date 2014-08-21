@@ -87,6 +87,16 @@ benchmark optimize-201408
     main-is:        optimize-201408.hs
     ghc-options:    -Wall -O2 -rtsopts
 
+benchmark unfused
+    type: exitcode-stdio-1.0
+    hs-source-dirs: benchmarks
+    build-depends:  base
+                  , conduit
+                  , criterion
+                  , transformers
+    main-is:        unfused.hs
+    ghc-options:    -Wall -O2 -rtsopts
+
 source-repository head
   type:     git
   location: git://github.com/snoyberg/conduit.git
