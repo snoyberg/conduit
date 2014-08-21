@@ -99,6 +99,38 @@ connectStream1 (StreamConduit _ fstream) (ConduitM sink0) =
         unstream left $$ right = connectStream1 left right
   #-}
 
+{-
+
+Not only will this rule not fire reliably, but due to finalizers, it can change
+behavior unless implemented very carefully. Odds are that the careful
+implementation won't be any faster, so leaving this commented out for now.
+
+connectStream2 :: Monad m
+               => ConduitM      () i    m ()
+               -> StreamConduit i  Void m r
+               -> m r
+connectStream2 (ConduitM src0) (StreamConduit _ fstream) =
+    run $ fstream $ Stream step' $ return (return (), src0 Done)
+  where
+    step' (_, Done ()) = return $ Stop ()
+    {-# INLINE step' #-}
+
+    run (Stream step ms0) =
+        ms0 >>= loop
+      where
+        loop s = do
+            res <- step s
+            case res of
+                Stop r -> return r
+                Emit _ o -> absurd o
+                Skip s' -> loop s'
+{-# INLINE connectStream2 #-}
+
+{-# RULES "connectStream2" forall left right.
+        left $$ unstream right = connectStream2 left right
+  #-}
+-}
+
 streamToStreamConduit
     :: Monad m
     => Stream m o ()
