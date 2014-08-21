@@ -63,6 +63,11 @@ main = defaultMain
             $ enumFromToC 1 upper
            $= mapC (* 2)
            $$ (CL.map (+ 1) =$ CL.fold (+) 0)
+    , bench "performance of CL.enumFromTo without fusion" $ flip whnf upper0 $ \upper ->
+        runIdentity
+            $ CL.enumFromTo 1 upper
+           $= mapC (* 2)
+           $$ (CL.map (+ 1) =$ CL.fold (+) 0)
     ]
   where
     upper0 = 100000 :: Int

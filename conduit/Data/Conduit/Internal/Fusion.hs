@@ -9,6 +9,7 @@ module Data.Conduit.Internal.Fusion
       -- ** Functions
     , streamConduit
     , streamSource
+    , streamSourcePure
     , unstream
     ) where
 
@@ -152,3 +153,21 @@ streamSource str@(Stream step ms0) =
                     Emit s' o -> return $ HaveOutput (PipeM $ loop s') (return ()) o
                     Skip s' -> loop s'
         loop s0
+{-# INLINE streamSource #-}
+
+streamSourcePure
+    :: Monad m
+    => Stream Identity o ()
+    -> StreamConduit i o m ()
+streamSourcePure (Stream step ms0) =
+    StreamConduit con (const $ Stream (return . runIdentity . step) (return s0))
+  where
+    s0 = runIdentity ms0
+    con = ConduitM $ \rest ->
+        let loop s =
+                case runIdentity $ step s of
+                    Stop () -> rest ()
+                    Emit s' o -> HaveOutput (loop s') (return ()) o
+                    Skip s' -> loop s'
+         in loop s0
+{-# INLINE streamSourcePure #-}

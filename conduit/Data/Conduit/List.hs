@@ -132,10 +132,10 @@ enumFromTo :: (Enum a, Prelude.Ord a, Monad m)
            => a
            -> a
            -> Producer m a
-enumFromTo = enumFromToC
+enumFromTo x y = unstream $ streamSource $ enumFromToS x y
 {-# INLINE [0] enumFromTo #-}
 {-# RULES "unstream enumFromTo" forall x y.
-    enumFromTo x y = unstream (streamConduit (enumFromToC x y) (\_ -> enumFromToS x y))
+    enumFromTo x y = unstream (streamSourcePure $ enumFromToS x y)
   #-}
 
 enumFromToC :: (Enum a, Prelude.Ord a, Monad m)
