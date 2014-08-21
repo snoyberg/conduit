@@ -732,7 +732,8 @@ src $$ sink = do
 -- Since 0.4.0
 ($=) :: Monad m => Conduit a m b -> ConduitM b c m r -> ConduitM a c m r
 ($=) = (=$=)
-{-# INLINE ($=) #-}
+{-# INLINE [0] ($=) #-}
+{-# RULES "$= is =$=" ($=) = (=$=) #-}
 
 -- | Right fuse, combining a conduit and a sink together into a new sink.
 --
@@ -747,7 +748,8 @@ src $$ sink = do
 -- Since 0.4.0
 (=$) :: Monad m => Conduit a m b -> ConduitM b c m r -> ConduitM a c m r
 (=$) = (=$=)
-{-# INLINE (=$) #-}
+{-# INLINE [0] (=$) #-}
+{-# RULES "=$ is =$=" (=$) = (=$=) #-}
 
 -- | Fusion operator, combining two @Conduit@s together into a new @Conduit@.
 --
