@@ -313,7 +313,7 @@ slidingWindowC :: Monad m => Int -> Conduit a m (Seq.Seq a)
 slidingWindowC = slidingWindowCC
 {-# INLINE [0] slidingWindowC #-}
 {-# RULES "unstream slidingWindowC"
-    forall i. slidingWindowC i = CI.unstream (CI.StreamConduit (slidingWindowCC i) (slidingWindowS i))
+    forall i. slidingWindowC i = CI.unstream (CI.streamConduit (slidingWindowCC i) (slidingWindowS i))
   #-}
 
 slidingWindowCC :: Monad m => Int -> Conduit a m (Seq.Seq a)
@@ -359,7 +359,7 @@ slidingVectorC :: V.Vector v a => Int -> Conduit a IO (v a)
 slidingVectorC = slidingVectorCC
 {-# INLINE [0] slidingVectorC #-}
 {-# RULES "unstream slidingVectorC"
-    forall i. slidingVectorC i = CI.unstream (CI.StreamConduit (slidingVectorCC i) (slidingVectorS i))
+    forall i. slidingVectorC i = CI.unstream (CI.streamConduit (slidingVectorCC i) (slidingVectorS i))
   #-}
 
 slidingVectorCC :: V.Vector v a => Int -> Conduit a IO (v a)

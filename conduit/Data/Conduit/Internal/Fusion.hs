@@ -5,12 +5,11 @@ module Data.Conduit.Internal.Fusion
     ( -- ** Types
       Step (..)
     , Stream (..)
-    , StreamConduit (..)
+    , StreamConduit
       -- ** Functions
+    , streamConduit
+    , streamSource
     , unstream
-    , fuseStream
-    , connectStream
-    , streamToStreamConduit
     ) where
 
 import Data.Conduit.Internal.Conduit
@@ -131,11 +130,17 @@ connectStream2 (ConduitM src0) (StreamConduit _ fstream) =
   #-}
 -}
 
-streamToStreamConduit
+streamConduit :: ConduitM i o m r
+              -> (Stream m i () -> Stream m o r)
+              -> StreamConduit i o m r
+streamConduit = StreamConduit
+{-# INLINE CONLIKE streamConduit #-}
+
+streamSource
     :: Monad m
     => Stream m o ()
     -> StreamConduit i o m ()
-streamToStreamConduit str@(Stream step ms0) =
+streamSource str@(Stream step ms0) =
     StreamConduit con (const str)
   where
     con = ConduitM $ \rest -> PipeM $ do

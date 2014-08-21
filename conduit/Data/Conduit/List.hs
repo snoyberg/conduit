@@ -135,7 +135,7 @@ enumFromTo :: (Enum a, Prelude.Ord a, Monad m)
 enumFromTo = enumFromToC
 {-# INLINE [0] enumFromTo #-}
 {-# RULES "unstream enumFromTo" forall x y.
-    enumFromTo x y = unstream (StreamConduit (enumFromToC x y) (\_ -> enumFromToS x y))
+    enumFromTo x y = unstream (streamConduit (enumFromToC x y) (\_ -> enumFromToS x y))
   #-}
 
 enumFromToC :: (Enum a, Prelude.Ord a, Monad m)
@@ -189,7 +189,7 @@ replicate :: Monad m => Int -> a -> Producer m a
 replicate = replicateC
 {-# INLINE [0] replicate #-}
 {-# RULES "unstream replicate" forall i a.
-     replicate i a = unstream (StreamConduit (replicateC i a) (\_ -> replicateS i a))
+     replicate i a = unstream (streamConduit (replicateC i a) (\_ -> replicateS i a))
   #-}
 
 replicateC :: Monad m => Int -> a -> Producer m a
@@ -217,7 +217,7 @@ replicateM :: Monad m => Int -> m a -> Producer m a
 replicateM = replicateMC
 {-# INLINE [0] replicateM #-}
 {-# RULES "unstream replicateM" forall i a.
-     replicateM i a = unstream (StreamConduit (replicateMC i a) (\_ -> replicateMS i a))
+     replicateM i a = unstream (streamConduit (replicateMC i a) (\_ -> replicateMS i a))
   #-}
 
 replicateMC :: Monad m => Int -> m a -> Producer m a
@@ -250,7 +250,7 @@ fold :: Monad m
 fold = foldC
 {-# INLINE [0] fold #-}
 {-# RULES "unstream fold" forall f b.
-        fold f b = unstream (StreamConduit (foldC f b) (foldS f b))
+        fold f b = unstream (streamConduit (foldC f b) (foldS f b))
   #-}
 
 foldC :: Monad m
@@ -287,7 +287,7 @@ foldM :: Monad m
 foldM = foldMC
 {-# INLINE [0] foldM #-}
 {-# RULES "unstream foldM" forall f b.
-        foldM f b = unstream (StreamConduit (foldMC f b) (foldMS f b))
+        foldM f b = unstream (streamConduit (foldMC f b) (foldMS f b))
   #-}
 
 foldMC :: Monad m
@@ -454,7 +454,7 @@ map :: Monad m => (a -> b) -> Conduit a m b
 map = mapC
 {-# INLINE [0] map #-}
 {-# RULES "unstream map" forall f.
-    map f = unstream (StreamConduit (mapC f) (mapS f))
+    map f = unstream (streamConduit (mapC f) (mapS f))
   #-}
 
 mapC :: Monad m => (a -> b) -> Conduit a m b
@@ -516,7 +516,7 @@ mapM :: Monad m => (a -> m b) -> Conduit a m b
 mapM = mapMC
 {-# INLINE [0] mapM #-}
 {-# RULES "unstream mapM" forall f.
-    mapM f = unstream (StreamConduit (mapMC f) (mapMS f))
+    mapM f = unstream (streamConduit (mapMC f) (mapMS f))
   #-}
 
 mapMC :: Monad m => (a -> m b) -> Conduit a m b
@@ -679,7 +679,7 @@ mapFoldableM f = awaitForever $ F.mapM_ yield <=< lift . f
 consume :: Monad m => Consumer a m [a]
 consume = consumeC
 {-# INLINE [0] consume #-}
-{-# RULES "unstream consume" consume = unstream (StreamConduit consumeC consumeS) #-}
+{-# RULES "unstream consume" consume = unstream (streamConduit consumeC consumeS) #-}
 
 consumeC :: Monad m => Consumer a m [a]
 consumeC =
