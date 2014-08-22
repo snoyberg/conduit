@@ -134,7 +134,7 @@ enumFromTo :: (Enum a, Prelude.Ord a, Monad m)
            -> Producer m a
 enumFromTo x y = unstream $ streamSource $ enumFromToS x y
 {-# INLINE [0] enumFromTo #-}
-{-# RULES "unstream enumFromTo" forall x y.
+{-# RULES "conduit: unstream enumFromTo" forall x y.
     enumFromTo x y = unstream (streamSourcePure $ enumFromToS x y)
   #-}
 
@@ -169,7 +169,7 @@ enumFromToS_int x0 y = x0 `seq` y `seq` Stream step (return x0)
            | otherwise = return $ Stop ()
 {-# INLINE enumFromToS_int #-}
 
-{-# RULES "enumFromTo<Int>"
+{-# RULES "conduit: enumFromTo<Int>"
       enumFromToS = enumFromToS_int :: Monad m => Int -> Int -> Stream m Int ()
   #-}
 
@@ -188,7 +188,7 @@ iterate f =
 replicate :: Monad m => Int -> a -> Producer m a
 replicate = replicateC
 {-# INLINE [0] replicate #-}
-{-# RULES "unstream replicate" forall i a.
+{-# RULES "conduit: unstream replicate" forall i a.
      replicate i a = unstream (streamConduit (replicateC i a) (\_ -> replicateS i a))
   #-}
 
@@ -216,7 +216,7 @@ replicateS cnt0 a =
 replicateM :: Monad m => Int -> m a -> Producer m a
 replicateM = replicateMC
 {-# INLINE [0] replicateM #-}
-{-# RULES "unstream replicateM" forall i a.
+{-# RULES "conduit: unstream replicateM" forall i a.
      replicateM i a = unstream (streamConduit (replicateMC i a) (\_ -> replicateMS i a))
   #-}
 
@@ -249,7 +249,7 @@ fold :: Monad m
      -> Consumer a m b
 fold = foldC
 {-# INLINE [0] fold #-}
-{-# RULES "unstream fold" forall f b.
+{-# RULES "conduit: unstream fold" forall f b.
         fold f b = unstream (streamConduit (foldC f b) (foldS f b))
   #-}
 
@@ -286,7 +286,7 @@ foldM :: Monad m
       -> Consumer a m b
 foldM = foldMC
 {-# INLINE [0] foldM #-}
-{-# RULES "unstream foldM" forall f b.
+{-# RULES "conduit: unstream foldM" forall f b.
         foldM f b = unstream (streamConduit (foldMC f b) (foldMS f b))
   #-}
 
@@ -334,7 +334,7 @@ connectFold (CI.ConduitM src0) f =
         src <- msrc
         go src b
 {-# INLINE connectFold #-}
-{-# RULES "$$ fold" forall src f b. src $$ fold f b = connectFold src f b #-}
+{-# RULES "conduit: $$ fold" forall src f b. src $$ fold f b = connectFold src f b #-}
 
 connectFoldM :: Monad m => Source m a -> (b -> a -> m b) -> b -> m b
 connectFoldM (CI.ConduitM src0) f =
@@ -350,7 +350,7 @@ connectFoldM (CI.ConduitM src0) f =
         src <- msrc
         go src b
 {-# INLINE connectFoldM #-}
-{-# RULES "$$ foldM" forall src f b. src $$ foldM f b = connectFoldM src f b #-}
+{-# RULES "conduit: $$ foldM" forall src f b. src $$ foldM f b = connectFoldM src f b #-}
 -----------------------------------------------------------------
 
 -- | A monoidal strict left fold.
@@ -394,7 +394,7 @@ srcMapM_ (CI.ConduitM src) f =
     go (CI.HaveOutput p _ o) = f o >> go p
     go (CI.NeedInput _ c) = go (c ())
 {-# INLINE srcMapM_ #-}
-{-# RULES "connect to mapM_" forall f src. src $$ mapM_ f = srcMapM_ src f #-}
+{-# RULES "conduit: connect to mapM_" forall f src. src $$ mapM_ f = srcMapM_ src f #-}
 
 -- | Ignore a certain number of values in the stream. This function is
 -- semantically equivalent to:
@@ -453,7 +453,7 @@ peek = await >>= maybe (return Nothing) (\x -> leftover x >> return (Just x))
 map :: Monad m => (a -> b) -> Conduit a m b
 map = mapC
 {-# INLINE [0] map #-}
-{-# RULES "unstream map" forall f.
+{-# RULES "conduit: unstream map" forall f.
     map f = unstream (streamConduit (mapC f) (mapS f))
   #-}
 
@@ -475,7 +475,7 @@ mapS f (Stream step ms0) =
 
 -- Since a Source never has any leftovers, fusion rules on it are safe.
 {-
-{-# RULES "source/map fusion =$=" forall f src. src =$= map f = mapFuseRight src f #-}
+{-# RULES "conduit: source/map fusion =$=" forall f src. src =$= map f = mapFuseRight src f #-}
 
 mapFuseRight :: Monad m => Source m a -> (a -> b) -> Source m b
 mapFuseRight src f = CIC.mapOutput f src
@@ -487,18 +487,18 @@ mapFuseRight src f = CIC.mapOutput f src
 It might be nice to include these rewrite rules, but they may have subtle
 differences based on leftovers.
 
-{-# RULES "map-to-mapOutput pipeL" forall f src. pipeL src (map f) = mapOutput f src #-}
-{-# RULES "map-to-mapOutput $=" forall f src. src $= (map f) = mapOutput f src #-}
-{-# RULES "map-to-mapOutput pipe" forall f src. pipe src (map f) = mapOutput f src #-}
-{-# RULES "map-to-mapOutput >+>" forall f src. src >+> (map f) = mapOutput f src #-}
+{-# RULES "conduit: map-to-mapOutput pipeL" forall f src. pipeL src (map f) = mapOutput f src #-}
+{-# RULES "conduit: map-to-mapOutput $=" forall f src. src $= (map f) = mapOutput f src #-}
+{-# RULES "conduit: map-to-mapOutput pipe" forall f src. pipe src (map f) = mapOutput f src #-}
+{-# RULES "conduit: map-to-mapOutput >+>" forall f src. src >+> (map f) = mapOutput f src #-}
 
-{-# RULES "map-to-mapInput pipeL" forall f sink. pipeL (map f) sink = mapInput f (Prelude.const Prelude.Nothing) sink #-}
-{-# RULES "map-to-mapInput =$" forall f sink. map f =$ sink = mapInput f (Prelude.const Prelude.Nothing) sink #-}
-{-# RULES "map-to-mapInput pipe" forall f sink. pipe (map f) sink = mapInput f (Prelude.const Prelude.Nothing) sink #-}
-{-# RULES "map-to-mapInput >+>" forall f sink. map f >+> sink = mapInput f (Prelude.const Prelude.Nothing) sink #-}
+{-# RULES "conduit: map-to-mapInput pipeL" forall f sink. pipeL (map f) sink = mapInput f (Prelude.const Prelude.Nothing) sink #-}
+{-# RULES "conduit: map-to-mapInput =$" forall f sink. map f =$ sink = mapInput f (Prelude.const Prelude.Nothing) sink #-}
+{-# RULES "conduit: map-to-mapInput pipe" forall f sink. pipe (map f) sink = mapInput f (Prelude.const Prelude.Nothing) sink #-}
+{-# RULES "conduit: map-to-mapInput >+>" forall f sink. map f >+> sink = mapInput f (Prelude.const Prelude.Nothing) sink #-}
 
-{-# RULES "map-to-mapOutput =$=" forall f con. con =$= map f = mapOutput f con #-}
-{-# RULES "map-to-mapInput =$=" forall f con. map f =$= con = mapInput f (Prelude.const Prelude.Nothing) con #-}
+{-# RULES "conduit: map-to-mapOutput =$=" forall f con. con =$= map f = mapOutput f con #-}
+{-# RULES "conduit: map-to-mapInput =$=" forall f con. map f =$= con = mapInput f (Prelude.const Prelude.Nothing) con #-}
 
 {-# INLINE [1] map #-}
 
@@ -515,7 +515,7 @@ differences based on leftovers.
 mapM :: Monad m => (a -> m b) -> Conduit a m b
 mapM = mapMC
 {-# INLINE [0] mapM #-}
-{-# RULES "unstream mapM" forall f.
+{-# RULES "conduit: unstream mapM" forall f.
     mapM f = unstream (streamConduit (mapMC f) (mapMS f))
   #-}
 
@@ -679,7 +679,7 @@ mapFoldableM f = awaitForever $ F.mapM_ yield <=< lift . f
 consume :: Monad m => Consumer a m [a]
 consume = consumeC
 {-# INLINE [0] consume #-}
-{-# RULES "unstream consume" consume = unstream (streamConduit consumeC consumeS) #-}
+{-# RULES "conduit: unstream consume" consume = unstream (streamConduit consumeC consumeS) #-}
 
 consumeC :: Monad m => Consumer a m [a]
 consumeC =
@@ -784,7 +784,7 @@ filterFuseRight (CI.ConduitM src) f = CI.ConduitM $ \rest -> let
 -- Intermediate finalizers are dropped, but this is acceptable: the next
 -- yielded value would be demanded by downstream in any event, and that new
 -- finalizer will always override the existing finalizer.
-{-# RULES "source/filter fusion =$=" forall f src. src =$= filter f = filterFuseRight src f #-}
+{-# RULES "conduit: source/filter fusion =$=" forall f src. src =$= filter f = filterFuseRight src f #-}
 {-# INLINE filterFuseRight #-}
 
 -- | Ignore the remainder of values in the source. Particularly useful when
@@ -793,7 +793,7 @@ filterFuseRight (CI.ConduitM src) f = CI.ConduitM $ \rest -> let
 -- Since 0.3.0
 sinkNull :: Monad m => Consumer a m ()
 sinkNull = awaitForever $ \_ -> return ()
-{-# RULES "connect to sinkNull" forall src. src $$ sinkNull = srcSinkNull src #-}
+{-# RULES "conduit: connect to sinkNull" forall src. src $$ sinkNull = srcSinkNull src #-}
 
 srcSinkNull :: Monad m => Source m a -> m ()
 srcSinkNull (CI.ConduitM src) =

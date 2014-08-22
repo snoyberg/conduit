@@ -47,7 +47,7 @@ fuseStream :: Monad m
 fuseStream (StreamConduit a x) (StreamConduit b y) = StreamConduit (a =$= b) (y . x)
 {-# INLINE fuseStream #-}
 
-{-# RULES "fuseStream" forall left right.
+{-# RULES "conduit: fuseStream" forall left right.
         unstream left =$= unstream right = unstream (fuseStream left right)
   #-}
 
@@ -92,7 +92,7 @@ connectStream (StreamConduit _ stream) (StreamConduit _ f) =
                 Emit _ o -> absurd o
 {-# INLINE connectStream #-}
 
-{-# RULES "connectStream" forall left right.
+{-# RULES "conduit: connectStream" forall left right.
         unstream left $$ unstream right = connectStream left right
   #-}
 
@@ -117,7 +117,7 @@ connectStream1 (StreamConduit _ fstream) (ConduitM sink0) =
              in ms0 >>= loop [] (sink0 Done)
 {-# INLINE connectStream1 #-}
 
-{-# RULES "connectStream1" forall left right.
+{-# RULES "conduit: connectStream1" forall left right.
         unstream left $$ right = connectStream1 left right
   #-}
 
@@ -148,7 +148,7 @@ connectStream2 (ConduitM src0) (StreamConduit _ fstream) =
                 Skip s' -> loop s'
 {-# INLINE connectStream2 #-}
 
-{-# RULES "connectStream2" forall left right.
+{-# RULES "conduit: connectStream2" forall left right.
         left $$ unstream right = connectStream2 left right
   #-}
 -}

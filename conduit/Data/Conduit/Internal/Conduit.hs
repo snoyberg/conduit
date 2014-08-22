@@ -735,7 +735,7 @@ src $$ sink = do
 ($=) :: Monad m => Conduit a m b -> ConduitM b c m r -> ConduitM a c m r
 ($=) = (=$=)
 {-# INLINE [0] ($=) #-}
-{-# RULES "$= is =$=" ($=) = (=$=) #-}
+{-# RULES "conduit: $= is =$=" ($=) = (=$=) #-}
 
 -- | Right fuse, combining a conduit and a sink together into a new sink.
 --
@@ -751,7 +751,7 @@ src $$ sink = do
 (=$) :: Monad m => Conduit a m b -> ConduitM b c m r -> ConduitM a c m r
 (=$) = (=$=)
 {-# INLINE [0] (=$) #-}
-{-# RULES "=$ is =$=" (=$) = (=$=) #-}
+{-# RULES "conduit: =$ is =$=" (=$) = (=$=) #-}
 
 -- | Fusion operator, combining two @Conduit@s together into a new @Conduit@.
 --
@@ -801,7 +801,7 @@ await' f g = ConduitM $ \rest -> NeedInput
     (\i -> unConduitM (g i) rest)
     (const $ unConduitM f rest)
 {-# INLINE await' #-}
-{-# RULES "await >>= maybe" forall x y. await >>= maybe x y = await' x y #-}
+{-# RULES "conduit: await >>= maybe" forall x y. await >>= maybe x y = await' x y #-}
 
 -- | Send a value downstream to the next component to consume. If the
 -- downstream component terminates, this call will never return control. If you
@@ -1179,14 +1179,14 @@ fuseUpstream up down = fmap fst (fuseBoth up down)
 -- Rewrite rules
 
 {- FIXME
-{-# RULES "ConduitM: lift x >>= f" forall m f. lift m >>= f = ConduitM (PipeM (liftM (unConduitM . f) m)) #-}
-{-# RULES "ConduitM: lift x >> f" forall m f. lift m >> f = ConduitM (PipeM (liftM (\_ -> unConduitM f) m)) #-}
+{-# RULES "conduit: ConduitM: lift x >>= f" forall m f. lift m >>= f = ConduitM (PipeM (liftM (unConduitM . f) m)) #-}
+{-# RULES "conduit: ConduitM: lift x >> f" forall m f. lift m >> f = ConduitM (PipeM (liftM (\_ -> unConduitM f) m)) #-}
 
-{-# RULES "ConduitM: liftIO x >>= f" forall m (f :: MonadIO m => a -> ConduitM i o m r). liftIO m >>= f = ConduitM (PipeM (liftM (unConduitM . f) (liftIO m))) #-}
-{-# RULES "ConduitM: liftIO x >> f" forall m (f :: MonadIO m => ConduitM i o m r). liftIO m >> f = ConduitM (PipeM (liftM (\_ -> unConduitM f) (liftIO m))) #-}
+{-# RULES "conduit: ConduitM: liftIO x >>= f" forall m (f :: MonadIO m => a -> ConduitM i o m r). liftIO m >>= f = ConduitM (PipeM (liftM (unConduitM . f) (liftIO m))) #-}
+{-# RULES "conduit: ConduitM: liftIO x >> f" forall m (f :: MonadIO m => ConduitM i o m r). liftIO m >> f = ConduitM (PipeM (liftM (\_ -> unConduitM f) (liftIO m))) #-}
 
-{-# RULES "ConduitM: liftBase x >>= f" forall m (f :: MonadBase b m => a -> ConduitM i o m r). liftBase m >>= f = ConduitM (PipeM (liftM (unConduitM . f) (liftBase m))) #-}
-{-# RULES "ConduitM: liftBase x >> f" forall m (f :: MonadBase b m => ConduitM i o m r). liftBase m >> f = ConduitM (PipeM (liftM (\_ -> unConduitM f) (liftBase m))) #-}
+{-# RULES "conduit: ConduitM: liftBase x >>= f" forall m (f :: MonadBase b m => a -> ConduitM i o m r). liftBase m >>= f = ConduitM (PipeM (liftM (unConduitM . f) (liftBase m))) #-}
+{-# RULES "conduit: ConduitM: liftBase x >> f" forall m (f :: MonadBase b m => ConduitM i o m r). liftBase m >> f = ConduitM (PipeM (liftM (\_ -> unConduitM f) (liftBase m))) #-}
 
 {-# RULES
     "yield o >> p" forall o (p :: ConduitM i o m r). yield o >> p = ConduitM (HaveOutput (unConduitM p) (return ()) o)
@@ -1198,6 +1198,6 @@ fuseUpstream up down = fmap fst (fuseBoth up down)
         if b then p else ConduitM (HaveOutput (unConduitM p) (return ()) o)
   ; "lift m >>= yield" forall m. lift m >>= yield = yieldM m
    #-}
-{-# RULES "leftover l >> p" forall l (p :: ConduitM i o m r). leftover l >> p =
+{-# RULES "conduit: leftover l >> p" forall l (p :: ConduitM i o m r). leftover l >> p =
     ConduitM (Leftover (unConduitM p) l) #-}
     -}

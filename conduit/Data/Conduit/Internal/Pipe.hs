@@ -220,7 +220,7 @@ instance MonadError e m => MonadError e (Pipe l i o u m) where
 -- Since 0.5.0
 await :: Pipe l i o u m (Maybe i)
 await = NeedInput (Done . Just) (\_ -> Done Nothing)
-{-# RULES "CI.await >>= maybe" forall x y. await >>= maybe x y = NeedInput y (const x) #-}
+{-# RULES "conduit: CI.await >>= maybe" forall x y. await >>= maybe x y = NeedInput y (const x) #-}
 {-# INLINE [1] await #-}
 
 -- | This is similar to @await@, but will return the upstream result value as
@@ -229,7 +229,7 @@ await = NeedInput (Done . Just) (\_ -> Done Nothing)
 -- Since 0.5.0
 awaitE :: Pipe l i o u m (Either u i)
 awaitE = NeedInput (Done . Right) (Done . Left)
-{-# RULES "awaitE >>= either" forall x y. awaitE >>= either x y = NeedInput y x #-}
+{-# RULES "conduit: awaitE >>= either" forall x y. awaitE >>= either x y = NeedInput y x #-}
 {-# INLINE [1] awaitE #-}
 
 -- | Wait for input forever, calling the given inner @Pipe@ for each piece of
@@ -286,7 +286,7 @@ yieldOr o f = HaveOutput (Done ()) f o
 leftover :: l -> Pipe l i o u m ()
 leftover = Leftover (Done ())
 {-# INLINE [1] leftover #-}
-{-# RULES "leftover l >> p" forall l (p :: Pipe l i o u m r). leftover l >> p = Leftover p l #-}
+{-# RULES "conduit: leftover l >> p" forall l (p :: Pipe l i o u m r). leftover l >> p = Leftover p l #-}
 
 -- | Perform some allocation and run an inner @Pipe@. Two guarantees are given
 -- about resource finalization:
@@ -628,5 +628,5 @@ generalizeUpstream =
     go (Leftover p l) = Leftover (go p) l
 {-# INLINE generalizeUpstream #-}
 
-{-# RULES "Pipe: lift x >>= f" forall m f. lift m >>= f = PipeM (liftM f m) #-}
-{-# RULES "Pipe: lift x >> f" forall m f. lift m >> f = PipeM (liftM (\_ -> f) m) #-}
+{-# RULES "conduit: Pipe: lift x >>= f" forall m f. lift m >>= f = PipeM (liftM f m) #-}
+{-# RULES "conduit: Pipe: lift x >> f" forall m f. lift m >> f = PipeM (liftM (\_ -> f) m) #-}
