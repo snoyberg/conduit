@@ -1,6 +1,10 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE CPP #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 -- | Higher-level functions to interact with the elements of a stream. Most of
 -- these are based on list functions.
 --
@@ -62,6 +66,9 @@ module Data.Conduit.List
     , concatMapAccumM
       -- * Misc
     , sequence
+#ifdef QUICKCHECK
+    , props
+#endif
     ) where
 
 import qualified Prelude
@@ -84,6 +91,16 @@ import qualified Data.Conduit.Internal as CI
 import Data.Conduit.Internal.Fusion
 import Control.Monad (when, (<=<), liftM, void)
 import Control.Monad.Trans.Class (lift)
+
+#if QUICKCHECK
+import Test.Hspec
+import Test.QuickCheck
+import Control.Monad.Identity (Identity, runIdentity)
+import qualified Data.List
+import qualified Data.Foldable
+import qualified Safe
+import qualified Data.Maybe
+#endif
 
 -- | Generate a source from a seed value.
 --
@@ -824,3 +841,187 @@ sequence sink =
     self
   where
     self = awaitForever $ \i -> leftover i >> sink >>= yield
+
+#ifdef QUICKCHECK
+props = describe "Data.Conduit.List" $ do
+    qit "unfold" $
+        \(getBlind -> f, initial :: Int) ->
+            unfold f initial `checkInfiniteProducer`
+            (Data.List.unfoldr f initial :: [Int])
+    todo "unfoldM"
+    qit "sourceList" $
+        \(xs :: [Int]) ->
+            sourceList xs `checkProducer` xs
+    qit "enumFromToC" $
+        \(fr :: Small Int, to :: Small Int) ->
+            enumFromToC fr to `checkProducer`
+            Prelude.enumFromTo fr to
+    qit "enumFromToS" $
+        \(fr :: Small Int, to :: Small Int) ->
+            enumFromToS fr to `checkStreamProducer`
+            Prelude.enumFromTo fr to
+    qit "enumFromToS_int" $
+        \(getSmall -> fr :: Int, getSmall -> to :: Int) ->
+            enumFromToS_int fr to `checkStreamProducer`
+            Prelude.enumFromTo fr to
+    qit "iterate" $
+        \(getBlind -> f, initial :: Int) ->
+            iterate f initial `checkInfiniteProducer`
+            Prelude.iterate f initial
+    qit "replicateC" $
+        \(getSmall -> n) ->
+            replicateC n '0' `checkProducer`
+            Prelude.replicate n '0'
+    qit "replicateS" $
+        \(getSmall -> n) ->
+            replicateS n '0' `checkStreamProducer`
+            Prelude.replicate n '0'
+    todo "replicateMC"
+    todo "replicateMS"
+    qit "foldC" $
+        \(getBlind -> f, initial :: Int) ->
+            foldC f initial `checkConsumer`
+            Data.List.foldl' f initial
+    {-qit "foldS" $
+        \(getBlind -> f, initial :: Int) ->
+            foldC f initial `checkStreamConsumer`
+            Data.List.foldl' f initial-}
+    todo "foldMC"
+    todo "foldMS"
+    todo "connectFold"
+    todo "connectFoldM"
+    qit "foldMap" $
+        \(getBlind -> (f :: Int -> Sum Int)) ->
+            foldMap f `checkConsumer`
+            Data.Foldable.foldMap f
+    todo "mapM_"
+    todo "srcMapM_"
+    {-qit "drop" $
+        \(getSmall -> n) ->
+            drop n `checkConsumer`
+            Prelude.drop n-}
+    qit "take" $
+        \(getSmall -> n) ->
+            take n `checkConsumer`
+            Prelude.take n
+    qit "head" $
+        \() ->
+            head `checkConsumer`
+            Safe.headMay
+    qit "peek" $
+        \() ->
+            peek `checkConsumer`
+            Safe.headMay
+    qit "mapC" $
+        \(getBlind -> f) ->
+            mapC f `checkConduit`
+            (Prelude.map f :: [Int] -> [Int])
+    {-qit "mapS" $
+        \(getBlind -> f) ->
+            mapS f `checkStreamConduit`
+            Prelude.map f-}
+    todo "mapMC"
+    todo "mapMS"
+    todo "iterM"
+    qit "mapMaybe" $
+        \(getBlind -> f) ->
+            mapMaybe f `checkConduit`
+            (Data.Maybe.mapMaybe f :: [Int] -> [Int])
+    todo "mapMaybeM"
+    qit "catMaybes" $
+        \() ->
+            catMaybes `checkConduit`
+            (Data.Maybe.catMaybes :: [Maybe Int] -> [Int])
+    qit "concat" $
+        \() ->
+            concat `checkConduit`
+            (Prelude.concat :: [[Int]] -> [Int])
+    qit "concatMap" $
+        \(getBlind -> f) ->
+            concatMap f `checkConduit`
+            (Prelude.concatMap f :: [Int] -> [Int])
+    todo "concatMapM"
+    todo "concatMapAccum"
+    todo "mapAccum"
+    todo "mapAccumM"
+    {-qit "scan" $
+        \(getBlind -> f, initial :: Int) ->
+            scan f initial `checkConduit`
+            Prelude.scanr f initial-}
+    todo "scanM"
+    todo "concatMapAccumM"
+    todo "mapFoldable"
+    todo "mapFoldableM"
+    qit "consumeC" $
+        \() ->
+            consumeC `checkConsumer`
+            id
+    todo "consumeS"
+    qit "groupBy" $
+        \(getBlind -> f) ->
+            groupBy f `checkConduit`
+            (Data.List.groupBy f :: [Int] -> [[Int]])
+    todo "groupOn1"
+    qit "isolate" $
+        \n ->
+            isolate n `checkConduit`
+            (Data.List.take n :: [Int] -> [Int])
+    qit "filter" $
+        \(getBlind -> f) ->
+            filter f `checkConduit`
+            (Data.List.filter f :: [Int] -> [Int])
+    todo "filterFuseRight"
+    todo "sinkNull"
+    todo "srcSinkNull"
+    qit "sourceNull" $
+        \() ->
+            sourceNull `checkProducer`
+            ([] :: [Int])
+    todo "sequence"
+
+todo n = it n $ True
+
+qit n f = it n $ property $ forAll arbitrary f
+
+checkProducer :: (Prelude.Show a, Eq a) => Source Identity a -> [a] -> Property
+checkProducer c l = runIdentity (c $$ consume) === l
+
+checkStreamProducer :: (Prelude.Show a, Eq a) => Stream Identity a () -> [a] -> Property
+checkStreamProducer s l = runIdentity (unstream (streamSource s) $$ consume) === l
+
+checkInfiniteProducer :: (Prelude.Show a, Eq a) => Source Identity a -> [a] -> Property
+checkInfiniteProducer s l = checkProducer (s $= isolate 10) (Prelude.take 10 l)
+
+{- TODO
+checkInfiniteStreamProducer :: (Prelude.Show a, Eq a) => Stream Identity a () -> [a] -> Property
+checkInfiniteStreamProducer s l = checkStreamProducer (fuseStream s isolate) l
+-}
+
+checkConsumer :: (Prelude.Show b, Eq b) => Consumer Int Identity b -> ([Int] -> b) -> Property
+checkConsumer c l = forAll arbitrary $ \xs ->
+    runIdentity (sourceList xs $$ c) === l xs
+
+{- TODO
+checkStreamConsumer :: (Prelude.Show b, Eq b) => Stream Identity Int b -> ([Int] -> b) -> Property
+checkStreamConsumer = forAll arbitrary $ \xs ->
+    runIdentity (sourceList xs $$ c) === l xs
+-}
+
+checkConduit :: (Prelude.Show a, Arbitrary a, Prelude.Show b, Eq b) => Conduit a Identity b -> ([a] -> [b]) -> Property
+checkConduit c l = forAll arbitrary $ \xs ->
+    runIdentity (sourceList xs $= c $$ consume) == l xs
+
+-- checkStreamConduit :: Stream Identity Int Int -> ([Int] -> [Int]) -> Property
+-- checkStreamConduit c l = forAll arbitrary $ \xs ->
+--     runIdentity (unstream (streamSource s))
+
+-- Prefer this to creating an orphan instance for Data.Monoid.Sum:
+
+newtype Sum a = Sum a
+  deriving (Eq, Prelude.Show, Arbitrary)
+
+instance Prelude.Num a => Monoid (Sum a) where
+  mempty = Sum 0
+  mappend (Sum x) (Sum y) = Sum $ x Prelude.+ y
+
+#endif
