@@ -132,7 +132,7 @@ unfold :: Monad m
 unfold = unfoldC
 {-# INLINE [2] unfold #-}
 {-# RULES "conduit: unstream unfold" forall x y.
-    unfold x y = unstream (streamConduit (unfoldC x y) (\_ -> unfoldS x y))
+    unfold x y = unstream (streamConduit (unfoldC x y) (unfoldS x y))
   #-}
 
 unfoldC :: Monad m
@@ -151,8 +151,8 @@ unfoldC f =
 unfoldS :: Monad m
         => (b -> Maybe (a, b))
         -> b
-        -> Stream m a ()
-unfoldS f s0 =
+        -> StreamProducer m a
+unfoldS f s0 _ =
     Stream step (return s0)
   where
     step s = return $
@@ -173,7 +173,7 @@ unfoldM :: Monad m
 unfoldM = unfoldMC
 {-# INLINE [2] unfoldM #-}
 {-# RULES "conduit: unstream unfoldM" forall x y.
-    unfoldM x y = unstream (streamConduit (unfoldMC x y) (\_ -> unfoldMS x y))
+    unfoldM x y = unstream (streamConduit (unfoldMC x y) (unfoldMS x y))
   #-}
 
 unfoldMC :: Monad m
@@ -192,8 +192,8 @@ unfoldMC f =
 unfoldMS :: Monad m
          => (b -> m (Maybe (a, b)))
          -> b
-         -> Stream m a ()
-unfoldMS f s0 =
+         -> StreamProducer m a
+unfoldMS f s0 _ =
     Stream step (return s0)
   where
     step s = do
@@ -210,15 +210,15 @@ sourceList :: Monad m => [a] -> Producer m a
 sourceList = sourceListC
 {-# INLINE [0] sourceList #-}
 {-# RULES "conduit: unstream sourceList" forall x.
-    sourceList x = unstream (streamConduit (sourceListC x) (\_ -> sourceListS x))
+    sourceList x = unstream (streamConduit (sourceListC x) (sourceListS x))
   #-}
 
 sourceListC :: Monad m => [a] -> Producer m a
 sourceListC = Prelude.mapM_ yield
 {-# INLINE sourceListC #-}
 
-sourceListS :: Monad m => [a] -> Stream m a ()
-sourceListS xs =
+sourceListS :: Monad m => [a] -> StreamProducer m a
+sourceListS xs _ =
     Stream (return . step) (return xs)
   where
     step [] = Stop ()
@@ -288,7 +288,7 @@ iterate :: Monad m => (a -> a) -> a -> Producer m a
 iterate = iterateC
 {-# INLINE [0] iterate #-}
 {-# RULES "conduit: unstream iterate" forall x y.
-    iterate x y = unstream (streamConduit (iterateC x y) (\_ -> iterateS x y))
+    iterate x y = unstream (streamConduit (iterateC x y) (iterateS x y))
   #-}
 
 iterateC :: Monad m => (a -> a) -> a -> Producer m a
@@ -298,8 +298,8 @@ iterateC f =
     go a = yield a >> go (f a)
 {-# INLINE iterateC #-}
 
-iterateS :: Monad m => (a -> a) -> a -> Stream m a ()
-iterateS f x0 =
+iterateS :: Monad m => (a -> a) -> a -> StreamProducer m a
+iterateS f x0 _ =
     Stream (return . step) (return x0)
   where
     step x = Emit x' x
@@ -316,7 +316,7 @@ replicate :: Monad m => Int -> a -> Producer m a
 replicate = replicateC
 {-# INLINE [0] replicate #-}
 {-# RULES "conduit: unstream replicate" forall i a.
-     replicate i a = unstream (streamConduit (replicateC i a) (\_ -> replicateS i a))
+     replicate i a = unstream (streamConduit (replicateC i a) (replicateS i a))
   #-}
 
 replicateC :: Monad m => Int -> a -> Producer m a
@@ -328,8 +328,8 @@ replicateC cnt0 a =
         | otherwise = yield a >> loop (i - 1)
 {-# INLINE replicateC #-}
 
-replicateS :: Monad m => Int -> a -> Stream m a ()
-replicateS cnt0 a =
+replicateS :: Monad m => Int -> a -> StreamProducer m a
+replicateS cnt0 a _ =
     Stream step (return cnt0)
   where
     step cnt
@@ -346,7 +346,7 @@ replicateM :: Monad m => Int -> m a -> Producer m a
 replicateM = replicateMC
 {-# INLINE [0] replicateM #-}
 {-# RULES "conduit: unstream replicateM" forall i a.
-     replicateM i a = unstream (streamConduit (replicateMC i a) (\_ -> replicateMS i a))
+     replicateM i a = unstream (streamConduit (replicateMC i a) (replicateMS i a))
   #-}
 
 replicateMC :: Monad m => Int -> m a -> Producer m a
@@ -358,8 +358,8 @@ replicateMC cnt0 ma =
         | otherwise = lift ma >>= yield >> loop (i - 1)
 {-# INLINE replicateMC #-}
 
-replicateMS :: Monad m => Int -> m a -> Stream m a ()
-replicateMS cnt0 ma =
+replicateMS :: Monad m => Int -> m a -> StreamProducer m a
+replicateMS cnt0 ma _ =
     Stream step (return cnt0)
   where
     step cnt
@@ -392,7 +392,7 @@ foldC f =
     loop !accum = await >>= maybe (return accum) (loop . f accum)
 {-# INLINE foldC #-}
 
-foldS :: Monad m => (b -> a -> b) -> b -> Stream m a () -> Stream m o b
+foldS :: Monad m => (b -> a -> b) -> b -> StreamConsumer a m b
 foldS f b0 (Stream step ms0) =
     Stream step' (liftM (b0, ) ms0)
   where
@@ -434,7 +434,7 @@ foldMC f =
             accum' `seq` loop accum'
 {-# INLINE foldMC #-}
 
-foldMS :: Monad m => (b -> a -> m b) -> b -> Stream m a () -> Stream m o b
+foldMS :: Monad m => (b -> a -> m b) -> b -> StreamConsumer a m b
 foldMS f b0 (Stream step ms0) =
     Stream step' (liftM (b0, ) ms0)
   where
@@ -538,7 +538,7 @@ mapM_C f = awaitForever $ lift . f
 
 mapM_S :: Monad m
        => (a -> m ())
-       -> (Stream m a () -> Stream m () ())
+       -> StreamConsumer a m ()
 mapM_S f (Stream step ms0) =
     Stream step' ms0
   where
@@ -547,7 +547,7 @@ mapM_S f (Stream step ms0) =
         case res of
           Stop () -> return $ Stop ()
           Skip s' -> return $ Skip s'
-          Emit s' x -> liftM (Emit s') (f x)
+          Emit s' x -> f x >> return (Skip s')
 {-# INLINE [1] mapM_S #-}
 
 srcMapM_ :: Monad m => Source m a -> (a -> m ()) -> m ()
@@ -594,7 +594,7 @@ dropC =
 
 dropS :: Monad m
       => Int
-      -> (Stream m a () -> Stream m () ())
+      -> StreamConsumer a m ()
 dropS n0 (Stream step ms0) =
     Stream step' (liftM (, n0) ms0)
   where
@@ -638,7 +638,7 @@ takeC =
 
 takeS :: Monad m
       => Int
-      -> (Stream m a () -> Stream m () [a])
+      -> StreamConsumer a m [a]
 takeS n (Stream step s0) =
     Stream step' (liftM (id, n,) s0)
   where
@@ -668,7 +668,7 @@ headC :: Monad m => Consumer a m (Maybe a)
 headC = await
 {-# INLINE headC #-}
 
-headS :: Monad m => (Stream m a () -> Stream m () (Maybe a))
+headS :: Monad m => StreamConsumer a m (Maybe a)
 headS (Stream step s0) =
     Stream step' s0
   where
@@ -703,7 +703,7 @@ mapC :: Monad m => (a -> b) -> Conduit a m b
 mapC f = awaitForever $ yield . f
 {-# INLINE mapC #-}
 
-mapS :: Monad m => (a -> b) -> Stream m a r -> Stream m b r
+mapS :: Monad m => (a -> b) -> StreamConduit a m b
 mapS f (Stream step ms0) =
     Stream step' ms0
   where
@@ -765,7 +765,7 @@ mapMC :: Monad m => (a -> m b) -> Conduit a m b
 mapMC f = awaitForever $ \a -> lift (f a) >>= yield
 {-# INLINE mapMC #-}
 
-mapMS :: Monad m => (a -> m b) -> Stream m a r -> Stream m b r
+mapMS :: Monad m => (a -> m b) -> StreamConduit a m b
 mapMS f (Stream step ms0) =
     Stream step' ms0
   where
@@ -798,7 +798,7 @@ iterMC :: Monad m => (a -> m ()) -> Conduit a m a
 iterMC f = awaitForever $ \a -> lift (f a) >> yield a
 {-# INLINE iterMC #-}
 
-iterMS :: Monad m => (a -> m ()) -> (Stream m a () -> Stream m a ())
+iterMS :: Monad m => (a -> m ()) -> StreamConduit a m a
 iterMS f (Stream step ms0) =
     Stream step' ms0
   where
@@ -827,7 +827,7 @@ mapMaybeC :: Monad m => (a -> Maybe b) -> Conduit a m b
 mapMaybeC f = awaitForever $ maybe (return ()) yield . f
 {-# INLINE mapMaybeC #-}
 
-mapMaybeS :: Monad m => (a -> Maybe b) -> (Stream m a () -> Stream m b ())
+mapMaybeS :: Monad m => (a -> Maybe b) -> StreamConduit a m b
 mapMaybeS f (Stream step ms0) =
     Stream step' ms0
   where
@@ -859,7 +859,7 @@ mapMaybeMC :: Monad m => (a -> m (Maybe b)) -> Conduit a m b
 mapMaybeMC f = awaitForever $ maybe (return ()) yield <=< lift . f
 {-# INLINE mapMaybeMC #-}
 
-mapMaybeMS :: Monad m => (a -> m (Maybe b)) -> (Stream m a () -> Stream m b ())
+mapMaybeMS :: Monad m => (a -> m (Maybe b)) -> StreamConduit a m b
 mapMaybeMS f (Stream step ms0) =
     Stream step' ms0
   where
@@ -891,7 +891,7 @@ catMaybesC :: Monad m => Conduit (Maybe a) m a
 catMaybesC = awaitForever $ maybe (return ()) yield
 {-# INLINE catMaybesC #-}
 
-catMaybesS :: Monad m => Stream m (Maybe a) () -> Stream m a ()
+catMaybesS :: Monad m => StreamConduit (Maybe a) m a
 catMaybesS (Stream step ms0) =
     Stream step' ms0
   where
@@ -921,7 +921,7 @@ concatC :: (Monad m, F.Foldable f) => Conduit (f a) m a
 concatC = awaitForever $ F.mapM_ yield
 {-# INLINE concatC #-}
 
-concatS :: (Monad m, F.Foldable f) => Stream m (f a) () -> Stream m a ()
+concatS :: (Monad m, F.Foldable f) => StreamConduit (f a) m a
 concatS (Stream step ms0) =
     Stream step' (liftM ([], ) ms0)
   where
@@ -951,7 +951,7 @@ concatMapC :: Monad m => (a -> [b]) -> Conduit a m b
 concatMapC f = awaitForever $ sourceList . f
 {-# INLINE concatMapC #-}
 
-concatMapS :: Monad m => (a -> [b]) -> (Stream m a () -> Stream m b ())
+concatMapS :: Monad m => (a -> [b]) -> StreamConduit a m b
 concatMapS f (Stream step ms0) =
     Stream step' (liftM ([], ) ms0)
   where
@@ -981,7 +981,7 @@ concatMapMC :: Monad m => (a -> m [b]) -> Conduit a m b
 concatMapMC f = awaitForever $ sourceList <=< lift . f
 {-# INLINE concatMapMC #-}
 
-concatMapMS :: Monad m => (a -> m [b]) -> (Stream m a () -> Stream m b ())
+concatMapMS :: Monad m => (a -> m [b]) -> StreamConduit a m b
 concatMapMS f (Stream step ms0) =
     Stream step' (liftM ([], ) ms0)
   where
@@ -1012,7 +1012,7 @@ concatMapAccumC :: Monad m => (a -> accum -> (accum, [b])) -> accum -> Conduit a
 concatMapAccumC f x0 = void (mapAccum f x0) =$= concat
 {-# INLINE concatMapAccumC #-}
 
-concatMapAccumS :: Monad m => (a -> accum -> (accum, [b])) -> accum -> (Stream m a () -> Stream m b ())
+concatMapAccumS :: Monad m => (a -> accum -> (accum, [b])) -> accum -> StreamConduit a m b
 concatMapAccumS f  initial (Stream step ms0) =
     Stream step' (liftM (initial, [], ) ms0)
   where
@@ -1062,7 +1062,7 @@ mapAccumC f =
         go a = case f a s of
                  (s', b) -> yield b >> loop s'
 
-mapAccumS :: Monad m => (a -> s -> (s, b)) -> s -> (Stream m a () -> Stream m b s)
+mapAccumS :: Monad m => (a -> s -> (s, b)) -> s -> StreamConduitM a b m s
 mapAccumS f initial (Stream step ms0) =
     Stream step' (liftM (initial, ) ms0)
   where
@@ -1099,7 +1099,7 @@ mapAccumMC f =
                   loop s'
 {-# INLINE mapAccumMC #-}
 
-mapAccumMS :: Monad m => (a -> s -> m (s, b)) -> s -> (Stream m a () -> Stream m b s)
+mapAccumMS :: Monad m => (a -> s -> m (s, b)) -> s -> StreamConduitM a b m s
 mapAccumMS f initial (Stream step ms0) =
     Stream step' (liftM (initial, ) ms0)
   where
@@ -1157,7 +1157,7 @@ concatMapAccumMC :: Monad m => (a -> accum -> m (accum, [b])) -> accum -> Condui
 concatMapAccumMC f x0 = void (mapAccumM f x0) =$= concat
 {-# INLINE concatMapAccumMC #-}
 
-concatMapAccumMS :: Monad m => (a -> accum -> m (accum, [b])) -> accum -> (Stream m a () -> Stream m b ())
+concatMapAccumMS :: Monad m => (a -> accum -> m (accum, [b])) -> accum -> StreamConduit a m b
 concatMapAccumMS f  initial (Stream step ms0) =
     Stream step' (liftM (initial, [], ) ms0)
   where
@@ -1190,7 +1190,7 @@ mapFoldableC :: (Monad m, F.Foldable f) => (a -> f b) -> Conduit a m b
 mapFoldableC f = awaitForever $ F.mapM_ yield . f
 {-# INLINE mapFoldableC #-}
 
-mapFoldableS :: (Monad m, F.Foldable f) => (a -> f b) -> Stream m a () -> Stream m b ()
+mapFoldableS :: (Monad m, F.Foldable f) => (a -> f b) -> StreamConduit a m b
 mapFoldableS f (Stream step ms0) =
     Stream step' (liftM ([], ) ms0)
   where
@@ -1219,7 +1219,7 @@ mapFoldableMC :: (Monad m, F.Foldable f) => (a -> m (f b)) -> Conduit a m b
 mapFoldableMC f = awaitForever $ F.mapM_ yield <=< lift . f
 {-# INLINE mapFoldableMC #-}
 
-mapFoldableMS :: (Monad m, F.Foldable f) => (a -> m (f b)) -> Stream m a () -> Stream m b ()
+mapFoldableMS :: (Monad m, F.Foldable f) => (a -> m (f b)) -> StreamConduit a m b
 mapFoldableMS f (Stream step ms0) =
     Stream step' (liftM ([], ) ms0)
   where
@@ -1253,7 +1253,7 @@ consumeC =
     loop front = await >>= maybe (return $ front []) (\x -> loop $ front . (x:))
 {-# INLINE consumeC #-}
 
-consumeS :: Monad m => Stream m a () -> Stream m o [a]
+consumeS :: Monad m => StreamConsumer a m [a]
 consumeS (Stream step ms0) =
     Stream step' (liftM (id,) ms0)
   where
@@ -1290,7 +1290,7 @@ groupByC f =
             | f x y     = loop (rest . (y:)) x
             | otherwise = yield (x : rest []) >> loop id y
 
-groupByS :: Monad m => (a -> a -> Bool) -> Stream m a () -> Stream m [a] ()
+groupByS :: Monad m => (a -> a -> Bool) -> StreamConduit a m [a]
 groupByS f = mapS (Prelude.uncurry (:)) . groupOn1S f
 {-# INLINE groupByS #-}
 
@@ -1337,7 +1337,7 @@ data GroupByState m a
     | GBLoop ([a] -> [a]) a
     | GBDone
 
-groupOn1S :: Monad m => (a -> a -> Bool) -> Stream m a () -> Stream m (a, [a]) ()
+groupOn1S :: Monad m => (a -> a -> Bool) -> StreamConduit a m (a, [a])
 groupOn1S f (Stream step ms0) =
     Stream step' (liftM (GBStart, ) ms0)
   where
@@ -1387,7 +1387,7 @@ isolateC =
     loop count | count <= 0 = return ()
     loop count = await >>= maybe (return ()) (\x -> yield x >> loop (count - 1))
 
-isolateS :: Monad m => Int -> (Stream m a () -> Stream m a ())
+isolateS :: Monad m => Int -> StreamConduit a m a
 isolateS count (Stream step ms0) =
     Stream step' (liftM (count,) ms0)
   where
@@ -1415,7 +1415,7 @@ filter = filterC
 filterC :: Monad m => (a -> Bool) -> Conduit a m a
 filterC f = awaitForever $ \i -> when (f i) (yield i)
 
-filterS :: Monad m => (a -> Bool) -> (Stream m a () -> Stream m a ())
+filterS :: Monad m => (a -> Bool) -> StreamConduit a m a
 filterS f (Stream step ms0) =
     Stream step' ms0
   where
@@ -1461,7 +1461,7 @@ sinkNullC :: Monad m => Consumer a m ()
 sinkNullC = awaitForever $ \_ -> return ()
 {-# INLINE sinkNullC #-}
 
-sinkNullS :: Monad m => Stream m a () -> Stream m () ()
+sinkNullS :: Monad m => StreamConsumer a m ()
 sinkNullS (Stream step ms0) =
     Stream step' ms0
   where
@@ -1495,15 +1495,15 @@ sourceNull :: Monad m => Producer m a
 sourceNull = sourceNullC
 {-# INLINE [2] sourceNull #-}
 {-# RULES "conduit: unstream sourceNull"
-    sourceNull = unstream (streamConduit sourceNullC (\_ -> sourceNullS))
+    sourceNull = unstream (streamConduit sourceNullC sourceNullS)
   #-}
 
 sourceNullC :: Monad m => Producer m a
 sourceNullC = return ()
 {-# INLINE sourceNullC #-}
 
-sourceNullS :: Monad m => Stream m a ()
-sourceNullS = Stream (\_ -> return (Stop ())) (return ())
+sourceNullS :: Monad m => StreamProducer m a
+sourceNullS _ = Stream (\_ -> return (Stop ())) (return ())
 {-# INLINE sourceNullS #-}
 
 -- | Run a @Pipe@ repeatedly, and output its result value downstream. Stops
@@ -1542,11 +1542,11 @@ props = describe "Data.Conduit.List" $ do
             Prelude.enumFromTo fr to
     qit "enumFromToS" $
         \(fr :: Small Int, to :: Small Int) ->
-            enumFromToS fr to `checkStreamProducer`
+            (\_ -> enumFromToS fr to) `checkStreamProducer`
             Prelude.enumFromTo fr to
     qit "enumFromToS_int" $
         \(getSmall -> fr :: Int, getSmall -> to :: Int) ->
-            enumFromToS_int fr to `checkStreamProducer`
+            (\_ -> enumFromToS_int fr to) `checkStreamProducer`
             Prelude.enumFromTo fr to
     qit "iterateC" $
         \(getBlind -> f, initial :: Int) ->
@@ -1696,17 +1696,17 @@ checkProducer :: (Prelude.Show a, Eq a) => Source Identity a -> [a] -> Property
 checkProducer c l =
     runIdentity (c $$ consume) === l
 
-checkStreamProducer :: (Prelude.Show a, Eq a) => Stream Identity a () -> [a] -> Property
+checkStreamProducer :: (Prelude.Show a, Eq a) => StreamSource Identity a -> [a] -> Property
 checkStreamProducer s l =
-    runIdentity (unstream (streamSource s) $$ consume) === l
+    runIdentity (unstream (streamSourcePure (s emptyStream)) $$ consume) === l
 
 checkInfiniteProducer :: (Prelude.Show a, Eq a) => Source Identity a -> [a] -> Property
 checkInfiniteProducer s l =
     checkProducer (s $= isolate 10) (Prelude.take 10 l)
 
-checkInfiniteStreamProducer :: (Prelude.Show a, Eq a) => Stream Identity a () -> [a] -> Property
+checkInfiniteStreamProducer :: (Prelude.Show a, Eq a) => StreamSource Identity a -> [a] -> Property
 checkInfiniteStreamProducer s l =
-    runIdentity (unstream (streamSource s) $= isolate 10 $$ consume) === Prelude.take 10 l
+    runIdentity (unstream (streamSourcePure (s emptyStream)) $= isolate 10 $$ consume) === Prelude.take 10 l
 
 checkConsumer :: (Prelude.Show b, Eq b) => Consumer Int Identity b -> ([Int] -> b) -> Property
 checkConsumer c l = forAll arbitrary $ \xs ->
@@ -1725,6 +1725,9 @@ checkConduit c l = forAll arbitrary $ \xs ->
 -- checkStreamConduit :: Stream Identity Int Int -> ([Int] -> [Int]) -> Property
 -- checkStreamConduit c l = forAll arbitrary $ \xs ->
 --     runIdentity (unstream (streamSource s))
+
+emptyStream :: Monad m => Stream m () ()
+emptyStream = Stream (\_ -> return $ Stop ()) (return ())
 
 -- Prefer this to creating an orphan instance for Data.Monoid.Sum:
 
