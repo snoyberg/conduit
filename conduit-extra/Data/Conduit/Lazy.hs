@@ -45,7 +45,11 @@ import qualified Data.IORef as I
 -- Since 0.3.0
 lazyConsume :: (MonadBaseControl IO m, MonadActive m) => Source m a -> m [a]
 lazyConsume =
+#if MIN_VERSION_conduit(1, 2, 0)
     go . flip unConduitM Done
+#else
+    go . unConduitM
+#endif
   where
     go (Done _) = return []
     go (HaveOutput src _ x) = do
