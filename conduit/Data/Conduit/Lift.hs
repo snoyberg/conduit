@@ -121,7 +121,7 @@ distribute
      ConduitM b o (t m) () -> t (ConduitM b o m) ()
 distribute p = catAwaitLifted =$= hoist (hoist lift) p $$ catYieldLifted
 
--- | Run 'E.ErrorT' in the base monad
+-- | Wrap the base monad in 'E.ErrorT'
 --
 -- Since 1.0.11
 errorC
