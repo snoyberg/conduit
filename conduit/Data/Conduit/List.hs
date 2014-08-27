@@ -146,7 +146,7 @@ enumFromToC x0 y =
     loop x0
   where
     loop x
-        | x == y = yield x
+        | x Prelude.> y = return ()
         | otherwise = yield x >> loop (Prelude.succ x)
 {-# INLINE [0] enumFromToC #-}
 
@@ -427,7 +427,7 @@ take :: Monad m
 take =
     loop id
   where
-    loop front 0 = return $ front []
+    loop front count | count <= 0 = return $ front []
     loop front count = await >>= maybe
         (return $ front [])
         (\x -> loop (front .(x:)) (count - 1))
@@ -762,7 +762,7 @@ isolate :: Monad m => Int -> Conduit a m a
 isolate =
     loop
   where
-    loop 0 = return ()
+    loop count | count <= 0 = return ()
     loop count = await >>= maybe (return ()) (\x -> yield x >> loop (count - 1))
 
 -- | Keep only values in the stream passing a given predicate.
