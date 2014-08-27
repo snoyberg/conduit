@@ -1,5 +1,5 @@
 Name:                conduit
-Version:             1.1.7
+Version:             1.2.0
 Synopsis:            Streaming data processing library.
 Description:
     @conduit@ is a solution to the streaming data problem, allowing for production, transformation, and consumption of streams of data in constant memory. It is an alternative to lazy I\/O which guarantees deterministic resource handling, and fits in the same general solution space as @enumerator@\/@iteratee@ and @pipes@. For a tutorial, please visit <https://haskell.fpcomplete.com/user/snoyberg/library-documentation/conduit-overview>.
@@ -19,9 +19,12 @@ Library
                        Data.Conduit.List
                        Data.Conduit.Internal
                        Data.Conduit.Lift
+  other-modules:       Data.Conduit.Internal.Pipe
+                       Data.Conduit.Internal.Conduit
+                       Data.Conduit.Internal.Fusion
   Build-depends:       base                     >= 4.3          && < 5
                      , resourcet                >= 1.1          && < 1.2
-                     , exceptions
+                     , exceptions               >= 0.6
                      , lifted-base              >= 0.1
                      , transformers-base        >= 0.4.1        && < 0.5
                      , monad-control            >= 0.3.1        && < 0.4
@@ -80,7 +83,18 @@ benchmark optimize-201408
                   , hspec
                   , mwc-random
                   , criterion
+                  , kan-extensions
     main-is:        optimize-201408.hs
+    ghc-options:    -Wall -O2 -rtsopts
+
+benchmark unfused
+    type: exitcode-stdio-1.0
+    hs-source-dirs: benchmarks
+    build-depends:  base
+                  , conduit
+                  , criterion
+                  , transformers
+    main-is:        unfused.hs
     ghc-options:    -Wall -O2 -rtsopts
 
 source-repository head

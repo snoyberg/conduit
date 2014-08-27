@@ -1,3 +1,5 @@
+__1.2__ Two performance optimizations added. (1) A stream fusion framework. This is a non-breaking change. (2) Codensity transform applied to the `ConduitM` datatype. This only affects users importing the `.Internal` module. Both changes are thoroughly described in the following to blog posts: [Speeding up conduit](https://www.fpcomplete.com/blog/2014/08/iap-speeding-up-conduit), and [conduit stream fusion](https://www.fpcomplete.com/blog/2014/08/conduit-stream-fusion).
+
 __1.1__ Refactoring into conduit and conduit-extra packages. Core functionality is now in conduit, whereas most common helper modules (including Text, Binary, Zlib, etc) are in conduit-extra. To upgrade to this version, there should only be import list and conduit file changes necessary.
 
 __1.0__ Simplified the user-facing interface back to the Source, Sink, and Conduit types, with Producer and Consumer for generic code. Error messages have been simplified, and optional leftovers and upstream terminators have been removed from the external API. Some long-deprecated functions were finally removed.
