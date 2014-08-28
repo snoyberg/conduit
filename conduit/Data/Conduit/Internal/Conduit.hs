@@ -81,6 +81,7 @@ module Data.Conduit.Internal.Conduit
     , sequenceConduits
     ) where
 
+import Prelude hiding (catch)
 import Control.Applicative (Applicative (..))
 import Control.Exception.Lifted as E (Exception)
 import qualified Control.Exception.Lifted as E (catch)
