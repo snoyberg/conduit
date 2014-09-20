@@ -32,11 +32,11 @@ spec = describe "Data.Conduit.Network" $ do
             takeMVar assertMVar
 
         it "run server really waits for server to be finalized before returning" $ do
-            assertMVar <- newEmptyMVar
             let set = serverSettings 4012 "*4"
-                setWithAfterBind = setAfterBind (\_ -> threadDelay 1000000 >> putMVar assertMVar ()) set 
+                setWithAfterBind = setAfterBind (\_ -> threadDelay 1000000) set 
             runGeneralTCPServer setWithAfterBind echo
-            takeMVar assertMVar
+            replicateM_ 10000
+                $ runTCPClient (clientSettings 4010 "127.0.0.1") doNothing
 
 echo :: AppData -> IO ()
 echo ad = appSource ad $$ appSink ad
