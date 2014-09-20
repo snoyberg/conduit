@@ -51,7 +51,7 @@ import Control.Exception (throwIO, SomeException, try, finally, bracket, IOExcep
 import Control.Monad (forever, unless, void)
 import Control.Monad.Trans.Control (MonadBaseControl, control, liftBaseWith)
 import Control.Monad.Trans.Class (lift)
-import Control.Concurrent (forkIO, threadDelay, newEmptyMVar, putMVar, takeMVar)
+import Control.Concurrent (forkIO, newEmptyMVar, putMVar, takeMVar, MVar)
 import qualified Data.Streaming.Network as SN
 
 -- | Stream data from the socket.
@@ -97,10 +97,18 @@ appSource ad =
 appSink :: (SN.HasReadWrite ad, MonadIO m) => ad -> Consumer ByteString m ()
 appSink ad = awaitForever $ \d -> liftIO $ SN.appWrite ad d >> Conc.yield
 
+
+addBoundSignal::MVar ()-> SN.ServerSettings -> SN.ServerSettings
+addBoundSignal isBound set = SN.setAfterBind ( \socket -> originalAfterBind socket >>  signalBound socket) set
+                             where originalAfterBind :: Socket -> IO ()
+                                   originalAfterBind = SN.getAfterBind set
+                                   signalBound :: Socket -> IO ()
+                                   signalBound _socket = putMVar isBound ()
+
 -- | Run a general TCP server
 --
 -- Same as 'SN.runTCPServer', except monad can be any instance of
--- 'MonadBaseControl' 'IO'.
+-- 'MonadBaseControl' 'IO'. Call will only return when server is really started.
 --
 -- Note that any changes to the monadic state performed by individual
 -- client handlers will be discarded. If you have mutable state you want
@@ -113,7 +121,12 @@ runGeneralTCPServer :: MonadBaseControl IO m
                     -> (SN.AppData -> m ())
                     -> m ()
 runGeneralTCPServer set f = liftBaseWith $ \run ->
-    SN.runTCPServer set $ void . run . f
+    do 
+      isBound <- newEmptyMVar
+      let setWithWaitForBind = addBoundSignal isBound set
+      _threadId <- forkIO $ SN.runTCPServer setWithWaitForBind $ void . run . f
+      takeMVar isBound
+
 
 -- | Run a general TCP client
 --
