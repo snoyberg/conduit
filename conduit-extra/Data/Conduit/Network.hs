@@ -104,20 +104,21 @@ addBoundSignal isBound set = SN.setAfterBind ( \socket -> originalAfterBind sock
                                    originalAfterBind = SN.getAfterBind set
                                    signalBound :: Socket -> IO ()
                                    signalBound _socket = putMVar isBound ()
+
 -- | Fork a TCP Server
 --
 -- Will fork the runGeneralTCPServer function but will only return from
 -- this call when the server is bound to the port and accepting incoming
 -- connections. Will return the thread id of the server
 --
--- Since 1.1.3
+-- Since 1.1.4
 forkTCPServer :: MonadBaseControl IO m
                     => SN.ServerSettings
                     -> (SN.AppData -> m ())
                     -> m ThreadId
-forkTCPServer set f = 
+forkTCPServer set f =
        liftBaseWith $ \run -> do
-         isBound <- newEmptyMVar 
+         isBound <- newEmptyMVar
          let setWithWaitForBind = addBoundSignal isBound set
          threadId <- forkIO . void . run $ runGeneralTCPServer setWithWaitForBind f
          takeMVar isBound
