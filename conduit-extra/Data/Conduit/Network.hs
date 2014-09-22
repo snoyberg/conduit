@@ -49,12 +49,11 @@ import qualified Data.ByteString as S
 import qualified Data.ByteString.Char8 as S8
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Exception (throwIO, SomeException, try, finally, bracket, IOException, catch)
-import Control.Monad (forever, unless, void)
-import Control.Monad.Trans.Control (MonadBaseControl, control, liftBaseWith, restoreM)
+import Control.Monad (unless, void)
+import Control.Monad.Trans.Control (MonadBaseControl, control, liftBaseWith)
 import Control.Monad.Trans.Class (lift)
-import Control.Concurrent (forkIO, threadDelay, newEmptyMVar, putMVar, takeMVar, MVar, ThreadId)
+import Control.Concurrent (forkIO, newEmptyMVar, putMVar, takeMVar, MVar, ThreadId)
 import qualified Data.Streaming.Network as SN
-import qualified Debug.Trace as Trace
 
 -- | Stream data from the socket.
 --

@@ -6,7 +6,6 @@ import Data.Conduit.Network
 import Control.Concurrent (forkIO, threadDelay, putMVar, newEmptyMVar, takeMVar, killThread)
 import Control.Monad (replicateM_)
 import Test.Hspec
-import Debug.Trace
 
 spec :: Spec
 spec = describe "Data.Conduit.Network" $ do
@@ -18,7 +17,7 @@ spec = describe "Data.Conduit.Network" $ do
                 $ runTCPClient (clientSettings 4009 "127.0.0.1") doNothing
     describe "fork server" $ do
         it "can connect to server" $ do
-            let set = trace ("Creating server settings") (serverSettings 4010 "*4")
+            let set = serverSettings 4010 "*4"
             threadId <- forkTCPServer set echo
             replicateM_ 100
                 $ runTCPClient (clientSettings 4010 "127.0.0.1") doNothing
