@@ -17,6 +17,7 @@ module Data.Conduit.Network
     , serverSettings
     , SN.runTCPServer
     , SN.runTCPServerWithHandle
+    , forkTCPServer
     , runGeneralTCPServer
       -- ** Client
     , SN.ClientSettings
@@ -48,10 +49,10 @@ import qualified Data.ByteString as S
 import qualified Data.ByteString.Char8 as S8
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Exception (throwIO, SomeException, try, finally, bracket, IOException, catch)
-import Control.Monad (forever, unless, void)
+import Control.Monad (unless, void)
 import Control.Monad.Trans.Control (MonadBaseControl, control, liftBaseWith)
 import Control.Monad.Trans.Class (lift)
-import Control.Concurrent (forkIO, threadDelay, newEmptyMVar, putMVar, takeMVar)
+import Control.Concurrent (forkIO, newEmptyMVar, putMVar, takeMVar, MVar, ThreadId)
 import qualified Data.Streaming.Network as SN
 
 -- | Stream data from the socket.
@@ -96,6 +97,33 @@ appSource ad =
 
 appSink :: (SN.HasReadWrite ad, MonadIO m) => ad -> Consumer ByteString m ()
 appSink ad = awaitForever $ \d -> liftIO $ SN.appWrite ad d >> Conc.yield
+
+addBoundSignal::MVar ()-> SN.ServerSettings -> SN.ServerSettings
+addBoundSignal isBound set = SN.setAfterBind ( \socket -> originalAfterBind socket >>  signalBound socket) set
+                             where originalAfterBind :: Socket -> IO ()
+                                   originalAfterBind = SN.getAfterBind set
+                                   signalBound :: Socket -> IO ()
+                                   signalBound _socket = putMVar isBound ()
+-- | Fork a TCP Server
+--
+-- Will fork the runGeneralTCPServer function but will only return from
+-- this call when the server is bound to the port and accepting incoming
+-- connections. Will return the thread id of the server
+--
+-- Since 1.1.3
+forkTCPServer :: MonadBaseControl IO m
+                    => SN.ServerSettings
+                    -> (SN.AppData -> m ())
+                    -> m ThreadId
+forkTCPServer set f = 
+       liftBaseWith $ \run -> do
+         isBound <- newEmptyMVar 
+         let setWithWaitForBind = addBoundSignal isBound set
+         threadId <- forkIO . void . run $ runGeneralTCPServer setWithWaitForBind f
+         takeMVar isBound
+         return threadId
+
+
 
 -- | Run a general TCP server
 --
