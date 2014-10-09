@@ -22,9 +22,6 @@ module Data.Conduit.Internal.Fusion
 import Data.Conduit.Internal.Conduit
 import Data.Conduit.Internal.Pipe (Pipe (..))
 import Data.Functor.Identity (Identity (runIdentity))
-import Control.Monad.Trans.Identity (IdentityT, runIdentityT)
-import Control.Monad.Trans.Class (MonadTrans, lift)
-import Control.Monad (liftM)
 import Data.Void (Void, absurd)
 
 -- | This is the same as stream fusion\'s Step. Constructors are renamed to
