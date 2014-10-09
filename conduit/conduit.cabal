@@ -19,9 +19,10 @@ Library
                        Data.Conduit.List
                        Data.Conduit.Internal
                        Data.Conduit.Lift
+                       Data.Conduit.Internal.Fusion
+                       Data.Conduit.Internal.List.Stream
   other-modules:       Data.Conduit.Internal.Pipe
                        Data.Conduit.Internal.Conduit
-                       Data.Conduit.Internal.Fusion
   Build-depends:       base                     >= 4.3          && < 5
                      , resourcet                >= 1.1          && < 1.2
                      , exceptions               >= 0.6
@@ -33,7 +34,8 @@ Library
                      , mtl
                      , void                     >= 0.5.5
                      , mmorph
-  ghc-options:     -Wall
+  ghc-options:         -Wall
+  include-dirs:        .
 
 test-suite test
     hs-source-dirs: test
