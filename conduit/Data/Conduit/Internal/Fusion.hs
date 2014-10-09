@@ -1,6 +1,7 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE DeriveFunctor #-}
 module Data.Conduit.Internal.Fusion
     ( -- ** Types
       Step (..)
@@ -30,6 +31,7 @@ data Step s o r
     = Emit s o
     | Skip s
     | Stop r
+    deriving Functor
 
 data Stream m o r = forall s. Stream
     (s -> m (Step s o r))
