@@ -128,7 +128,7 @@ runTCPServerTLS TLSConfig{..} app = do
           app' socket addr mlocal = do
             ctx <- serverHandshake socket creds
             app (tlsAppData ctx addr mlocal)
-
+            TLS.bye ctx
 
 type ApplicationStartTLS = (AppData, (AppData -> IO ()) -> IO ()) -> IO ()
 
@@ -165,6 +165,7 @@ runTCPServerStartTLS TLSConfig{..} app = do
                 startTls = \app' -> do
                   ctx <- serverHandshake socket creds
                   app' (tlsAppData ctx addr mlocal)
+                  TLS.bye ctx
                 in
                  app (clearData, startTls)
 
