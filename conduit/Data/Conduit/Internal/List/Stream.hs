@@ -47,8 +47,7 @@ sourceListS xs0 _ =
 enumFromToS :: (Enum a, Prelude.Ord a, Monad m)
             => a
             -> a
-            -> Stream m i ()
-            -> Stream m a ()
+            -> StreamProducer m a
 enumFromToS x0 y _ =
     Stream step (return x0)
   where
@@ -57,15 +56,18 @@ enumFromToS x0 y _ =
         else Emit (Prelude.succ x) x
 {-# INLINE [0] enumFromToS #-}
 
-enumFromToS_int :: (Prelude.Integral a, Monad m) => a -> a -> Stream m i () -> Stream m a ()
+enumFromToS_int :: (Prelude.Integral a, Monad m)
+                => a
+                -> a
+                -> StreamProducer m a
 enumFromToS_int x0 y _ = x0 `seq` y `seq` Stream step (return x0)
   where
     step x | x <= y    = return $ Emit (x Prelude.+ 1) x
            | otherwise = return $ Stop ()
 {-# INLINE enumFromToS_int #-}
 
-{-# RULES "conduit: enumFromTo<Int>"
-      enumFromToS = enumFromToS_int :: Monad m => Int -> Int -> Stream m i () -> Stream m Int ()
+{-# RULES "conduit: enumFromTo<Int>" forall f t.
+      enumFromToS f t = enumFromToS_int f t :: Monad m => StreamProducer m Int
   #-}
 
 iterateS :: Monad m => (a -> a) -> a -> StreamProducer m a
@@ -397,16 +399,20 @@ consumeS (Stream step ms0) =
 {-# INLINE consumeS #-}
 
 groupByS :: Monad m => (a -> a -> Bool) -> StreamConduit a m [a]
-groupByS f = mapS (Prelude.uncurry (:)) . groupOn1S f
+groupByS f = mapS (Prelude.uncurry (:)) . groupBy1S id f
 {-# INLINE groupByS #-}
 
-data GroupByState m a
-    = GBStart
-    | GBLoop ([a] -> [a]) a
-    | GBDone
+groupOn1S :: (Monad m, Eq b) => (a -> b) -> StreamConduit a m (a, [a])
+groupOn1S f = groupBy1S f (==)
+{-# INLINE groupOn1S #-}
 
-groupOn1S :: Monad m => (a -> a -> Bool) -> StreamConduit a m (a, [a])
-groupOn1S f (Stream step ms0) =
+data GroupByState a b
+     = GBStart
+     | GBLoop ([a] -> [a]) a b
+     | GBDone
+
+groupBy1S :: Monad m => (a -> b) -> (b -> b -> Bool) -> StreamConduit a m (a, [a])
+groupBy1S f eq (Stream step ms0) =
     Stream step' (liftM (GBStart, ) ms0)
   where
     step' (GBStart, s) = do
@@ -414,17 +420,17 @@ groupOn1S f (Stream step ms0) =
         return $ case res of
             Stop () -> Stop ()
             Skip s' -> Skip (GBStart, s')
-            Emit s' x0 -> Skip (GBLoop id x0, s')
-    step' (cur@(GBLoop rest x0), s) = do
+            Emit s' x0 -> Skip (GBLoop id x0 (f x0), s')
+    step' (cur@(GBLoop rest x0 fx0), s) = do
         res <- step s
         return $ case res of
             Stop () -> Emit (GBDone, s) (x0, rest [])
             Skip s' -> Skip (cur, s')
             Emit s' x
-                | f x0 x -> Skip (GBLoop (rest . (x:)) x0, s')
-                | otherwise -> Emit (GBLoop id x, s') (x0, rest [])
+                | fx0 `eq` f x -> Skip (GBLoop (rest . (x:)) x0 fx0, s')
+                | otherwise -> Emit (GBLoop id x (f x), s') (x0, rest [])
     step' (GBDone, _) = return $ Stop ()
-{-# INLINE groupOn1S #-}
+{-# INLINE groupBy1S #-}
 
 isolateS :: Monad m => Int -> StreamConduit a m a
 isolateS count (Stream step ms0) =

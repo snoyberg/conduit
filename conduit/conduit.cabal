@@ -53,6 +53,7 @@ test-suite test
                    , void
                    , containers
                    , exceptions >= 0.6
+                   , safe
     ghc-options:     -Wall
 
 --test-suite doctests

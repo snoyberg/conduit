@@ -32,6 +32,7 @@ import qualified Control.Concurrent.MVar as M
 import Control.Monad.Error (catchError, throwError, Error)
 import qualified Data.Map as Map
 import qualified Data.Conduit.Extra.ZipConduitSpec as ZipConduit
+import qualified Data.Conduit.StreamSpec as Stream
 
 (@=?) :: (Eq a, Show a) => a -> a -> IO ()
 (@=?) = flip shouldBe
@@ -943,6 +944,7 @@ main = hspec $ do
             res `shouldBe` [1, 3]
 
     ZipConduit.spec
+    Stream.spec
 
 it' :: String -> IO () -> Spec
 it' = it
