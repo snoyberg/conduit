@@ -5,3 +5,4 @@ conduit/tmp2
 *.hi
 *.o
 tarballs/
+.hsenv/
