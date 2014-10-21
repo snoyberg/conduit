@@ -63,6 +63,7 @@ unsafeLiftIO = liftBase . unsafePrimToPrim
 builderToByteString :: (MonadBase base m, PrimMonad base) => Conduit Builder m S.ByteString
 builderToByteString =
   builderToByteStringWith defaultStrategy
+{-# INLINE builderToByteString #-}
 
 -- |
 --
@@ -70,6 +71,7 @@ builderToByteString =
 builderToByteStringFlush :: (MonadBase base m, PrimMonad base) => Conduit (Flush Builder) m (Flush S.ByteString)
 builderToByteStringFlush =
   builderToByteStringWithFlush defaultStrategy
+{-# INLINE builderToByteStringFlush #-}
 
 -- | Incrementally execute builders on the given buffer and pass on the filled
 -- chunks as bytestrings. Note that, if the given buffer is too small for the
@@ -82,6 +84,7 @@ unsafeBuilderToByteString :: (MonadBase base m, PrimMonad base)
                           => IO Buffer  -- action yielding the inital buffer.
                           -> Conduit Builder m S.ByteString
 unsafeBuilderToByteString = builderToByteStringWith . reuseBufferStrategy
+{-# INLINE unsafeBuilderToByteString #-}
 
 
 -- | A conduit that incrementally executes builders and passes on the
@@ -96,6 +99,7 @@ builderToByteStringWith =
   where
     yield' Flush = return ()
     yield' (Chunk bs) = yield bs
+{-# INLINE builderToByteStringWith #-}
 
 -- |
 --
@@ -105,6 +109,7 @@ builderToByteStringWithFlush
     => BufferAllocStrategy
     -> Conduit (Flush Builder) m (Flush S.ByteString)
 builderToByteStringWithFlush = helper await yield
+{-# INLINE builderToByteStringWithFlush #-}
 
 helper :: (MonadBase base m, PrimMonad base, Monad (t m), MonadTrans t)
        => t m (Maybe (Flush Builder))
@@ -134,3 +139,4 @@ helper await' yield' strat = do
                 Chunk _ -> return ()
             loop
     loop
+{-# INLINE helper #-}
