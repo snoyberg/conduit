@@ -90,6 +90,20 @@ test-suite test
                      Data.Conduit.TextSpec
                      Data.Conduit.ZlibSpec
 
+benchmark blaze
+    type:           exitcode-stdio-1.0
+    hs-source-dirs: bench
+    build-depends:  base
+                  , blaze-builder
+                  , conduit
+                  , conduit-extra
+                  , criterion
+                  , bytestring
+                  , bytestring-builder
+                  , transformers
+    main-is:        blaze.hs
+    ghc-options:    -Wall -O2 -rtsopts
+
 source-repository head
   type:     git
   location: git://github.com/snoyberg/conduit.git
