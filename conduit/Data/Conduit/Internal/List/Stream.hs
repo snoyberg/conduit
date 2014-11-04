@@ -406,30 +406,30 @@ groupOn1S :: (Monad m, Eq b) => (a -> b) -> StreamConduit a m (a, [a])
 groupOn1S f = groupBy1S f (==)
 {-# INLINE groupOn1S #-}
 
-data GroupByState a b
-     = GBStart
-     | GBLoop ([a] -> [a]) a b
+data GroupByState a b s
+     = GBStart s
+     | GBLoop ([a] -> [a]) a b s
      | GBDone
 
 groupBy1S :: Monad m => (a -> b) -> (b -> b -> Bool) -> StreamConduit a m (a, [a])
 groupBy1S f eq (Stream step ms0) =
-    Stream step' (liftM (GBStart, ) ms0)
+    Stream step' (liftM GBStart ms0)
   where
-    step' (GBStart, s) = do
+    step' (GBStart s) = do
         res <- step s
         return $ case res of
             Stop () -> Stop ()
-            Skip s' -> Skip (GBStart, s')
-            Emit s' x0 -> Skip (GBLoop id x0 (f x0), s')
-    step' (cur@(GBLoop rest x0 fx0), s) = do
+            Skip s' -> Skip (GBStart s')
+            Emit s' x0 -> Skip (GBLoop id x0 (f x0) s')
+    step' (GBLoop rest x0 fx0 s) = do
         res <- step s
         return $ case res of
-            Stop () -> Emit (GBDone, s) (x0, rest [])
-            Skip s' -> Skip (cur, s')
+            Stop () -> Emit GBDone (x0, rest [])
+            Skip s' -> Skip (GBLoop rest x0 fx0 s')
             Emit s' x
-                | fx0 `eq` f x -> Skip (GBLoop (rest . (x:)) x0 fx0, s')
-                | otherwise -> Emit (GBLoop id x (f x), s') (x0, rest [])
-    step' (GBDone, _) = return $ Stop ()
+                | fx0 `eq` f x -> Skip (GBLoop (rest . (x:)) x0 fx0 s')
+                | otherwise -> Emit (GBLoop id x (f x) s') (x0, rest [])
+    step' GBDone = return $ Stop ()
 {-# INLINE groupBy1S #-}
 
 isolateS :: Monad m => Int -> StreamConduit a m a
