@@ -27,8 +27,6 @@ import qualified Safe
 import           Test.Hspec
 import           Test.QuickCheck
 
---FIXME: implement checkConduitResultM'
-
 spec :: Spec
 spec = describe "Comparing list function to" $ do
     qit "unfold" $
@@ -337,8 +335,8 @@ checkConduit c l = checkConduitM' runIdentity c (return . l)
 checkStreamConduit :: (Show a, Arbitrary a, Show b, Eq b) => StreamConduit a Identity b -> ([a] -> [b]) -> Property
 checkStreamConduit c l = checkStreamConduitM' runIdentity c (return . l)
 
-checkConduitResult :: (Show a, Arbitrary a, Show b, Eq b, Show r, Eq r) => ConduitM a b Identity r -> ([a] -> ([b], r)) -> Property
-checkConduitResult c l = checkConduitResultM' runIdentity c (return . l)
+-- checkConduitResult :: (Show a, Arbitrary a, Show b, Eq b, Show r, Eq r) => ConduitM a b Identity r -> ([a] -> ([b], r)) -> Property
+-- checkConduitResult c l = checkConduitResultM' runIdentity c (return . l)
 
 checkStreamConduitResult :: (Show a, Arbitrary a, Show b, Eq b, Show r, Eq r) => StreamConduitM a b Identity r -> ([a] -> ([b], r)) -> Property
 checkStreamConduitResult c l = checkStreamConduitResultM' runIdentity c (return . l)
@@ -370,8 +368,8 @@ checkConduitM = checkConduitM' runM
 checkStreamConduitM :: (Show a, Arbitrary a, Show b, Eq b) => StreamConduit a M b -> ([a] -> M [b]) -> Property
 checkStreamConduitM = checkStreamConduitM' runM
 
-checkConduitResultM :: (Show a, Arbitrary a, Show b, Eq b, Show r, Eq r) => ConduitM a b M r -> ([a] -> M ([b], r)) -> Property
-checkConduitResultM = checkConduitResultM' runM
+-- checkConduitResultM :: (Show a, Arbitrary a, Show b, Eq b, Show r, Eq r) => ConduitM a b M r -> ([a] -> M ([b], r)) -> Property
+-- checkConduitResultM = checkConduitResultM' runM
 
 checkStreamConduitResultM :: (Show a, Arbitrary a, Show b, Eq b, Show r, Eq r) => StreamConduitM a b M r -> ([a] -> M ([b], r)) -> Property
 checkStreamConduitResultM = checkStreamConduitResultM' runM
@@ -460,15 +458,18 @@ checkStreamConduitM' f s l = forAll arbitrary $ \xs ->
     ===
     f (l xs)
 
-checkConduitResultM' :: (Show a, Arbitrary a, Monad m, Show c, Eq c)
-                     => (m ([b], r) -> c)
-                     -> ConduitM a b m r
-                     -> ([a] -> m ([b], r))
-                     -> Property
-checkConduitResultM' f c l = Prelude.undefined {-FIXME forAll arbitrary $ \xs ->
-    f (sourceList xs $= preventFusion c $$ consume)
-    ===
-    f (l xs)-}
+-- TODO: Fixing this would allow comparing conduit consumers against
+-- their list versions.
+--
+-- checkConduitResultM' :: (Show a, Arbitrary a, Monad m, Show c, Eq c)
+--                      => (m ([b], r) -> c)
+--                      -> ConduitM a b m r
+--                      -> ([a] -> m ([b], r))
+--                      -> Property
+-- checkConduitResultM' f c l = FIXME forAll arbitrary $ \xs ->
+--     f (sourceList xs $= preventFusion c $$ consume)
+--     ===
+--     f (l xs)
 
 checkStreamConduitResultM' :: (Show a, Arbitrary a, Monad m, Show c, Eq c)
                            =>  (m ([b], r) -> c)
