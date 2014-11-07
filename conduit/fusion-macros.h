@@ -8,16 +8,16 @@
     {-# INLINE [0] new #-}                                  ;\
     {-# RULES "inline new" forall vars. new vars = body #-}
 
-#define STREAMING0(name)                                 ;\
-    name = name/**/C                                     ;\
+#define STREAMING0(name, nameC, nameS)                   ;\
+    name = nameC                                         ;\
     {-# INLINE [0] name #-}                              ;\
     {-# RULES "unstream name"                             \
-      name = unstream (streamConduit name/**/C name/**/S) \
+      name = unstream (streamConduit nameC nameS)         \
       #-}
 
-#define STREAMING(name,vars)                                                ;\
-    name = name/**/C                                                        ;\
-    {-# INLINE [0] name #-}                                                 ;\
-    {-# RULES "unstream name" forall vars.                                   \
-      name vars = unstream (streamConduit (name/**/C vars) (name/**/S vars)) \
+#define STREAMING(name, nameC, nameS, vars)                             ;\
+    name = nameC                                                        ;\
+    {-# INLINE [0] name #-}                                             ;\
+    {-# RULES "unstream name" forall vars.                              \
+      name vars = unstream (streamConduit (nameC vars) (nameS vars))    \
       #-}
