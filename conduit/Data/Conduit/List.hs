@@ -106,7 +106,7 @@ unfoldC f =
             Just (a, seed') -> yield a >> go seed'
             Nothing -> return ()
 {-# INLINE unfoldC #-}
-STREAMING(unfold, f x)
+STREAMING(unfold, unfoldC, unfoldS, f x)
 
 -- | A monadic unfold.
 --
@@ -125,7 +125,7 @@ unfoldMC f =
         case mres of
             Just (a, seed') -> yield a >> go seed'
             Nothing -> return ()
-STREAMING(unfoldM, f seed)
+STREAMING(unfoldM, unfoldMC, unfoldMS, f seed)
 
 -- | Yield the values from the list.
 --
@@ -133,7 +133,7 @@ STREAMING(unfoldM, f seed)
 sourceList, sourceListC :: Monad m => [a] -> Producer m a
 sourceListC = Prelude.mapM_ yield
 {-# INLINE sourceListC #-}
-STREAMING(sourceList, xs)
+STREAMING(sourceList, sourceListC, sourceListS, xs)
 
 -- | Enumerate from a value to a final value, inclusive, via 'succ'.
 --
@@ -155,7 +155,7 @@ enumFromToC x0 y =
         | x Prelude.> y = return ()
         | otherwise = yield x >> loop (Prelude.succ x)
 {-# INLINE enumFromToC #-}
-STREAMING(enumFromTo, x0 y)
+STREAMING(enumFromTo, enumFromToC, enumFromToS, x0 y)
 
 -- | Produces an infinite stream of repeated applications of f to x.
 --
@@ -167,7 +167,7 @@ iterateC f =
   where
     go a = yield a >> go (f a)
 {-# INLINE iterateC #-}
-STREAMING(iterate, f a)
+STREAMING(iterate, iterateC, iterateS, f a)
 
 -- | Replicate a single value the given number of times.
 --
@@ -182,7 +182,7 @@ replicateC cnt0 a =
         | i <= 0 = return ()
         | otherwise = yield a >> loop (i - 1)
 {-# INLINE replicateC #-}
-STREAMING(replicate, cnt0 a)
+STREAMING(replicate, replicateC, replicateS, cnt0 a)
 
 -- | Replicate a monadic value the given number of times.
 --
@@ -197,7 +197,7 @@ replicateMC cnt0 ma =
         | i <= 0 = return ()
         | otherwise = lift ma >>= yield >> loop (i - 1)
 {-# INLINE replicateMC #-}
-STREAMING(replicateM, cnt0 ma)
+STREAMING(replicateM, replicateMC, replicateMS, cnt0 ma)
 
 -- | A strict left fold.
 --
@@ -213,7 +213,7 @@ foldC f =
   where
     loop !accum = await >>= maybe (return accum) (loop . f accum)
 {-# INLINE foldC #-}
-STREAMING(fold, f accum)
+STREAMING(fold, foldC, foldS, f accum)
 
 -- | A monadic strict left fold.
 --
@@ -234,7 +234,7 @@ foldMC f =
             accum' <- lift $ f accum a
             accum' `seq` loop accum'
 {-# INLINE foldMC #-}
-STREAMING(foldM, f accum)
+STREAMING(foldM, foldMC, foldMS, f accum)
 
 -----------------------------------------------------------------
 -- These are for cases where- for whatever reason- stream fusion cannot be
@@ -298,7 +298,7 @@ mapM_, mapM_C :: Monad m
               -> Consumer a m ()
 mapM_C f = awaitForever $ lift . f
 {-# INLINE mapM_C #-}
-STREAMING(mapM_, f)
+STREAMING(mapM_, mapM_C, mapM_S, f)
 
 srcMapM_ :: Monad m => Source m a -> (a -> m ()) -> m ()
 srcMapM_ (CI.ConduitM src) f =
@@ -332,7 +332,7 @@ dropC =
     loop i | i <= 0 = return ()
     loop count = await >>= maybe (return ()) (\_ -> loop (count - 1))
 {-# INLINE dropC #-}
-STREAMING(drop, i)
+STREAMING(drop, dropC, dropS, i)
 
 -- | Take some values from the stream and return as a list. If you want to
 -- instead create a conduit that pipes data to another sink, see 'isolate'.
@@ -354,7 +354,7 @@ takeC =
         (return $ front [])
         (\x -> loop (front . (x:)) (count - 1))
 {-# INLINE takeC #-}
-STREAMING(take, i)
+STREAMING(take, takeC, takeS, i)
 
 -- | Take a single value from the stream, if available.
 --
@@ -364,7 +364,7 @@ STREAMING(take, i)
 head, headC :: Monad m => Consumer a m (Maybe a)
 headC = await
 {-# INLINE headC #-}
-STREAMING0(head)
+STREAMING0(head, headC, headS)
 
 -- | Look at the next value in the stream, if available. This function will not
 -- change the state of the stream.
@@ -381,7 +381,7 @@ peek = await >>= maybe (return Nothing) (\x -> leftover x >> return (Just x))
 map, mapC :: Monad m => (a -> b) -> Conduit a m b
 mapC f = awaitForever $ yield . f
 {-# INLINE mapC #-}
-STREAMING(map, f)
+STREAMING(map, mapC, mapS, f)
 
 -- Since a Source never has any leftovers, fusion rules on it are safe.
 {-
@@ -425,7 +425,7 @@ differences based on leftovers.
 mapM, mapMC :: Monad m => (a -> m b) -> Conduit a m b
 mapMC f = awaitForever $ \a -> lift (f a) >>= yield
 {-# INLINE mapMC #-}
-STREAMING(mapM, f)
+STREAMING(mapM, mapMC, mapMS, f)
 
 -- | Apply a monadic action on all values in a stream.
 --
@@ -440,7 +440,7 @@ STREAMING(mapM, f)
 iterM, iterMC :: Monad m => (a -> m ()) -> Conduit a m a
 iterMC f = awaitForever $ \a -> lift (f a) >> yield a
 {-# INLINE iterMC #-}
-STREAMING(iterM, f)
+STREAMING(iterM, iterMC, iterMS, f)
 
 -- | Apply a transformation that may fail to all values in a stream, discarding
 -- the failures.
@@ -451,7 +451,7 @@ STREAMING(iterM, f)
 mapMaybe, mapMaybeC :: Monad m => (a -> Maybe b) -> Conduit a m b
 mapMaybeC f = awaitForever $ maybe (return ()) yield . f
 {-# INLINE mapMaybeC #-}
-STREAMING(mapMaybe, f)
+STREAMING(mapMaybe, mapMaybeC, mapMaybeS, f)
 
 -- | Apply a monadic transformation that may fail to all values in a stream,
 -- discarding the failures.
@@ -462,7 +462,7 @@ STREAMING(mapMaybe, f)
 mapMaybeM, mapMaybeMC :: Monad m => (a -> m (Maybe b)) -> Conduit a m b
 mapMaybeMC f = awaitForever $ maybe (return ()) yield <=< lift . f
 {-# INLINE mapMaybeMC #-}
-STREAMING(mapMaybeM, f)
+STREAMING(mapMaybeM, mapMaybeMC, mapMaybeMS, f)
 
 -- | Filter the @Just@ values from a stream, discarding the @Nothing@  values.
 --
@@ -472,7 +472,7 @@ STREAMING(mapMaybeM, f)
 catMaybes, catMaybesC :: Monad m => Conduit (Maybe a) m a
 catMaybesC = awaitForever $ maybe (return ()) yield
 {-# INLINE catMaybesC #-}
-STREAMING0(catMaybes)
+STREAMING0(catMaybes, catMaybesC, catMaybesS)
 
 -- | Generalization of 'catMaybes'. It puts all values from
 --   'F.Foldable' into stream.
@@ -483,7 +483,7 @@ STREAMING0(catMaybes)
 concat, concatC :: (Monad m, F.Foldable f) => Conduit (f a) m a
 concatC = awaitForever $ F.mapM_ yield
 {-# INLINE concatC #-}
-STREAMING0(concat)
+STREAMING0(concat, concatC, concatS)
 
 -- | Apply a transformation to all values in a stream, concatenating the output
 -- values.
@@ -494,7 +494,7 @@ STREAMING0(concat)
 concatMap, concatMapC :: Monad m => (a -> [b]) -> Conduit a m b
 concatMapC f = awaitForever $ sourceList . f
 {-# INLINE concatMapC #-}
-STREAMING(concatMap, f)
+STREAMING(concatMap, concatMapC, concatMapS, f)
 
 -- | Apply a monadic transformation to all values in a stream, concatenating
 -- the output values.
@@ -505,7 +505,7 @@ STREAMING(concatMap, f)
 concatMapM, concatMapMC :: Monad m => (a -> m [b]) -> Conduit a m b
 concatMapMC f = awaitForever $ sourceList <=< lift . f
 {-# INLINE concatMapMC #-}
-STREAMING(concatMapM, f)
+STREAMING(concatMapM, concatMapMC, concatMapMS, f)
 
 -- | 'concatMap' with an accumulator.
 --
@@ -515,7 +515,7 @@ STREAMING(concatMapM, f)
 concatMapAccum, concatMapAccumC :: Monad m => (a -> accum -> (accum, [b])) -> accum -> Conduit a m b
 concatMapAccumC f x0 = void (mapAccum f x0) =$= concat
 {-# INLINE concatMapAccumC #-}
-STREAMING(concatMapAccum, f x0)
+STREAMING(concatMapAccum, concatMapAccumC, concatMapAccumS, f x0)
 
 -- | Deprecated synonym for @mapAccum@
 --
@@ -544,7 +544,7 @@ mapAccumC f =
       where
         go a = case f a s of
                  (s', b) -> yield b >> loop s'
-STREAMING(mapAccum, f s)
+STREAMING(mapAccum, mapAccumC, mapAccumS, f s)
 
 -- | Monadic `mapAccum`.
 --
@@ -561,7 +561,7 @@ mapAccumMC f =
                   yield b
                   loop s'
 {-# INLINE mapAccumMC #-}
-STREAMING(mapAccumM, f s)
+STREAMING(mapAccumM, mapAccumMC, mapAccumMS, f s)
 
 -- | Analog of 'Prelude.scanl' for lists.
 --
@@ -587,7 +587,7 @@ INLINE_RULE(scanM, f, mapAccumM (\a b -> f a b >>= \r -> return (r, r)))
 concatMapAccumM, concatMapAccumMC :: Monad m => (a -> accum -> m (accum, [b])) -> accum -> Conduit a m b
 concatMapAccumMC f x0 = void (mapAccumM f x0) =$= concat
 {-# INLINE concatMapAccumMC #-}
-STREAMING(concatMapAccumM, f x0)
+STREAMING(concatMapAccumM, concatMapAccumMC, concatMapAccumMS, f x0)
 
 -- | Generalization of 'mapMaybe' and 'concatMap'. It applies function
 -- to all values in a stream and send values inside resulting
@@ -599,7 +599,7 @@ STREAMING(concatMapAccumM, f x0)
 mapFoldable, mapFoldableC :: (Monad m, F.Foldable f) => (a -> f b) -> Conduit a m b
 mapFoldableC f = awaitForever $ F.mapM_ yield . f
 {-# INLINE mapFoldableC #-}
-STREAMING(mapFoldable, f)
+STREAMING(mapFoldable, mapFoldableC, mapFoldableS, f)
 
 -- | Monadic variant of 'mapFoldable'.
 --
@@ -609,7 +609,7 @@ STREAMING(mapFoldable, f)
 mapFoldableM, mapFoldableMC :: (Monad m, F.Foldable f) => (a -> m (f b)) -> Conduit a m b
 mapFoldableMC f = awaitForever $ F.mapM_ yield <=< lift . f
 {-# INLINE mapFoldableMC #-}
-STREAMING(mapFoldableM, f)
+STREAMING(mapFoldableM, mapFoldableMC, mapFoldableMS, f)
 
 -- | Consume all values from the stream and return as a list. Note that this
 -- will pull all values into memory. For a lazy variant, see
@@ -624,7 +624,7 @@ consumeC =
   where
     loop front = await >>= maybe (return $ front []) (\x -> loop $ front . (x:))
 {-# INLINE consumeC #-}
-STREAMING0(consume)
+STREAMING0(consume, consumeC, consumeS)
 
 -- | Grouping input according to an equality function.
 --
@@ -643,7 +643,7 @@ groupByC f =
         go y
             | f x y     = loop (rest . (y:)) x
             | otherwise = yield (x : rest []) >> loop id y
-STREAMING(groupBy, f)
+STREAMING(groupBy, groupByC, groupByS, f)
 
 -- | 'groupOn1' is similar to @groupBy id@
 --
@@ -673,7 +673,7 @@ groupOn1C f =
         go y
             | f x == f y = loop (rest . (y:)) x
             | otherwise  = yield (x, rest []) >> loop id y
-STREAMING(groupOn1, f)
+STREAMING(groupOn1, groupOn1C, groupOn1S, f)
 
 -- | Ensure that the inner sink consumes no more than the given number of
 -- values. Note this this does /not/ ensure that the sink consumes all of those
@@ -696,7 +696,7 @@ isolateC =
   where
     loop count | count <= 0 = return ()
     loop count = await >>= maybe (return ()) (\x -> yield x >> loop (count - 1))
-STREAMING(isolate, count)
+STREAMING(isolate, isolateC, isolateS, count)
 
 -- | Keep only values in the stream passing a given predicate.
 --
@@ -705,7 +705,7 @@ STREAMING(isolate, count)
 -- Since 0.3.0
 filter, filterC :: Monad m => (a -> Bool) -> Conduit a m a
 filterC f = awaitForever $ \i -> when (f i) (yield i)
-STREAMING(filter, f)
+STREAMING(filter, filterC, filterS, f)
 
 filterFuseRight :: Monad m => Source m a -> (a -> Bool) -> Source m a
 filterFuseRight (CI.ConduitM src) f = CI.ConduitM $ \rest -> let
@@ -732,7 +732,7 @@ filterFuseRight (CI.ConduitM src) f = CI.ConduitM $ \rest -> let
 sinkNull, sinkNullC :: Monad m => Consumer a m ()
 sinkNullC = awaitForever $ \_ -> return ()
 {-# INLINE sinkNullC #-}
-STREAMING0(sinkNull)
+STREAMING0(sinkNull, sinkNullC, sinkNullS)
 
 srcSinkNull :: Monad m => Source m a -> m ()
 srcSinkNull (CI.ConduitM src) =
@@ -755,7 +755,7 @@ srcSinkNull (CI.ConduitM src) =
 sourceNull, sourceNullC :: Monad m => Producer m a
 sourceNullC = return ()
 {-# INLINE sourceNullC #-}
-STREAMING0(sourceNull)
+STREAMING0(sourceNull, sourceNullC, sourceNullS)
 
 -- | Run a @Pipe@ repeatedly, and output its result value downstream. Stops
 -- when no more input is available from upstream.
