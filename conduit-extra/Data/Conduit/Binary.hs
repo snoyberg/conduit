@@ -1,5 +1,8 @@
 {-# LANGUAGE CPP, RankNTypes #-}
 -- | Functions for interacting with bytes.
+--
+-- For many purposes, it's recommended to use the conduit-combinators library,
+-- which provides a more complete set of functions.
 module Data.Conduit.Binary
     ( -- * Files and @Handle@s
 

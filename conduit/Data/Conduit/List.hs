@@ -4,6 +4,9 @@
 -- | Higher-level functions to interact with the elements of a stream. Most of
 -- these are based on list functions.
 --
+-- For many purposes, it's recommended to use the conduit-combinators library,
+-- which provides a more complete set of functions.
+--
 -- Note that these functions all deal with individual elements of a stream as a
 -- sort of \"black box\", where there is no introspection of the contained
 -- elements. Values such as @ByteString@ and @Text@ will likely need to be
