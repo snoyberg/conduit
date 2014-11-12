@@ -1,6 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 import Test.Hspec
 import Test.Hspec.QuickCheck (prop)
 import Test.QuickCheck.Monadic (assert, monadicIO, run)
@@ -33,6 +35,14 @@ import Control.Monad.Error (catchError, throwError, Error)
 import qualified Data.Map as Map
 import qualified Data.Conduit.Extra.ZipConduitSpec as ZipConduit
 import qualified Data.Conduit.StreamSpec as Stream
+#if !MIN_VERSION_QuickCheck(2,7,0)
+import Test.QuickCheck (Testable(..))
+import Test.QuickCheck.Property (morallyDubiousIOProperty)
+
+instance Testable (IO ()) where
+    property = morallyDubiousIOProperty . (>> return True)
+    exhaustive _ = True
+#endif
 
 (@=?) :: (Eq a, Show a) => a -> a -> IO ()
 (@=?) = flip shouldBe

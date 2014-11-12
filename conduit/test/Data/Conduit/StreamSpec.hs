@@ -2,6 +2,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE CPP #-}
 module Data.Conduit.StreamSpec where
 
 import           Control.Applicative
@@ -14,13 +15,12 @@ import           Data.Conduit.Internal.Fusion
 import           Data.Conduit.Internal.List.Stream
 import           Data.Conduit.List
 import qualified Data.Foldable as F
-import qualified Data.Foldable
 import           Data.Function (on)
 import qualified Data.List
 import qualified Data.Maybe
 import           Data.Monoid (Monoid(..))
 import           Prelude
-    ((.), ($), (>>=), (=<<), return, (==), Int, id, Maybe(..), Monad, Bool(..),
+    ((.), ($), (>>=), (=<<), return, (==), Int, id, Maybe(..), Monad,
      Eq, Show, String, Functor, fst, snd)
 import qualified Prelude
 import qualified Safe
@@ -106,7 +106,7 @@ spec = describe "Comparing list function to" $ do
     qit "foldMap" $
         \(getBlind -> (f :: Int -> Sum Int)) ->
             foldMap f `checkConsumer`
-            Data.Foldable.foldMap f
+            F.foldMap f
     qit "mapM_" $
         \(getBlind -> (f :: Int -> M ())) ->
             mapM_ f `checkConsumerM`
@@ -572,6 +572,28 @@ mapAccumML f s0 = go s0
     go s (x:xs) = do
         (s', r) <- f x s
         liftM (\(l, o) -> (r:l, o)) $ go s' xs
+
+--------------------------------------------------------------------------------
+-- Utilities from QuickCheck-2.7 (absent in earlier versions)
+
+#if !MIN_VERSION_QuickCheck(2,7,0)
+getBlind :: Blind a -> a
+getBlind (Blind x) = x
+
+-- | @Small x@: generates values of @x@ drawn from a small range.
+-- The opposite of 'Large'.
+newtype Small a = Small {getSmall :: a}
+    deriving (Prelude.Ord, Prelude.Eq, Prelude.Enum, Prelude.Show)
+
+instance Prelude.Integral a => Arbitrary (Small a) where
+    arbitrary = Prelude.fmap Small arbitrarySizedIntegral
+    shrink (Small x) = Prelude.map Small (shrinkIntegral x)
+
+(===) :: (Show a, Eq a) => a -> a -> Property
+x === y = whenFail
+    (Prelude.fail $ Prelude.show x Prelude.++ " should match " Prelude.++ Prelude.show y)
+    (x == y)
+#endif
 
 --------------------------------------------------------------------------------
 -- Utilities taken from monad-loops package
