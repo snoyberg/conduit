@@ -1,3 +1,5 @@
+__1.2.3__ Expose `connect` and `fuse` as synonyms for `$$` and `=$=`, respectively.
+
 __1.2.2__ Lots more stream fusion.
 
 __1.2__ Two performance optimizations added. (1) A stream fusion framework. This is a non-breaking change. (2) Codensity transform applied to the `ConduitM` datatype. This only affects users importing the `.Internal` module. Both changes are thoroughly described in the following to blog posts: [Speeding up conduit](https://www.fpcomplete.com/blog/2014/08/iap-speeding-up-conduit), and [conduit stream fusion](https://www.fpcomplete.com/blog/2014/08/conduit-stream-fusion).

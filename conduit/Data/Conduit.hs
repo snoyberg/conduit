@@ -15,6 +15,8 @@ module Data.Conduit
     , ($=)
     , (=$)
     , (=$=)
+    , connect
+    , fuse
 
       -- *** Fuse with upstream results
     , fuseBoth
@@ -90,3 +92,15 @@ module Data.Conduit
     ) where
 
 import Data.Conduit.Internal.Conduit
+
+-- | Named function synonym for '$$'.
+--
+-- Since 1.2.3
+connect :: Monad m => Source m a -> Sink a m b -> m b
+connect = ($$)
+
+-- | Named function synonym for '=$='.
+--
+-- Since 1.2.3
+fuse :: Monad m => Conduit a m b -> ConduitM b c m r -> ConduitM a c m r
+fuse = (=$=)
