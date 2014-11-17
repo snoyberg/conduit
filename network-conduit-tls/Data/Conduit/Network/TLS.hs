@@ -43,7 +43,7 @@ import Data.Streaming.Network (ConnectionHandle, safeRecv)
 import Data.Conduit.Network.TLS.Internal
 import Data.Conduit (yield, awaitForever, Producer, Consumer)
 import qualified Data.Conduit.List as CL
-import Network.Socket (SockAddr (SockAddrInet))
+import Network.Socket (SockAddr (SockAddrInet), sClose)
 import Network.Socket.ByteString (recv, sendAll)
 import Control.Exception (bracket)
 import Control.Monad.Trans.Class (lift)
@@ -160,6 +160,9 @@ runTCPServerStartTLS TLSConfig{..} app = do
                   , appWrite' = sendAll socket
                   , appSockAddr' = addr
                   , appLocalAddr' = mlocal
+#if MIN_VERSION_streaming_commons(0,1,6)
+                  , appCloseConnection' = sClose socket
+#endif
                   }
                 -- wrap up the current connection with TLS
                 startTls = \app' -> do
@@ -192,6 +195,9 @@ tlsAppData ctx addr mlocal = AppData
     , appWrite' = TLS.sendData ctx . L.fromChunks . return
     , appSockAddr' = addr
     , appLocalAddr' = mlocal
+#if MIN_VERSION_streaming_commons(0,1,6)
+    , appCloseConnection' = TLS.contextClose ctx
+#endif
     }
 
 -- taken from stunnel example in tls-extra
@@ -297,6 +303,9 @@ runTLSClient TLSClientConfig {..} app = do
             , appWrite' = NC.connectionPut conn
             , appSockAddr' = SockAddrInet (fromIntegral tlsClientPort) 0 -- FIXME
             , appLocalAddr' = Nothing
+#if MIN_VERSION_streaming_commons(0,1,6)
+            , appCloseConnection' = NC.connectionClose conn
+#endif
             })
 
 
@@ -324,6 +333,9 @@ runTLSClientStartTLS TLSClientConfig {..} app = do
             , appWrite' = NC.connectionPut conn
             , appSockAddr' = SockAddrInet (fromIntegral tlsClientPort) 0 -- FIXME
             , appLocalAddr' = Nothing
+#if MIN_VERSION_streaming_commons(0,1,6)
+            , appCloseConnection' = NC.connectionClose conn
+#endif
             }
             , \app' -> do
                  NC.connectionSetSecure context conn tlsClientTLSSettings
@@ -332,6 +344,9 @@ runTLSClientStartTLS TLSClientConfig {..} app = do
                    , appWrite' = NC.connectionPut conn
                    , appSockAddr' = SockAddrInet (fromIntegral tlsClientPort) 0 -- FIXME
                    , appLocalAddr' = Nothing
+#if MIN_VERSION_streaming_commons(0,1,6)
+                   , appCloseConnection' = NC.connectionClose conn
+#endif
                    }
             )
             )
