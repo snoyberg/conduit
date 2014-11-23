@@ -89,6 +89,17 @@ main = hspec $ do
                 let acq = mkAcquireType (return ()) $ \() -> writeIORef ref . Just
                 Left Dummy <- try $ with acq $ const $ throwIO Dummy
                 readIORef ref >>= (`shouldBe` Just ReleaseException)
+        describe "withEx" $ do
+            it "normal" $ do
+                ref <- newIORef Nothing
+                let acq = mkAcquireType (return ()) $ \() -> writeIORef ref . Just
+                withEx acq $ const $ return ()
+                readIORef ref >>= (`shouldBe` Just ReleaseNormal)
+            it "exception" $ do
+                ref <- newIORef Nothing
+                let acq = mkAcquireType (return ()) $ \() -> writeIORef ref . Just
+                Left Dummy <- try $ withEx acq $ const $ throwIO Dummy
+                readIORef ref >>= (`shouldBe` Just ReleaseException)
 
 data Dummy = Dummy
     deriving (Show, Typeable)

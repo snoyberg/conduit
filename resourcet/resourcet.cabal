@@ -1,10 +1,7 @@
 Name:                resourcet
-Version:             1.1.2.3
+Version:             1.1.3
 Synopsis:            Deterministic allocation and freeing of scarce resources.
-Description:
-    A full tutorial is available at <https://www.fpcomplete.com/user/snoyberg/library-documentation/resourcet>.
-    .
-	This package was originally included with the conduit package, but has existed as a separate package for quite a while. It is fully usable outside of conduit.
+Description:         See README.md
 License:             BSD3
 License-file:        LICENSE
 Author:              Michael Snoyman
@@ -13,6 +10,7 @@ Category:            Data, Conduit
 Build-type:          Simple
 Cabal-version:       >=1.8
 Homepage:            http://github.com/snoyberg/conduit
+extra-source-files:  ChangeLog.md, README.md
 
 Library
   Exposed-modules:     Control.Monad.Trans.Resource

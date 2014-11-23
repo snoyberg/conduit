@@ -3,6 +3,7 @@
 module Data.Acquire
     ( Acquire
     , with
+    , withEx
     , mkAcquire
     , mkAcquireType
     , allocateAcquire
