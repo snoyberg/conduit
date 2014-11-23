@@ -102,6 +102,6 @@ with :: MonadBaseControl IO m
      -> m b
 with (Acquire f) g = control $ \run -> E.mask $ \restore -> do
     Allocated x free <- f restore
-    res <- run (g x) `E.onException` free ReleaseException
+    res <- restore (run (g x)) `E.onException` free ReleaseException
     free ReleaseNormal
     return res
