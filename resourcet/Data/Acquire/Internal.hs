@@ -1,4 +1,5 @@
 {-# OPTIONS_HADDOCK not-home #-}
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE DeriveDataTypeable #-}
@@ -113,7 +114,11 @@ with (Acquire f) g = control $ \run -> E.mask $ \restore -> do
 -- of @MonadBaseControl@ from exceptions.
 --
 -- Since 1.1.3
+#if MIN_VERSION_exceptions(0,6,0)
 withEx :: (C.MonadMask m, MonadIO m)
+#else
+withEx :: (C.MonadCatch m, MonadIO m)
+#endif
        => Acquire a
        -> (a -> m b)
        -> m b
