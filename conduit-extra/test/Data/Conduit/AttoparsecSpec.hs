@@ -24,84 +24,119 @@ spec = describe "Data.Conduit.AttoparsecSpec" $ do
                 badCol = 6
                 parser = Data.Attoparsec.Text.endOfInput <|> (Data.Attoparsec.Text.notChar 'b' >> parser)
                 sink = sinkParser parser
+                sink' = sinkParserEither parser
             ea <- runExceptionT $ CL.sourceList input $$ sink
             case ea of
                 Left e ->
                     case fromException e of
                         Just pe -> do
                             errorPosition pe `shouldBe` Position badLine badCol
+            ea' <- CL.sourceList input $$ sink'
+            case ea' of
+                Left pe ->
+                    errorPosition pe `shouldBe` Position badLine badCol
         it "works for bytestring" $ do
             let input = ["aaa\na", "aaa\n\n", "aaa", "aab\n\naaaa"]
                 badLine = 4
                 badCol = 6
                 parser = Data.Attoparsec.ByteString.Char8.endOfInput <|> (Data.Attoparsec.ByteString.Char8.notChar 'b' >> parser)
                 sink = sinkParser parser
+                sink' = sinkParserEither parser
             ea <- runExceptionT $ CL.sourceList input $$ sink
             case ea of
                 Left e ->
                     case fromException e of
                         Just pe -> do
                             errorPosition pe `shouldBe` Position badLine badCol
+            ea' <- CL.sourceList input $$ sink'
+            case ea' of
+                Left pe ->
+                    errorPosition pe `shouldBe` Position badLine badCol
         it "works in last chunk" $ do
             let input = ["aaa\na", "aaa\n\n", "aaa", "aab\n\naaaa"]
                 badLine = 6
                 badCol = 5
                 parser = Data.Attoparsec.Text.char 'c' <|> (Data.Attoparsec.Text.anyChar >> parser)
                 sink = sinkParser parser
+                sink' = sinkParserEither parser
             ea <- runExceptionT $ CL.sourceList input $$ sink
             case ea of
                 Left e ->
                     case fromException e of
                         Just pe -> do
                             errorPosition pe `shouldBe` Position badLine badCol
+            ea' <- CL.sourceList input $$ sink'
+            case ea' of
+                Left pe ->
+                    errorPosition pe `shouldBe` Position badLine badCol
         it "works in last chunk" $ do
             let input = ["aaa\na", "aaa\n\n", "aaa", "aa\n\naaaab"]
                 badLine = 6
                 badCol = 6
                 parser = Data.Attoparsec.Text.string "bc" <|> (Data.Attoparsec.Text.anyChar >> parser)
                 sink = sinkParser parser
+                sink' = sinkParserEither parser
             ea <- runExceptionT $ CL.sourceList input $$ sink
             case ea of
                 Left e ->
                     case fromException e of
                         Just pe -> do
                             errorPosition pe `shouldBe` Position badLine badCol
+            ea' <- CL.sourceList input $$ sink'
+            case ea' of
+                Left pe ->
+                    errorPosition pe `shouldBe` Position badLine badCol
         it "works after new line in text" $ do
             let input = ["aaa\n", "aaa\n\n", "aaa", "aa\nb\naaaa"]
                 badLine = 5
                 badCol = 1
                 parser = Data.Attoparsec.Text.endOfInput <|> (Data.Attoparsec.Text.notChar 'b' >> parser)
                 sink = sinkParser parser
+                sink' = sinkParserEither parser
             ea <- runExceptionT $ CL.sourceList input $$ sink
             case ea of
                 Left e ->
                     case fromException e of
                         Just pe -> do
                             errorPosition pe `shouldBe` Position badLine badCol
+            ea' <- CL.sourceList input $$ sink'
+            case ea' of
+                Left pe ->
+                    errorPosition pe `shouldBe` Position badLine badCol
         it "works after new line in bytestring" $ do
             let input = ["aaa\n", "aaa\n\n", "aaa", "aa\nb\naaaa"]
                 badLine = 5
                 badCol = 1
                 parser = Data.Attoparsec.ByteString.Char8.endOfInput <|> (Data.Attoparsec.ByteString.Char8.notChar 'b' >> parser)
                 sink = sinkParser parser
+                sink' = sinkParserEither parser
             ea <- runExceptionT $ CL.sourceList input $$ sink
             case ea of
                 Left e ->
                     case fromException e of
                         Just pe -> do
                             errorPosition pe `shouldBe` Position badLine badCol
+            ea' <- CL.sourceList input $$ sink'
+            case ea' of
+                Left pe ->
+                    errorPosition pe `shouldBe` Position badLine badCol
         it "works for first line" $ do
             let input = ["aab\na", "aaa\n\n", "aaa", "aab\n\naaaa"]
                 badLine = 1
                 badCol = 3
                 parser = Data.Attoparsec.Text.endOfInput <|> (Data.Attoparsec.Text.notChar 'b' >> parser)
                 sink = sinkParser parser
+                sink' = sinkParserEither parser
             ea <- runExceptionT $ CL.sourceList input $$ sink
             case ea of
                 Left e ->
                     case fromException e of
                         Just pe -> do
                             errorPosition pe `shouldBe` Position badLine badCol
+            ea' <- CL.sourceList input $$ sink'
+            case ea' of
+                Left pe ->
+                    errorPosition pe `shouldBe` Position badLine badCol
 
     describe "conduitParser" $ do
         it "parses a repeated stream" $ do

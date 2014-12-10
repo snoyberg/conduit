@@ -13,6 +13,7 @@
 module Data.Conduit.Attoparsec
     ( -- * Sink
       sinkParser
+    , sinkParserEither
       -- * Conduit
     , conduitParser
     , conduitParserEither
@@ -115,6 +116,12 @@ instance AttoparsecInput T.Text where
 sinkParser :: (AttoparsecInput a, MonadThrow m) => A.Parser a b -> Consumer a m b
 sinkParser = fmap snd . sinkParserPosErr (Position 1 1)
 
+-- | Same as 'sinkParser', but we return an 'Either' type instead
+-- of raising an exception.
+--
+-- Since x.x.x
+sinkParserEither :: (AttoparsecInput a, Monad m) => A.Parser a b -> Consumer a m (Either ParseError b)
+sinkParserEither = (fmap.fmap) snd . sinkParserPos (Position 1 1)
 
 
 -- | Consume a stream of parsed tokens, returning both the token and
