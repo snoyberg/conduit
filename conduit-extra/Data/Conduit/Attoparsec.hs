@@ -119,7 +119,7 @@ sinkParser = fmap snd . sinkParserPosErr (Position 1 1)
 -- | Same as 'sinkParser', but we return an 'Either' type instead
 -- of raising an exception.
 --
--- Since x.x.x
+-- Since 1.1.5
 sinkParserEither :: (AttoparsecInput a, Monad m) => A.Parser a b -> Consumer a m (Either ParseError b)
 sinkParserEither = (fmap.fmap) snd . sinkParserPos (Position 1 1)
 
