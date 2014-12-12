@@ -73,9 +73,11 @@ data Codec = Codec
     | NewCodec T.Text (T.Text -> B.ByteString) (B.ByteString -> DecodeResult)
 
 instance Show Codec where
-    showsPrec d c = showParen (d > 10) $
-        showString "Codec " . shows (codecName c)
-
+    showsPrec d c = 
+        let (cnst, name) = case c of
+                Codec t _ _    -> ("Codec ", t)
+                NewCodec t _ _ -> ("NewCodec ", t)
+        in showParen (d > 10) $ showString cnst . shows name
 
 
 
