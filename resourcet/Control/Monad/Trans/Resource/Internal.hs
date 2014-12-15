@@ -250,18 +250,18 @@ instance MonadBase b m => MonadBase b (ResourceT m) where
     liftBase = lift . liftBase
 
 instance MonadTransControl ResourceT where
-    newtype StT ResourceT a = StReader {unStReader :: a}
-    liftWith f = ResourceT $ \r -> f $ \(ResourceT t) -> liftM StReader $ t r
-    restoreT = ResourceT . const . liftM unStReader
+    type StT ResourceT a = a
+    liftWith f = ResourceT $ \r -> f $ \(ResourceT t) -> t r
+    restoreT = ResourceT . const
     {-# INLINE liftWith #-}
     {-# INLINE restoreT #-}
 
 instance MonadBaseControl b m => MonadBaseControl b (ResourceT m) where
-     newtype StM (ResourceT m) a = StMT (StM m a)
+     type StM (ResourceT m) a = StM m a
      liftBaseWith f = ResourceT $ \reader' ->
          liftBaseWith $ \runInBase ->
-             f $ liftM StMT . runInBase . (\(ResourceT r) -> r reader'  )
-     restoreM (StMT base) = ResourceT $ const $ restoreM base
+             f $ runInBase . (\(ResourceT r) -> r reader'  )
+     restoreM base = ResourceT $ const $ restoreM base
 
 #define GO(T) instance (MonadResource m) => MonadResource (T m) where liftResourceT = lift . liftResourceT
 #define GOX(X, T) instance (X, MonadResource m) => MonadResource (T m) where liftResourceT = lift . liftResourceT
