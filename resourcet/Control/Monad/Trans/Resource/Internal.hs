@@ -25,8 +25,7 @@ module Control.Monad.Trans.Resource.Internal(
 import Control.Exception (throw,Exception,SomeException)
 import Control.Applicative (Applicative (..))
 import Control.Monad.Trans.Control
-    ( MonadTransControl (..), MonadBaseControl (..)
-    , ComposeSt, defaultLiftBaseWith, defaultRestoreM, control)
+    ( MonadTransControl (..), MonadBaseControl (..) )
 import Control.Monad.Base (MonadBase, liftBase)
 import Control.Monad.Trans.Cont     ( ContT  )
 import Control.Monad.Cont.Class   ( MonadCont (..) )
@@ -50,7 +49,9 @@ import qualified Control.Monad.Trans.State.Strict  as Strict ( StateT )
 import qualified Control.Monad.Trans.Writer.Strict as Strict ( WriterT )
 
 import Control.Monad.IO.Class (MonadIO (..))
-import Control.Monad (liftM, ap)
+#if !(MIN_VERSION_monad_control(1,0,0))
+import Control.Monad (liftM)
+#endif
 import qualified Control.Exception as E
 import Control.Monad.ST (ST)
 import Control.Monad.Catch (MonadThrow (..), MonadCatch (..)
@@ -250,18 +251,32 @@ instance MonadBase b m => MonadBase b (ResourceT m) where
     liftBase = lift . liftBase
 
 instance MonadTransControl ResourceT where
+#if MIN_VERSION_monad_control(1,0,0)
     type StT ResourceT a = a
     liftWith f = ResourceT $ \r -> f $ \(ResourceT t) -> t r
     restoreT = ResourceT . const
+#else
+    newtype StT ResourceT a = StReader {unStReader :: a}
+    liftWith f = ResourceT $ \r -> f $ \(ResourceT t) -> liftM StReader $ t r
+    restoreT = ResourceT . const . liftM unStReader
+#endif
     {-# INLINE liftWith #-}
     {-# INLINE restoreT #-}
 
 instance MonadBaseControl b m => MonadBaseControl b (ResourceT m) where
+#if MIN_VERSION_monad_control(1,0,0)
      type StM (ResourceT m) a = StM m a
      liftBaseWith f = ResourceT $ \reader' ->
          liftBaseWith $ \runInBase ->
              f $ runInBase . (\(ResourceT r) -> r reader'  )
      restoreM = ResourceT . const . restoreM
+#else
+     newtype StM (ResourceT m) a = StMT (StM m a)
+     liftBaseWith f = ResourceT $ \reader' ->
+         liftBaseWith $ \runInBase ->
+             f $ liftM StMT . runInBase . (\(ResourceT r) -> r reader'  )
+     restoreM (StMT base) = ResourceT $ const $ restoreM base
+#endif
 
 #define GO(T) instance (MonadResource m) => MonadResource (T m) where liftResourceT = lift . liftResourceT
 #define GOX(X, T) instance (X, MonadResource m) => MonadResource (T m) where liftResourceT = lift . liftResourceT

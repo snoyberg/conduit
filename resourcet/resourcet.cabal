@@ -20,7 +20,7 @@ Library
   Build-depends:       base                     >= 4.3          && < 5
                      , lifted-base              >= 0.1
                      , transformers-base        >= 0.4.1        && < 0.5
-                     , monad-control            >= 1.0          && < 1.1
+                     , monad-control            >= 0.3.1        && < 1.1
                      , containers
                      , transformers             >= 0.2.2        && < 0.5
                      , mtl                      >= 2.0          && < 2.3
