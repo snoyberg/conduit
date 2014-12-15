@@ -29,8 +29,6 @@ Library
                      , exceptions               >= 0.6
                      , lifted-base              >= 0.1
                      , transformers-base        >= 0.4.1        && < 0.5
-                     , monad-control            >= 0.3.1        && < 0.4
-                     , containers
                      , transformers             >= 0.2.2        && < 0.5
                      , mtl
                      , void                     >= 0.5.5
