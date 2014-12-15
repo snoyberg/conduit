@@ -1,8 +1,10 @@
 Name:                conduit
-Version:             1.2.3
+Version:             1.2.3.1
 Synopsis:            Streaming data processing library.
-Description:
-    @conduit@ is a solution to the streaming data problem, allowing for production, transformation, and consumption of streams of data in constant memory. It is an alternative to lazy I\/O which guarantees deterministic resource handling, and fits in the same general solution space as @enumerator@\/@iteratee@ and @pipes@. For a tutorial, please visit <https://haskell.fpcomplete.com/user/snoyberg/library-documentation/conduit-overview>.
+description:
+    Hackage documentation generation is not reliable. For up to date documentation, please see: <http://www.stackage.org/package/conduit>.
+    .
+    @conduit@ is a solution to the streaming data problem, allowing for production, transformation, and consumption of streams of data in constant memory. It is an alternative to lazy I\/O which guarantees deterministic resource handling, and fits in the same general solution space as @enumerator@\/@iteratee@ and @pipes@. For a tutorial, please visit <https://www.fpcomplete.com/user/snoyberg/library-documentation/conduit-overview>.
 License:             MIT
 License-file:        LICENSE
 Author:              Michael Snoyman
@@ -12,6 +14,7 @@ Build-type:          Simple
 Cabal-version:       >=1.8
 Homepage:            http://github.com/snoyberg/conduit
 extra-source-files:  test/main.hs
+                   , README.md
                    , changelog.md
                    , fusion-macros.h
 
