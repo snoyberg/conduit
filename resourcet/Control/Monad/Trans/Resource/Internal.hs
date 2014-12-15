@@ -261,7 +261,7 @@ instance MonadBaseControl b m => MonadBaseControl b (ResourceT m) where
      liftBaseWith f = ResourceT $ \reader' ->
          liftBaseWith $ \runInBase ->
              f $ runInBase . (\(ResourceT r) -> r reader'  )
-     restoreM base = ResourceT $ const $ restoreM base
+     restoreM = ResourceT . const . restoreM
 
 #define GO(T) instance (MonadResource m) => MonadResource (T m) where liftResourceT = lift . liftResourceT
 #define GOX(X, T) instance (X, MonadResource m) => MonadResource (T m) where liftResourceT = lift . liftResourceT
