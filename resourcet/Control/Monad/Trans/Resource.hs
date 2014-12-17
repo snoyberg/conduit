@@ -12,7 +12,7 @@
 #endif
 -- | Allocate resources which are guaranteed to be released.
 --
--- For more information, see <http://www.yesodweb.com/book/conduits>.
+-- For more information, see <https://www.fpcomplete.com/user/snoyberg/library-documentation/resourcet>.
 --
 -- One point to note: all register cleanup actions live in the @IO@ monad, not
 -- the main monad. This allows both more efficient code, and for monads to be
