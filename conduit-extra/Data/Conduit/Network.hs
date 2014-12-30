@@ -140,7 +140,7 @@ forkTCPServer set f =
 runGeneralTCPServer :: MonadBaseControl IO m
                     => SN.ServerSettings
                     -> (SN.AppData -> m ())
-                    -> m ()
+                    -> m a
 runGeneralTCPServer set f = liftBaseWith $ \run ->
     SN.runTCPServer set $ void . run . f
 
