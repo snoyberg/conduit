@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE FlexibleContexts, OverloadedStrings #-}
 module Data.Conduit.TextSpec (spec) where
 
 import qualified Data.Conduit.Text as CT
