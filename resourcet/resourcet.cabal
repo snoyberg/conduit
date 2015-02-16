@@ -19,13 +19,14 @@ Library
                        Data.Acquire.Internal
   Build-depends:       base                     >= 4.3          && < 5
                      , lifted-base              >= 0.1
-                     , transformers-base        >= 0.4.1        && < 0.5
+                     , transformers-base        >= 0.4.4        && < 0.5
                      , monad-control            >= 0.3.1        && < 1.1
                      , containers
                      , transformers             >= 0.2.2        && < 0.5
+                     , transformers-compat      >= 0.3          && < 0.5
                      , mtl                      >= 2.0          && < 2.3
                      , mmorph
-                     , exceptions               >= 0.5
+                     , exceptions               >= 0.8
   ghc-options:     -Wall
 
 test-suite test
