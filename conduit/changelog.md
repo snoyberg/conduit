@@ -1,3 +1,7 @@
+## 1.2.4
+
+* [fuseBothMaybe](https://github.com/snoyberg/conduit/issues/199)
+
 __1.2.3__ Expose `connect` and `fuse` as synonyms for `$$` and `=$=`, respectively.
 
 __1.2.2__ Lots more stream fusion.

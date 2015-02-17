@@ -76,6 +76,7 @@ module Data.Conduit.Internal.Conduit
     , zipConduitApp
     , passthroughSink
     , fuseBoth
+    , fuseBothMaybe
     , fuseUpstream
     , sequenceSources
     , sequenceSinks
@@ -1167,6 +1168,35 @@ fuseBoth :: Monad m => ConduitM a b m r1 -> ConduitM b c m r2 -> ConduitM a c m 
 fuseBoth (ConduitM up) (ConduitM down) =
     ConduitM (pipeL (up Done) (withUpstream $ generalizeUpstream $ down Done) >>=)
 {-# INLINE fuseBoth #-}
+
+-- | Like 'fuseBoth', but does not force consumption of the @Producer@.
+-- In the case that the @Producer@ terminates, the result value is
+-- provided as a @Just@ value. If it does not terminate, then a
+-- @Nothing@ value is returned.
+--
+-- One thing to note here is that "termination" here only occurs if the
+-- @Producer@ actually yields a @Nothing@ value. For example, with the
+-- @Producer@ @mapM_ yield [1..5]@, if five values are requested, the
+-- @Producer@ has not yet terminated. Termination only occurs when the
+-- sixth value is awaited for and the @Producer@ signals termination.
+--
+-- Since 1.2.4
+fuseBothMaybe
+    :: Monad m
+    => ConduitM a b m r1
+    -> ConduitM b c m r2
+    -> ConduitM a c m (Maybe r1, r2)
+fuseBothMaybe (ConduitM up) (ConduitM down) =
+    ConduitM (pipeL (up Done) (go Nothing $ down Done) >>=)
+  where
+    go mup (Done r) = Done (mup, r)
+    go mup (PipeM mp) = PipeM $ liftM (go mup) mp
+    go mup (HaveOutput p c o) = HaveOutput (go mup p) c o
+    go _ (NeedInput p c) = NeedInput
+        (\i -> go Nothing (p i))
+        (\u -> go (Just u) (c ()))
+    go mup (Leftover p i) = Leftover (go mup p) i
+{-# INLINABLE fuseBothMaybe #-}
 
 -- | Same as @fuseBoth@, but ignore the return value from the downstream
 -- @Conduit@. Same caveats of forced consumption apply.

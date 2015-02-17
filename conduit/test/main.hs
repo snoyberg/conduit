@@ -942,6 +942,27 @@ main = hspec $ do
                 return (x, y, z)
             res `shouldBe` (sum [1..5], ["hello"], [6..10])
 
+        it "fuseBothMaybe with no result" $ do
+            let src = mapM_ C.yield [1 :: Int ..]
+                sink = CL.isolate 5 C.=$= CL.fold (+) 0
+            (mup, down) <- C.runConduit $ C.fuseBothMaybe src sink
+            mup `shouldBe` (Nothing :: Maybe ())
+            down `shouldBe` sum [1..5]
+
+        it "fuseBothMaybe with result" $ do
+            let src = mapM_ C.yield [1 :: Int .. 5]
+                sink = CL.isolate 6 C.=$= CL.fold (+) 0
+            (mup, down) <- C.runConduit $ C.fuseBothMaybe src sink
+            mup `shouldBe` Just ()
+            down `shouldBe` sum [1..5]
+
+        it "fuseBothMaybe with almost result" $ do
+            let src = mapM_ C.yield [1 :: Int .. 5]
+                sink = CL.isolate 5 C.=$= CL.fold (+) 0
+            (mup, down) <- C.runConduit $ C.fuseBothMaybe src sink
+            mup `shouldBe` (Nothing :: Maybe ())
+            down `shouldBe` sum [1..5]
+
     describe "catching exceptions" $ do
         it "works" $ do
             let src = do

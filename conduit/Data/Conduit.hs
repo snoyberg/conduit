@@ -20,6 +20,7 @@ module Data.Conduit
 
       -- *** Fuse with upstream results
     , fuseBoth
+    , fuseBothMaybe
     , fuseUpstream
 
       -- ** Primitives
