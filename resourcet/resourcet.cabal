@@ -1,5 +1,5 @@
 Name:                resourcet
-Version:             1.1.4
+Version:             1.1.4.1
 Synopsis:            Deterministic allocation and freeing of scarce resources.
 description:         Hackage documentation generation is not reliable. For up to date documentation, please see: <http://www.stackage.org/package/resourcet>.
 License:             BSD3
@@ -26,7 +26,7 @@ Library
                      , transformers-compat      >= 0.3          && < 0.5
                      , mtl                      >= 2.0          && < 2.3
                      , mmorph
-                     , exceptions               >= 0.8
+                     , exceptions               >= 0.5
   ghc-options:     -Wall
 
 test-suite test

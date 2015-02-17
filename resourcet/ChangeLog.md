@@ -1,3 +1,7 @@
+## 1.1.4.1
+
+* Allow older `exceptions` version again
+
 ## 1.1.4
 
 * Add `MonadResource ExceptT` instance [#198](https://github.com/snoyberg/conduit/pull/198)
