@@ -1,5 +1,5 @@
 Name:                conduit-extra
-Version:             1.1.6.2
+Version:             1.1.7.0
 Synopsis:            Batteries included conduit: adapters for common libraries.
 Description:
     The conduit package itself maintains relative small dependencies. The purpose of this package is to collect commonly used utility functions wrapping other library dependencies, without depending on heavier-weight dependencies. The basic idea is that this package should only depend on haskell-platform packages and conduit.
@@ -21,6 +21,7 @@ Library
   Exposed-modules:     Data.Conduit.Attoparsec
                        Data.Conduit.Binary
                        Data.Conduit.Blaze
+                       Data.Conduit.ByteString.Builder
                        Data.Conduit.Filesystem
                        Data.Conduit.Lazy
                        Data.Conduit.Network
@@ -51,7 +52,7 @@ Library
                      , process
                      , resourcet                >= 1.1
                      , stm
-                     , streaming-commons        >= 0.1.8
+                     , streaming-commons        >= 0.1.10
 
   ghc-options:     -Wall
 
@@ -69,11 +70,13 @@ test-suite test
                    , async
                    , attoparsec
                    , blaze-builder
+                   , bytestring-builder
                    , bytestring
                    , exceptions
                    , process
                    , resourcet
                    , stm
+                   , streaming-commons
                    , text
                    , transformers
                    , transformers-base
@@ -82,7 +85,7 @@ test-suite test
         cpp-options: -DWINDOWS
     other-modules:   Data.Conduit.AttoparsecSpec
                      Data.Conduit.BinarySpec
-                     Data.Conduit.BlazeSpec
+                     Data.Conduit.ByteString.BuilderSpec
                      Data.Conduit.ExtraSpec
                      Data.Conduit.FilesystemSpec
                      Data.Conduit.LazySpec

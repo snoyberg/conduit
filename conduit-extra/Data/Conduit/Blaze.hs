@@ -1,12 +1,14 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE BangPatterns #-}
-{-# LANGUAGE RankNTypes #-}
 -- | Convert a stream of blaze-builder @Builder@s into a stream of @ByteString@s.
 --
 -- Adapted from blaze-builder-enumerator, written by myself and Simon Meier.
 --
 -- Note that the functions here can work in any monad built on top of @IO@ or
 -- @ST@.
+--
+-- Since 1.1.7.0, the functions here call their counterparts in
+-- "Data.Conduit.ByteString.Builder", which work with both
+-- 'Data.ByteString.Builder.Builder' and blaze-builder 0.3's
+-- 'Blaze.ByteString.Builder.Builder'.
 module Data.Conduit.Blaze
     (
 
@@ -20,57 +22,50 @@ module Data.Conduit.Blaze
   , builderToByteStringWithFlush
 
   -- * Buffers
-  , Buffer
+  , B.Buffer
 
   -- ** Status information
-  , freeSize
-  , sliceSize
-  , bufferSize
+  , B.freeSize
+  , B.sliceSize
+  , B.bufferSize
 
   -- ** Creation and modification
-  , allocBuffer
-  , reuseBuffer
-  , nextSlice
+  , B.allocBuffer
+  , B.reuseBuffer
+  , B.nextSlice
 
   -- ** Conversion to bytestings
-  , unsafeFreezeBuffer
-  , unsafeFreezeNonEmptyBuffer
+  , B.unsafeFreezeBuffer
+  , B.unsafeFreezeNonEmptyBuffer
 
   -- * Buffer allocation strategies
-  , BufferAllocStrategy
-  , allNewBuffersStrategy
-  , reuseBufferStrategy
+  , B.BufferAllocStrategy
+  , B.allNewBuffersStrategy
+  , B.reuseBufferStrategy
     ) where
 
 import Data.Conduit
-import Control.Monad (unless, liftM)
-import Control.Monad.Trans.Class (lift, MonadTrans)
 
 import qualified Data.ByteString                   as S
 
-import Blaze.ByteString.Builder.Internal
-import Blaze.ByteString.Builder.Internal.Types
-import Blaze.ByteString.Builder.Internal.Buffer
-import Control.Monad.Primitive (PrimMonad, unsafePrimToPrim)
-import Control.Monad.Base (MonadBase, liftBase)
+import Blaze.ByteString.Builder (Builder)
+import Control.Monad.Primitive (PrimMonad)
+import Control.Monad.Base (MonadBase)
 import Data.Streaming.Blaze
 
-unsafeLiftIO :: (MonadBase base m, PrimMonad base) => IO a -> m a
-unsafeLiftIO = liftBase . unsafePrimToPrim
+import qualified Data.Conduit.ByteString.Builder as B
 
 -- | Incrementally execute builders and pass on the filled chunks as
 -- bytestrings.
 builderToByteString :: (MonadBase base m, PrimMonad base) => Conduit Builder m S.ByteString
-builderToByteString =
-  builderToByteStringWith defaultStrategy
+builderToByteString = B.builderToByteString
 {-# INLINE builderToByteString #-}
 
 -- |
 --
 -- Since 0.0.2
 builderToByteStringFlush :: (MonadBase base m, PrimMonad base) => Conduit (Flush Builder) m (Flush S.ByteString)
-builderToByteStringFlush =
-  builderToByteStringWithFlush defaultStrategy
+builderToByteStringFlush = B.builderToByteStringFlush
 {-# INLINE builderToByteStringFlush #-}
 
 -- | Incrementally execute builders on the given buffer and pass on the filled
@@ -83,7 +78,7 @@ builderToByteStringFlush =
 unsafeBuilderToByteString :: (MonadBase base m, PrimMonad base)
                           => IO Buffer  -- action yielding the inital buffer.
                           -> Conduit Builder m S.ByteString
-unsafeBuilderToByteString = builderToByteStringWith . reuseBufferStrategy
+unsafeBuilderToByteString = B.unsafeBuilderToByteString
 {-# INLINE unsafeBuilderToByteString #-}
 
 
@@ -94,11 +89,7 @@ unsafeBuilderToByteString = builderToByteStringWith . reuseBufferStrategy
 builderToByteStringWith :: (MonadBase base m, PrimMonad base)
                         => BufferAllocStrategy
                         -> Conduit Builder m S.ByteString
-builderToByteStringWith =
-    helper (liftM (fmap Chunk) await) yield'
-  where
-    yield' Flush = return ()
-    yield' (Chunk bs) = yield bs
+builderToByteStringWith = B.builderToByteStringWith
 {-# INLINE builderToByteStringWith #-}
 
 -- |
@@ -108,35 +99,5 @@ builderToByteStringWithFlush
     :: (MonadBase base m, PrimMonad base)
     => BufferAllocStrategy
     -> Conduit (Flush Builder) m (Flush S.ByteString)
-builderToByteStringWithFlush = helper await yield
+builderToByteStringWithFlush = B.builderToByteStringWithFlush
 {-# INLINE builderToByteStringWithFlush #-}
-
-helper :: (MonadBase base m, PrimMonad base, Monad (t m), MonadTrans t)
-       => t m (Maybe (Flush Builder))
-       -> (Flush S.ByteString -> t m ())
-       -> BufferAllocStrategy
-       -> t m ()
-helper await' yield' strat = do
-    (recv, finish) <- lift $ unsafeLiftIO $ newBlazeRecv strat
-    let loop = await' >>= maybe finish' cont
-        finish' = do
-            mbs <- lift $ unsafeLiftIO finish
-            maybe (return ()) (yield' . Chunk) mbs
-        cont fbuilder = do
-            let builder =
-                    case fbuilder of
-                        Flush -> flush
-                        Chunk b -> b
-            popper <- lift $ unsafeLiftIO $ recv builder
-            let cont' = do
-                    bs <- lift $ unsafeLiftIO popper
-                    unless (S.null bs) $ do
-                        yield' (Chunk bs)
-                        cont'
-            cont'
-            case fbuilder of
-                Flush -> yield' Flush
-                Chunk _ -> return ()
-            loop
-    loop
-{-# INLINE helper #-}

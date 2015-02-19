@@ -1,3 +1,7 @@
+## 1.1.7
+
+Add `Data.Conduit.ByteString.Builder`
+
 ## 1.1.6
 
 Generalized return type in `runGeneralTCPServer`.
