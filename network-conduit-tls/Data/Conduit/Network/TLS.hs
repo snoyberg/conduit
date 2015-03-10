@@ -9,6 +9,8 @@ module Data.Conduit.Network.TLS
       TLSConfig
     , tlsConfigBS
     , tlsConfig
+    , tlsConfigChainBS
+    , tlsConfigChain
     , tlsHost
     , tlsPort
 --    , tlsCertificate
@@ -58,19 +60,24 @@ import Control.Monad.Trans.Control
 import Data.Default
 
 
-makeCertDataPath :: FilePath -> FilePath -> TlsCertData
-makeCertDataPath certPath keyPath = TlsCertData (readFile certPath) (readFile keyPath)
+makeCertDataPath :: FilePath -> [FilePath] -> FilePath -> TlsCertData
+makeCertDataPath certPath chainCertPaths keyPath =
+    TlsCertData
+      (readFile certPath)
+      (mapM readFile chainCertPaths)
+      (readFile keyPath)
 
-makeCertDataBS :: S.ByteString -> S.ByteString -> TlsCertData
-makeCertDataBS certBS keyBS = TlsCertData (return certBS) (return keyBS)
-
+makeCertDataBS :: S.ByteString -> [S.ByteString] -> S.ByteString ->
+                  TlsCertData
+makeCertDataBS certBS chainCertsBS keyBS =
+    TlsCertData (return certBS) (return chainCertsBS) (return keyBS)
 
 tlsConfig :: HostPreference
           -> Int -- ^ port
           -> FilePath -- ^ certificate
           -> FilePath -- ^ key
           -> TLSConfig
-tlsConfig a b c d = TLSConfig a b (makeCertDataPath c d) False
+tlsConfig a b c d = tlsConfigChain a b c [] d
 
 
 -- | allow to build a server config directly from raw bytestring data (exact same
@@ -81,8 +88,26 @@ tlsConfigBS :: HostPreference
             -> S.ByteString -- ^ Certificate raw data
             -> S.ByteString -- ^ Key file raw data
             -> TLSConfig
-tlsConfigBS a b c d = TLSConfig a b (makeCertDataBS c d ) False
+tlsConfigBS a b c d = tlsConfigChainBS a b c [] d
 
+-- | Like 'tlsConfig', but also allow specifying chain certificates.
+tlsConfigChain :: HostPreference
+               -> Int -- ^ Port
+               -> FilePath -- ^ Certificate
+               -> [FilePath] -- ^ Chain certificates
+               -> FilePath -- ^ Key
+               -> TLSConfig
+tlsConfigChain a b c d e = TLSConfig a b (makeCertDataPath c d e) False
+
+
+-- | Like 'tlsConfigBS', but also allow specifying chain certificates.
+tlsConfigChainBS :: HostPreference
+                 -> Int          -- ^ Port
+                 -> S.ByteString -- ^ Certificate raw data
+                 -> [S.ByteString] -- ^ Chain certificate raw data
+                 -> S.ByteString -- ^ Key file raw data
+                 -> TLSConfig
+tlsConfigChainBS a b c d e = TLSConfig a b (makeCertDataBS c d e) False
 
 serverHandshake :: Socket -> TLS.Credentials -> IO (TLS.Context)
 serverHandshake socket creds = do
@@ -210,8 +235,8 @@ ciphers =
     ]
 
 readCreds :: TlsCertData -> IO TLS.Credentials
-readCreds (TlsCertData iocert iokey) =
-    (TLS.credentialLoadX509FromMemory <$> iocert <*> iokey)
+readCreds (TlsCertData iocert iochains iokey) =
+    (TLS.credentialLoadX509ChainFromMemory <$> iocert <*> iochains <*> iokey)
     >>= either
         (error . ("Error reading TLS credentials: " ++))
         (return . TLS.Credentials . return)

@@ -18,7 +18,7 @@ library
                     , system-filepath >= 0.4
                     , system-fileio   >= 0.3
                     , bytestring      >= 0.9
-                    , tls             >= 1.2.2
+                    , tls             >= 1.2.15
                     , conduit-extra   >= 1.1
                     , conduit         >= 1.1
                     , network
