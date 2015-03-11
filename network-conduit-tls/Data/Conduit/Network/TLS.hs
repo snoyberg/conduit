@@ -91,6 +91,8 @@ tlsConfigBS :: HostPreference
 tlsConfigBS a b c d = tlsConfigChainBS a b c [] d
 
 -- | Like 'tlsConfig', but also allow specifying chain certificates.
+--
+-- Since 1.1.1
 tlsConfigChain :: HostPreference
                -> Int -- ^ Port
                -> FilePath -- ^ Certificate
@@ -101,6 +103,8 @@ tlsConfigChain a b c d e = TLSConfig a b (makeCertDataPath c d e) False
 
 
 -- | Like 'tlsConfigBS', but also allow specifying chain certificates.
+--
+-- Since 1.1.1
 tlsConfigChainBS :: HostPreference
                  -> Int          -- ^ Port
                  -> S.ByteString -- ^ Certificate raw data
