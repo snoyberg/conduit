@@ -104,7 +104,7 @@ lines =
 
 -- | Variant of the lines function with an integer parameter.
 -- The text length of any emitted line
--- never exceeds the value of the paramater. Whenever
+-- never exceeds the value of the parameter. Whenever
 -- this is about to happen a LengthExceeded exception
 -- is thrown. This function should be used instead
 -- of the lines function whenever we are dealing with
