@@ -183,9 +183,6 @@ spec = describe "Data.Conduit.Text" $ do
         it "works with empty lines" $
             (CL.sourceList ["\n\n"] C.$= CT.lines C.$$ CL.consume) ==
                 [["", ""]]
-        it "is not too eager" $ do
-            x <- CL.sourceList ["foobarbaz", error "ignore me"] C.$$ CT.decode CT.utf8 C.=$ CL.head
-            x `shouldBe` Just "foobarbaz"
 
     describe "text lines bounded" $ do
         it "yields nothing given nothing" $
@@ -212,9 +209,6 @@ spec = describe "Data.Conduit.Text" $ do
         it "works with empty lines" $
             (CL.sourceList ["\n\n"] C.$= CT.linesBounded 80 C.$$ CL.consume) ==
                 [["", ""]]
-        it "is not too eager" $ do
-            x <- CL.sourceList ["foobarbaz", error "ignore me"] C.$$ CT.decode CT.utf8 C.=$ CL.head
-            x `shouldBe` Just "foobarbaz"
         it "throws an exception when lines are too long" $ do
             x <- runExceptionT $ CL.sourceList ["hello\nworld"] C.$$ CT.linesBounded 4 C.=$ CL.consume
             show x `shouldBe` show (Left $ CT.LengthExceeded 4 :: Either CT.TextException ())
@@ -227,6 +221,9 @@ spec = describe "Data.Conduit.Text" $ do
             case x of
                 Left _ -> return ()
                 Right t -> error $ "This should have failed: " ++ show t
+        it "is not too eager" $ do
+            x <- CL.sourceList ["foobarbaz", error "ignore me"] C.$$ CT.decode CT.utf8 C.=$ CL.head
+            x `shouldBe` Just "foobarbaz"
 
 it' :: String -> IO () -> Spec
 it' = it
