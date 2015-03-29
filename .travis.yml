@@ -1,9 +1,17 @@
-language: haskell
+env:
+ - CABALVER=1.20 GHCVER=7.8.4
+
+before_install:
+ - travis_retry sudo add-apt-repository -y ppa:hvr/ghc
+ - travis_retry sudo apt-get update
+ - travis_retry sudo apt-get install cabal-install-$CABALVER ghc-$GHCVER # see note about happy/alex
+ - export PATH=/opt/ghc/$GHCVER/bin:/opt/cabal/$CABALVER/bin:$HOME/.cabal/bin:$PATH
 
 install:
-    - cabal update
-    - cabal install hspec doctest cabal-meta cabal-src
-    - cabal-meta install --force-reinstalls --only-dependencies --enable-tests
-    - cabal-meta install --force-reinstalls
+ - cabal --version
+ - echo "$(ghc --version) [$(ghc --print-project-git-commit-id 2> /dev/null || echo '?')]"
+ - travis_retry cabal update
+ - cabal install cabal-src cabal-meta alex happy
 
-script: mega-sdist --test
+script:
+ - cabal-meta install --only-dependencies --run-tests --enable-benchmarks --force-reinstalls
