@@ -7,6 +7,7 @@ import qualified Data.Conduit.Lift as C
 import qualified Data.Conduit.List as CL
 import Test.Hspec
 import Test.Hspec.QuickCheck
+import Test.QuickCheck.Modifiers
 import Data.Monoid
 import Control.Monad.ST
 import qualified Data.Text as T
@@ -186,6 +187,44 @@ spec = describe "Data.Conduit.Text" $ do
         it "is not too eager" $ do
             x <- CL.sourceList ["foobarbaz", error "ignore me"] C.$$ CT.decode CT.utf8 C.=$ CL.head
             x `shouldBe` Just "foobarbaz"
+
+    describe "split function" $ do
+        it "yields nothing when given nothing" $ do
+            (CL.sourceList [] C.$= CT.split "XX" C.$$ CL.consume) ==
+                [[]]
+        it "yields nothing given only empty text" $
+            (CL.sourceList [""] C.$= CT.split "XX" C.$$ CL.consume) ==
+                [[]]
+        it "handles separators on a chunk boundary" $ do
+            (CL.sourceList ["aX","Xb"] C.$= CT.split "XX" C.$$ CL.consume) ==
+                [["a","b"]]
+        it "works across split chunks" $
+            (CL.sourceList ["abc", "dXXef"] C.$= CT.split "XX" C.$$ CL.consume) ==
+                [["abcd", "ef"]]
+        it "works with multiple splits in an item" $
+            (CL.sourceList ["abXXcdXXe"] C.$= CT.split "XX" C.$$ CL.consume) ==
+                [["ab", "cd", "e"]]
+        it "works with ending on a split" $
+            (CL.sourceList ["abXX"] C.$= CT.split "XX" C.$$ CL.consume) ==
+                [["ab"]]
+        it "works with ending a middle item on a split" $
+            (CL.sourceList ["abXX", "cdXXe"] C.$= CT.split "XX" C.$$ CL.consume) ==
+                [["ab", "cd", "e"]]
+        it "works with empty text" $
+            (CL.sourceList ["ab", "", "cd"] C.$= CT.split "XX" C.$$ CL.consume) ==
+                [["abcd"]]
+        it "works with just separators" $
+            (CL.sourceList ["XXXX"] C.$= CT.split "XX" C.$$ CL.consume) ==
+                [["",""]] -- NB: Data.Text.splitOn would have given 3 empty strings.
+                          -- The 2 empty strings behavior is how `Data.Conduit.Text.lines` / `Data.String.lines` works, though
+        prop "works the same no matter how things are chunked" $ \s1 s2 int -> do
+            let t1 = T.pack s1
+                t2 = T.pack (getNonEmpty s2)
+                positiveInt = getPositive int
+                splitUp = T.chunksOf positiveInt t1
+            l1 <- (CL.sourceList [t1] C.$= CT.split t2 C.$$ CL.consume)
+            l2 <- (CL.sourceList splitUp C.$= CT.split t2 C.$$ CL.consume)
+            l1 `shouldBe` l2
 
     describe "text lines bounded" $ do
         it "yields nothing given nothing" $

@@ -66,6 +66,7 @@ test-suite test
                    , conduit-extra
                    , base
                    , hspec >= 1.3
+                   , QuickCheck
 
                    , async
                    , attoparsec
