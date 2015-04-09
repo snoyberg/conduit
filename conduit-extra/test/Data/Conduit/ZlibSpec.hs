@@ -1,6 +1,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE OverloadedStrings #-}
 module Data.Conduit.ZlibSpec (spec) where
 
 import Test.Hspec
@@ -47,3 +48,18 @@ spec = describe "Data.Conduit.Zlib" $ do
                 unChunk C.Flush = []
             bss <- CL.sourceList bssC C.$$ CL.concatMap unChunk C.=$ CZ.ungzip C.=$ CL.consume
             L.fromChunks bss `shouldBe` content
+
+        it "uncompressed after compressed" $ do
+            let c = "This data is stored compressed."
+                u = "This data isn't."
+            let src1 = do
+                    C.yield c C.$= CZ.gzip
+                    C.yield u
+            encoded <- src1 C.$$ CL.consume
+            let src2 = mapM_ C.yield encoded
+            (c', u') <- src2 C.$$ do
+                c' <- CZ.ungzip C.=$ CL.consume
+                u' <- CL.consume
+                return (S.concat c', S.concat u')
+            c' `shouldBe` c
+            u' `shouldBe` u

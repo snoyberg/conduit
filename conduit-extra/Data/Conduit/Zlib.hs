@@ -43,7 +43,7 @@ decompress
     => WindowBits -- ^ Zlib parameter (see the zlib-bindings package as well as the zlib C library)
     -> Conduit ByteString m ByteString
 decompress =
-    helperDecompress (liftM (fmap Chunk) await) yield'
+    helperDecompress (liftM (fmap Chunk) await) yield' leftover
   where
     yield' Flush = return ()
     yield' (Chunk bs) = yield bs
@@ -53,19 +53,23 @@ decompressFlush
     :: (MonadBase base m, PrimMonad base, MonadThrow m)
     => WindowBits -- ^ Zlib parameter (see the zlib-bindings package as well as the zlib C library)
     -> Conduit (Flush ByteString) m (Flush ByteString)
-decompressFlush = helperDecompress await yield
+decompressFlush = helperDecompress await yield (leftover . Chunk)
 
 helperDecompress :: (Monad (t m), MonadBase base m, PrimMonad base, MonadThrow m, MonadTrans t)
                  => t m (Maybe (Flush ByteString))
                  -> (Flush ByteString -> t m ())
+                 -> (ByteString -> t m ())
                  -> WindowBits
                  -> t m ()
-helperDecompress await' yield' config =
+helperDecompress await' yield' leftover' config =
     await' >>= maybe (return ()) start
   where
     start input = do
         inf <- lift $ unsafeLiftIO $ initInflate config
         push inf input
+
+        rem' <- lift $ unsafeLiftIO $ getUnusedInflate inf
+        unless (S.null rem') $ leftover' rem'
 
     continue inf = await' >>= maybe (close inf) (push inf)
 

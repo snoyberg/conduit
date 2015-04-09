@@ -1,3 +1,7 @@
+## 1.1.7.2
+
+* Fix for: Decompressing a specific amount of zlib data "eats" following data [#20](https://github.com/fpco/streaming-commons/issues/20)
+
 ## 1.1.7
 
 Add `Data.Conduit.ByteString.Builder`
