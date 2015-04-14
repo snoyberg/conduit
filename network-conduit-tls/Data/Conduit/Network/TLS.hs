@@ -374,6 +374,9 @@ runTLSClientStartTLS TLSClientConfig {..} app = do
 #if MIN_VERSION_streaming_commons(0,1,6)
             , appCloseConnection' = NC.connectionClose conn
 #endif
+#if MIN_VERSION_streaming_commons(0,1,12)
+            , appRawSocket' = Nothing
+#endif
             }
             , \app' -> do
                  NC.connectionSetSecure context conn tlsClientTLSSettings
