@@ -192,6 +192,9 @@ runTCPServerStartTLS TLSConfig{..} app = do
 #if MIN_VERSION_streaming_commons(0,1,6)
                   , appCloseConnection' = sClose socket
 #endif
+#if MIN_VERSION_streaming_commons(0,1,12)
+                  , appRawSocket' = Just socket
+#endif
                   }
                 -- wrap up the current connection with TLS
                 startTls = \app' -> do
@@ -226,6 +229,9 @@ tlsAppData ctx addr mlocal = AppData
     , appLocalAddr' = mlocal
 #if MIN_VERSION_streaming_commons(0,1,6)
     , appCloseConnection' = TLS.contextClose ctx
+#endif
+#if MIN_VERSION_streaming_commons(0,1,12)
+    , appRawSocket' = Nothing
 #endif
     }
 
@@ -335,6 +341,9 @@ runTLSClient TLSClientConfig {..} app = do
 #if MIN_VERSION_streaming_commons(0,1,6)
             , appCloseConnection' = NC.connectionClose conn
 #endif
+#if MIN_VERSION_streaming_commons(0,1,12)
+            , appRawSocket' = Nothing
+#endif
             })
 
 
@@ -375,6 +384,9 @@ runTLSClientStartTLS TLSClientConfig {..} app = do
                    , appLocalAddr' = Nothing
 #if MIN_VERSION_streaming_commons(0,1,6)
                    , appCloseConnection' = NC.connectionClose conn
+#endif
+#if MIN_VERSION_streaming_commons(0,1,12)
+                    , appRawSocket' = Nothing
 #endif
                    }
             )
