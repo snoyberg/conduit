@@ -168,6 +168,8 @@ type ApplicationStartTLS = (AppData, (AppData -> IO ()) -> IO ()) -> IO ()
 -- client handlers will be discarded. If you have mutable state you want
 -- to share among multiple handlers, you need to use some kind of mutable
 -- variables.
+--
+-- Since 1.1.2
 runGeneralTCPServerTLS :: MonadBaseControl IO m => TLSConfig -> (AppData -> m ()) -> m ()
 runGeneralTCPServerTLS config app = liftBaseWith $ \run ->
   runTCPServerTLS config $ void . run . app

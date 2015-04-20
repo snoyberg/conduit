@@ -1,3 +1,7 @@
+## 1.1.2
+
+* Added 'runGeneralTCPServerTLS' function [#208](https://github.com/snoyberg/conduit/pull/208)
+
 ## 1.1.1.1
 
 * Fill in `appRawSocket` for streaming-commons 0.1.12 and later
