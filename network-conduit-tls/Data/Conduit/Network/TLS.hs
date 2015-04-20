@@ -18,6 +18,7 @@ module Data.Conduit.Network.TLS
     , tlsNeedLocalAddr
     , tlsAppData
     , runTCPServerTLS
+    , runGeneralTCPServerTLS
     , runTCPServerStartTLS
       -- * Client
     , TLSClientConfig
@@ -34,7 +35,7 @@ module Data.Conduit.Network.TLS
 
 import Prelude hiding (FilePath, readFile)
 import Control.Applicative ((<$>), (<*>))
-import Control.Monad (forever)
+import Control.Monad (forever, void)
 import Filesystem.Path.CurrentOS (FilePath)
 import Filesystem (readFile)
 import qualified Data.ByteString.Lazy as L
@@ -160,6 +161,16 @@ runTCPServerTLS TLSConfig{..} app = do
             TLS.bye ctx
 
 type ApplicationStartTLS = (AppData, (AppData -> IO ()) -> IO ()) -> IO ()
+
+-- | Like 'runTCPServerTLS', but monad can be any instance of 'MonadBaseControl' 'IO'.
+--
+-- Note that any changes to the monadic state performed by individual
+-- client handlers will be discarded. If you have mutable state you want
+-- to share among multiple handlers, you need to use some kind of mutable
+-- variables.
+runGeneralTCPServerTLS :: MonadBaseControl IO m => TLSConfig -> (AppData -> m ()) -> m ()
+runGeneralTCPServerTLS config app = liftBaseWith $ \run ->
+  runTCPServerTLS config $ void . run . app
 
 -- | run a server un-crypted but also pass a call-back to trigger a StartTLS handshake
 -- on the underlying connection
