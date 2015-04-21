@@ -345,20 +345,18 @@ drop n0 = go n0
 -- Since 0.3.0
 lines :: Monad m => Conduit S.ByteString m S.ByteString
 lines =
-    loop id
+    loop []
   where
     loop front = await >>= maybe (finish front) (go front)
 
     finish front =
-        let final = front S.empty
+        let final = S.concat $ reverse front
          in unless (S.null final) (yield final)
 
     go sofar more =
         case S.uncons second of
-            Just (_, second') -> yield (sofar first) >> go id second'
-            Nothing ->
-                let rest = sofar more
-                 in loop $ S.append rest
+            Just (_, second') -> yield (S.concat $ reverse $ first:sofar) >> go [] second'
+            Nothing -> loop $ more:sofar
       where
         (first, second) = S.breakByte 10 more
 
