@@ -347,16 +347,16 @@ lines :: Monad m => Conduit S.ByteString m S.ByteString
 lines =
     loop []
   where
-    loop front = await >>= maybe (finish front) (go front)
+    loop acc = await >>= maybe (finish acc) (go acc)
 
-    finish front =
-        let final = S.concat $ reverse front
+    finish acc =
+        let final = S.concat $ reverse acc
          in unless (S.null final) (yield final)
 
-    go sofar more =
+    go acc more =
         case S.uncons second of
-            Just (_, second') -> yield (S.concat $ reverse $ first:sofar) >> go [] second'
-            Nothing -> loop $ more:sofar
+            Just (_, second') -> yield (S.concat $ reverse $ first:acc) >> go [] second'
+            Nothing -> loop $ more:acc
       where
         (first, second) = S.breakByte 10 more
 
