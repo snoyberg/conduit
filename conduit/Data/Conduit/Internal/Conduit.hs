@@ -722,7 +722,9 @@ src $$ sink = do
     return res
 {-# INLINE [1] ($$) #-}
 
--- | Left fuse, combining a source and a conduit together into a new source.
+-- | A synonym for @=$=@ for backwards compatibility.
+--
+-- Left fuse, combining a source and a conduit together into a new source.
 --
 -- Both the @Source@ and @Conduit@ will be closed when the newly-created
 -- @Source@ is closed.
@@ -738,7 +740,9 @@ src $$ sink = do
 {-# INLINE [0] ($=) #-}
 {-# RULES "conduit: $= is =$=" ($=) = (=$=) #-}
 
--- | Right fuse, combining a conduit and a sink together into a new sink.
+-- | A synonym for @=$=@ for backwards compatibility.
+--
+-- Right fuse, combining a conduit and a sink together into a new sink.
 --
 -- Both the @Conduit@ and @Sink@ will be closed when the newly-created @Sink@
 -- is closed.
@@ -787,7 +791,8 @@ ConduitM left0 =$= ConduitM right0 = ConduitM $ \rest ->
 {-# INLINE [1] (=$=) #-}
 
 -- | Wait for a single input value from upstream. If no data is available,
--- returns @Nothing@.
+-- returns @Nothing@. Once @await@ returns @Nothing@, subsequent calls will
+-- also return @Nothing@.
 --
 -- Since 0.5.0
 await :: Monad m => Consumer i m (Maybe i)
