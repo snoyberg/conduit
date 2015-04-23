@@ -534,7 +534,8 @@ scanlM :: Monad m => (a -> s -> m (s, b)) -> s -> Conduit a m b
 scanlM f s = void $ mapAccumM f s
 {-# DEPRECATED scanlM "Use mapAccumM instead" #-}
 
--- | Analog of @mapAccumL@ for lists.
+-- | Analog of @mapAccumL@ for lists. Note that in contrast to @mapAccumL@, the function argument
+--   takes the accumulator as its second argument, not its first argument.
 --
 -- Subject to fusion
 --
