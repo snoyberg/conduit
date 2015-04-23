@@ -1068,6 +1068,12 @@ sequenceSources = getZipSource . sequenceA . fmap ZipSource
 -- differently. It feeds one sink with input until it finishes, then switches
 -- to another, etc., and at the end combines their results.
 --
+-- This newtype is in fact a type constrained version of 'ZipConduit', and has
+-- the same behavior. It's presented as a separate type since (1) it
+-- historically predates @ZipConduit@, and (2) the type constraining can make
+-- your code clearer (and thereby make your error messages more easily
+-- understood).
+--
 -- Since 1.0.13
 newtype ZipSink i m r = ZipSink { getZipSink :: Sink i m r }
 
