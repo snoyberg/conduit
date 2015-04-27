@@ -1,3 +1,7 @@
+## 1.2.4.1
+
+* Some documentation improvements
+
 ## 1.2.4
 
 * [fuseBothMaybe](https://github.com/snoyberg/conduit/issues/199)
