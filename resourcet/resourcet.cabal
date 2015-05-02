@@ -17,7 +17,7 @@ Library
                        Control.Monad.Trans.Resource.Internal
                        Data.Acquire
                        Data.Acquire.Internal
-  Build-depends:       base                     >= 4.3          && < 5
+  Build-depends:       base                     >= 4.5          && < 5
                      , lifted-base              >= 0.1
                      , transformers-base        >= 0.4.4        && < 0.5
                      , monad-control            >= 0.3.1        && < 1.1
