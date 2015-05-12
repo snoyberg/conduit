@@ -17,6 +17,7 @@ module Data.Conduit.Binary
     , sourceIOHandle
     , sourceFileRange
     , sourceHandleRange
+    , sourceHandleRangeWithBuffer
       -- ** Sinks
     , sinkFile
     , sinkHandle
@@ -181,7 +182,20 @@ sourceHandleRange :: MonadIO m
                   -> Maybe Integer -- ^ Offset
                   -> Maybe Integer -- ^ Maximum count
                   -> Producer m S.ByteString
-sourceHandleRange handle offset count = do
+sourceHandleRange handle offset count =
+  sourceHandleRangeWithBuffer handle offset count 4096
+
+-- | Stream the contents of a handle as binary data, starting from a certain
+-- offset and only consuming up to a certain number of bytes. This function
+-- consumes chunks as specified by the buffer size.
+--
+sourceHandleRangeWithBuffer :: MonadIO m
+                  => IO.Handle
+                  -> Maybe Integer -- ^ Offset
+                  -> Maybe Integer -- ^ Maximum count
+                  -> Int -- ^ Buffer size
+                  -> Producer m S.ByteString
+sourceHandleRangeWithBuffer handle offset count buffer = do
     case offset of
         Nothing -> return ()
         Just off -> liftIO $ IO.hSeek handle IO.AbsoluteSeek off
@@ -190,7 +204,7 @@ sourceHandleRange handle offset count = do
         Just c -> pullLimited (fromInteger c)
   where
     pullUnlimited = do
-        bs <- liftIO $ S.hGetSome handle 4096
+        bs <- liftIO $ S.hGetSome handle buffer
         if S.null bs
             then return ()
             else do
@@ -198,7 +212,7 @@ sourceHandleRange handle offset count = do
                 pullUnlimited
 
     pullLimited c = do
-        bs <- liftIO $ S.hGetSome handle (min c 4096)
+        bs <- liftIO $ S.hGetSome handle (min c buffer)
         let c' = c - S.length bs
         assert (c' >= 0) $
             if S.null bs
