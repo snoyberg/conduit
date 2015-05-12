@@ -1,5 +1,5 @@
 name:                network-conduit-tls
-version:             1.1.2
+version:             1.2.0
 synopsis:            Create TLS-aware network code with conduits
 description:         Uses the tls package for a pure-Haskell implementation.
 homepage:            https://github.com/snoyberg/conduit
@@ -16,8 +16,6 @@ library
   exposed-modules:    Data.Conduit.Network.TLS
                       Data.Conduit.Network.TLS.Internal
   build-depends:      base            >= 4        && < 5
-                    , system-filepath >= 0.4
-                    , system-fileio   >= 0.3
                     , bytestring      >= 0.9
                     , tls             >= 1.2.15
                     , conduit-extra   >= 1.1

@@ -33,11 +33,8 @@ module Data.Conduit.Network.TLS
     , tlsClientConnectionContext
     ) where
 
-import Prelude hiding (FilePath, readFile)
 import Control.Applicative ((<$>), (<*>))
 import Control.Monad (forever, void)
-import Filesystem.Path.CurrentOS (FilePath)
-import Filesystem (readFile)
 import qualified Data.ByteString.Lazy as L
 import qualified Network.TLS as TLS
 import Data.Conduit.Network (sinkSocket, runTCPServerWithHandle, serverSettings, sourceSocket)
@@ -64,9 +61,9 @@ import Data.Default
 makeCertDataPath :: FilePath -> [FilePath] -> FilePath -> TlsCertData
 makeCertDataPath certPath chainCertPaths keyPath =
     TlsCertData
-      (readFile certPath)
-      (mapM readFile chainCertPaths)
-      (readFile keyPath)
+      (S.readFile certPath)
+      (mapM S.readFile chainCertPaths)
+      (S.readFile keyPath)
 
 makeCertDataBS :: S.ByteString -> [S.ByteString] -> S.ByteString ->
                   TlsCertData
