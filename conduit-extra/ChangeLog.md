@@ -1,3 +1,7 @@
+## 1.1.8
+
+*  Adding buffer size to sourceHandleRange [#213](https://github.com/snoyberg/conduit/pull/213)
+
 ## 1.1.7.3
 
 * Make Binary.lines O(n) instead of O(n^2) [#209](https://github.com/snoyberg/conduit/pull/209)

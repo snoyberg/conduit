@@ -183,12 +183,13 @@ sourceHandleRange :: MonadIO m
                   -> Maybe Integer -- ^ Maximum count
                   -> Producer m S.ByteString
 sourceHandleRange handle offset count =
-  sourceHandleRangeWithBuffer handle offset count 4096
+  sourceHandleRangeWithBuffer handle offset count defaultChunkSize
 
 -- | Stream the contents of a handle as binary data, starting from a certain
 -- offset and only consuming up to a certain number of bytes. This function
 -- consumes chunks as specified by the buffer size.
 --
+-- Since 1.1.8
 sourceHandleRangeWithBuffer :: MonadIO m
                   => IO.Handle
                   -> Maybe Integer -- ^ Offset
