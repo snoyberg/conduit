@@ -23,7 +23,8 @@ module Control.Monad.Trans.Resource.Internal(
 ) where
 
 import Control.Exception (throw,Exception,SomeException)
-import Control.Applicative (Applicative (..))
+import Control.Applicative (Applicative (..), Alternative(..))
+import Control.Monad (MonadPlus(..))
 import Control.Monad.Trans.Control
     ( MonadTransControl (..), MonadBaseControl (..) )
 import Control.Monad.Base (MonadBase, liftBase)
@@ -234,6 +235,14 @@ instance Applicative m => Applicative (ResourceT m) where
     pure = ResourceT . const . pure
     ResourceT mf <*> ResourceT ma = ResourceT $ \r ->
         mf r <*> ma r
+
+instance Alternative m => Alternative (ResourceT m) where
+    empty = ResourceT $ \_ -> empty
+    (ResourceT mf) <|> (ResourceT ma) = ResourceT $ \r -> mf r <|> ma r
+
+instance MonadPlus m => MonadPlus (ResourceT m) where
+    mzero = ResourceT $ \_ -> mzero
+    (ResourceT mf) `mplus` (ResourceT ma) = ResourceT $ \r -> mf r `mplus` ma r
 
 instance Monad m => Monad (ResourceT m) where
     return = ResourceT . const . return
