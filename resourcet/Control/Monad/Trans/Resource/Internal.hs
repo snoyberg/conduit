@@ -236,10 +236,12 @@ instance Applicative m => Applicative (ResourceT m) where
     ResourceT mf <*> ResourceT ma = ResourceT $ \r ->
         mf r <*> ma r
 
+-- | Since 1.1.5
 instance Alternative m => Alternative (ResourceT m) where
     empty = ResourceT $ \_ -> empty
     (ResourceT mf) <|> (ResourceT ma) = ResourceT $ \r -> mf r <|> ma r
 
+-- | Since 1.1.5
 instance MonadPlus m => MonadPlus (ResourceT m) where
     mzero = ResourceT $ \_ -> mzero
     (ResourceT mf) `mplus` (ResourceT ma) = ResourceT $ \r -> mf r `mplus` ma r

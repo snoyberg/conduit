@@ -1,3 +1,7 @@
+## 1.1.5
+
+*  Add pass-through instances for Alternative and MonadPlus [#214](https://github.com/snoyberg/conduit/pull/214)
+
 ## 1.1.4.1
 
 * Allow older `exceptions` version again
