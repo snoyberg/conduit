@@ -35,6 +35,7 @@ module Data.Conduit.Text
     , Data.Conduit.Text.decodeUtf8
     , decodeUtf8Lenient
     , encodeUtf8
+    , detectUtf
     ) where
 
 import qualified Prelude
@@ -459,3 +460,34 @@ decodeUtf8 = decode utf8
 encodeUtf8 :: Monad m => Conduit T.Text m B.ByteString
 encodeUtf8 = CL.map TE.encodeUtf8
 {-# INLINE encodeUtf8 #-}
+
+-- | Automatically determine which UTF variant is being used. This function
+-- checks for BOMs, removing them as necessary. It defaults to assuming UTF-8.
+detectUtf :: MonadThrow m => Conduit B.ByteString m T.Text
+detectUtf =
+    conduit id
+  where
+    conduit front = await >>= maybe (return ()) (push front)
+
+    push front bss =
+        either conduit (\(bss', continue) -> leftover bss' >> continue)
+               (getEncoding front bss)
+
+    getEncoding front bs'
+        | B.length bs < 4 =
+            Left (bs `B.append`)
+        | otherwise =
+            Right (bsOut, decode codec)
+      where
+        bs = front bs'
+        bsOut = B.append (B.drop toDrop x) y
+        (x, y) = B.splitAt 4 bs
+        (toDrop, codec) =
+            case B.unpack x of
+                [0x00, 0x00, 0xFE, 0xFF] -> (4, utf32_be)
+                [0xFF, 0xFE, 0x00, 0x00] -> (4, utf32_le)               
+                0xFE : 0xFF: _           -> (2, utf16_be)
+                0xFF : 0xFE: _           -> (2, utf16_le)
+                0xEF : 0xBB: 0xBF : _    -> (3, utf8)
+                _                        -> (0, utf8) -- Assuming UTF-8
+{-# INLINE detectUtf #-}
