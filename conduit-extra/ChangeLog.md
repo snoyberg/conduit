@@ -1,3 +1,7 @@
+## 1.1.9
+
+* detectUtf [#217](https://github.com/snoyberg/conduit/pull/217)
+
 ## 1.1.8
 
 *  Adding buffer size to sourceHandleRange [#213](https://github.com/snoyberg/conduit/pull/213)

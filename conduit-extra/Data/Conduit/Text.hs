@@ -463,22 +463,24 @@ encodeUtf8 = CL.map TE.encodeUtf8
 
 -- | Automatically determine which UTF variant is being used. This function
 -- checks for BOMs, removing them as necessary. It defaults to assuming UTF-8.
+--
+-- Since 1.1.9
 detectUtf :: MonadThrow m => Conduit B.ByteString m T.Text
 detectUtf =
     go id
   where
     go front = await >>= maybe (close front) (push front)
-    
+
     push front bs'
         | B.length bs < 4 = go $ B.append bs
         | otherwise       = leftDecode bs
       where bs = front bs'
-       
+
     close front = leftDecode $ front B.empty
-      
+
     leftDecode bs = leftover bsOut >> decode codec
       where
-        bsOut = B.append (B.drop toDrop x) y        
+        bsOut = B.append (B.drop toDrop x) y
         (x, y) = B.splitAt 4 bs
         (toDrop, codec) =
             case B.unpack x of
