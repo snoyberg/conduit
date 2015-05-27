@@ -467,7 +467,7 @@ detectUtf :: MonadThrow m => Conduit B.ByteString m T.Text
 detectUtf =
     conduit id
   where
-    conduit front = await >>= maybe (return ()) (push front)
+    conduit front = await >>= maybe (close front) (push front)
 
     push front bss =
         either conduit (\(bss', continue) -> leftover bss' >> continue)
@@ -490,4 +490,8 @@ detectUtf =
                 0xFF : 0xFE: _           -> (2, utf16_le)
                 0xEF : 0xBB: 0xBF : _    -> (3, utf8)
                 _                        -> (0, utf8) -- Assuming UTF-8
+
+    close front = do
+      leftover $ front B.empty
+      decode utf8   
 {-# INLINE detectUtf #-}
