@@ -469,11 +469,10 @@ detectUtf =
   where
     go front = await >>= maybe (close front) (push front)
     
-    push front bs' = 
-     if B.length bs < 4
-     then go $ B.append bs
-     else leftDecode bs
-     where bs = front bs'
+    push front bs'
+        | B.length bs < 4 = go $ B.append bs
+        | otherwise       = leftDecode bs
+      where bs = front bs'
        
     close front = leftDecode $ front B.empty
       
