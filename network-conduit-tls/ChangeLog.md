@@ -1,3 +1,7 @@
+## 1.2.0.1
+
+* tls 1.3 support
+
 ## 1.2.0
 
 * Drop system-filepath

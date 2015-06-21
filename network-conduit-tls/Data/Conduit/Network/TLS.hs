@@ -113,7 +113,9 @@ tlsConfigChainBS a b c d e = TLSConfig a b (makeCertDataBS c d e) False
 
 serverHandshake :: Socket -> TLS.Credentials -> IO (TLS.Context)
 serverHandshake socket creds = do
+#if !MIN_VERSION_tls(1,3,0)
     gen <- Crypto.Random.AESCtr.makeSystem
+#endif
 
     ctx <- TLS.contextNew
            TLS.Backend
@@ -123,7 +125,9 @@ serverHandshake socket creds = do
                     , TLS.backendRecv = recvExact socket
                     }
             params
+#if !MIN_VERSION_tls(1,3,0)
             gen
+#endif
 
     TLS.handshake ctx
     return ctx
