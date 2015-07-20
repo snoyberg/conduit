@@ -2,6 +2,8 @@
 
 Below is a tutorial, originally posted on School of Haskell, on how to use conduit. In addition to this tutorial, there is [a set of slides on conduit](https://docs.google.com/presentation/d/1RBefOCZ7AKOo4f1yiF4mtKPAT3l5vY9ky2SR02O4Vvg/edit?usp=sharing) which covers a number of topics.
 
+## Libraries
+
 There are a large number of packages relevant to conduit, just search for
 conduit on [the LTS Haskell package list page](https://www.stackage.org/lts).
 However, there are three core packages most users will be interested in:
