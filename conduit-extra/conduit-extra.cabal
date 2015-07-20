@@ -1,5 +1,5 @@
 Name:                conduit-extra
-Version:             1.1.9
+Version:             1.1.9.1
 Synopsis:            Batteries included conduit: adapters for common libraries.
 Description:
     The conduit package itself maintains relative small dependencies. The purpose of this package is to collect commonly used utility functions wrapping other library dependencies, without depending on heavier-weight dependencies. The basic idea is that this package should only depend on haskell-platform packages and conduit.
@@ -16,6 +16,7 @@ extra-source-files:
     test/filesystem/*.txt
     test/filesystem/bin/*.txt
     ChangeLog.md
+    README.md
 
 Library
   Exposed-modules:     Data.Conduit.Attoparsec
