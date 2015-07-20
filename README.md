@@ -25,21 +25,18 @@ import qualified Data.Conduit.List as CL
 import qualified Data.Conduit.Binary as CB
 
 main = do
-    -- show Pure operations: summing numbers.
+    -- Pure operations: summing numbers.
     result <- CL.sourceList [1..10] $$ CL.fold (+) 0
     print result
-    -- /show
     
-    -- show Exception safe file access: copy a file.
+    -- Exception safe file access: copy a file.
     writeFile "input.txt" "This is a test."
     runResourceT $ CB.sourceFile "input.txt" $$ CB.sinkFile "output.txt"
     readFile "output.txt" >>= putStrLn
-    -- /show
     
-    -- show Perform transformations.
+    -- Perform transformations.
     result <- CL.sourceList [1..10] $$ CL.map (+ 1) =$ CL.consume
     print result
-    -- /show
 ```
 
 ## Features of conduit
@@ -58,7 +55,7 @@ There are three main concepts in conduit. A `Source` will produce a stream of da
 In order to combine these different components, we have *connecting* and *fusing*. The connect operator is `$$`, and it will combine a `Source` and `Sink`, feeding the values produced by the former into the latter, and producing a final result. Fusion, on the other hand, will take two components and generate a new component. For example, `=$` can fuse a `Conduit` and `Sink` together into a new `Sink`, which will consume the same values as the original `Conduit` and produce the same result as the original `Sink`. The other two fusion operators are `$=`, which combines a `Source` and `Conduit` into a new `Source`, and `=$=`, which combines two `Conduit`s into a new `Conduit`.
 
 ```haskell
--- show Demonstration of connect and fuse operators
+-- Demonstration of connect and fuse operators
 import Data.Conduit
 import qualified Data.Conduit.List as CL
 
@@ -79,7 +76,7 @@ main = do
 
 __Exercise__: Write a `Conduit` which will multiply all incoming numbers by 2, and then include it in the above code snippet. Note that there are multiple ways of using the connect and fusion operators to get the desired result, give a few of them a shot.
 
-@@@ SHOW SOLUTION
+* * *
 
 ```haskell
 import Data.Conduit
@@ -94,7 +91,6 @@ sink = CL.mapM_ putStrLn
 conduit :: Conduit Int IO String -- converts Ints into Strings
 conduit = CL.map show
 
--- show
 newConduit :: Conduit Int IO Int
 newConduit = CL.map (* 2)
 
@@ -106,8 +102,6 @@ main = do
     source $$ (newConduit =$= conduit) =$ sink
     source $= (newConduit =$= conduit) $$ sink
 ```
-
-@@@
 
 ### Unified data type
 
@@ -134,7 +128,7 @@ There are three core primitives in the `conduit` library.
 3. `leftover` will put a single value back in the upstream queue, ready to be read by the next call to `await`.
 
 ```haskell
--- show Using primitives
+-- Using primitives
 import Data.Conduit
 import Control.Monad.IO.Class
 
@@ -177,29 +171,18 @@ main = source $$ conduit =$ sink
     import Data.Conduit
     import qualified Data.Conduit.List as CL
     
-    -- show
     sourceList :: Monad m => [a] -> Source m a
     sourceList = ???
-    -- /show
     
     main = sourceList [1, 2, 3] $$ CL.mapM_ print
     ```
 
-    @@@ SHOW SOLUTION
-    
+    * * *
+
     ```haskell
-    import Data.Conduit
-    import qualified Data.Conduit.List as CL
-    
-    -- show
     sourceList :: Monad m => [a] -> Source m a
     sourceList = mapM_ yield
-    -- /show
-    
-    main = sourceList [1, 2, 3] $$ CL.mapM_ print
     ```
-    
-    @@@
 
 2.  There's a helper function in the library called awaitForever. Rewrite `sink` above using `awaitForever`.
 
@@ -227,48 +210,18 @@ main = source $$ conduit =$ sink
             _ -> return ()
 
 
-    -- show
     sink :: Sink String IO ()
     sink = ???
-    -- /show
             
     main = source $$ conduit =$ sink
     ```
 
-    @@@ SHOW SOLUTION
+    * * *
     
     ```haskell
-    import Data.Conduit
-    import Control.Monad.IO.Class
-    
-    source :: Source IO Int
-    source = do
-        yield 1
-        yield 2
-        yield 3
-        yield 4
-        
-    conduit :: Conduit Int IO String
-    conduit = do
-        -- Get all of the adjacent pairs from the stream
-        mi1 <- await
-        mi2 <- await
-        case (mi1, mi2) of
-            (Just i1, Just i2) -> do
-                yield $ show (i1, i2)
-                leftover i2
-                conduit
-            _ -> return ()
-
-
-    -- show
     sink :: Sink String IO ()
     sink = awaitForever $ liftIO . putStrLn
-    -- /show
-            
-    main = source $$ conduit =$ sink
     ```
-    @@@
 
 3.  Implement your own version of `awaitForever`.
 
@@ -277,31 +230,19 @@ main = source $$ conduit =$ sink
     import qualified Data.Conduit.List as CL
     import Control.Monad.Trans.Class (lift)
     
-    -- show
     myAwaitForever :: Monad m => (a -> Conduit a m b) -> Conduit a m b
     myAwaitForever f = ???
-    -- /show
     
     main = CL.sourceList [1..10] $$ myAwaitForever (lift . print)
     ```
-    
-    @@@ SHOW SOLUTION
+
+    * * *
     
     ```haskell
-    import Data.Conduit
-    import qualified Data.Conduit.List as CL
-    import Control.Monad.Trans.Class (lift)
-    
-    -- show
     myAwaitForever :: Monad m => (a -> Conduit a m b) -> Conduit a m b
     myAwaitForever f = 
         await >>= maybe (return ()) (\x -> f x >> myAwaitForever f)
-    -- /show
-    
-    main = CL.sourceList [1..10] $$ myAwaitForever (lift . print)
     ```
-    
-    @@@
 
 ## Monadic chaining
 
@@ -312,7 +253,7 @@ import Data.Conduit
 import qualified Data.Conduit.List as CL
 
 triple :: Monad m => Conduit a m a
--- show Triple conduit
+-- Triple conduit
 triple = do
     ma <- await
     case ma of
@@ -320,7 +261,6 @@ triple = do
         Just a -> do
             CL.sourceList [a, a, a]
             triple
--- /show
 
 main = CL.sourceList [1..4] $$ triple =$ CL.mapM_ print
 ```
@@ -331,24 +271,21 @@ As you can see, it's entirely possible to combine a higher-level function like `
 
 __Exercise__: Write a `Conduit` that consumes a stream of `Int`s. It takes the first `Int` from the stream, and then multiplies all subsequent `Int`s by that number and sends them back downstream. You should use the Data.Conduit.List.map function for this.
 
-@@@ SHOW SOLUTION
+* * *
 
 ```haskell
 import Data.Conduit
 import qualified Data.Conduit.List as CL
 
--- show Multiplier
+-- Multiplier
 multiplier = do
     ma <- await
     case ma of
         Nothing -> return ()
         Just a -> CL.map (* a)
--- /show
 
 main = CL.sourceList [5..10] $$ multiplier =$ CL.mapM_ print
 ```
-
-@@@
 
 ## Lifting operations
 
@@ -404,7 +341,7 @@ The following example demonstrates how the components of our pipeline interact w
 import Data.Conduit
 import Control.Monad.IO.Class
 
--- show Termination
+-- Termination
 
 source = do
     liftIO $ putStrLn "source: yielding 1"
@@ -435,7 +372,6 @@ sink i = do
             sink (i - 1)
             
 main = source $$ conduit =$ sink 2
--- /show
 ```
 
 Based on what we've said until now, there's a big limitation. `Source`s and `Conduit`s have no way of cleaning up after themselves, since they are terminated immediately when anything downstream from them terminates. To address this, `conduit` supports the concept of terminators. Each time a `Source` or `Conduit` `yield`s a value downstream, it may additionally include a clean-up function. Each time the `Source` `yield`s, it overwrites the previously yielded clean-up function. Let's see a simple example:
@@ -503,12 +439,12 @@ import Control.Monad.IO.Class
 import qualified Data.Conduit.List as CL
 
 source =
--- show Better with bracketP
+-- Better with bracketP
     bracketP
         (openFile "test.txt" ReadMode)
         (\handle -> putStrLn "Closing handle" >> hClose handle)
         loop
--- /show
+
   where
     loop handle = do
         eof <- liftIO $ hIsEOF handle
@@ -519,16 +455,14 @@ source =
                 yield c
                 loop handle
 
--- show An exception-throwing sink.
+-- An exception-throwing sink.
 exceptionalSink = do
     c <- await
     liftIO $ print c
     error "This throws an exception"
--- /show
 
--- show We also need to call runResourceT
+-- We also need to call runResourceT
 main = runResourceT $ source $$ exceptionalSink
--- /show
 ```
 
 Notice our call to `runResourceT`. At the point where execution leaves that function, all resources allocated inside that block will be freed. For more information on `ResourceT`, please see Control.Monad.Trans.Resource.
