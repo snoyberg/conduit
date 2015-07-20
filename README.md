@@ -51,7 +51,7 @@ main = do
 
 ## Basics
 
-The main module for the `conduit` package is <hoogle results="1">Data.Conduit</hoogle>, which provides the core data types and primitive operations. Another commonly used modules is <hoogle results="1">Data.Conduit.List</hoogle>, which provides a number of helper functions for common cases, based on standard Haskell concepts like `map` and `fold`.
+The main module for the `conduit` package is Data.Conduit, which provides the core data types and primitive operations. Another commonly used modules is Data.Conduit.List, which provides a number of helper functions for common cases, based on standard Haskell concepts like `map` and `fold`.
 
 There are three main concepts in conduit. A `Source` will produce a stream of data values and send them *downstream*. A `Sink` will consume a stream of data values from *upstream* and produce a return value. In the first example in the synopsis, `sourceList` generated a stream of `Integer`s which the `fold` consumed, producing a return value of 55. The third concept is the `Conduit`, which consumes a stream of values from upstream and produces a new stream to send downstream. In the synopsis, the call to `map` consumed one stream of `Integer`s, added 1 to each value, and sent the new results downstream.
 
@@ -201,7 +201,7 @@ main = source $$ conduit =$ sink
     
     @@@
 
-2.  There's a helper function in the library called <hoogle results="1" search="Data.Conduit.awaitForever">awaitForever</hoogle>. Rewrite `sink` above using `awaitForever`.
+2.  There's a helper function in the library called awaitForever. Rewrite `sink` above using `awaitForever`.
 
     ```haskell
     import Data.Conduit
@@ -329,7 +329,7 @@ Mini exercise: rewrite the above using `awaitForever`, which should be much shor
 
 As you can see, it's entirely possible to combine a higher-level function like `sourceList` into a larger function. One question you might have is: how can we use a `Source` inside the body of a `Conduit`? We'll discuss that with `Producer`s and `Consumer`s in the generalizing section below.
 
-__Exercise__: Write a `Conduit` that consumes a stream of `Int`s. It takes the first `Int` from the stream, and then multiplies all subsequent `Int`s by that number and sends them back downstream. You should use the <hoogle results="1">Data.Conduit.List.map</hoogle> function for this.
+__Exercise__: Write a `Conduit` that consumes a stream of `Int`s. It takes the first `Int` from the stream, and then multiplies all subsequent `Int`s by that number and sends them back downstream. You should use the Data.Conduit.List.map function for this.
 
 @@@ SHOW SOLUTION
 
@@ -390,7 +390,7 @@ The answer is that we have two final type synonyms to introduce. `Producer` is a
 
 In the interest of generality, most library functions will be written in terms of `Producer` or `Consumer`. As a user, you can simply use `Source` and `Sink` in most of your code, unless you need to use a function as `Conduit` as well.
 
-And for the cases where you have a `Source` and wish to convert it to a `Conduit` after the fact (e.g., it comes from another person's library), you can use <hoogle results="1">toProducer</hoogle>, or <hoogle results="1">toConsumer</hoogle> for `Sink`s.
+And for the cases where you have a `Source` and wish to convert it to a `Conduit` after the fact (e.g., it comes from another person's library), you can use toProducer, or toConsumer for `Sink`s.
 
 ## Termination
 
@@ -458,7 +458,7 @@ While in our examples till now this isn't incredibly important, when we start de
 
 Manually inserting `yieldOr`s throughout your codebase can be very tedious. Instead, it's usually easier to use the `addCleanup` function, which will ensure that a certain function is called on termination. Your cleanup function is provided a `Bool` parameter. If `True`, it means that the component ran to its normal completion. If `False`, it means that downstream terminated first.
 
-Let's demonstrate some simple file I/O. Note that the code below deals with characters one at a time, and is thus incredibly inefficient. It is highly recommended to use <hoogle>Data.Conduit.Binary</hoogle> for real-world use cases.
+Let's demonstrate some simple file I/O. Note that the code below deals with characters one at a time, and is thus incredibly inefficient. It is highly recommended to use Data.Conduit.Binary for real-world use cases.
 
 ```haskell
 {-# START_FILE test.txt #-}
@@ -531,7 +531,7 @@ main = runResourceT $ source $$ exceptionalSink
 -- /show
 ```
 
-Notice our call to `runResourceT`. At the point where execution leaves that function, all resources allocated inside that block will be freed. For more information on `ResourceT`, please see <hoogle results="1">Control.Monad.Trans.Resource</hoogle>.
+Notice our call to `runResourceT`. At the point where execution leaves that function, all resources allocated inside that block will be freed. For more information on `ResourceT`, please see Control.Monad.Trans.Resource.
 
 ## Connect and resume
 
@@ -552,10 +552,10 @@ main = do
 
 The important thing to note about this `ResumableSource` is that it might have some cleanup function associated with it, so you *must* ultimately call `$$+-` or else risk delaying cleanup of those resources.
 
-Connect and resume usually only comes up in more complicated control flow operations, so it's likely that you won't run into it in your normal usage of `conduit`. One library which does utilize this is http-conduit, where a `ResumableSource` is returned from the <hoogle results="1" search="Network.HTTP.Conduit.http">http</hoogle> function to represent the body of an HTTP response.
+Connect and resume usually only comes up in more complicated control flow operations, so it's likely that you won't run into it in your normal usage of `conduit`. One library which does utilize this is http-conduit, where a `ResumableSource` is returned from the http function to represent the body of an HTTP response.
 
 ## Further reading
 
-* <hoogle results="1">Data.Conduit</hoogle> Main module defining data types and core operations.
-* <hoogle results="1">Data.Conduit.List</hoogle> A collection of common helper utilities.
-* <hoogle results="1">Data.Conduit.Network</hoogle> Create network servers and clients.
+* Data.Conduit- Main module defining data types and core operations.
+* Data.Conduit.List- A collection of common helper utilities.
+* Data.Conduit.Network- Create network servers and clients.
