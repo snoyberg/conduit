@@ -1,3 +1,7 @@
+## 1.2.5
+
+* mapAccum and mapAccumM should be strict in their state [#218](https://github.com/snoyberg/conduit/issues/218)
+
 ## 1.2.4.1
 
 * Some documentation improvements
