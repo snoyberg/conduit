@@ -544,7 +544,7 @@ mapAccum, mapAccumC :: Monad m => (a -> s -> (s, b)) -> s -> ConduitM a b m s
 mapAccumC f =
     loop
   where
-    loop s = await >>= maybe (return s) go
+    loop !s = await >>= maybe (return s) go
       where
         go a = case f a s of
                  (s', b) -> yield b >> loop s'
@@ -559,7 +559,7 @@ mapAccumM, mapAccumMC :: Monad m => (a -> s -> m (s, b)) -> s -> ConduitM a b m 
 mapAccumMC f =
     loop
   where
-    loop s = await >>= maybe (return s) go
+    loop !s = await >>= maybe (return s) go
       where
         go a = do (s', b) <- lift $ f a s
                   yield b
