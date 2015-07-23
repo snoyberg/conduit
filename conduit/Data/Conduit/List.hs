@@ -510,7 +510,7 @@ concatMapMC f = awaitForever $ sourceList <=< lift . f
 {-# INLINE concatMapMC #-}
 STREAMING(concatMapM, concatMapMC, concatMapMS, f)
 
--- | 'concatMap' with an accumulator.
+-- | 'concatMap' with a strict accumulator.
 --
 -- Subject to fusion
 --
@@ -535,7 +535,8 @@ scanlM f s = void $ mapAccumM f s
 {-# DEPRECATED scanlM "Use mapAccumM instead" #-}
 
 -- | Analog of @mapAccumL@ for lists. Note that in contrast to @mapAccumL@, the function argument
---   takes the accumulator as its second argument, not its first argument.
+--   takes the accumulator as its second argument, not its first argument, and the accumulated value
+--   is strict.
 --
 -- Subject to fusion
 --
@@ -583,7 +584,7 @@ INLINE_RULE(scan, f, mapAccum (\a b -> let r = f a b in (r, r)))
 scanM :: Monad m => (a -> b -> m b) -> b -> ConduitM a b m b
 INLINE_RULE(scanM, f, mapAccumM (\a b -> f a b >>= \r -> return (r, r)))
 
--- | 'concatMapM' with an accumulator.
+-- | 'concatMapM' with a strict accumulator.
 --
 -- Subject to fusion
 --
