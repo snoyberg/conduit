@@ -10,6 +10,7 @@
 #if __GLASGOW_HASKELL__ >= 704
 {-# LANGUAGE ConstraintKinds #-}
 #endif
+{-# LANGUAGE Safe #-}
 -- | Allocate resources which are guaranteed to be released.
 --
 -- For more information, see <https://www.fpcomplete.com/user/snoyberg/library-documentation/resourcet>.
@@ -73,27 +74,11 @@ import qualified Control.Exception as E
 import Data.Monoid (Monoid)
 import qualified Control.Exception.Lifted as L
 
-import Control.Monad.Trans.Identity ( IdentityT)
-import Control.Monad.Trans.List     ( ListT    )
-import Control.Monad.Trans.Maybe    ( MaybeT   )
-import Control.Monad.Trans.Error    ( ErrorT, Error)
-import Control.Monad.Trans.Reader   ( ReaderT  )
-import Control.Monad.Trans.State    ( StateT   )
-import Control.Monad.Trans.Writer   ( WriterT  )
 import Control.Monad.Trans.Resource.Internal
-import Control.Monad.Trans.RWS      ( RWST     )
 
-import qualified Control.Monad.Trans.RWS.Strict    as Strict ( RWST   )
-import qualified Control.Monad.Trans.State.Strict  as Strict ( StateT )
-import qualified Control.Monad.Trans.Writer.Strict as Strict ( WriterT )
 import Control.Concurrent (ThreadId, forkIO)
 
-import Control.Monad.ST (ST)
-
-import qualified Control.Monad.ST.Lazy as Lazy
-
 import Data.Functor.Identity (Identity, runIdentity)
-import Control.Monad.Morph
 import Control.Monad.Catch (MonadThrow, throwM)
 import Control.Monad.Catch.Pure (CatchT, runCatchT)
 import Data.Acquire.Internal (ReleaseType (..))
