@@ -7,6 +7,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE Safe #-}
 
 module Control.Monad.Trans.Resource.Internal(
     InvalidAccess(..)
@@ -55,7 +56,6 @@ import Control.Monad.IO.Class (MonadIO (..))
 import Control.Monad (liftM)
 #endif
 import qualified Control.Exception as E
-import Control.Monad.ST (ST)
 import Control.Monad.Catch (MonadThrow (..), MonadCatch (..)
 #if MIN_VERSION_exceptions(0,6,0)
     , MonadMask (..)
@@ -69,20 +69,6 @@ import Data.Typeable
 import Data.Word(Word)
 import Prelude hiding (catch)
 import Data.Acquire.Internal (ReleaseType (..))
-
-#if __GLASGOW_HASKELL__ >= 704
-import Control.Monad.ST.Unsafe (unsafeIOToST)
-#else
-import Control.Monad.ST (unsafeIOToST)
-#endif
-
-#if __GLASGOW_HASKELL__ >= 704
-import qualified Control.Monad.ST.Lazy.Unsafe as LazyUnsafe
-#else
-import qualified Control.Monad.ST.Lazy as LazyUnsafe
-#endif
-
-import qualified Control.Monad.ST.Lazy as Lazy
 
 import Control.Monad.Morph
 
