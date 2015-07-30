@@ -1,3 +1,7 @@
+## 1.1.6
+
+* Safe/Trustworthy for resourcet [#220](https://github.com/snoyberg/conduit/pull/220)
+
 ## 1.1.5
 
 *  Add pass-through instances for Alternative and MonadPlus [#214](https://github.com/snoyberg/conduit/pull/214)
