@@ -14,6 +14,7 @@ import Control.Monad.ST (runST)
 import Data.Monoid
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Lazy as L
+import Data.ByteString.Char8 ()
 import Data.ByteString.Lazy.Char8 ()
 import Control.Monad.Trans.Resource (runExceptionT_)
 import Control.Monad.Trans.Class
