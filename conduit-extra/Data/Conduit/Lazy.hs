@@ -1,5 +1,6 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE Trustworthy #-}
 -- | Use lazy I\/O for consuming the contents of a source. Warning: All normal
 -- warnings of lazy I\/O apply. In particular, if you are using this with a
 -- @ResourceT@ transformer, you must force the list to be evaluated before
