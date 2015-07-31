@@ -1,5 +1,10 @@
 sudo: false
 
+cache:
+    directories:
+        - $HOME/.ghc
+        - $HOME/.cabal
+
 addons:
     apt:
         sources:
