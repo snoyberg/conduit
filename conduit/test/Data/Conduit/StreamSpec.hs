@@ -574,28 +574,6 @@ mapAccumML f s0 = go s0
         liftM (\(l, o) -> (r:l, o)) $ go s' xs
 
 --------------------------------------------------------------------------------
--- Utilities from QuickCheck-2.7 (absent in earlier versions)
-
-#if !MIN_VERSION_QuickCheck(2,7,0)
-getBlind :: Blind a -> a
-getBlind (Blind x) = x
-
--- | @Small x@: generates values of @x@ drawn from a small range.
--- The opposite of 'Large'.
-newtype Small a = Small {getSmall :: a}
-    deriving (Prelude.Ord, Prelude.Eq, Prelude.Enum, Prelude.Show)
-
-instance Prelude.Integral a => Arbitrary (Small a) where
-    arbitrary = Prelude.fmap Small arbitrarySizedIntegral
-    shrink (Small x) = Prelude.map Small (shrinkIntegral x)
-
-(===) :: (Show a, Eq a) => a -> a -> Property
-x === y = whenFail
-    (Prelude.fail $ Prelude.show x Prelude.++ " should match " Prelude.++ Prelude.show y)
-    (x == y)
-#endif
-
---------------------------------------------------------------------------------
 -- Utilities taken from monad-loops package
 
 -- http://hackage.haskell.org/package/monad-loops
