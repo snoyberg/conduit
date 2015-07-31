@@ -10,9 +10,7 @@
 #if __GLASGOW_HASKELL__ >= 704
 {-# LANGUAGE ConstraintKinds #-}
 #endif
-#if __GLASGOW_HASKELL__ >= 707
 {-# LANGUAGE Safe #-}
-#endif
 -- | Allocate resources which are guaranteed to be released.
 --
 -- For more information, see <https://www.fpcomplete.com/user/snoyberg/library-documentation/resourcet>.
