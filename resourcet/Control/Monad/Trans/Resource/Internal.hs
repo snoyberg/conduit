@@ -7,7 +7,11 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE RankNTypes #-}
+-- Can only turn on SafeHaskell when using a newer GHC, otherwise we get build
+-- failures due to the manual Typeable instance below.
+#if __GLASGOW_HASKELL__ >= 707
 {-# LANGUAGE Safe #-}
+#endif
 
 module Control.Monad.Trans.Resource.Internal(
     InvalidAccess(..)
