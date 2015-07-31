@@ -1,3 +1,4 @@
+{-# LANGUAGE Safe #-}
 {-# OPTIONS_HADDOCK not-home #-}
 module Data.Conduit.Internal
     ( -- * Pipe

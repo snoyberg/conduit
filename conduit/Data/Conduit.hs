@@ -1,5 +1,6 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE Safe #-}
 -- | If this is your first time with conduit, you should probably start with
 -- the tutorial:
 -- <https://haskell.fpcomplete.com/user/snoyberg/library-documentation/conduit-overview>.

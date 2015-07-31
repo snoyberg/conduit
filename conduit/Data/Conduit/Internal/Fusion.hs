@@ -2,6 +2,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE Trustworthy #-}
 module Data.Conduit.Internal.Fusion
     ( -- ** Types
       Step (..)
