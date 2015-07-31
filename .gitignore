@@ -6,3 +6,4 @@ conduit/tmp2
 *.o
 tarballs/
 .hsenv/
+.stack-work/

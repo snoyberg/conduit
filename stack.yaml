@@ -1,0 +1,7 @@
+resolver: lts-2.17
+packages:
+- cereal-conduit
+- conduit
+- conduit-extra
+- network-conduit-tls
+- resourcet
