@@ -37,4 +37,4 @@ install:
  - travis_retry cabal update
 
 script:
- - cabal install --run-tests --enable-benchmarks --force-reinstalls $PACKAGE_LIST
+ - cabal install --run-tests --enable-benchmarks --force-reinstalls $PACKAGE_LIST --reorder-goals --max-backjumps=-1
