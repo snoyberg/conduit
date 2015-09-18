@@ -30,10 +30,12 @@ library
 
 Test-Suite test-cereal-conduit
     type: exitcode-stdio-1.0
-    main-is: Test/Main.hs
+    main-is: Main.hs
+    hs-source-dirs: Test
     build-depends: base
                  , conduit
                  , cereal
+                 , cereal-conduit
                  , bytestring
                  --, test-framework-hunit
                  , HUnit
