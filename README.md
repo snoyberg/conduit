@@ -110,9 +110,9 @@ Under the surface, all three core data types are just wrappers around the same t
 `ConduitM` takes four type parameters: input received from upstream, output send downstream, the underlying monad, and the return value. Our specialized types are defined as:
 
 ```haskell
-type Source m a = ConduitM () a m () -- no meaningful input or return value
-type Conduit a m b = ConduitM a b m () -- no meaningful return value
-type Sink a m b = ConduitM a Void m b -- no meaningful output value
+type Source m o = ConduitM () o m () -- no meaningful input or return value
+type Conduit i m o = ConduitM i o m () -- no meaningful return value
+type Sink i m r = ConduitM i Void m r -- no meaningful output value
 ```
 
 `ConduitM` is a monad transformer. As such, you can lift operations from the underlying monad (see "Lifting Operations" below), and can easily compose together multiple components. This makes it simple to build up complex mechanisms from simpler components.
@@ -171,7 +171,7 @@ main = source $$ conduit =$ sink
     import Data.Conduit
     import qualified Data.Conduit.List as CL
     
-    sourceList :: Monad m => [a] -> Source m a
+    sourceList :: Monad m => [o] -> Source m o
     sourceList = ???
     
     main = sourceList [1, 2, 3] $$ CL.mapM_ print
@@ -180,7 +180,7 @@ main = source $$ conduit =$ sink
     * * *
 
     ```haskell
-    sourceList :: Monad m => [a] -> Source m a
+    sourceList :: Monad m => [o] -> Source m o
     sourceList = mapM_ yield
     ```
 
@@ -230,7 +230,7 @@ main = source $$ conduit =$ sink
     import qualified Data.Conduit.List as CL
     import Control.Monad.Trans.Class (lift)
     
-    myAwaitForever :: Monad m => (a -> Conduit a m b) -> Conduit a m b
+    myAwaitForever :: Monad m => (i -> Conduit i m o) -> Conduit i m o
     myAwaitForever f = ???
     
     main = CL.sourceList [1..10] $$ myAwaitForever (lift . print)
@@ -239,7 +239,7 @@ main = source $$ conduit =$ sink
     * * *
     
     ```haskell
-    myAwaitForever :: Monad m => (a -> Conduit a m b) -> Conduit a m b
+    myAwaitForever :: Monad m => (i -> Conduit i m o) -> Conduit i m o
     myAwaitForever f = 
         await >>= maybe (return ()) (\x -> f x >> myAwaitForever f)
     ```
