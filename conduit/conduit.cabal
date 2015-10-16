@@ -54,10 +54,11 @@ test-suite test
                    , transformers
                    , mtl
                    , resourcet
-                   , void
                    , containers
                    , exceptions >= 0.6
                    , safe
+    if !impl(ghc>=7.9)
+        build-depends: void
     ghc-options:     -Wall
 
 --test-suite doctests
