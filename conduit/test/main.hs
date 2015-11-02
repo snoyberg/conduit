@@ -730,6 +730,22 @@ main = hspec $ do
             res <- C.yield 10 C.$$ C.awaitForever (C.toProducer . src) C.=$ (C.toConsumer sink >>= C.yield) C.=$ C.await
             res `shouldBe` Just (sum [1..10])
 
+    describe "mergeSource" $ do
+        it "works" $ do
+            let src :: C.Source IO String
+                src = CL.sourceList ["A", "B", "C"]
+                withIndex :: C.Conduit String IO (Integer, String)
+                withIndex = CI.mergeSource (CL.sourceList [1..])
+            output <- src C.$= withIndex C.$$ CL.consume
+            output `shouldBe` [(1, "A"), (2, "B"), (3, "C")]
+        it "does stop processing when the source exhausted" $ do
+            let src :: C.Source IO Integer
+                src = CL.sourceList [1..]
+                withShortAlphaIndex :: C.Conduit Integer IO (String, Integer)
+                withShortAlphaIndex = CI.mergeSource (CL.sourceList ["A", "B", "C"])
+            output <- src C.$= withShortAlphaIndex C.$$ CL.consume
+            output `shouldBe` [("A", 1), ("B", 2), ("C", 3)]
+
     describe "passthroughSink" $ do
         it "works" $ do
             ref <- I.newIORef (-1)

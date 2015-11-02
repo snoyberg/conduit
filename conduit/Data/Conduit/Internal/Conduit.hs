@@ -74,6 +74,8 @@ module Data.Conduit.Internal.Conduit
     , zipSources
     , zipSourcesApp
     , zipConduitApp
+    , mergeSource
+    , mergeResumableSource
     , passthroughSink
     , fuseBoth
     , fuseBothMaybe
@@ -663,6 +665,23 @@ unwrapResumableConduit (ResumableConduit src final) = do
 -- Since 1.1.4
 newResumableConduit :: Monad m => Conduit i m o -> ResumableConduit i m o
 newResumableConduit (ConduitM c) = ResumableConduit (c Done) (return ())
+
+
+-- | Merge a @Source@ into a @Conduit@.
+-- The new conduit will stop processing once either source or upstream have been exhausted.
+mergeSource :: Monad m => Source m i -> Conduit a m (i, a)
+mergeSource = mergeResumableSource . newResumableSource
+
+
+mergeResumableSource :: Monad m => ResumableSource m i -> Conduit a m (i, a)
+mergeResumableSource src0 = await >>= maybe (lift $ closeResumableSource src0) go
+  where
+    go a = do
+      (src1, mi) <- lift $ src0 $$++ await
+      case mi of
+        Nothing -> lift $ closeResumableSource src1
+        Just i  -> yield (i, a) >> mergeResumableSource src1
+
 
 -- | Turn a @Sink@ into a @Conduit@ in the following way:
 --
