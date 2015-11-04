@@ -75,6 +75,7 @@ module Data.Conduit.Internal.Conduit
     , zipSourcesApp
     , zipConduitApp
     , passthroughSink
+    , sourceToList
     , fuseBoth
     , fuseBothMaybe
     , fuseUpstream
@@ -699,6 +700,26 @@ passthroughSink (ConduitM sink0) final = ConduitM $ \rest -> let
                 CI.yield x
                 go [] (next x)
     in go [] (sink0 Done)
+
+-- | Convert a @Source@ into a list. The basic functionality can be explained as:
+--
+-- > sourceToList src = src $$ Data.Conduit.List.consume
+--
+-- However, @sourceToList@ is able to produce its results lazily, which cannot
+-- be done when running a conduit pipeline in general. Unlike the
+-- @Data.Conduit.Lazy@ module, this function performs no unsafe I\/O
+-- operations, and therefore can only be as lazily as the underlying monad.
+--
+-- Since 1.2.6
+sourceToList :: Monad m => Source m a -> m [a]
+sourceToList =
+    go . flip unConduitM Done
+  where
+    go (Done _) = return []
+    go (HaveOutput src _ x) = liftM (x:) (go src)
+    go (PipeM msrc) = msrc >>= go
+    go (NeedInput _ c) = go (c ())
+    go (Leftover p _) = go p
 
 -- Define fixity of all our operators
 infixr 0 $$

@@ -12,6 +12,7 @@ import qualified Data.Conduit.Lift as C
 import qualified Data.Conduit.Internal as CI
 import qualified Data.Conduit.List as CL
 import Data.Typeable (Typeable)
+import Control.Exception (throw)
 import Control.Monad.Trans.Resource as C (runResourceT)
 import Data.Maybe   (fromMaybe,catMaybes,fromJust)
 import qualified Data.List as DL
@@ -965,6 +966,15 @@ main = hspec $ do
                     Catch.catch src (\DummyError -> C.yield (3 :: Int))
             res <- src' C.$$ CL.consume
             res `shouldBe` [1, 3]
+
+    describe "sourceToList" $ do
+        it "works lazily in Identity" $ do
+            let src = C.yield 1 >> C.yield 2 >> throw DummyError
+            let res = runIdentity $ C.sourceToList src
+            take 2 res `shouldBe` [1, 2 :: Int]
+        it "is not lazy in IO" $ do
+            let src = C.yield 1 >> C.yield (2 :: Int) >> throw DummyError
+            C.sourceToList src `shouldThrow` (==DummyError)
 
     ZipConduit.spec
     Stream.spec
