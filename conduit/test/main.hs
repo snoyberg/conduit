@@ -735,16 +735,81 @@ main = hspec $ do
             let src :: C.Source IO String
                 src = CL.sourceList ["A", "B", "C"]
                 withIndex :: C.Conduit String IO (Integer, String)
-                withIndex = CI.mergeSource (CL.sourceList [1..])
+                withIndex = CI.mergeSource (CL.sourceList [1..]) (const $ return ())
             output <- src C.$= withIndex C.$$ CL.consume
             output `shouldBe` [(1, "A"), (2, "B"), (3, "C")]
         it "does stop processing when the source exhausted" $ do
             let src :: C.Source IO Integer
                 src = CL.sourceList [1..]
                 withShortAlphaIndex :: C.Conduit Integer IO (String, Integer)
-                withShortAlphaIndex = CI.mergeSource (CL.sourceList ["A", "B", "C"])
+                withShortAlphaIndex = CI.mergeSource (CL.sourceList ["A", "B", "C"]) (const $ return ())
             output <- src C.$= withShortAlphaIndex C.$$ CL.consume
             output `shouldBe` [("A", 1), ("B", 2), ("C", 3)]
+
+        let modFlag ref cur next = do
+                prev <- I.atomicModifyIORef' ref $ (,) next
+                prev `shouldBe` cur
+            flagShouldBe ref expect = do
+                cur <- I.readIORef ref
+                cur `shouldBe` expect
+        it "properly run the finalizer - When the main Conduit is fully consumed" $ do
+            called <- I.newIORef ("RawC" :: String)
+            let src :: MonadIO m => C.Source m String
+                src = CL.sourceList ["A", "B", "C"]
+                withIndex :: MonadIO m => C.Conduit String m (Integer, String)
+                withIndex = flip CI.mergeSource (\f -> liftIO $ modFlag called "AllocC-3" ("FinalC:" ++ show f)) $ do
+                    liftIO $ modFlag called "RawC" "AllocC-1"
+                    C.yield 1
+                    liftIO $ modFlag called "AllocC-1" "AllocC-2"
+                    C.yield 2
+                    liftIO $ modFlag called "AllocC-2" "AllocC-3"
+                    C.yield 3
+                    liftIO $ modFlag called "AllocC-3" "AllocC-4"
+                    C.yield 4
+            output <- src C.$= withIndex C.$$ CL.consume
+            output `shouldBe` [(1, "A"), (2, "B"), (3, "C")]
+            called `flagShouldBe` "FinalC:True"
+        it "properly run the finalizer - When the branch Source is fully consumed" $ do
+            called <- I.newIORef ("RawS" :: String)
+            let src :: MonadIO m => C.Source m Integer
+                src = CL.sourceList [1..]
+                withIndex :: MonadIO m => C.Conduit Integer m (String, Integer)
+                withIndex = flip CI.mergeSource (\f -> liftIO $ modFlag called "AllocS-C" ("FinalS:" ++ show f)) $ do
+                    liftIO $ modFlag called "RawS" "AllocS-A"
+                    C.yield "A"
+                    liftIO $ modFlag called "AllocS-A" "AllocS-B"
+                    C.yield "B"
+                    liftIO $ modFlag called "AllocS-B" "AllocS-C"
+                    C.yield "C"
+            output <- src C.$= withIndex C.$$ CL.consume
+            output `shouldBe` [("A", 1), ("B", 2), ("C", 3)]
+            called `flagShouldBe` "FinalS:True"
+        it "properly DO NOT run the finalizer - When nothing consumed" $ do
+            called <- I.newIORef ("Raw0" :: String)
+            let src :: MonadIO m => C.Source m String
+                src = CL.sourceList ["A", "B", "C"]
+                withIndex :: MonadIO m => C.Conduit String m (Integer, String)
+                withIndex = flip CI.mergeSource (\f -> liftIO $ modFlag called "WONT CALLED" ("Final0:" ++ show f)) $ do
+                    liftIO $ modFlag called "Raw0" "Alloc0-1"
+                    C.yield 1
+            output <- src C.$= withIndex C.$$ return ()
+            output `shouldBe` ()
+            called `flagShouldBe` "Raw0"
+        it "properly run the finalizer - When only one item consumed" $ do
+            called <- I.newIORef ("Raw1" :: String)
+            let src :: MonadIO m => C.Source m Integer
+                src = CL.sourceList [1..]
+                withIndex :: MonadIO m => C.Conduit Integer m (String, Integer)
+                withIndex = flip CI.mergeSource (\f -> liftIO $ modFlag called "Alloc1-A" ("Final1:" ++ show f)) $ do
+                    liftIO $ modFlag called "Raw1" "Alloc1-A"
+                    C.yield "A"
+                    liftIO $ modFlag called "Alloc1-A" "Alloc1-B"
+                    C.yield "B"
+                    liftIO $ modFlag called "Alloc1-B" "Alloc1-C"
+                    C.yield "C"
+            output <- src C.$= withIndex C.$= CL.isolate 1 C.$$ CL.consume
+            output `shouldBe` [("A", 1)]
+            called `flagShouldBe` "Final1:False"
 
     describe "passthroughSink" $ do
         it "works" $ do

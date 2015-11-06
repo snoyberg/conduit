@@ -53,7 +53,6 @@ module Data.Conduit
     , mapOutputMaybe
     , mapInput
     , mergeSource
-    , mergeResumableSource
     , passthroughSink
 
       -- * Connect-and-resume
