@@ -672,9 +672,8 @@ newResumableConduit (ConduitM c) = ResumableConduit (c Done) (return ())
 mergeSource
   :: Monad m
   => Source m i
-  -> (Bool -> m ()) -- ^ finalizer
   -> Conduit a m (i, a)
-mergeSource src final = addCleanup final . loop $ newResumableSource src
+mergeSource src = loop $ newResumableSource src
   where
     loop :: Monad m => ResumableSource m i -> Conduit a m (i, a)
     loop src0 = await >>= maybe (lift $ closeResumableSource src0) go

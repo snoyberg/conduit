@@ -736,14 +736,14 @@ main = hspec $ do
             let src :: C.Source IO String
                 src = CL.sourceList ["A", "B", "C"]
                 withIndex :: C.Conduit String IO (Integer, String)
-                withIndex = CI.mergeSource (CL.sourceList [1..]) (const $ return ())
+                withIndex = CI.mergeSource (CL.sourceList [1..])
             output <- src C.$= withIndex C.$$ CL.consume
             output `shouldBe` [(1, "A"), (2, "B"), (3, "C")]
         it "does stop processing when the source exhausted" $ do
             let src :: C.Source IO Integer
                 src = CL.sourceList [1..]
                 withShortAlphaIndex :: C.Conduit Integer IO (String, Integer)
-                withShortAlphaIndex = CI.mergeSource (CL.sourceList ["A", "B", "C"]) (const $ return ())
+                withShortAlphaIndex = CI.mergeSource (CL.sourceList ["A", "B", "C"])
             output <- src C.$= withShortAlphaIndex C.$$ CL.consume
             output `shouldBe` [("A", 1), ("B", 2), ("C", 3)]
 
@@ -758,7 +758,7 @@ main = hspec $ do
             let src :: MonadIO m => C.Source m String
                 src = CL.sourceList ["A", "B", "C"]
                 withIndex :: MonadIO m => C.Conduit String m (Integer, String)
-                withIndex = flip CI.mergeSource (\f -> liftIO $ modFlag called "AllocC-3" ("FinalC:" ++ show f)) $ do
+                withIndex = CI.mergeSource $ do
                     liftIO $ modFlag called "RawC" "AllocC-1"
                     C.yield 1
                     liftIO $ modFlag called "AllocC-1" "AllocC-2"
@@ -775,7 +775,7 @@ main = hspec $ do
             let src :: MonadIO m => C.Source m Integer
                 src = CL.sourceList [1..]
                 withIndex :: MonadIO m => C.Conduit Integer m (String, Integer)
-                withIndex = flip CI.mergeSource (\f -> liftIO $ modFlag called "AllocS-C" ("FinalS:" ++ show f)) $ do
+                withIndex = CI.mergeSource $ do
                     liftIO $ modFlag called "RawS" "AllocS-A"
                     C.yield "A"
                     liftIO $ modFlag called "AllocS-A" "AllocS-B"
@@ -790,7 +790,7 @@ main = hspec $ do
             let src :: MonadIO m => C.Source m String
                 src = CL.sourceList ["A", "B", "C"]
                 withIndex :: MonadIO m => C.Conduit String m (Integer, String)
-                withIndex = flip CI.mergeSource (\f -> liftIO $ modFlag called "WONT CALLED" ("Final0:" ++ show f)) $ do
+                withIndex = CI.mergeSource $ do
                     liftIO $ modFlag called "Raw0" "Alloc0-1"
                     C.yield 1
             output <- src C.$= withIndex C.$$ return ()
@@ -801,7 +801,7 @@ main = hspec $ do
             let src :: MonadIO m => C.Source m Integer
                 src = CL.sourceList [1..]
                 withIndex :: MonadIO m => C.Conduit Integer m (String, Integer)
-                withIndex = flip CI.mergeSource (\f -> liftIO $ modFlag called "Alloc1-A" ("Final1:" ++ show f)) $ do
+                withIndex = CI.mergeSource $ do
                     liftIO $ modFlag called "Raw1" "Alloc1-A"
                     C.yield "A"
                     liftIO $ modFlag called "Alloc1-A" "Alloc1-B"
