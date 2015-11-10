@@ -812,6 +812,22 @@ main = hspec $ do
             output `shouldBe` [("A", 1)]
             called `flagShouldBe` "Final1:False"
 
+        it "handles finalizers" $ do
+            ref <- I.newIORef 0
+            let src1 = C.addCleanup
+                    (const $ I.modifyIORef ref (+1))
+                    (mapM_ C.yield [1 :: Int ..])
+                src2 = mapM_ C.yield ("hi" :: String)
+            res1 <- src1 C.$$ C.mergeSource src2 C.=$ CL.consume
+            res1 `shouldBe` [('h', 1), ('i', 2)]
+            i1 <- I.readIORef ref
+            i1 `shouldBe` 1
+
+            res2 <- src2 C.$$ C.mergeSource src1 C.=$ CL.consume
+            res2 `shouldBe` [(1, 'h'), (2, 'i')]
+            i2 <- I.readIORef ref
+            i2 `shouldBe` 2
+
     describe "passthroughSink" $ do
         it "works" $ do
             ref <- I.newIORef (-1)
