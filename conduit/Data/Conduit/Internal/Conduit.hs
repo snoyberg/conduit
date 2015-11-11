@@ -673,7 +673,7 @@ mergeSource
   :: Monad m
   => Source m i
   -> Conduit a m (i, a)
-mergeSource src = loop $ newResumableSource src
+mergeSource = loop . newResumableSource
   where
     loop :: Monad m => ResumableSource m i -> Conduit a m (i, a)
     loop src0 = await >>= maybe (lift $ closeResumableSource src0) go
