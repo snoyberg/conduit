@@ -758,7 +758,7 @@ main = hspec $ do
             let src :: MonadIO m => C.Source m String
                 src = CL.sourceList ["A", "B", "C"]
                 withIndex :: MonadIO m => C.Conduit String m (Integer, String)
-                withIndex = CI.mergeSource $ do
+                withIndex = C.addCleanup (\f -> liftIO $ modFlag called "AllocC-3" ("FinalC:" ++ show f)) . CI.mergeSource $ do
                     liftIO $ modFlag called "RawC" "AllocC-1"
                     C.yield 1
                     liftIO $ modFlag called "AllocC-1" "AllocC-2"
@@ -775,7 +775,7 @@ main = hspec $ do
             let src :: MonadIO m => C.Source m Integer
                 src = CL.sourceList [1..]
                 withIndex :: MonadIO m => C.Conduit Integer m (String, Integer)
-                withIndex = CI.mergeSource $ do
+                withIndex = C.addCleanup (\f -> liftIO $ modFlag called "AllocS-C" ("FinalS:" ++ show f)) . CI.mergeSource $ do
                     liftIO $ modFlag called "RawS" "AllocS-A"
                     C.yield "A"
                     liftIO $ modFlag called "AllocS-A" "AllocS-B"
@@ -790,7 +790,7 @@ main = hspec $ do
             let src :: MonadIO m => C.Source m String
                 src = CL.sourceList ["A", "B", "C"]
                 withIndex :: MonadIO m => C.Conduit String m (Integer, String)
-                withIndex = CI.mergeSource $ do
+                withIndex = C.addCleanup (\f -> liftIO $ modFlag called "WONT CALLED" ("Final0:" ++ show f)) . CI.mergeSource $ do
                     liftIO $ modFlag called "Raw0" "Alloc0-1"
                     C.yield 1
             output <- src C.$= withIndex C.$$ return ()
@@ -801,7 +801,7 @@ main = hspec $ do
             let src :: MonadIO m => C.Source m Integer
                 src = CL.sourceList [1..]
                 withIndex :: MonadIO m => C.Conduit Integer m (String, Integer)
-                withIndex = CI.mergeSource $ do
+                withIndex = C.addCleanup (\f -> liftIO $ modFlag called "Alloc1-A" ("Final1:" ++ show f)) . CI.mergeSource $ do
                     liftIO $ modFlag called "Raw1" "Alloc1-A"
                     C.yield "A"
                     liftIO $ modFlag called "Alloc1-A" "Alloc1-B"
@@ -813,7 +813,7 @@ main = hspec $ do
             called `flagShouldBe` "Final1:False"
 
         it "handles finalizers" $ do
-            ref <- I.newIORef 0
+            ref <- I.newIORef (0 :: Int)
             let src1 = C.addCleanup
                     (const $ I.modifyIORef ref (+1))
                     (mapM_ C.yield [1 :: Int ..])
