@@ -108,13 +108,13 @@ instance Monad m => Functor (Pipe l i o u m) where
     {-# INLINE fmap #-}
 
 instance Monad m => Applicative (Pipe l i o u m) where
-    pure = return
+    pure = Done
     {-# INLINE pure #-}
     (<*>) = ap
     {-# INLINE (<*>) #-}
 
 instance Monad m => Monad (Pipe l i o u m) where
-    return = Done
+    return = pure
     {-# INLINE return #-}
 
     HaveOutput p c o >>= fp = HaveOutput (p >>= fp)            c          o

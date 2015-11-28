@@ -125,13 +125,13 @@ instance Functor (ConduitM i o m) where
     fmap f (ConduitM c) = ConduitM $ \rest -> c (rest . f)
 
 instance Applicative (ConduitM i o m) where
-    pure = return
+    pure x = ConduitM ($ x)
     {-# INLINE pure #-}
     (<*>) = ap
     {-# INLINE (<*>) #-}
 
 instance Monad (ConduitM i o m) where
-    return x = ConduitM ($ x)
+    return = pure
     ConduitM f >>= g = ConduitM $ \h -> f $ \a -> unConduitM (g a) h
 
 instance MonadThrow m => MonadThrow (ConduitM i o m) where
