@@ -239,7 +239,9 @@ instance MonadPlus m => MonadPlus (ResourceT m) where
     (ResourceT mf) `mplus` (ResourceT ma) = ResourceT $ \r -> mf r `mplus` ma r
 
 instance Monad m => Monad (ResourceT m) where
+#if !MIN_VERSION_base(4,8,0)
     return = ResourceT . const . return
+#endif
     ResourceT ma >>= f = ResourceT $ \r -> do
         a <- ma r
         let ResourceT f' = f a
