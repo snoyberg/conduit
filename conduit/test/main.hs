@@ -748,7 +748,7 @@ main = hspec $ do
             output `shouldBe` [("A", 1), ("B", 2), ("C", 3)]
 
         let modFlag ref cur next = do
-                prev <- I.atomicModifyIORef' ref $ (,) next
+                prev <- I.atomicModifyIORef ref $ (,) next
                 prev `shouldBe` cur
             flagShouldBe ref expect = do
                 cur <- I.readIORef ref
