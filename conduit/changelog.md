@@ -1,6 +1,7 @@
 ## 1.2.6
 
 * `sourceToList`
+* Canonicalise Monad instances [#237](https://github.com/snoyberg/conduit/pull/237)
 
 ## 1.2.5
 

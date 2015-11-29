@@ -1,3 +1,7 @@
+## 1.1.7
+
+* Canonicalise Monad instances [#237](https://github.com/snoyberg/conduit/pull/237)
+
 ## 1.1.6
 
 * Safe/Trustworthy for resourcet [#220](https://github.com/snoyberg/conduit/pull/220)
