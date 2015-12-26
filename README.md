@@ -20,6 +20,7 @@ to start off.
 ## Synopsis
 
 ```haskell
+import Control.Monad.Trans.Resource
 import Data.Conduit
 import qualified Data.Conduit.List as CL
 import qualified Data.Conduit.Binary as CB
