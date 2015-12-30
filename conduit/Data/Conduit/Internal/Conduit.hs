@@ -727,8 +727,9 @@ passthroughSink (ConduitM sink0) final = ConduitM $ \rest -> let
 --
 -- However, @sourceToList@ is able to produce its results lazily, which cannot
 -- be done when running a conduit pipeline in general. Unlike the
--- @Data.Conduit.Lazy@ module, this function performs no unsafe I\/O
--- operations, and therefore can only be as lazily as the underlying monad.
+-- @Data.Conduit.Lazy@ module (in conduit-extra), this function performs no
+-- unsafe I\/O operations, and therefore can only be as lazily as the
+-- underlying monad.
 --
 -- Since 1.2.6
 sourceToList :: Monad m => Source m a -> m [a]
