@@ -1,4 +1,5 @@
 sudo: false
+language: c
 
 cache:
     directories:
@@ -16,6 +17,7 @@ addons:
             - ghc-7.8.4
             - ghc-7.10.1
             - ghc-7.10.2
+            - ghc-7.10.3
 
 env:
   global:
@@ -27,11 +29,12 @@ env:
     - GHCVER=7.8.4
     - GHCVER=7.10.1
     - GHCVER=7.10.2
+    - GHCVER=7.10.3
 
 matrix:
   allow_failures:
     # Seems like Travis doesn't reliably have this yet
-    - env: GHCVER=7.10.2
+    - env: GHCVER=7.10.3
 
 before_install:
  - export PATH=/opt/ghc/$GHCVER/bin:/opt/cabal/$CABALVER/bin:$HOME/.cabal/bin:$PATH
