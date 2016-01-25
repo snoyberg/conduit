@@ -23,7 +23,7 @@ Library
                      , monad-control            >= 0.3.1        && < 1.1
                      , containers
                      , transformers             >= 0.2.2        && < 0.5
-                     , transformers-compat      >= 0.3          && < 0.5
+                     , transformers-compat      >= 0.3          && < 0.6
                      , mtl                      >= 2.0          && < 2.3
                      , mmorph
                      , exceptions               >= 0.5
