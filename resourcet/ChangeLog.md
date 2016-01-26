@@ -1,3 +1,7 @@
+## 1.1.7.1
+
+* transformers-compat 0.5
+
 ## 1.1.7
 
 * Canonicalise Monad instances [#237](https://github.com/snoyberg/conduit/pull/237)
