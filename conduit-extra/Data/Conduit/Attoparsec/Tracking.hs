@@ -31,7 +31,12 @@ module Data.Conduit.Attoparsec.Tracking
 import           Control.Exception            (Exception)
 import           Control.Monad                (unless)
 import           Control.Monad.Trans.Resource (MonadThrow, monadThrow)
+import qualified Data.Attoparsec.ByteString
+import qualified Data.Attoparsec.Text
 import qualified Data.Attoparsec.Types        as A
+import qualified Data.ByteString              as B
+import qualified Data.Text                        as T
+import qualified Data.Text.Internal               as TI
 import           Data.Conduit
 import           Data.Typeable                (Typeable)
 import           Prelude                      hiding (lines)
@@ -67,6 +72,23 @@ class AttoparsecState a s where
     getLinesCols :: a -> s
     addLinesCols :: AttoparsecInput a => a -> s -> s
 
+instance AttoparsecInput B.ByteString where
+    parseA = Data.Attoparsec.ByteString.parse
+    feedA = Data.Attoparsec.ByteString.feed
+    empty = B.empty
+    isNull = B.null
+    notEmpty = filter (not . B.null)
+    stripFromEnd b1 b2 = B.take (B.length b1 - B.length b2) b1
+
+instance AttoparsecInput T.Text where
+    parseA = Data.Attoparsec.Text.parse
+    feedA = Data.Attoparsec.Text.feed
+    empty = T.empty
+    isNull = T.null
+    notEmpty = filter (not . T.null)
+    stripFromEnd (TI.Text arr1 off1 len1) (TI.Text _ _ len2) =
+        TI.textP arr1 off1 (len1 - len2)
+
 -- | Convert an Attoparsec 'A.Parser' into a 'Sink'. The parser will
 -- be streamed bytes until it returns 'A.Done' or 'A.Fail'.
 --
@@ -89,8 +111,7 @@ sinkParserEither s = (fmap.fmap) snd . sinkParserPos s
 --
 -- Since 0.5.0
 conduitParser :: (AttoparsecInput a, AttoparsecState a s, MonadThrow m, Exception (ParseError s)) => s -> A.Parser a b -> Conduit a m (ParseDelta s, b)
-conduitParser s parser =
-    conduit $ s
+conduitParser s parser = conduit s
        where
          conduit !pos = await >>= maybe (return ()) go
              where
@@ -99,7 +120,7 @@ conduitParser s parser =
                    (!pos', !res) <- sinkParserPosErr pos parser
                    yield (ParseDelta pos pos', res)
                    conduit pos'
-
+{-# INLINE conduitParser #-}
 
 -- | Same as 'conduitParser', but we return an 'Either' type instead
 -- of raising an exception.
@@ -108,8 +129,7 @@ conduitParserEither
     => s
     -> A.Parser a b
     -> Conduit a m (Either (ParseError s) (ParseDelta s, b))
-conduitParserEither s parser =
-    conduit $ s
+conduitParserEither s parser = conduit s
   where
     conduit !pos = await >>= maybe (return ()) go
       where
@@ -121,6 +141,7 @@ conduitParserEither s parser =
             Right (!pos', !res) -> do
               yield $! Right (ParseDelta pos pos', res)
               conduit pos'
+{-# INLINE conduitParserEither #-}
 
 sinkParserPosErr
     :: (AttoparsecInput a, AttoparsecState a s, MonadThrow m, Exception (ParseError s))
@@ -170,5 +191,4 @@ sinkParserPos s p = sink empty s (parseA p)
                 pos' `seq` sink c pos' parser'
               where
                 pos' = addLinesCols prev pos
-
 {-# INLINE sinkParserPos #-}
