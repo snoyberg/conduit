@@ -1,7 +1,9 @@
-{-# LANGUAGE BangPatterns       #-}
-{-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE FlexibleContexts   #-}
-{-# LANGUAGE RankNTypes         #-}
+{-# LANGUAGE BangPatterns           #-}
+{-# LANGUAGE DeriveDataTypeable     #-}
+{-# LANGUAGE FlexibleContexts       #-}
+{-# LANGUAGE RankNTypes             #-}
+{-# LANGUAGE MultiParamTypeClasses  #-}
+{-# LANGUAGE FlexibleInstances      #-}
 
 -- |
 -- Copyright: 2011 Michael Snoyman, 2010 John Millikin
@@ -41,14 +43,14 @@ import           Data.Conduit
 import Control.Monad.Trans.Resource (MonadThrow, monadThrow)
 
 -- | The context and message from a 'A.Fail' value.
-data ParseError = ParseError
+data ParseError s = ParseError
     { errorContexts :: [String]
     , errorMessage  :: String
-    , errorPosition :: Position
+    , errorPosition :: s
     } | DivergentParser
     deriving (Show, Typeable)
 
-instance Exception ParseError
+instance Exception (ParseError Position)
 
 data Position = Position
     { posLine :: {-# UNPACK #-} !Int
@@ -59,13 +61,13 @@ data Position = Position
 instance Show Position where
     show (Position l c) = show l ++ ':' : show c
 
-data PositionRange = PositionRange
-    { posRangeStart :: {-# UNPACK #-} !Position
-    , posRangeEnd   :: {-# UNPACK #-} !Position
+data PositionRange s = PositionRange
+    { posRangeStart :: {-# UNPACK #-} !s
+    , posRangeEnd   :: {-# UNPACK #-} !s
     }
     deriving (Eq, Ord)
 
-instance Show PositionRange where
+instance Show (PositionRange Position) where
     show (PositionRange s e) = show s ++ '-' : show e
 
 -- | A class of types which may be consumed by an Attoparsec parser.
@@ -75,12 +77,15 @@ class AttoparsecInput a where
     empty :: a
     isNull :: a -> Bool
     notEmpty :: [a] -> [a]
-    getLinesCols :: a -> Position
 
     -- | Return the beginning of the first input with the length of
     -- the second input removed. Assumes the second string is shorter
     -- than the first.
     stripFromEnd :: a -> a -> a
+
+class AttoparsecState a s where
+    getLinesCols :: a -> s
+    addLinesCols :: AttoparsecInput a => a -> s -> s
 
 instance AttoparsecInput B.ByteString where
     parseA = Data.Attoparsec.ByteString.parse
@@ -88,11 +93,19 @@ instance AttoparsecInput B.ByteString where
     empty = B.empty
     isNull = B.null
     notEmpty = filter (not . B.null)
+    stripFromEnd b1 b2 = B.take (B.length b1 - B.length b2) b1
+
+instance AttoparsecState B.ByteString Position where
     getLinesCols = B.foldl' f (Position 0 0)
       where
         f (Position l c) ch | ch == 10 = Position (l + 1) 0
                             | otherwise = Position l (c + 1)
-    stripFromEnd b1 b2 = B.take (B.length b1 - B.length b2) b1
+    addLinesCols x (Position lines cols) =
+        lines' `seq` cols' `seq` Position lines' cols'
+      where
+        Position dlines dcols = getLinesCols x
+        lines' = lines + dlines
+        cols' = (if dlines > 0 then 1 else cols) + dcols
 
 instance AttoparsecInput T.Text where
     parseA = Data.Attoparsec.Text.parse
@@ -100,12 +113,20 @@ instance AttoparsecInput T.Text where
     empty = T.empty
     isNull = T.null
     notEmpty = filter (not . T.null)
+    stripFromEnd (TI.Text arr1 off1 len1) (TI.Text _ _ len2) =
+        TI.textP arr1 off1 (len1 - len2)
+
+instance AttoparsecState T.Text Position where
     getLinesCols = T.foldl' f (Position 0 0)
       where
         f (Position l c) ch | ch == '\n' = Position (l + 1) 0
                             | otherwise = Position l (c + 1)
-    stripFromEnd (TI.Text arr1 off1 len1) (TI.Text _ _ len2) =
-        TI.textP arr1 off1 (len1 - len2)
+    addLinesCols x (Position lines cols) =
+        lines' `seq` cols' `seq` Position lines' cols'
+      where
+        Position dlines dcols = getLinesCols x
+        lines' = lines + dlines
+        cols' = (if dlines > 0 then 1 else cols) + dcols
 
 -- | Convert an Attoparsec 'A.Parser' into a 'Sink'. The parser will
 -- be streamed bytes until it returns 'A.Done' or 'A.Fail'.
@@ -113,15 +134,15 @@ instance AttoparsecInput T.Text where
 -- If parsing fails, a 'ParseError' will be thrown with 'monadThrow'.
 --
 -- Since 0.5.0
-sinkParser :: (AttoparsecInput a, MonadThrow m) => A.Parser a b -> Consumer a m b
-sinkParser = fmap snd . sinkParserPosErr (Position 1 1)
+sinkParser :: (AttoparsecInput a, AttoparsecState a s, MonadThrow m, Exception (ParseError s)) => s -> A.Parser a b -> Consumer a m b
+sinkParser s = fmap snd . sinkParserPosErr s
 
 -- | Same as 'sinkParser', but we return an 'Either' type instead
 -- of raising an exception.
 --
 -- Since 1.1.5
-sinkParserEither :: (AttoparsecInput a, Monad m) => A.Parser a b -> Consumer a m (Either ParseError b)
-sinkParserEither = (fmap.fmap) snd . sinkParserPos (Position 1 1)
+sinkParserEither :: (AttoparsecInput a, AttoparsecState a s, Monad m) => s -> A.Parser a b -> Consumer a m (Either (ParseError s) b)
+sinkParserEither s = (fmap.fmap) snd . sinkParserPos s
 
 
 -- | Consume a stream of parsed tokens, returning both the token and
@@ -129,9 +150,9 @@ sinkParserEither = (fmap.fmap) snd . sinkParserPos (Position 1 1)
 -- on bad input.
 --
 -- Since 0.5.0
-conduitParser :: (AttoparsecInput a, MonadThrow m) => A.Parser a b -> Conduit a m (PositionRange, b)
-conduitParser parser =
-    conduit $ Position 1 1
+conduitParser :: (AttoparsecInput a, AttoparsecState a s, MonadThrow m, Exception (ParseError s)) => s -> A.Parser a b -> Conduit a m (PositionRange s, b)
+conduitParser s parser =
+    conduit $ s
        where
          conduit !pos = await >>= maybe (return ()) go
              where
@@ -142,23 +163,26 @@ conduitParser parser =
                    conduit pos'
 {-# SPECIALIZE conduitParser
                    :: MonadThrow m
-                   => A.Parser T.Text b
-                   -> Conduit T.Text m (PositionRange, b) #-}
+                   => Position
+                   -> A.Parser T.Text b
+                   -> Conduit T.Text m (PositionRange Position, b) #-}
 {-# SPECIALIZE conduitParser
                    :: MonadThrow m
-                   => A.Parser B.ByteString b
-                   -> Conduit B.ByteString m (PositionRange, b) #-}
+                   => Position
+                   -> A.Parser B.ByteString b
+                   -> Conduit B.ByteString m (PositionRange Position, b) #-}
 
 
 
 -- | Same as 'conduitParser', but we return an 'Either' type instead
 -- of raising an exception.
 conduitParserEither
-    :: (Monad m, AttoparsecInput a)
-    => A.Parser a b
-    -> Conduit a m (Either ParseError (PositionRange, b))
-conduitParserEither parser =
-    conduit $ Position 1 1
+    :: (Monad m, AttoparsecInput a, AttoparsecState a s)
+    => s
+    -> A.Parser a b
+    -> Conduit a m (Either (ParseError s) (PositionRange s, b))
+conduitParserEither s parser =
+    conduit $ s
   where
     conduit !pos = await >>= maybe (return ()) go
       where
@@ -172,22 +196,24 @@ conduitParserEither parser =
               conduit pos'
 {-# SPECIALIZE conduitParserEither
                    :: Monad m
-                   => A.Parser T.Text b
-                   -> Conduit T.Text m (Either ParseError (PositionRange, b)) #-}
+                   => Position
+                   -> A.Parser T.Text b
+                   -> Conduit T.Text m (Either (ParseError Position) (PositionRange Position, b)) #-}
 {-# SPECIALIZE conduitParserEither
                    :: Monad m
-                   => A.Parser B.ByteString b
-                   -> Conduit B.ByteString m (Either ParseError (PositionRange, b)) #-}
+                   => Position
+                   -> A.Parser B.ByteString b
+                   -> Conduit B.ByteString m (Either (ParseError Position) (PositionRange Position, b)) #-}
 
 
 
 
 sinkParserPosErr
-    :: (AttoparsecInput a, MonadThrow m)
-    => Position
+    :: (AttoparsecInput a, AttoparsecState a s, MonadThrow m, Exception (ParseError s))
+    => s
     -> A.Parser a b
-    -> Consumer a m (Position, b)
-sinkParserPosErr pos0 p = sinkParserPos pos0 p >>= f
+    -> Consumer a m (s, b)
+sinkParserPosErr s p = sinkParserPos s p >>= f
     where
       f (Left e) = monadThrow e
       f (Right a) = return a
@@ -195,12 +221,13 @@ sinkParserPosErr pos0 p = sinkParserPos pos0 p >>= f
 
 
 sinkParserPos
-    :: (AttoparsecInput a, Monad m)
-    => Position
+    :: (AttoparsecInput a, AttoparsecState a s, Monad m)
+    => s
     -> A.Parser a b
-    -> Consumer a m (Either ParseError (Position, b))
-sinkParserPos pos0 p = sink empty pos0 (parseA p)
+    -> Consumer a m (Either (ParseError s) (s, b))
+sinkParserPos s p = sink empty s (parseA p)
   where
+    -- sink :: a -> s -> (a -> A.IResult a b) -> Consumer a m (Either (ParseError s) (s, b))
     sink prev pos parser = await >>= maybe close push
       where
         push c
@@ -231,11 +258,4 @@ sinkParserPos pos0 p = sink empty pos0 (parseA p)
               where
                 pos' = addLinesCols prev pos
 
-    addLinesCols :: AttoparsecInput a => a -> Position -> Position
-    addLinesCols x (Position lines cols) =
-        lines' `seq` cols' `seq` Position lines' cols'
-      where
-        Position dlines dcols = getLinesCols x
-        lines' = lines + dlines
-        cols' = (if dlines > 0 then 1 else cols) + dcols
 {-# INLINE sinkParserPos #-}
