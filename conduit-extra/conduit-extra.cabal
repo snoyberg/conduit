@@ -89,6 +89,7 @@ test-suite test
     if os(windows)
         cpp-options: -DWINDOWS
     other-modules:   Data.Conduit.AttoparsecSpec
+                     Data.Conduit.Attoparsec.Tracking.LineColumnSpec
                      Data.Conduit.BinarySpec
                      Data.Conduit.ByteString.BuilderSpec
                      Data.Conduit.ExtraSpec
