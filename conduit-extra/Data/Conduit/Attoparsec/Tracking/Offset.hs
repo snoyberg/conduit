@@ -24,13 +24,12 @@ import qualified Data.Text                                  as T
 import           Prelude                                    hiding (lines)
 
 data Index = Index
-    { posLine :: {-# UNPACK #-} !Int
-    , posCol  :: {-# UNPACK #-} !Int
+    { pos :: {-# UNPACK #-} !Int
     }
     deriving (Eq, Ord)
 
 instance Show Index where
-    show (Index l c) = show l ++ ':' : show c
+    show (Index c) = show c
 
 instance Exception (ParseError Index)
 
@@ -38,28 +37,23 @@ instance Show (ParseDelta Index) where
     show (ParseDelta s e) = show s ++ '-' : show e
 
 instance AttoparsecState B.ByteString Index where
-    getState = B.foldl' f (Index 0 0)
+    getState = B.foldl' f (Index 0)
       where
-        f (Index l c) ch | ch == 10 = Index (l + 1) 0
-                            | otherwise = Index l (c + 1)
-    modState x (Index lines cols) =
-        lines' `seq` cols' `seq` Index lines' cols'
+        f (Index c) _ = Index (c + 1)
+    modState x (Index cols) = cols' `seq` Index cols'
       where
-        Index dlines dcols = getState x
-        lines' = lines + dlines
-        cols' = (if dlines > 0 then 1 else cols) + dcols
+        Index dcols = getState x
+        cols' = cols + dcols
 
 instance AttoparsecState T.Text Index where
-    getState = T.foldl' f (Index 0 0)
+    getState = T.foldl' f (Index 0)
       where
-        f (Index l c) ch | ch == '\n' = Index (l + 1) 0
-                            | otherwise = Index l (c + 1)
-    modState x (Index lines cols) =
-        lines' `seq` cols' `seq` Index lines' cols'
+        f (Index c) _ = Index (c + 1)
+    modState x (Index cols) =
+        cols' `seq` Index cols'
       where
-        Index dlines dcols = getState x
-        lines' = lines + dlines
-        cols' = (if dlines > 0 then 1 else cols) + dcols
+        Index dcols = getState x
+        cols' = cols + dcols
 
 {-# SPECIALIZE conduitParser
                   :: MonadThrow m
