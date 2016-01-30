@@ -14,14 +14,14 @@ module Data.Conduit.Attoparsec.Tracking.Offset
     ( Index (..)
     ) where
 
-import           Control.Exception                (Exception)
-import           Control.Monad.Trans.Resource     (MonadThrow)
-import qualified Data.Attoparsec.Types            as A
-import qualified Data.ByteString                  as B
+import           Control.Exception                          (Exception)
+import           Control.Monad.Trans.Resource               (MonadThrow)
+import qualified Data.Attoparsec.Types                      as A
+import qualified Data.ByteString                            as B
 import           Data.Conduit
-import           Data.Conduit.Attoparsec.Tracking
-import qualified Data.Text                        as T
-import           Prelude                          hiding (lines)
+import           Data.Conduit.Attoparsec.Tracking.Internal
+import qualified Data.Text                                  as T
+import           Prelude                                    hiding (lines)
 
 data Index = Index
     { posLine :: {-# UNPACK #-} !Int

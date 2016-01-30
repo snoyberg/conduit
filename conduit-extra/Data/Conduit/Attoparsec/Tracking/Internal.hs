@@ -35,8 +35,8 @@ import qualified Data.Attoparsec.ByteString
 import qualified Data.Attoparsec.Text
 import qualified Data.Attoparsec.Types        as A
 import qualified Data.ByteString              as B
-import qualified Data.Text                        as T
-import qualified Data.Text.Internal               as TI
+import qualified Data.Text                    as T
+import qualified Data.Text.Internal           as TI
 import           Data.Conduit
 import           Data.Typeable                (Typeable)
 import           Prelude                      hiding (lines)
