@@ -7,7 +7,7 @@
 -- Copyright: 2016 John Ky, 2011 Michael Snoyman, 2010 John Millikin
 -- License: MIT
 --
--- Consume attoparsec parsers via conduit.
+-- Customisation for tracking line and column numbers.
 --
 -- This code was taken from attoparsec-enumerator and adapted for conduits.
 module Data.Conduit.Attoparsec.Tracking.LineColumn

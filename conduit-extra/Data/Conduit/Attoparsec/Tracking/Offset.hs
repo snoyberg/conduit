@@ -7,10 +7,10 @@
 -- Copyright: 2016 John Ky, 2011 Michael Snoyman, 2010 John Millikin
 -- License: MIT
 --
--- Consume attoparsec parsers via conduit.
+-- Customisation for tracking offset from beginning of stream.
 --
 -- This code was taken from attoparsec-enumerator and adapted for conduits.
-module Data.Conduit.Attoparsec.Tracking.Index
+module Data.Conduit.Attoparsec.Tracking.Offset
     ( Index (..)
     ) where
 

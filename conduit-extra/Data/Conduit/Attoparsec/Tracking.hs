@@ -120,7 +120,7 @@ conduitParser s parser = conduit s
                    (!pos', !res) <- sinkParserPosErr pos parser
                    yield (ParseDelta pos pos', res)
                    conduit pos'
-{-# INLINE conduitParser #-}
+{-# INLINABLE conduitParser #-}
 
 -- | Same as 'conduitParser', but we return an 'Either' type instead
 -- of raising an exception.
@@ -141,7 +141,7 @@ conduitParserEither s parser = conduit s
             Right (!pos', !res) -> do
               yield $! Right (ParseDelta pos pos', res)
               conduit pos'
-{-# INLINE conduitParserEither #-}
+{-# INLINABLE conduitParserEither #-}
 
 sinkParserPosErr
     :: (AttoparsecInput a, AttoparsecState a s, MonadThrow m, Exception (ParseError s))
@@ -152,7 +152,7 @@ sinkParserPosErr s p = sinkParserPos s p >>= f
     where
       f (Left e) = monadThrow e
       f (Right a) = return a
-{-# INLINE sinkParserPosErr #-}
+{-# INLINABLE sinkParserPosErr #-}
 
 sinkParserPos
     :: (AttoparsecInput a, AttoparsecState a s, Monad m)
@@ -191,4 +191,5 @@ sinkParserPos s p = sink empty s (parseA p)
                 pos' `seq` sink c pos' parser'
               where
                 pos' = addLinesCols prev pos
-{-# INLINE sinkParserPos #-}
+
+{-# INLINABLE sinkParserPos #-}
