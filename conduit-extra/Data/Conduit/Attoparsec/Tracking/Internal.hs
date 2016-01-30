@@ -69,8 +69,8 @@ class AttoparsecInput a where
     stripFromEnd :: a -> a -> a
 
 class AttoparsecState a s where
-    getLinesCols :: a -> s
-    addLinesCols :: AttoparsecInput a => a -> s -> s
+    getState :: a -> s
+    modState :: AttoparsecInput a => a -> s -> s
 
 instance AttoparsecInput B.ByteString where
     parseA = Data.Attoparsec.ByteString.parse
@@ -173,23 +173,23 @@ sinkParserPos s p = sink empty s (parseA p)
         go end c (A.Done lo x) = do
             let pos'
                     | end       = pos
-                    | otherwise = addLinesCols prev pos
+                    | otherwise = modState prev pos
                 y = stripFromEnd c lo
-                pos'' = addLinesCols y pos'
+                pos'' = modState y pos'
             unless (isNull lo) $ leftover lo
             pos'' `seq` return $! Right (pos'', x)
         go end c (A.Fail rest contexts msg) =
             let x = stripFromEnd c rest
                 pos'
                     | end       = pos
-                    | otherwise = addLinesCols prev pos
-                pos'' = addLinesCols x pos'
+                    | otherwise = modState prev pos
+                pos'' = modState x pos'
              in pos'' `seq` return $! Left (ParseError contexts msg pos'')
         go end c (A.Partial parser')
             | end       = return $! Left DivergentParser
             | otherwise =
                 pos' `seq` sink c pos' parser'
               where
-                pos' = addLinesCols prev pos
+                pos' = modState prev pos
 
 {-# INLINABLE sinkParserPos #-}

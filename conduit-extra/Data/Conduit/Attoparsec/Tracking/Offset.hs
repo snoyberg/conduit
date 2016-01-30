@@ -38,26 +38,26 @@ instance Show (ParseDelta Index) where
     show (ParseDelta s e) = show s ++ '-' : show e
 
 instance AttoparsecState B.ByteString Index where
-    getLinesCols = B.foldl' f (Index 0 0)
+    getState = B.foldl' f (Index 0 0)
       where
         f (Index l c) ch | ch == 10 = Index (l + 1) 0
                             | otherwise = Index l (c + 1)
-    addLinesCols x (Index lines cols) =
+    modState x (Index lines cols) =
         lines' `seq` cols' `seq` Index lines' cols'
       where
-        Index dlines dcols = getLinesCols x
+        Index dlines dcols = getState x
         lines' = lines + dlines
         cols' = (if dlines > 0 then 1 else cols) + dcols
 
 instance AttoparsecState T.Text Index where
-    getLinesCols = T.foldl' f (Index 0 0)
+    getState = T.foldl' f (Index 0 0)
       where
         f (Index l c) ch | ch == '\n' = Index (l + 1) 0
                             | otherwise = Index l (c + 1)
-    addLinesCols x (Index lines cols) =
+    modState x (Index lines cols) =
         lines' `seq` cols' `seq` Index lines' cols'
       where
-        Index dlines dcols = getLinesCols x
+        Index dlines dcols = getState x
         lines' = lines + dlines
         cols' = (if dlines > 0 then 1 else cols) + dcols
 

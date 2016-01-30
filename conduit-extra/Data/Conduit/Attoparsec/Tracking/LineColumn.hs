@@ -38,26 +38,26 @@ instance Show (ParseDelta Position) where
     show (ParseDelta s e) = show s ++ '-' : show e
 
 instance AttoparsecState B.ByteString Position where
-    getLinesCols = B.foldl' f (Position 0 0)
+    getState = B.foldl' f (Position 0 0)
       where
         f (Position l c) ch | ch == 10 = Position (l + 1) 0
                             | otherwise = Position l (c + 1)
-    addLinesCols x (Position lines cols) =
+    modState x (Position lines cols) =
         lines' `seq` cols' `seq` Position lines' cols'
       where
-        Position dlines dcols = getLinesCols x
+        Position dlines dcols = getState x
         lines' = lines + dlines
         cols' = (if dlines > 0 then 1 else cols) + dcols
 
 instance AttoparsecState T.Text Position where
-    getLinesCols = T.foldl' f (Position 0 0)
+    getState = T.foldl' f (Position 0 0)
       where
         f (Position l c) ch | ch == '\n' = Position (l + 1) 0
                             | otherwise = Position l (c + 1)
-    addLinesCols x (Position lines cols) =
+    modState x (Position lines cols) =
         lines' `seq` cols' `seq` Position lines' cols'
       where
-        Position dlines dcols = getLinesCols x
+        Position dlines dcols = getState x
         lines' = lines + dlines
         cols' = (if dlines > 0 then 1 else cols) + dcols
 
