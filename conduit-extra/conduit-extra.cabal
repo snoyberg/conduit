@@ -21,6 +21,7 @@ extra-source-files:
 Library
   Exposed-modules:     Data.Conduit.Attoparsec
                        Data.Conduit.Attoparsec.Tracking
+                       Data.Conduit.Attoparsec.Tracking.Internal
                        Data.Conduit.Attoparsec.Tracking.LineColumn
                        Data.Conduit.Attoparsec.Tracking.Offset
                        Data.Conduit.Binary
