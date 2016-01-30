@@ -22,25 +22,19 @@ module Data.Conduit.Attoparsec.Tracking
 
       -- * Types
     , ParseError (..)
-    , Position (..)
     , PositionRange (..)
       -- * Classes
-    , AttoparsecInput
+    , AttoparsecInput(..)
+    , AttoparsecState(..)
     ) where
 
-import           Control.Exception          (Exception)
-import           Control.Monad              (unless)
-import qualified Data.ByteString            as B
-import qualified Data.Text                  as T
-import qualified Data.Text.Internal         as TI
-import           Data.Typeable              (Typeable)
-import           Prelude                    hiding (lines)
-
-import qualified Data.Attoparsec.ByteString
-import qualified Data.Attoparsec.Text
-import qualified Data.Attoparsec.Types      as A
+import           Control.Exception            (Exception)
+import           Control.Monad                (unless)
+import           Control.Monad.Trans.Resource (MonadThrow, monadThrow)
+import qualified Data.Attoparsec.Types        as A
 import           Data.Conduit
-import Control.Monad.Trans.Resource (MonadThrow, monadThrow)
+import           Data.Typeable                (Typeable)
+import           Prelude                      hiding (lines)
 
 -- | The context and message from a 'A.Fail' value.
 data ParseError s = ParseError
@@ -50,25 +44,11 @@ data ParseError s = ParseError
     } | DivergentParser
     deriving (Show, Typeable)
 
-instance Exception (ParseError Position)
-
-data Position = Position
-    { posLine :: {-# UNPACK #-} !Int
-    , posCol  :: {-# UNPACK #-} !Int
-    }
-    deriving (Eq, Ord)
-
-instance Show Position where
-    show (Position l c) = show l ++ ':' : show c
-
 data PositionRange s = PositionRange
     { posRangeStart :: {-# UNPACK #-} !s
     , posRangeEnd   :: {-# UNPACK #-} !s
     }
     deriving (Eq, Ord)
-
-instance Show (PositionRange Position) where
-    show (PositionRange s e) = show s ++ '-' : show e
 
 -- | A class of types which may be consumed by an Attoparsec parser.
 class AttoparsecInput a where
@@ -87,47 +67,6 @@ class AttoparsecState a s where
     getLinesCols :: a -> s
     addLinesCols :: AttoparsecInput a => a -> s -> s
 
-instance AttoparsecInput B.ByteString where
-    parseA = Data.Attoparsec.ByteString.parse
-    feedA = Data.Attoparsec.ByteString.feed
-    empty = B.empty
-    isNull = B.null
-    notEmpty = filter (not . B.null)
-    stripFromEnd b1 b2 = B.take (B.length b1 - B.length b2) b1
-
-instance AttoparsecState B.ByteString Position where
-    getLinesCols = B.foldl' f (Position 0 0)
-      where
-        f (Position l c) ch | ch == 10 = Position (l + 1) 0
-                            | otherwise = Position l (c + 1)
-    addLinesCols x (Position lines cols) =
-        lines' `seq` cols' `seq` Position lines' cols'
-      where
-        Position dlines dcols = getLinesCols x
-        lines' = lines + dlines
-        cols' = (if dlines > 0 then 1 else cols) + dcols
-
-instance AttoparsecInput T.Text where
-    parseA = Data.Attoparsec.Text.parse
-    feedA = Data.Attoparsec.Text.feed
-    empty = T.empty
-    isNull = T.null
-    notEmpty = filter (not . T.null)
-    stripFromEnd (TI.Text arr1 off1 len1) (TI.Text _ _ len2) =
-        TI.textP arr1 off1 (len1 - len2)
-
-instance AttoparsecState T.Text Position where
-    getLinesCols = T.foldl' f (Position 0 0)
-      where
-        f (Position l c) ch | ch == '\n' = Position (l + 1) 0
-                            | otherwise = Position l (c + 1)
-    addLinesCols x (Position lines cols) =
-        lines' `seq` cols' `seq` Position lines' cols'
-      where
-        Position dlines dcols = getLinesCols x
-        lines' = lines + dlines
-        cols' = (if dlines > 0 then 1 else cols) + dcols
-
 -- | Convert an Attoparsec 'A.Parser' into a 'Sink'. The parser will
 -- be streamed bytes until it returns 'A.Done' or 'A.Fail'.
 --
@@ -143,7 +82,6 @@ sinkParser s = fmap snd . sinkParserPosErr s
 -- Since 1.1.5
 sinkParserEither :: (AttoparsecInput a, AttoparsecState a s, Monad m) => s -> A.Parser a b -> Consumer a m (Either (ParseError s) b)
 sinkParserEither s = (fmap.fmap) snd . sinkParserPos s
-
 
 -- | Consume a stream of parsed tokens, returning both the token and
 -- the position it appears at. This function will raise a 'ParseError'
@@ -161,17 +99,6 @@ conduitParser s parser =
                    (!pos', !res) <- sinkParserPosErr pos parser
                    yield (PositionRange pos pos', res)
                    conduit pos'
-{-# SPECIALIZE conduitParser
-                   :: MonadThrow m
-                   => Position
-                   -> A.Parser T.Text b
-                   -> Conduit T.Text m (PositionRange Position, b) #-}
-{-# SPECIALIZE conduitParser
-                   :: MonadThrow m
-                   => Position
-                   -> A.Parser B.ByteString b
-                   -> Conduit B.ByteString m (PositionRange Position, b) #-}
-
 
 
 -- | Same as 'conduitParser', but we return an 'Either' type instead
@@ -194,19 +121,6 @@ conduitParserEither s parser =
             Right (!pos', !res) -> do
               yield $! Right (PositionRange pos pos', res)
               conduit pos'
-{-# SPECIALIZE conduitParserEither
-                   :: Monad m
-                   => Position
-                   -> A.Parser T.Text b
-                   -> Conduit T.Text m (Either (ParseError Position) (PositionRange Position, b)) #-}
-{-# SPECIALIZE conduitParserEither
-                   :: Monad m
-                   => Position
-                   -> A.Parser B.ByteString b
-                   -> Conduit B.ByteString m (Either (ParseError Position) (PositionRange Position, b)) #-}
-
-
-
 
 sinkParserPosErr
     :: (AttoparsecInput a, AttoparsecState a s, MonadThrow m, Exception (ParseError s))
@@ -218,7 +132,6 @@ sinkParserPosErr s p = sinkParserPos s p >>= f
       f (Left e) = monadThrow e
       f (Right a) = return a
 {-# INLINE sinkParserPosErr #-}
-
 
 sinkParserPos
     :: (AttoparsecInput a, AttoparsecState a s, Monad m)
