@@ -90,6 +90,7 @@ test-suite test
         cpp-options: -DWINDOWS
     other-modules:   Data.Conduit.AttoparsecSpec
                      Data.Conduit.Attoparsec.Tracking.LineColumnSpec
+                     Data.Conduit.Attoparsec.Tracking.OffsetSpec
                      Data.Conduit.BinarySpec
                      Data.Conduit.ByteString.BuilderSpec
                      Data.Conduit.ExtraSpec
