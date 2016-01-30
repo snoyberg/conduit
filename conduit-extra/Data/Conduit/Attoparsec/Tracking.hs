@@ -50,8 +50,8 @@ data ParseError s = ParseError
     deriving (Show, Typeable)
 
 data ParseDelta s = ParseDelta
-    { before  :: {-# UNPACK #-} !s
-    , after   :: {-# UNPACK #-} !s
+    { before  :: !s
+    , after   :: !s
     }
     deriving (Eq, Ord)
 
