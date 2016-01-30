@@ -6,7 +6,7 @@
 {-# LANGUAGE FlexibleInstances      #-}
 
 -- |
--- Copyright: 2011 Michael Snoyman, 2010 John Millikin
+-- Copyright: 2016 John Ky, 2011 Michael Snoyman, 2010 John Millikin
 -- License: MIT
 --
 -- Consume attoparsec parsers via conduit.
