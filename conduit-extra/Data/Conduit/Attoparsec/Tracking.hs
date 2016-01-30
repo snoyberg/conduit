@@ -22,7 +22,7 @@ module Data.Conduit.Attoparsec.Tracking
 
       -- * Types
     , ParseError (..)
-    , PositionRange (..)
+    , ParseDelta (..)
       -- * Classes
     , AttoparsecInput(..)
     , AttoparsecState(..)
@@ -44,9 +44,9 @@ data ParseError s = ParseError
     } | DivergentParser
     deriving (Show, Typeable)
 
-data PositionRange s = PositionRange
-    { posRangeStart :: {-# UNPACK #-} !s
-    , posRangeEnd   :: {-# UNPACK #-} !s
+data ParseDelta s = ParseDelta
+    { before  :: {-# UNPACK #-} !s
+    , after   :: {-# UNPACK #-} !s
     }
     deriving (Eq, Ord)
 
@@ -88,7 +88,7 @@ sinkParserEither s = (fmap.fmap) snd . sinkParserPos s
 -- on bad input.
 --
 -- Since 0.5.0
-conduitParser :: (AttoparsecInput a, AttoparsecState a s, MonadThrow m, Exception (ParseError s)) => s -> A.Parser a b -> Conduit a m (PositionRange s, b)
+conduitParser :: (AttoparsecInput a, AttoparsecState a s, MonadThrow m, Exception (ParseError s)) => s -> A.Parser a b -> Conduit a m (ParseDelta s, b)
 conduitParser s parser =
     conduit $ s
        where
@@ -97,7 +97,7 @@ conduitParser s parser =
                go x = do
                    leftover x
                    (!pos', !res) <- sinkParserPosErr pos parser
-                   yield (PositionRange pos pos', res)
+                   yield (ParseDelta pos pos', res)
                    conduit pos'
 
 
@@ -107,7 +107,7 @@ conduitParserEither
     :: (Monad m, AttoparsecInput a, AttoparsecState a s)
     => s
     -> A.Parser a b
-    -> Conduit a m (Either (ParseError s) (PositionRange s, b))
+    -> Conduit a m (Either (ParseError s) (ParseDelta s, b))
 conduitParserEither s parser =
     conduit $ s
   where
@@ -119,7 +119,7 @@ conduitParserEither s parser =
           case eres of
             Left e -> yield $ Left e
             Right (!pos', !res) -> do
-              yield $! Right (PositionRange pos pos', res)
+              yield $! Right (ParseDelta pos pos', res)
               conduit pos'
 
 sinkParserPosErr

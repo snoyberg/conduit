@@ -42,8 +42,8 @@ instance Show Position where
 
 instance Exception (ParseError Position)
 
-instance Show (PositionRange Position) where
-    show (PositionRange s e) = show s ++ '-' : show e
+instance Show (ParseDelta Position) where
+    show (ParseDelta s e) = show s ++ '-' : show e
 
 instance AttoparsecInput B.ByteString where
     parseA = Data.Attoparsec.ByteString.parse
@@ -90,21 +90,22 @@ instance AttoparsecState T.Text Position where
                   :: MonadThrow m
                   => Position
                   -> A.Parser T.Text b
-                  -> Conduit T.Text m (PositionRange Position, b) #-}
+                  -> Conduit T.Text m (ParseDelta Position, b) #-}
 
 {-# SPECIALIZE conduitParser
                   :: MonadThrow m
                   => Position
                   -> A.Parser B.ByteString b
-                  -> Conduit B.ByteString m (PositionRange Position, b) #-}
+                  -> Conduit B.ByteString m (ParseDelta Position, b) #-}
 
 {-# SPECIALIZE conduitParserEither
                   :: Monad m
                   => Position
                   -> A.Parser T.Text b
-                  -> Conduit T.Text m (Either (ParseError Position) (PositionRange Position, b)) #-}
+                  -> Conduit T.Text m (Either (ParseError Position) (ParseDelta Position, b)) #-}
+
 {-# SPECIALIZE conduitParserEither
                   :: Monad m
                   => Position
                   -> A.Parser B.ByteString b
-                  -> Conduit B.ByteString m (Either (ParseError Position) (PositionRange Position, b)) #-}
+                  -> Conduit B.ByteString m (Either (ParseError Position) (ParseDelta Position, b)) #-}
