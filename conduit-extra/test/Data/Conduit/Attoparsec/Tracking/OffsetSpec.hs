@@ -2,19 +2,20 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TupleSections     #-}
 {-# OPTIONS_GHC -fno-warn-incomplete-patterns #-}
-module Data.Conduit.Attoparsec.Tracking.OffsetSpec (spec) where
-import           Control.Exception                (fromException)
-import           Test.Hspec
 
-import           Control.Applicative              ((<|>))
+module Data.Conduit.Attoparsec.Tracking.OffsetSpec (spec) where
+
+import           Control.Applicative                     ((<|>))
+import           Control.Exception                       (fromException)
 import           Control.Monad
-import           Control.Monad.Trans.Resource (runExceptionT)
+import           Control.Monad.Trans.Resource            (runExceptionT)
 import qualified Data.Attoparsec.ByteString.Char8
 import qualified Data.Attoparsec.Text
 import           Data.Conduit
 import           Data.Conduit.Attoparsec.Tracking
 import           Data.Conduit.Attoparsec.Tracking.Offset
-import qualified Data.Conduit.List                as CL
+import qualified Data.Conduit.List                       as CL
+import           Test.Hspec
 
 spec :: Spec
 spec = describe "Data.Conduit.Attoparsec.Tracking.OffsetSpec" $ do

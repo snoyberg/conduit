@@ -1,8 +1,8 @@
-{-# LANGUAGE BangPatterns           #-}
-{-# LANGUAGE DeriveDataTypeable     #-}
-{-# LANGUAGE FlexibleContexts       #-}
-{-# LANGUAGE RankNTypes             #-}
-{-# LANGUAGE MultiParamTypeClasses  #-}
+{-# LANGUAGE BangPatterns          #-}
+{-# LANGUAGE DeriveDataTypeable    #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE RankNTypes            #-}
 
 -- |
 -- Copyright: 2016 John Ky, 2011 Michael Snoyman, 2010 John Millikin
@@ -34,9 +34,9 @@ import qualified Data.Attoparsec.ByteString
 import qualified Data.Attoparsec.Text
 import qualified Data.Attoparsec.Types        as A
 import qualified Data.ByteString              as B
+import           Data.Conduit
 import qualified Data.Text                    as T
 import qualified Data.Text.Internal           as TI
-import           Data.Conduit
 import           Data.Typeable                (Typeable)
 import           Prelude                      hiding (lines)
 
@@ -49,8 +49,8 @@ data ParseError s = ParseError
     deriving (Show, Typeable)
 
 data ParseDelta s = ParseDelta
-    { before  :: !s
-    , after   :: !s
+    { before :: !s
+    , after  :: !s
     }
     deriving (Eq, Ord)
 
