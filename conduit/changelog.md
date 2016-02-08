@@ -1,3 +1,7 @@
+## 1.2.6.2
+
+* resourcet cannot be built with GHC 8 [#242](https://github.com/snoyberg/conduit/issues/242)
+
 ## 1.2.6
 
 * `sourceToList`
