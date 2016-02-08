@@ -6,7 +6,6 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TupleSections #-}
-{-# LANGUAGE ImpredicativeTypes #-}
 {-# LANGUAGE Trustworthy #-}
 module Data.Conduit.Internal.Pipe
     ( -- ** Types

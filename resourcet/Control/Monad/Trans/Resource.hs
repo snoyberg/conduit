@@ -6,7 +6,6 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE ImpredicativeTypes #-}
 #if __GLASGOW_HASKELL__ >= 704
 {-# LANGUAGE ConstraintKinds #-}
 #endif
@@ -97,12 +96,12 @@ register = liftResourceT . registerRIO
 --
 -- Since 0.3.0
 release :: MonadIO m => ReleaseKey -> m ()
-release (ReleaseKey istate rk) = liftIO $ release' istate rk  
+release (ReleaseKey istate rk) = liftIO $ release' istate rk
     (maybe (return ()) id)
 
 -- | Unprotect resource from cleanup actions, this allowes you to send
 -- resource into another resourcet process and reregister it there.
--- It returns an release action that should be run in order to clean 
+-- It returns an release action that should be run in order to clean
 -- resource or Nothing in case if resource is already freed.
 --
 -- Since 0.4.5
@@ -129,7 +128,7 @@ allocate a = liftResourceT . allocateRIO a
 --
 -- Since 0.3.0
 resourceMask :: MonadResource m => ((forall a. ResourceT IO a -> ResourceT IO a) -> ResourceT IO b) -> m b
-resourceMask = liftResourceT . resourceMaskRIO
+resourceMask r = liftResourceT (resourceMaskRIO r)
 
 allocateRIO :: IO a -> (a -> IO ()) -> ResourceT IO (ReleaseKey, a)
 allocateRIO acquire rel = ResourceT $ \istate -> liftIO $ E.mask $ \restore -> do
