@@ -129,7 +129,7 @@ sourceHandleUnsafe handle = do
 -- | An alternative to 'sourceHandle'.
 -- Instead of taking a pre-opened 'IO.Handle', it takes an action that opens
 -- a 'IO.Handle' (in read mode), so that it can open it only when needed
--- and closed it as soon as possible.
+-- and close it as soon as possible.
 --
 -- Since 0.3.0
 sourceIOHandle :: MonadResource m
@@ -250,7 +250,7 @@ conduitFile fp = bracketP
 conduitHandle :: MonadIO m => IO.Handle -> Conduit S.ByteString m S.ByteString
 conduitHandle h = awaitForever $ \bs -> liftIO (S.hPut h bs) >> yield bs
 
--- | Ensure that only up to the given number of bytes are consume by the inner
+-- | Ensure that only up to the given number of bytes are consumed by the inner
 -- sink. Note that this does /not/ ensure that all of those bytes are in fact
 -- consumed.
 --
