@@ -80,6 +80,7 @@ module Data.Conduit.Internal.Conduit
     , fuseBoth
     , fuseBothMaybe
     , fuseUpstream
+    , fuseEither
     , sequenceSources
     , sequenceSinks
     , sequenceConduits
@@ -811,6 +812,29 @@ ConduitM left0 =$= ConduitM right0 = ConduitM $ \rest ->
      in goRight (return ()) (left0 Done) (right0 Done)
   where
 {-# INLINE [1] (=$=) #-}
+
+fuseEither :: Monad m => ConduitM a b m u -> ConduitM b c m d -> ConduitM a c m (Either u d)
+fuseEither (ConduitM left0) (ConduitM right0) = ConduitM $ \rest ->
+    let goRight final left right =
+            case right of
+                HaveOutput p c o  -> HaveOutput (recurse p) (c >> final) o
+                NeedInput rp rc   -> goLeft rp rc final left
+                Done r2           -> PipeM (final >> return (rest (Right r2)))
+                PipeM mp          -> PipeM (liftM recurse mp)
+                Leftover right' i -> goRight final (HaveOutput left final i) right'
+          where
+            recurse = goRight final left
+
+        goLeft rp rc final left =
+            case left of
+                HaveOutput left' final' o -> goRight final' left' (rp o)
+                NeedInput left' lc        -> NeedInput (recurse . left') (recurse . lc)
+                Done r1                   -> PipeM (final >> return (rest (Left r1)))
+                PipeM mp                  -> PipeM (liftM recurse mp)
+                Leftover left' i          -> Leftover (recurse left') i
+          where
+            recurse = goLeft rp rc final
+     in goRight (return ()) (left0 Done) (right0 Done)
 
 -- | Wait for a single input value from upstream. If no data is available,
 -- returns @Nothing@. Once @await@ returns @Nothing@, subsequent calls will

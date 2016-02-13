@@ -1053,6 +1053,30 @@ main = hspec $ do
             mup `shouldBe` (Nothing :: Maybe ())
             down `shouldBe` sum [1..5]
 
+        it "fuseEither with result from downstream (upstream never exits)" $ do
+            let src = mapM_ C.yield [1 :: Int ..]
+                sink = CL.isolate 5 C.=$= CL.fold (+) 0
+            result <- C.runConduit $ C.fuseEither src sink
+            result `shouldBe` (Right (sum [1..5]) :: Either () Int)
+
+        it "fuseEither with result from upstream" $ do
+            let src = mapM_ C.yield [1 :: Int .. 4] >> return 'q'
+                sink = CL.isolate 5 C.=$= CL.fold (+) 0
+            result <- C.runConduit $ C.fuseEither src sink
+            result `shouldBe` (Left 'q' :: Either Char Int)
+
+        it "fuseEither with result from upstream (downstream never exits)" $ do
+            let src = mapM_ C.yield [1 :: Int .. 4] >> return 'q'
+                sink = CL.fold (+) 0
+            result <- C.runConduit $ C.fuseEither src sink
+            result `shouldBe` (Left 'q' :: Either Char Int)
+
+        it "fuseEither with result from downstream (upstream almost exits)" $ do
+            let src = mapM_ C.yield [1 :: Int .. 5] >> return 'q'
+                sink = CL.isolate 5 C.=$= CL.fold (+) 0
+            result <- C.runConduit $ C.fuseEither src sink
+            result `shouldBe` (Right (sum [1..5]) :: Either Char Int)
+
     describe "catching exceptions" $ do
         it "works" $ do
             let src = do
