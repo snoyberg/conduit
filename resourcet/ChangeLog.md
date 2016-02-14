@@ -1,3 +1,7 @@
+## 1.1.7.2
+
+* Remove upper bound on transformers [#249](https://github.com/snoyberg/conduit/issues/249)
+
 ## 1.1.7.1
 
 * transformers-compat 0.5
