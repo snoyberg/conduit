@@ -1077,6 +1077,34 @@ main = hspec $ do
             result <- C.runConduit $ C.fuseEither src sink
             result `shouldBe` (Right (sum [1..5]) :: Either Char Int)
 
+        it "fuseEither with result from upstream still runs finalisers" $ do
+            let tellCleanup conduitName didComplete
+                  = tell [conduitName ++ if didComplete then " completed" else " interrupted" :: String]
+            let src = C.addCleanup (tellCleanup "src") $ do
+                        mapM_ C.yield [1 :: Int .. 4]
+                        return 'q'
+                sink = C.addCleanup (tellCleanup "sink")
+                     $ CL.isolate 5 C.=$= CL.fold (+) 0
+            result <- runWriterT $ C.runConduit $ C.fuseEither src sink
+            result `shouldBe` ((Left 'q',
+                                  [ "src completed"
+                                  , "sink interrupted"
+                                  ]) :: (Either Char Int, [String]))
+
+        it "fuseEither with result from downstream still runs finalisers" $ do
+            let tellCleanup conduitName didComplete
+                  = tell [conduitName ++ if didComplete then " completed" else " interrupted" :: String]
+            let src = C.addCleanup (tellCleanup "src") $ do
+                        mapM_ C.yield [1 :: Int ..]
+                        return 'q'
+                sink = C.addCleanup (tellCleanup "sink")
+                     $ CL.isolate 5 C.=$= CL.fold (+) 0
+            result <- runWriterT $ C.runConduit $ C.fuseEither src sink
+            result `shouldBe` ((Right (sum [1..5]),
+                                  [ "sink completed"
+                                  , "src interrupted"
+                                  ]) :: (Either Char Int, [String]))
+
     describe "catching exceptions" $ do
         it "works" $ do
             let src = do

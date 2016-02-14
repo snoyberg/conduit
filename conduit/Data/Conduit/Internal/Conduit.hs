@@ -829,7 +829,7 @@ fuseEither (ConduitM left0) (ConduitM right0) = ConduitM $ \rest ->
             case left of
                 HaveOutput left' final' o -> goRight final' left' (rp o)
                 NeedInput left' lc        -> NeedInput (recurse . left') (recurse . lc)
-                Done r1                   -> PipeM (final >> return (rest (Left r1)))
+                Done r1                   -> PipeM (return (rest (Left r1)))
                 PipeM mp                  -> PipeM (liftM recurse mp)
                 Leftover left' i          -> Leftover (recurse left') i
           where
