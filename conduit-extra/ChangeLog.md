@@ -1,3 +1,7 @@
+## 1.1.9.3
+
+* Some typo fixes in docs
+
 ## 1.1.9
 
 * detectUtf [#217](https://github.com/snoyberg/conduit/pull/217)
