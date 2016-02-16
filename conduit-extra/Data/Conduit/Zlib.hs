@@ -8,6 +8,8 @@ module Data.Conduit.Zlib (
     compress, decompress, gzip, ungzip,
     -- * Flushing
     compressFlush, decompressFlush,
+    -- * Decompression combinators
+    multiple,
     -- * Re-exported from zlib-bindings
     WindowBits (..), defaultWindowBits
 ) where
@@ -160,3 +162,37 @@ helperCompress await' yield' level config =
             PRDone -> return ()
             PRNext chunk -> yield' (Chunk chunk) >> close def
             PRError e -> lift $ monadThrow e
+
+-- | The standard 'decompress' and 'ungzip' functions will only decompress a
+-- single compressed entity from the stream. This combinator will exhaust the
+-- stream completely of all individual compressed entities. This is useful for
+-- cases where you have a concatenated archive, e.g. @cat file1.gz file2.gz >
+-- combined.gz@.
+--
+-- Usage:
+--
+-- > sourceFile "combined.gz" $$ multiple ungzip =$ consume
+--
+-- This combinator will not fail on an empty stream. If you want to ensure that
+-- at least one compressed entity in the stream exists, consider a usage such
+-- as:
+--
+-- > sourceFile "combined.gz" $$ (ungzip >> multiple ungzip) =$ consume
+--
+-- @since 1.1.10
+multiple :: Monad m
+         => Conduit ByteString m a
+         -> Conduit ByteString m a
+multiple inner =
+    loop
+  where
+    loop = do
+        mbs <- await
+        case mbs of
+            Nothing -> return ()
+            Just bs
+                | S.null bs -> loop
+                | otherwise -> do
+                    leftover bs
+                    inner
+                    loop

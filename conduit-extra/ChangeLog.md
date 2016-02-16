@@ -1,3 +1,7 @@
+## 1.1.10
+
+* `multiple` combinator for `Data.Conduit.Zlib` [#254](https://github.com/snoyberg/conduit/issues/254)
+
 ## 1.1.9.3
 
 * Some typo fixes in docs

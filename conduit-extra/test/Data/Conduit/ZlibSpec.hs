@@ -64,3 +64,12 @@ spec = describe "Data.Conduit.Zlib" $ do
                 return (S.concat c', S.concat u')
             c' `shouldBe` c
             u' `shouldBe` u
+
+        it "multiple compressed values" $ do
+            let s1 = "hello"
+                s2 = "world"
+                src = do
+                    C.yield s1 C.$= CZ.gzip
+                    C.yield s2 C.$= CZ.gzip
+            actual <- src C.$$ CZ.multiple CZ.ungzip C.=$ CL.consume
+            S.concat actual `shouldBe` S.concat [s1, s2]
