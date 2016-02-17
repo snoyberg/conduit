@@ -95,9 +95,6 @@ before_install:
 - CABALARGS=""
 - if [ "x$GHCVER" = "xhead" ]; then CABALARGS=--allow-newer; fi
 
-# Get the list of packages from the stack.yaml file
-- PACKAGES=$(stack query locals | grep '^ *path' | sed 's@^ *path:@@')
-
 # Download and unpack the stack executable
 - export PATH=/opt/ghc/$GHCVER/bin:/opt/cabal/$CABALVER/bin:$HOME/.local/bin:$PATH
 - mkdir -p ~/.local/bin
@@ -108,6 +105,9 @@ before_install:
   else
     curl -L https://www.stackage.org/stack/linux-x86_64 | tar xz --wildcards --strip-components=1 -C ~/.local/bin '*/stack'
   fi
+
+# Get the list of packages from the stack.yaml file
+- PACKAGES=$(stack query locals | grep '^ *path' | sed 's@^ *path:@@')
 
 install:
 - echo "$(ghc --version) [$(ghc --print-project-git-commit-id 2> /dev/null || echo '?')]"
