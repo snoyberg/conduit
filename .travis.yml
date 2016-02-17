@@ -88,6 +88,9 @@ matrix:
   - env: BUILD=stack ARGS="--resolver nightly"
 
 before_install:
+# Make bash fail more reliably
+- set -exu
+
 # Using compiler above sets CC to an invalid value, so unset it
 - unset CC
 
@@ -107,7 +110,7 @@ before_install:
   fi
 
 # Get the list of packages from the stack.yaml file
-- PACKAGES=$(stack query locals | grep '^ *path' | sed 's@^ *path:@@')
+- PACKAGES=$(stack --install-ghc query locals | grep '^ *path' | sed 's@^ *path:@@')
 
 install:
 - echo "$(ghc --version) [$(ghc --print-project-git-commit-id 2> /dev/null || echo '?')]"
