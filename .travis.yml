@@ -88,9 +88,6 @@ matrix:
   - env: BUILD=stack ARGS="--resolver nightly"
 
 before_install:
-# Make bash fail more reliably
-- set -exu
-
 # Using compiler above sets CC to an invalid value, so unset it
 - unset CC
 
