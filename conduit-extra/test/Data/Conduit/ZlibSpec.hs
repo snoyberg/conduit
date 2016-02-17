@@ -20,6 +20,7 @@ import Control.Monad.Trans.Resource (runExceptionT_)
 import Control.Monad.Trans.Class
 import Control.Monad.Catch.Pure
 import Control.Monad.Base
+import Control.Monad (replicateM_)
 
 instance MonadBase base m => MonadBase base (CatchT m) where
     liftBase = lift . liftBase
@@ -73,3 +74,26 @@ spec = describe "Data.Conduit.Zlib" $ do
                     C.yield s2 C.$= CZ.gzip
             actual <- src C.$$ CZ.multiple CZ.ungzip C.=$ CL.consume
             S.concat actual `shouldBe` S.concat [s1, s2]
+
+        it "single compressed, multiple uncompressed chunks" $ do
+            let s1 = "hello"
+                s2 = "there"
+                s3 = "world"
+            s1Z <- fmap S.concat $ C.yield s1 C.$= CZ.gzip C.$$ CL.consume
+            let src = do
+                    C.yield $ S.append s1Z s2
+                    C.yield s3
+            actual <- src C.$$ do
+                x <- fmap S.concat $ CZ.ungzip C.=$ CL.consume
+                y <- CL.consume
+                return (x, y)
+            actual `shouldBe` (s1, [s2, s3])
+
+        it "multiple, over 32k" $ do
+            let str = "One line"
+                cnt = 30000
+                src = replicateM_ cnt $ C.yield str C.$= CZ.gzip
+            actual <- fmap S.concat $ src C.$$ CZ.multiple CZ.ungzip C.=$ CL.consume
+            let expected = S.concat (replicate cnt str)
+            S.length actual `shouldBe` S.length expected
+            actual `shouldBe` expected
