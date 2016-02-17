@@ -1,3 +1,7 @@
+## 1.1.10.1
+
+* Fix a leftovers bug in helperDecompress #254
+
 ## 1.1.10
 
 * `multiple` combinator for `Data.Conduit.Zlib` [#254](https://github.com/snoyberg/conduit/issues/254)

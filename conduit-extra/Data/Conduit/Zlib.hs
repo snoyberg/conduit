@@ -23,6 +23,7 @@ import Control.Monad.Trans.Class (lift, MonadTrans)
 import Control.Monad.Primitive (PrimMonad, unsafePrimToPrim)
 import Control.Monad.Base (MonadBase, liftBase)
 import Control.Monad.Trans.Resource (MonadThrow, monadThrow)
+import Data.Function (fix)
 
 -- | Gzip compression with default parameters.
 gzip :: (MonadThrow m, MonadBase base m, PrimMonad base) => Conduit ByteString m ByteString
@@ -63,39 +64,78 @@ helperDecompress :: (Monad (t m), MonadBase base m, PrimMonad base, MonadThrow m
                  -> (ByteString -> t m ())
                  -> WindowBits
                  -> t m ()
-helperDecompress await' yield' leftover' config =
-    await' >>= maybe (return ()) start
-  where
-    start input = do
-        inf <- lift $ unsafeLiftIO $ initInflate config
-        push inf input
+helperDecompress await' yield' leftover' config = do
+    -- Initialize the stateful inflater, which will be used below
+    -- This inflater is never exposed outside of this function
+    inf <- lift $ unsafeLiftIO $ initInflate config
 
-        rem' <- lift $ unsafeLiftIO $ getUnusedInflate inf
-        unless (S.null rem') $ leftover' rem'
+    -- Some helper functions used by the main feeder loop below
 
-    continue inf = await' >>= maybe (close inf) (push inf)
+    let -- Flush any remaining inflated bytes downstream
+        flush = do
+            chunk <- lift $ unsafeLiftIO $ flushInflate inf
+            unless (S.null chunk) $ yield' $ Chunk chunk
 
-    goPopper popper = do
-        mbs <- lift $ unsafeLiftIO popper
-        case mbs of
-            PRDone -> return ()
-            PRNext bs -> yield' (Chunk bs) >> goPopper popper
-            PRError e -> lift $ monadThrow e
+        -- Get any input which is unused by the inflater
+        getUnused = lift $ unsafeLiftIO $ getUnusedInflate inf
 
-    push inf (Chunk x) = do
-        popper <- lift $ unsafeLiftIO $ feedInflate inf x
-        goPopper popper
-        continue inf
+        -- If there is any unused data, return it as leftovers to the stream
+        unused = do
+            rem' <- getUnused
+            unless (S.null rem') $ leftover' rem'
 
-    push inf Flush = do
-        chunk <- lift $ unsafeLiftIO $ flushInflate inf
-        unless (S.null chunk) $ yield' $ Chunk chunk
-        yield' Flush
-        continue inf
+    -- Main loop: feed data from upstream into the inflater
+    fix $ \feeder -> do
+        mnext <- await'
+        case mnext of
+            -- No more data is available from upstream
+            Nothing -> do
+                -- Flush any remaining uncompressed data
+                flush
+                -- Return the rest of the unconsumed data as leftovers
+                unused
+            -- Another chunk of compressed data arrived
+            Just (Chunk x) -> do
+                -- Feed the compressed data into the inflater, returning a
+                -- "popper" which will return chunks of decompressed data
+                popper <- lift $ unsafeLiftIO $ feedInflate inf x
 
-    close inf = do
-        chunk <- lift $ unsafeLiftIO $ finishInflate inf
-        unless (S.null chunk) $ yield' $ Chunk chunk
+                -- Loop over the popper grabbing decompressed chunks and
+                -- yielding them downstream
+                fix $ \pop -> do
+                    mbs <- lift $ unsafeLiftIO popper
+                    case mbs of
+                        -- No more data from this popper
+                        PRDone -> do
+                            rem' <- getUnused
+                            if S.null rem'
+                                -- No data was unused by the inflater, so let's
+                                -- fill it up again and get more data out of it
+                                then feeder
+                                -- In this case, there is some unconsumed data,
+                                -- meaning the compressed stream is complete.
+                                -- At this point, we need to stop feeding,
+                                -- return the unconsumed data as leftovers, and
+                                -- flush any remaining content (which should be
+                                -- nothing)
+                                else do
+                                    flush
+                                    leftover' rem'
+                        -- Another chunk available, yield it downstream and
+                        -- loop again
+                        PRNext bs -> do
+                            yield' (Chunk bs)
+                            pop
+                        -- An error occurred inside zlib, throw it
+                        PRError e -> lift $ monadThrow e
+            -- We've been asked to flush the stream
+            Just Flush -> do
+                -- Get any uncompressed data waiting for us
+                flush
+                -- Put a Flush in the stream
+                yield' Flush
+                -- Feed in more data
+                feeder
 
 -- |
 -- Compress (deflate) a stream of 'ByteString's. The 'WindowBits' also control

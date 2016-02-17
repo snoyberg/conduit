@@ -33,15 +33,14 @@ spec = describe "Data.Conduit.Zlib" $ do
                 src = mconcat $ map (CL.sourceList . return) bss
             outBss <- runExceptionT_ $ src C.$= CZ.gzip C.$= CZ.ungzip C.$$ CL.consume
             return $ lbs == L.fromChunks outBss
-        prop "flush" $ \bss' -> runST $ do
+        prop "flush" $ \bss' -> do
             let bss = map S.pack $ filter (not . null) bss'
                 bssC = concatMap (\bs -> [C.Chunk bs, C.Flush]) bss
                 src = mconcat $ map (CL.sourceList . return) bssC
-            outBssC <- runExceptionT_
-                     $ src C.$= CZ.compressFlush 5 (CZ.WindowBits 31)
+            outBssC <- src C.$= CZ.compressFlush 5 (CZ.WindowBits 31)
                            C.$= CZ.decompressFlush (CZ.WindowBits 31)
                            C.$$ CL.consume
-            return $ bssC == outBssC
+            outBssC `shouldBe` bssC
         it "compressFlush large data" $ do
             let content = L.pack $ map (fromIntegral . fromEnum) $ concat $ ["BEGIN"] ++ map show [1..100000 :: Int] ++ ["END"]
                 src = CL.sourceList $ map C.Chunk $ L.toChunks content
