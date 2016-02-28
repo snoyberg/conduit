@@ -866,8 +866,8 @@ runConduit :: Monad m => ConduitM () Void m r -> m r
 runConduit (ConduitM p) = runPipe $ injectLeftovers $ p Done
 {-# INLINE [0] runConduit #-}
 
--- | Perform some allocation and run an inner component. Two guarantees are
--- given about resource finalization:
+-- | Bracket a conduit computation between allocation and release of a
+-- resource. Two guarantees are given about resource finalization:
 --
 -- 1. It will be /prompt/. The finalization will be run as early as possible.
 --
@@ -876,10 +876,15 @@ runConduit (ConduitM p) = runPipe $ injectLeftovers $ p Done
 --
 -- Since 0.5.0
 bracketP :: MonadResource m
+
          => IO a
+            -- ^ computation to run first (\"acquire resource\")
          -> (a -> IO ())
+            -- ^ computation to run last (\"release resource\")
          -> (a -> ConduitM i o m r)
+            -- ^ computation to run in-between
          -> ConduitM i o m r
+            -- returns the value from the in-between computation
 bracketP alloc free inside = ConduitM $ \rest -> PipeM $ do
     (key, seed) <- allocate alloc free
     return $ unConduitM (addCleanup (const $ release key) (inside seed)) rest

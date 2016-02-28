@@ -79,7 +79,7 @@ import Data.Acquire.Internal (ReleaseType (..))
 import Control.Monad.Morph
 
 -- | A @Monad@ which allows for safe resource allocation. In theory, any monad
--- transformer stack included a @ResourceT@ can be an instance of
+-- transformer stack which includes a @ResourceT@ can be an instance of
 -- @MonadResource@.
 --
 -- Note: @runResourceT@ has a requirement for a @MonadBaseControl IO m@ monad,
