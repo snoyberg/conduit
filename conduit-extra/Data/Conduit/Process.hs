@@ -14,6 +14,7 @@ module Data.Conduit.Process
     ( -- * Functions
       sourceCmdWithConsumer
     , sourceProcessWithConsumer
+    , withCheckedProcessCleanup
       -- * Reexport
     , module Data.Streaming.Process
     ) where
@@ -26,6 +27,7 @@ import System.IO (hClose)
 import Data.Conduit
 import Data.Conduit.Binary (sourceHandle, sinkHandle)
 import Data.ByteString (ByteString)
+import Control.Monad.Catch (MonadMask, onException, throwM)
 
 instance (r ~ (), MonadIO m, i ~ ByteString) => InputSource (ConduitM i o m r) where
     isStdStream = (\(Just h) -> return $ sinkHandle h, Just CreatePipe)
@@ -57,3 +59,24 @@ sourceProcessWithConsumer cp consumer = do
 -- Since 1.1.2
 sourceCmdWithConsumer :: MonadIO m => String -> Consumer ByteString m a -> m (ExitCode, a)
 sourceCmdWithConsumer cmd = sourceProcessWithConsumer (shell cmd)
+
+-- | Same as 'withCheckedProcess', but kills the child process in the case of
+-- an exception being thrown by the provided callback function.
+withCheckedProcessCleanup
+    :: ( InputSource stdin
+       , OutputSink stderr
+       , OutputSink stdout
+       , MonadIO m
+       , MonadMask m
+       )
+    => CreateProcess
+    -> (stdin -> stdout -> stderr -> m b)
+    -> m b
+withCheckedProcessCleanup cp f = do
+    (x, y, z, sph) <- streamingProcess cp
+    res <- f x y z `onException`
+            liftIO (terminateProcess (streamingProcessHandleRaw sph))
+    ec <- waitForStreamingProcess sph
+    if ec == ExitSuccess
+        then return res
+        else throwM $ ProcessExitedUnsuccessfully cp ec

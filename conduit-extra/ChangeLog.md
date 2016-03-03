@@ -1,3 +1,7 @@
+## 1.1.11
+
+* `withCheckedProcessCleanup`
+
 ## 1.1.10.1
 
 * Fix a leftovers bug in helperDecompress #254
