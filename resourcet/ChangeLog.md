@@ -1,3 +1,7 @@
+## 1.1.7.3
+
+* Doc tweak
+
 ## 1.1.7.2
 
 * Remove upper bound on transformers [#249](https://github.com/snoyberg/conduit/issues/249)
