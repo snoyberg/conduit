@@ -15,7 +15,7 @@ Cabal-version:       >=1.8
 Homepage:            http://github.com/snoyberg/conduit
 extra-source-files:  test/main.hs
                    , README.md
-                   , changelog.md
+                   , ChangeLog.md
                    , fusion-macros.h
 
 Library
