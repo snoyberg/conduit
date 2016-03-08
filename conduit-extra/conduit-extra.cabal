@@ -45,6 +45,7 @@ Library
                      , transformers
                      , transformers-base
 
+                     , async
                      , attoparsec               >= 0.10
                      , blaze-builder            >= 0.3
                      , directory
