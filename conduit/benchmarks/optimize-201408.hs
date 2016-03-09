@@ -166,7 +166,8 @@ monteCarloTB = return $ TBGroup "monte carlo"
         return $ fromIntegral successes / fromIntegral count * 4
     , TBIOTest "low level" closeEnough $ do
         gen <- MWC.createSystemRandom
-        let go 0 !t = return $! fromIntegral t / fromIntegral count * 4
+        let go :: Int -> Int -> IO Double
+            go 0 !t = return $! fromIntegral t / fromIntegral count * 4
             go i !t = do
                 (x, y) <- MWC.uniform gen
                 let t'
