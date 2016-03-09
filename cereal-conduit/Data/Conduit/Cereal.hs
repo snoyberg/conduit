@@ -38,6 +38,7 @@ instance Exception GetException
 conduitGet :: MonadThrow m => Get o -> C.Conduit BS.ByteString m o
 conduitGet = mkConduitGet errorHandler
   where errorHandler msg = monadThrow $ GetException msg
+{-# DEPRECATED conduitGet "Please switch to conduitGet2, see comment on that function" #-}
 
 -- | Convert a 'Get' into a 'Sink'. The 'Get' will be streamed bytes until it returns 'Done' or 'Fail'.
 --
@@ -71,9 +72,11 @@ conduitPut p = CL.map $ runPut . p
 -- * This function will properly terminate a @Get@ function at end of stream,
 -- see https://github.com/snoyberg/conduit/issues/246.
 --
--- * @conduitGet@ has special handling of empty @ByteString@s, this function
--- does not. In other words, if your incoming stream contains any extra
--- @ByteString@s, they are filtered out before being passed to cereal.
+-- * @conduitGet@ will pass empty @ByteString@s from the stream directly to
+-- cereal, which will trigger cereal to think that the stream has been closed.
+-- This breaks the normal abstraction in conduit of ignoring how data is
+-- chunked. In @conduitGet2@, all empty @ByteString@s are filtered out and not
+-- passed to cereal.
 --
 -- * After @conduitGet2@ successfully returns, we are guaranteed that there is
 -- no data left to be consumed in the stream.
@@ -85,7 +88,6 @@ conduitGet2 get =
   where
     -- Get the next chunk of data, only returning an empty ByteString at the
     -- end of the stream.
-    -- If the stream is empty, call the first function.
     awaitNE =
         loop
       where
