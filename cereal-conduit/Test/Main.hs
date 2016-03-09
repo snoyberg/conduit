@@ -1,8 +1,9 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE Rank2Types #-}
+{-# LANGUAGE OverloadedStrings #-}
 
-import           Control.Applicative (many)
+import           Control.Applicative (many, optional)
 import           Control.Exception.Base
 import           Control.Monad.Identity
 import           Control.Monad.Trans.Resource
@@ -213,6 +214,35 @@ conduittest17 = TestCase (assertEqual "Leftover failure conduit with broken inpu
           recurse
           where recurse = C.await >>= maybe (return ()) (\ x -> C.yield (Left x) >> recurse)
 
+-- see https://github.com/snoyberg/conduit/issues/246
+conduittest18 :: Test
+conduittest18 = TestCase $ assertEqual "Deals with Get that consumes everything"
+    (Right ["hello"])
+    (runIdentity $ runExceptionT
+                 $ (C.yield "hello"
+               C.$= conduitGet2 slurp
+               C.$$ CL.consume))
+
+slurp :: Get BS.ByteString
+slurp =
+    loop id
+  where
+    loop front = do
+        x <- remaining
+        if x == 0
+            then do
+                mbs <- optional $ lookAhead $ getBytes 1
+                case mbs of
+                    Nothing -> do
+                        let bs = BS.concat $ front []
+                        if BS.null bs
+                            then fail "no bytes remaining"
+                            else return bs
+                    Just _ -> loop front
+            else do
+                bs <- getBytes $ fromIntegral x
+                loop (front . (bs:))
+
 puttest1 :: Test
 puttest1 = TestCase (assertEqual "conduitPut works"
   [BS.pack [0, 1]]
@@ -256,6 +286,7 @@ conduittests = TestList [ conduittest1
                         , conduittest15
                         , conduittest16
                         , conduittest17
+                        , conduittest18
                         ]
 
 puttests = TestList [ puttest1

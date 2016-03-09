@@ -1,3 +1,7 @@
+## 0.7.3
+
+* Provide `conduitGet2`
+
 ## 0.7.2.5
 
 * Support cereal 0.5
