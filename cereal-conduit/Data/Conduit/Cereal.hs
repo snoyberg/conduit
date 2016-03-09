@@ -18,7 +18,6 @@ module Data.Conduit.Cereal ( GetException
                            ) where
 
 import           Control.Exception.Base
-import           Control.Monad.Trans.Class (MonadTrans, lift)
 import           Control.Monad.Trans.Resource (MonadThrow, monadThrow)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
@@ -37,7 +36,7 @@ instance Exception GetException
 -- | Run a 'Get' repeatedly on the input stream, producing an output stream of whatever the 'Get' outputs.
 conduitGet :: MonadThrow m => Get o -> C.Conduit BS.ByteString m o
 conduitGet = mkConduitGet errorHandler
-  where errorHandler msg = pipeError $ GetException msg
+  where errorHandler msg = monadThrow $ GetException msg
 
 -- | Convert a 'Get' into a 'Sink'. The 'Get' will be streamed bytes until it returns 'Done' or 'Fail'.
 --
@@ -45,14 +44,11 @@ conduitGet = mkConduitGet errorHandler
 -- If the 'Get' fails due to deserialization error or early termination of the input stream it raise an error.
 sinkGet :: MonadThrow m => Get r -> C.Consumer BS.ByteString m r
 sinkGet = mkSinkGet errorHandler terminationHandler
-  where errorHandler msg = pipeError $ GetException msg
+  where errorHandler msg = monadThrow $ GetException msg
         terminationHandler f = case f BS.empty of
-          Fail msg _ -> pipeError $ GetException msg
+          Fail msg _ -> monadThrow $ GetException msg
           Done r lo -> C.leftover lo >> return r
-          Partial _ -> pipeError $ GetException "Failed reading: Internal error: unexpected Partial."
-
-pipeError :: (MonadThrow m, MonadTrans t, Exception e) => e -> t m a
-pipeError e = lift $ monadThrow e
+          Partial _ -> monadThrow $ GetException "Failed reading: Internal error: unexpected Partial."
 
 -- | Convert a 'Put' into a 'Source'. Runs in constant memory.
 sourcePut :: Monad m => Put -> C.Producer m BS.ByteString
