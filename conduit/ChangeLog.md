@@ -1,3 +1,7 @@
+## 1.2.6.4
+
+* Fix benchmark by adding a type signature
+
 ## 1.2.6.3
 
 * Doc updates
