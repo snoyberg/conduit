@@ -88,6 +88,8 @@ sourceCmdWithConsumer cmd = sourceProcessWithConsumer (shell cmd)
 --
 -- IO is required because the streams are run concurrently
 -- using the <https://hackage.haskell.org/package/async async> package
+--
+-- @since 1.1.12
 sourceProcessWithStreams :: CreateProcess
                          -> Producer IO ByteString   -- ^stdin
                          -> Consumer ByteString IO a -- ^stdout
@@ -111,6 +113,8 @@ sourceProcessWithStreams cp producerStdin consumerStdout consumerStderr = do
 
 -- | Like @sourceProcessWithStreams@ but providing the command to be run as
 -- a @String@.
+--
+-- @since 1.1.12
 sourceCmdWithStreams :: String                   -- ^command
                      -> Producer IO ByteString   -- ^stdin
                      -> Consumer ByteString IO a -- ^stdout
@@ -120,6 +124,8 @@ sourceCmdWithStreams cmd = sourceProcessWithStreams (shell cmd)
 
 -- | Same as 'withCheckedProcess', but kills the child process in the case of
 -- an exception being thrown by the provided callback function.
+--
+-- @since 1.1.11
 withCheckedProcessCleanup
     :: ( InputSource stdin
        , OutputSink stderr

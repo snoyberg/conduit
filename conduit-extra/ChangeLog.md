@@ -1,3 +1,7 @@
+## 1.1.12
+
+* Add sourceProcessWithStreams [#258](https://github.com/snoyberg/conduit/pull/258)
+
 ## 1.1.11
 
 * `withCheckedProcessCleanup`
