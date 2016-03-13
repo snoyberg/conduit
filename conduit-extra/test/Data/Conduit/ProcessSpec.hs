@@ -56,7 +56,7 @@ spec = describe "Data.Conduit.Process" $ do
 
     it "consumes stdout" $ do
         let mystr = "this is a test string" :: String
-        sourceCmdWithStreams ("echo -n " ++ mystr)
+        sourceCmdWithStreams ("bash -c \"echo -n " ++ mystr ++ "\"")
                              CL.sourceNull
                              CL.consume -- stdout
                              CL.consume -- stderr
@@ -64,7 +64,7 @@ spec = describe "Data.Conduit.Process" $ do
 
     it "consumes stderr" $ do
         let mystr = "this is a test string" :: String
-        sourceCmdWithStreams ("sh -c \">&2 echo -n " ++ mystr ++ "\"")
+        sourceCmdWithStreams ("bash -c \">&2 echo -n " ++ mystr ++ "\"")
                              CL.sourceNull
                              CL.consume -- stdout
                              CL.consume -- stderr
