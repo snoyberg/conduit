@@ -96,7 +96,7 @@ spec = describe "Data.Conduit.Process" $ do
                         threadDelay 500000
                         loop (pred i)
                     Just _ -> mec2 `shouldBe` Just ExitSuccess
-        loop 5
+        loop (5 :: Int)
 
         ec <- waitForStreamingProcess cph
         ec `shouldBe` ExitSuccess
