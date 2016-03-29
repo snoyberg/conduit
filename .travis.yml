@@ -120,10 +120,8 @@ before_install:
 
   # Use the more reliable S3 mirror of Hackage
   mkdir -p $HOME/.cabal
-  cat > $HOME/.cabal/config <<EOF
-  remote-repo: hackage.haskell.org:http://hackage.fpcomplete.com/
-  remote-repo-cache: $HOME/.cabal/packages
-  EOF
+  echo 'remote-repo: hackage.haskell.org:http://hackage.fpcomplete.com/' > $HOME/.cabal/config
+  echo 'remote-repo-cache: $HOME/.cabal/packages' >> $HOME/.cabal/config
 
   if [ "$CABALVER" != "1.16" ]
   then
