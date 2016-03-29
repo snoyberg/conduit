@@ -92,7 +92,7 @@ matrix:
     os: osx
 
   allow_failures:
-  - env: BUILD=cabal GHCVER=head  CABALVER=head
+  - env: BUILD=cabal GHCVER=head  CABALVER=head HAPPYVER=1.19.5 ALEXVER=3.1.7
   - env: BUILD=stack ARGS="--resolver nightly"
 
   # Not sure why this build is failing on Linux right now. There's a test suite
@@ -123,8 +123,12 @@ before_install:
   cat > $HOME/.cabal/config <<EOF
   remote-repo: hackage.haskell.org:http://hackage.fpcomplete.com/
   remote-repo-cache: $HOME/.cabal/packages
-  jobs: \$ncpus
   EOF
+
+  if [ "$CABALVER" != "1.16" ]
+  then
+    echo '$ncpus' >> $HOME/.cabal/config
+  fi
 
 # Get the list of packages from the stack.yaml file
 - PACKAGES=$(stack --install-ghc query locals | grep '^ *path' | sed 's@^ *path:@@')
