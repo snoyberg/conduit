@@ -127,7 +127,7 @@ before_install:
 
   if [ "$CABALVER" != "1.16" ]
   then
-    echo '$ncpus' >> $HOME/.cabal/config
+    echo 'jobs: $ncpus' >> $HOME/.cabal/config
   fi
 
 # Get the list of packages from the stack.yaml file
