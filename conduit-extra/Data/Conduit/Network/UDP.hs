@@ -13,8 +13,7 @@ module Data.Conduit.Network.UDP
     ) where
 
 import Data.Conduit
-import Network.Socket (AddrInfo, SockAddr, Socket)
-import qualified Network.Socket as NS
+import Network.Socket (Socket)
 import Network.Socket.ByteString (recvFrom, send, sendAll, sendTo, sendAllTo)
 import Data.ByteString (ByteString)
 import Control.Monad.IO.Class (MonadIO (liftIO))

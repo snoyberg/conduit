@@ -38,17 +38,14 @@ module Data.Conduit.Network
     , SN.HostPreference
     ) where
 
-import Prelude hiding (catch)
+import Prelude
 import Data.Conduit
-import qualified Network.Socket as NS
 import Network.Socket (Socket)
-import Network.Socket.ByteString (sendAll, recv)
+import Network.Socket.ByteString (sendAll)
 import Data.ByteString (ByteString)
 import qualified GHC.Conc as Conc (yield)
 import qualified Data.ByteString as S
-import qualified Data.ByteString.Char8 as S8
 import Control.Monad.IO.Class (MonadIO (liftIO))
-import Control.Exception (throwIO, SomeException, try, finally, bracket, IOException, catch)
 import Control.Monad (unless, void)
 import Control.Monad.Trans.Control (MonadBaseControl, control, liftBaseWith)
 import Control.Monad.Trans.Class (lift)
@@ -81,7 +78,10 @@ sinkSocket socket =
   where
     loop = await >>= maybe (return ()) (\bs -> lift (liftIO $ sendAll socket bs) >> loop)
 
+serverSettings :: Int -> SN.HostPreference -> SN.ServerSettings
 serverSettings = SN.serverSettingsTCP
+
+clientSettings :: Int -> ByteString -> SN.ClientSettings
 clientSettings = SN.clientSettingsTCP
 
 appSource :: (SN.HasReadWrite ad, MonadIO m) => ad -> Producer m ByteString

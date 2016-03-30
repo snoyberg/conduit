@@ -55,7 +55,9 @@ import Control.Monad.Trans.Resource (allocate, release)
 import Control.Monad.Trans.Class (lift)
 import qualified System.IO as IO
 import Data.Word (Word8, Word64)
+#if (__GLASGOW_HASKELL__ < 710)
 import Control.Applicative ((<$>))
+#endif
 import System.Directory (getTemporaryDirectory, removeFile)
 import Data.ByteString.Lazy.Internal (defaultChunkSize)
 import Data.ByteString.Internal (ByteString (PS), inlinePerformIO)
@@ -65,6 +67,7 @@ import Foreign.Ptr (plusPtr)
 import Foreign.Storable (peek)
 import GHC.ForeignPtr           (mallocPlainForeignPtrBytes)
 import Control.Monad.Trans.Resource (MonadResource)
+
 
 -- | Stream the contents of a file as binary data.
 --
@@ -373,7 +376,7 @@ lines =
             Just (_, second') -> yield (S.concat $ reverse $ first:acc) >> go [] second'
             Nothing -> loop $ more:acc
       where
-        (first, second) = S.breakByte 10 more
+        (first, second) = S.break (== 10) more
 
 -- | Stream the chunks from a lazy bytestring.
 --

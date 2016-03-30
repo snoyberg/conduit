@@ -1,6 +1,8 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE Trustworthy #-}
+
+{-# OPTIONS_GHC -fno-warn-deprecations #-} -- Suppress warnings around Control.Monad.Trans.Error
 -- | Use lazy I\/O for consuming the contents of a source. Warning: All normal
 -- warnings of lazy I\/O apply. In particular, if you are using this with a
 -- @ResourceT@ transformer, you must force the list to be evaluated before
@@ -31,7 +33,9 @@ import qualified Control.Monad.Trans.RWS.Strict    as Strict ( RWST   )
 import qualified Control.Monad.Trans.State.Strict  as Strict ( StateT )
 import qualified Control.Monad.Trans.Writer.Strict as Strict ( WriterT )
 
+#if (__GLASGOW_HASKELL__ < 710)
 import Data.Monoid (Monoid)
+#endif
 import Control.Monad.ST (ST)
 import qualified Control.Monad.ST.Lazy as Lazy
 import Data.Functor.Identity (Identity)

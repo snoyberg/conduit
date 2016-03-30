@@ -105,7 +105,7 @@ instance AttoparsecInput T.Text where
         f (Position l c) ch | ch == '\n' = Position (l + 1) 0
                             | otherwise = Position l (c + 1)
     stripFromEnd (TI.Text arr1 off1 len1) (TI.Text _ _ len2) =
-        TI.textP arr1 off1 (len1 - len2)
+        TI.text arr1 off1 (len1 - len2)
 
 -- | Convert an Attoparsec 'A.Parser' into a 'Sink'. The parser will
 -- be streamed bytes until it returns 'A.Done' or 'A.Fail'.

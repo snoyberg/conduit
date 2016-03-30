@@ -1,6 +1,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE CPP #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 -- | A full tutorial for this module is available on FP School of Haskell:
 -- <https://www.fpcomplete.com/user/snoyberg/library-documentation/data-conduit-process>.
@@ -31,7 +32,9 @@ import Data.Conduit.Binary (sourceHandle, sinkHandle)
 import Data.ByteString (ByteString)
 import Control.Concurrent.Async (runConcurrently, Concurrently(..))
 import Control.Monad.Catch (MonadMask, onException, throwM, finally)
+#if (__GLASGOW_HASKELL__ < 710)
 import Control.Applicative ((<$>), (<*>))
+#endif
 
 instance (r ~ (), MonadIO m, i ~ ByteString) => InputSource (ConduitM i o m r) where
     isStdStream = (\(Just h) -> return $ sinkHandle h, Just CreatePipe)

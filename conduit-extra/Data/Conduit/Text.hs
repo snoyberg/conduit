@@ -38,7 +38,6 @@ module Data.Conduit.Text
     , detectUtf
     ) where
 
-import qualified Prelude
 import           Prelude hiding (head, drop, takeWhile, lines, zip, zip3, zipWith, zipWith3, take, dropWhile)
 
 import qualified Control.Exception as Exc
@@ -61,7 +60,7 @@ import Data.Streaming.Text
 --
 -- Since 0.3.0
 data Codec = Codec
-    { codecName :: T.Text
+    { _codecName :: T.Text
     , codecEncode
         :: T.Text
         -> (B.ByteString, Maybe (TextException, T.Text))
@@ -74,7 +73,7 @@ data Codec = Codec
     | NewCodec T.Text (T.Text -> B.ByteString) (B.ByteString -> DecodeResult)
 
 instance Show Codec where
-    showsPrec d c = 
+    showsPrec d c =
         let (cnst, name) = case c of
                 Codec t _ _    -> ("Codec ", t)
                 NewCodec t _ _ -> ("NewCodec ", t)
@@ -150,7 +149,7 @@ decodeNew
     -> Int
     -> (B.ByteString -> DecodeResult)
     -> Conduit B.ByteString m T.Text
-decodeNew onFailure name =
+decodeNew onFailure _name =
     loop
   where
     loop consumed dec =
