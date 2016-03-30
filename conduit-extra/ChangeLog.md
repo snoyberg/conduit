@@ -1,6 +1,7 @@
 ## 1.1.12.1
 
-* Fix build for GHC <= 7.8 [#260](https://github.com/snoyberg/conduit/issues/260)
+* Fix build for GHC `<= 7.8` [#260](https://github.com/snoyberg/conduit/issues/260)
+* Fix accidentally breaking change in `sourceProcessWithConsumer` type signature
 
 ## 1.1.12
 

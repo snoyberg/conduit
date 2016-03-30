@@ -52,23 +52,22 @@ instance (r ~ (), r' ~ (), MonadIO m, MonadIO n, o ~ ByteString) => OutputSink (
 -- the process is terminated.
 --
 -- Since 1.1.2
-sourceProcessWithConsumer :: (MonadMask m, MonadIO m)
+sourceProcessWithConsumer :: MonadIO m
                           => CreateProcess
-                          -> Consumer ByteString m a -- ^stdout
+                          -> Consumer ByteString m a -- ^ stdout
                           -> m (ExitCode, a)
 sourceProcessWithConsumer cp consumer = do
-    (ClosedStream, (source, close), ClosedStream, sph) <- streamingProcess cp
-    res <- (source $$ consumer)
-           `finally` close
-           `onException` liftIO (terminateStreamingProcess sph)
-    ec <- waitForStreamingProcess sph
+    (ClosedStream, (source, close), ClosedStream, cph) <- streamingProcess cp
+    res <- source $$ consumer
+    close
+    ec <- waitForStreamingProcess cph
     return (ec, res)
 
 -- | Like @sourceProcessWithConsumer@ but providing the command to be run as
 -- a @String@.
 --
 -- Since 1.1.2
-sourceCmdWithConsumer :: (MonadMask m, MonadIO m)
+sourceCmdWithConsumer :: MonadIO m
                       => String                  -- ^command
                       -> Consumer ByteString m a -- ^stdout
                       -> m (ExitCode, a)
