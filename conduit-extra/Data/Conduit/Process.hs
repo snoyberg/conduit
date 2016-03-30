@@ -31,6 +31,7 @@ import Data.Conduit.Binary (sourceHandle, sinkHandle)
 import Data.ByteString (ByteString)
 import Control.Concurrent.Async (runConcurrently, Concurrently(..))
 import Control.Monad.Catch (MonadMask, onException, throwM, finally)
+import Control.Applicative ((<$>), (<*>))
 
 instance (r ~ (), MonadIO m, i ~ ByteString) => InputSource (ConduitM i o m r) where
     isStdStream = (\(Just h) -> return $ sinkHandle h, Just CreatePipe)

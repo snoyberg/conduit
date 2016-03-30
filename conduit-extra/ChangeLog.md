@@ -1,3 +1,7 @@
+## 1.1.12.1
+
+* Fix build for GHC <= 7.8 [#260](https://github.com/snoyberg/conduit/issues/260)
+
 ## 1.1.12
 
 * Add sourceProcessWithStreams [#258](https://github.com/snoyberg/conduit/pull/258)
