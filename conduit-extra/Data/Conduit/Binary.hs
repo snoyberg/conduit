@@ -1,4 +1,5 @@
 {-# LANGUAGE CPP, RankNTypes #-}
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 -- | Functions for interacting with bytes.
 --
@@ -65,9 +66,10 @@ import Control.Applicative ((<$>))
 #endif
 import System.Directory (getTemporaryDirectory, removeFile)
 import Data.ByteString.Lazy.Internal (defaultChunkSize)
-import Data.ByteString.Internal (ByteString (PS), inlinePerformIO)
+import Data.ByteString.Internal (ByteString (PS), inlinePerformIO, mallocByteString, memcpy)
+import System.IO.Unsafe (unsafeDupablePerformIO)
 import Foreign.ForeignPtr.Unsafe (unsafeForeignPtrToPtr)
-import Foreign.ForeignPtr (touchForeignPtr)
+import Foreign.ForeignPtr (touchForeignPtr, withForeignPtr)
 import Foreign.Ptr (plusPtr, castPtr)
 import Foreign.Storable (Storable, peek, sizeOf)
 import GHC.ForeignPtr           (mallocPlainForeignPtrBytes)
@@ -481,22 +483,80 @@ sinkStorableHelper wrap failure = do
                 | S.null bs -> start
                 | otherwise ->
                     case compare (S.length bs) size of
-                        LT -> do
-                            -- looks like we're stuck concating
-                            leftover bs
-                            lbs <- take size
-                            let bs = S.concat $ L.toChunks lbs
-                            case compare (S.length bs) size of
-                                LT -> do
-                                    leftover bs
-                                    failure
-                                EQ -> process bs
-                                GT -> assert False (process bs)
+                        -- bytestring is exactly the size we need, best case
+                        -- scenario
                         EQ -> process bs
+
+                        -- bytestring is more than we need. Almost as good: we
+                        -- just need to leftover the rest
                         GT -> do
                             let (x, y) = S.splitAt size bs
                             leftover y
                             process x
+
+                        -- Pessimal case: the bytestring isn't big enough. We
+                        -- need to create a buffer of appropriate size to fill
+                        -- up from upcoming chunks, fill it up, and then peek
+                        -- into it.
+                        LT -> do
+                            -- Helper for below
+                            let perform x = do
+                                    !res <- return $! unsafeDupablePerformIO x
+                                    return $! res
+
+                            -- Create a buffer to fill up
+                            fptr <- perform (mallocByteString size)
+                            let ptr = unsafeForeignPtrToPtr fptr
+
+                                -- copy into the destination buffer
+                                copy destoff (PS fsrc srcoff len) =
+                                    withForeignPtr fsrc $ \src ->
+                                    memcpy
+                                        (ptr `plusPtr` destoff)
+                                        (src `plusPtr` srcoff)
+                                        len
+
+                                -- loop, asking for more bytes and filling up
+                                -- the buffer further
+                                loop destoff = do
+                                    await >>= maybe notEnough add
+                                  where
+                                    -- how many bytes are still needed?
+                                    needed = size - destoff
+
+                                    -- add a new chunk to the buffer
+                                    add next =
+                                        case compare needed (S.length next) of
+                                            -- more than enough bytes in this
+                                            -- chunk, leftover the rest
+                                            LT -> do
+                                                let (x, y) = S.splitAt needed next
+                                                leftover y
+                                                complete x
+                                            -- exactly enough bytes
+                                            EQ -> complete next
+                                            -- not enough bytes, copy what
+                                            -- we've got and loop again
+                                            GT -> do
+                                                perform $ copy destoff next
+                                                loop (destoff + S.length next)
+
+                                    -- copy in the final chunk and then peek
+                                    -- the result from the buffer
+                                    complete x = perform $ do
+                                        copy destoff x
+                                        fmap wrap $ peek $ castPtr ptr
+
+                                    -- not enough bytes, leftover what we've
+                                    -- read so far and then fail
+                                    notEnough = do
+                                        leftover (PS fptr 0 destoff)
+                                        failure
+
+                            -- copy the initial chunk we already read, and then
+                            -- start looping
+                            perform (copy 0 bs)
+                            loop (S.length bs)
 
     -- Given a bytestring of exactly the correct size, grab the value
     process bs = return $! wrap $! inlinePerformIO $!
