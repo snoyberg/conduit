@@ -1,5 +1,6 @@
 {-# LANGUAGE CPP, RankNTypes #-}
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 -- | Functions for interacting with bytes.
 --
