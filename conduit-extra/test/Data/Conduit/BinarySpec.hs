@@ -23,6 +23,7 @@ import Data.Word (Word8)
 import Foreign.Storable (Storable, sizeOf, pokeByteOff)
 import Data.Typeable (Typeable, typeRep)
 import Data.ByteString.Internal (unsafeCreate)
+import Control.Applicative ((<$>), (<*>))
 
 spec :: Spec
 spec = describe "Data.Conduit.Binary" $ do
