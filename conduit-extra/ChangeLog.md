@@ -1,3 +1,7 @@
+## 1.1.13
+
+* Add `sinkStorable` and `sinkStorableEx`
+
 ## 1.1.12.1
 
 * Fix build for GHC `<= 7.8` [#260](https://github.com/snoyberg/conduit/issues/260)

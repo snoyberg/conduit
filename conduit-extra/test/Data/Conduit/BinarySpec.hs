@@ -1,3 +1,5 @@
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE OverloadedStrings #-}
 module Data.Conduit.BinarySpec (spec) where
 
@@ -15,6 +17,12 @@ import Control.Monad.Trans.Writer.Strict
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Char8 as S8
 import Data.Functor.Identity
+import Test.QuickCheck.Arbitrary (Arbitrary, arbitrary)
+import Test.QuickCheck.Gen (Gen, oneof)
+import Data.Word (Word8)
+import Foreign.Storable (Storable, sizeOf, pokeByteOff)
+import Data.Typeable (Typeable, typeRep)
+import Data.ByteString.Internal (unsafeCreate)
 
 spec :: Spec
 spec = describe "Data.Conduit.Binary" $ do
@@ -188,6 +196,99 @@ spec = describe "Data.Conduit.Binary" $ do
                 let src = CL.sourceList ["foobarbazbin"]
                 src C.$= CB.isolate 10 C.$$ CL.head
             x `shouldBe` Just "foobarbazb"
+
+    describe "Storable" $ do
+        let test name func = describe name $ do
+                let test' size =
+                      prop ("chunk size " ++ show size) $ \stores0 -> do
+                        let src =
+                                loop (someStorables stores0)
+                              where
+                                loop bs
+                                    | S.null bs = return ()
+                                    | otherwise = do
+                                        let (x, y) = S.splitAt size bs
+                                        C.yield x
+                                        loop y
+
+                            sink :: [SomeStorable]
+                                 -> C.Sink S.ByteString IO ()
+                            sink [] = do
+                                mw <- CB.head
+                                case mw of
+                                    Nothing -> return ()
+                                    Just _ -> error "trailing bytes"
+                            sink (next:rest) = do
+                                withSomeStorable next checkOne
+                                sink rest
+
+                            checkOne :: (Storable a, Eq a, Show a)
+                                     => a
+                                     -> C.Sink S.ByteString IO ()
+                            checkOne expected = do
+                                mactual <-
+                                    if func
+                                        then CB.sinkStorable
+                                        else fmap Just CB.sinkStorableEx
+                                actual <-
+                                    case mactual of
+                                        Nothing -> error "got Nothing"
+                                        Just actual -> return actual
+                                liftIO $ actual `shouldBe` expected
+
+                        src C.$$ sink stores0 :: IO ()
+                mapM_ test' [1, 5, 10, 100]
+
+        test "sink Maybe" True
+        test "sink exception" False
+
+        it' "insufficient bytes are leftovers, one chunk" $ do
+            let src = C.yield $ S.singleton 1
+            src C.$$ do
+                mactual <- CB.sinkStorable
+                liftIO $ mactual `shouldBe` (Nothing :: Maybe Int)
+                lbs <- CB.sinkLbs
+                liftIO $ lbs `shouldBe` L.singleton 1
+
+        it' "insufficient bytes are leftovers, multiple chunks" $ do
+            let src = do
+                    C.yield $ S.singleton 1
+                    C.yield $ S.singleton 2
+            src C.$$ do
+                mactual <- CB.sinkStorable
+                liftIO $ mactual `shouldBe` (Nothing :: Maybe Int)
+                lbs <- CB.sinkLbs
+                liftIO $ lbs `shouldBe` L.pack [1, 2]
+
+data SomeStorable where
+    SomeStorable :: (Storable a, Eq a, Show a, Typeable a) => a -> SomeStorable
+instance Show SomeStorable where
+    show x = show (typeRep (Just x), x)
+instance Arbitrary SomeStorable where
+    arbitrary = oneof
+        [ SomeStorable <$> (arbitrary :: Gen Int)
+        , SomeStorable <$> (arbitrary :: Gen Word8)
+        , SomeStorable <$> (arbitrary :: Gen Double)
+        ]
+
+withSomeStorable :: SomeStorable
+                 -> (forall a. (Storable a, Eq a, Show a) => a -> b)
+                 -> b
+withSomeStorable (SomeStorable x) f = f x
+
+someStorables :: [SomeStorable] -> S.ByteString
+someStorables stores0 =
+    unsafeCreate size start
+  where
+    size = sum $ map (\x -> withSomeStorable x sizeOf) stores0
+
+    start ptr =
+        go stores0 0
+      where
+        go [] _ = return ()
+        go (x:rest) off = do
+            withSomeStorable x (pokeByteOff ptr off)
+            go rest (off + withSomeStorable x sizeOf)
 
 it' :: String -> IO () -> Spec
 it' = it

@@ -1,4 +1,5 @@
 {-# LANGUAGE CPP, RankNTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 -- | Functions for interacting with bytes.
 --
 -- For many purposes, it's recommended to use the conduit-combinators library,
@@ -36,6 +37,9 @@ module Data.Conduit.Binary
     , sinkCacheLength
     , sinkLbs
     , mapM_
+      -- *** Storable
+    , sinkStorable
+    , sinkStorableEx
       -- ** Conduits
     , isolate
     , takeWhile
@@ -45,6 +49,7 @@ module Data.Conduit.Binary
 import qualified Data.Streaming.FileRead as FR
 import Prelude hiding (head, take, drop, takeWhile, dropWhile, mapM_)
 import qualified Data.ByteString as S
+import Data.ByteString.Unsafe (unsafeUseAsCString)
 import qualified Data.ByteString.Lazy as L
 import Data.Conduit
 import Data.Conduit.List (sourceList, consume)
@@ -63,11 +68,13 @@ import Data.ByteString.Lazy.Internal (defaultChunkSize)
 import Data.ByteString.Internal (ByteString (PS), inlinePerformIO)
 import Foreign.ForeignPtr.Unsafe (unsafeForeignPtrToPtr)
 import Foreign.ForeignPtr (touchForeignPtr)
-import Foreign.Ptr (plusPtr)
-import Foreign.Storable (peek)
+import Foreign.Ptr (plusPtr, castPtr)
+import Foreign.Storable (Storable, peek, sizeOf)
 import GHC.ForeignPtr           (mallocPlainForeignPtrBytes)
 import Control.Monad.Trans.Resource (MonadResource)
-
+import Control.Monad.Catch (MonadThrow (..))
+import Control.Exception (Exception)
+import Data.Typeable (Typeable)
 
 -- | Stream the contents of a file as binary data.
 --
@@ -438,3 +445,64 @@ mapM_BS f (PS fptr offset len) = do
 mapM_ :: Monad m => (Word8 -> m ()) -> Consumer S.ByteString m ()
 mapM_ f = awaitForever (lift . mapM_BS f)
 {-# INLINE mapM_ #-}
+
+-- | Consume some instance of @Storable@ from the incoming byte stream. In the
+-- event of insufficient bytes in the stream, returns a @Nothing@ and returns
+-- all unused input as leftovers.
+--
+-- @since 1.1.13
+sinkStorable :: (Monad m, Storable a) => Consumer S.ByteString m (Maybe a)
+sinkStorable = sinkStorableHelper Just (return Nothing)
+
+-- | Same as 'sinkStorable', but throws a 'SinkStorableInsufficientBytes'
+-- exception (via 'throwM') in the event of insufficient bytes. This can be
+-- more efficient to use than 'sinkStorable' as it avoids the need to
+-- construct/deconstruct a @Maybe@ wrapper in the success case.
+--
+-- @since 1.1.13
+sinkStorableEx :: (MonadThrow m, Storable a) => Consumer S.ByteString m a
+sinkStorableEx = sinkStorableHelper id (throwM SinkStorableInsufficientBytes)
+
+sinkStorableHelper :: forall m a b. (Monad m, Storable a)
+                   => (a -> b)
+                   -> (Consumer S.ByteString m b)
+                   -> Consumer S.ByteString m b
+sinkStorableHelper wrap failure = do
+    start
+  where
+    size = sizeOf (undefined :: a)
+
+    -- try the optimal case: next chunk has all the data we need
+    start = do
+        mbs <- await
+        case mbs of
+            Nothing -> failure
+            Just bs
+                | S.null bs -> start
+                | otherwise ->
+                    case compare (S.length bs) size of
+                        LT -> do
+                            -- looks like we're stuck concating
+                            leftover bs
+                            lbs <- take size
+                            let bs = S.concat $ L.toChunks lbs
+                            case compare (S.length bs) size of
+                                LT -> do
+                                    leftover bs
+                                    failure
+                                EQ -> process bs
+                                GT -> assert False (process bs)
+                        EQ -> process bs
+                        GT -> do
+                            let (x, y) = S.splitAt size bs
+                            leftover y
+                            process x
+
+    -- Given a bytestring of exactly the correct size, grab the value
+    process bs = return $! wrap $! inlinePerformIO $!
+        unsafeUseAsCString bs (peek . castPtr)
+{-# INLINE sinkStorableHelper #-}
+
+data SinkStorableException = SinkStorableInsufficientBytes
+    deriving (Show, Typeable)
+instance Exception SinkStorableException
