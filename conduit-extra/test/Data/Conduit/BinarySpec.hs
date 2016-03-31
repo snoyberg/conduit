@@ -21,7 +21,7 @@ import Test.QuickCheck.Arbitrary (Arbitrary, arbitrary)
 import Test.QuickCheck.Gen (Gen, oneof)
 import Data.Word (Word8)
 import Foreign.Storable (Storable, sizeOf, pokeByteOff)
-import Data.Typeable (Typeable, typeRep)
+import Data.Typeable (Typeable)
 import Data.ByteString.Internal (unsafeCreate)
 import Control.Applicative ((<$>), (<*>))
 
