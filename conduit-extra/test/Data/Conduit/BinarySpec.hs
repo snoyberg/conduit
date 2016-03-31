@@ -264,7 +264,7 @@ spec = describe "Data.Conduit.Binary" $ do
 data SomeStorable where
     SomeStorable :: (Storable a, Eq a, Show a, Typeable a) => a -> SomeStorable
 instance Show SomeStorable where
-    show x = show (typeRep (Just x), x)
+    show (SomeStorable x) = show x
 instance Arbitrary SomeStorable where
     arbitrary = oneof
         [ SomeStorable <$> (arbitrary :: Gen Int)
