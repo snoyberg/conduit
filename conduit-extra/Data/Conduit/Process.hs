@@ -51,8 +51,9 @@ instance (r ~ (), r' ~ (), MonadIO m, MonadIO n, o ~ ByteString) => OutputSink (
 -- return a tuple of the @ExitCode@ from the process and the output collected
 -- from the @Consumer@.
 --
--- If an exception is raised by the consumer,
--- the process is terminated.
+-- Note that, if an exception is raised by the consumer, the process is /not/
+-- terminated. This behavior is different from 'sourceProcessWithStreams' due
+-- to historical reasons.
 --
 -- Since 1.1.2
 sourceProcessWithConsumer :: MonadIO m

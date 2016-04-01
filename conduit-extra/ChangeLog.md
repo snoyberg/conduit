@@ -1,3 +1,7 @@
+## 1.1.13.1
+
+* Fix an incorrect comment
+
 ## 1.1.13
 
 * Add `sinkStorable` and `sinkStorableEx`
