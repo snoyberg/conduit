@@ -1,3 +1,7 @@
+## 1.2.1
+
+* Expose ApplicationStartTLS [#262](https://github.com/snoyberg/conduit/pull/262)
+
 ## 1.2.0.1
 
 * tls 1.3 support
