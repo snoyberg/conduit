@@ -5,8 +5,10 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE KindSignatures #-}
 module Data.Conduit.Network.TLS
-    ( -- * Server
-      TLSConfig
+    ( -- * Common
+      ApplicationStartTLS
+      -- * Server
+    , TLSConfig
     , tlsConfigBS
     , tlsConfig
     , tlsConfigChainBS
