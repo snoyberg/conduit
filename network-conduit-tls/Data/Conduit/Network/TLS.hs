@@ -335,12 +335,12 @@ tlsClientConfig port host = TLSClientConfig
 -- | Run an application with the given configuration.
 --
 -- Since 1.0.2
-runTLSClient :: (MonadIO m, MonadBaseControl IO m)
+runTLSClient :: (MonadBaseControl IO m)
              => TLSClientConfig
              -> (AppData -> m a)
              -> m a
 runTLSClient TLSClientConfig {..} app = do
-    context <- maybe (liftIO NC.initConnectionContext) return tlsClientConnectionContext
+    context <- maybe (liftBase NC.initConnectionContext) return tlsClientConnectionContext
     let params = NC.ConnectionParams
             { NC.connectionHostname = S8.unpack tlsClientHost
             , NC.connectionPort = fromIntegral tlsClientPort
