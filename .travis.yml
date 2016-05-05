@@ -101,10 +101,6 @@ matrix:
   - env: BUILD=cabal GHCVER=head  CABALVER=head HAPPYVER=1.19.5 ALEXVER=3.1.7
   - env: BUILD=stack ARGS="--resolver nightly"
 
-  # Not sure why this build is failing on Linux right now. There's a test suite
-  # failure for resourcet which I cannot reproduce outside of Travis
-  - env: BUILD=stack ARGS="--resolver lts-2"
-
 before_install:
 # Using compiler above sets CC to an invalid value, so unset it
 - unset CC
