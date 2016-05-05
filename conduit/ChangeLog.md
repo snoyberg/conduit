@@ -1,3 +1,7 @@
+## 1.2.6.6
+
+* Fix test suite compilation on older GHCs
+
 ## 1.2.6.5
 
 * In zipConduitApp, left bias not respected mixing monadic and non-monadic conduits [#263](https://github.com/snoyberg/conduit/pull/263)
