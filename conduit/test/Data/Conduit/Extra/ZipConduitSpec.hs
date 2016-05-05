@@ -2,7 +2,7 @@ module Data.Conduit.Extra.ZipConduitSpec (spec) where
 import Test.Hspec
 import Data.Conduit
 import qualified Data.Conduit.List as CL
-import Control.Applicative ((<*))
+import Control.Applicative ((<*), pure)
 
 spec :: Spec
 spec = describe "Data.Conduit.Extra.ZipConduit" $ do
