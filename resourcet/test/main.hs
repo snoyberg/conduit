@@ -32,9 +32,34 @@ main = hspec $ do
                 runResourceT $ release key
                 y <- liftIO $ readIORef x
                 liftIO $ y `shouldBe` 1
-    describe "forking" $ do
-        forkHelper "resourceForkIO" resourceForkIO
-        --forkHelper "lifted fork" fork
+    describe "resourceForkIO" $ do
+        it "waits for all threads" $ do
+            x <- newEmptyMVar
+            y <- newIORef 0
+            z <- newEmptyMVar
+            w <- newEmptyMVar
+
+            runResourceT $ do
+                _ <- register $ do
+                    writeIORef y 1
+                    putMVar w ()
+                resourceForkIO $ do
+                    () <- liftIO $ takeMVar x
+                    y' <- liftIO $ readIORef y
+                    _ <- register $ putMVar z y'
+                    return ()
+
+            y1 <- readIORef y
+            y1 `shouldBe` 0
+
+            putMVar x ()
+
+            z' <- takeMVar z
+            z' `shouldBe` 0
+
+            takeMVar w
+            y2 <- readIORef y
+            Just y2 `shouldBe` Just 1
     describe "unprotecting" $ do
         it "unprotect keeps resource from being cleared" $ do
             x <- newIORef 0
@@ -104,27 +129,3 @@ main = hspec $ do
 data Dummy = Dummy
     deriving (Show, Typeable)
 instance Exception Dummy
-
-forkHelper s fork' = describe s $ do
-    it "waits for all threads" $ do
-        x <- newEmptyMVar
-        y <- newIORef 0
-        z <- newEmptyMVar
-        runResourceT $ do
-            _ <- register $ writeIORef y 1
-            fork' $ do
-                () <- liftIO $ takeMVar x
-                y' <- liftIO $ readIORef y
-                _ <- register $ putMVar z y'
-                return ()
-
-        y1 <- readIORef y
-        y1 `shouldBe` 0
-
-        putMVar x ()
-
-        z' <- takeMVar z
-        z' `shouldBe` 0
-
-        y2 <- readIORef y
-        Just y2 `shouldBe` Just 1

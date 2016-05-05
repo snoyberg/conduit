@@ -1,3 +1,7 @@
+## 1.1.7.4
+
+* Make test suite slightly more robust
+
 ## 1.1.7.3
 
 * Doc tweak
