@@ -540,6 +540,8 @@ zipConduitApp
     -> ConduitM i o m y
 zipConduitApp (ConduitM left0) (ConduitM right0) = ConduitM $ \rest -> let
     go _ _ (Done f) (Done x) = rest (f x)
+    go finalX finalY (PipeM mx) y = PipeM (flip (go finalX finalY) y `liftM` mx)
+    go finalX finalY x (PipeM my) = PipeM (go finalX finalY x `liftM` my)
     go _ finalY (HaveOutput x finalX o) y = HaveOutput
         (go finalX finalY x y)
         (finalX >> finalY)
@@ -550,8 +552,6 @@ zipConduitApp (ConduitM left0) (ConduitM right0) = ConduitM $ \rest -> let
         o
     go _ _ (Leftover _ i) _ = absurd i
     go _ _ _ (Leftover _ i) = absurd i
-    go finalX finalY (PipeM mx) y = PipeM (flip (go finalX finalY) y `liftM` mx)
-    go finalX finalY x (PipeM my) = PipeM (go finalX finalY x `liftM` my)
     go finalX finalY (NeedInput px cx) (NeedInput py cy) = NeedInput
         (\i -> go finalX finalY (px i) (py i))
         (\u -> go finalX finalY (cx u) (cy u))

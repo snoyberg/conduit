@@ -24,3 +24,11 @@ spec = describe "Data.Conduit.Extra.ZipConduit" $ do
             sink = CL.consume
         res <- src $$ conduit =$ sink
         res `shouldBe` [2, 1, 1, 3, 2, 2, 4, 3, 3, 12]
+    it "ZipConduitMonad" $ do
+        let src = mapM_ yield [1..3 :: Int]
+            conduit1 = CL.mapM (pure . (+1))
+            conduit2 = CL.map id
+            conduit = getZipConduit $ ZipConduit conduit1 <* ZipConduit conduit2
+            sink = CL.consume
+        res <- src $$ conduit =$ sink
+        res `shouldBe` [2, 1, 3, 2, 4, 3]
