@@ -46,7 +46,7 @@ import Data.Conduit.Network.TLS.Internal
 import Data.Conduit (yield, awaitForever, Producer, Consumer)
 import qualified Data.Conduit.List as CL
 import Network.Socket (SockAddr (SockAddrInet), sClose)
-import Network.Socket.ByteString (recv, sendAll)
+import Network.Socket.ByteString (sendAll)
 import Control.Exception (bracket)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.IO.Class (liftIO, MonadIO)
@@ -276,7 +276,7 @@ recvExact socket =
         | rest < 0 = error "Data.Conduit.Network.TLS.recvExact: rest < 0"
         | rest == 0 = return $ S.concat $ front []
         | otherwise = do
-            next <- recv socket rest
+            next <- safeRecv socket rest
             if S.length next == 0
                 then return $ S.concat $ front []
                 else loop (front . (next:)) $ rest - S.length next
