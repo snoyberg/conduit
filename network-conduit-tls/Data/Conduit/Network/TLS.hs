@@ -165,6 +165,9 @@ runTCPServerTLS TLSConfig{..} app = do
             app (tlsAppData ctx addr mlocal)
             TLS.bye ctx
 
+-- |
+--
+-- @since 1.2.2
 type GeneralApplicationStartTLS m a = (AppData, (AppData -> m ()) -> m ()) -> m a
 
 type ApplicationStartTLS = GeneralApplicationStartTLS IO ()
