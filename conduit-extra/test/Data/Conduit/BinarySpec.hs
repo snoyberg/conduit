@@ -20,9 +20,11 @@ import Data.Functor.Identity
 import Test.QuickCheck.Arbitrary (Arbitrary, arbitrary)
 import Test.QuickCheck.Gen (Gen, oneof)
 import Data.Word (Word8)
-import Foreign.Storable (Storable, sizeOf, pokeByteOff)
+import Foreign.Storable (Storable, sizeOf, pokeByteOff, alignment)
 import Data.Typeable (Typeable)
-import Data.ByteString.Internal (unsafeCreate)
+import Data.ByteString.Internal (createAndTrim')
+import Foreign.Ptr (alignPtr, minusPtr)
+import System.IO.Unsafe (unsafePerformIO)
 import Control.Applicative ((<$>), (<*>))
 
 spec :: Spec
@@ -277,19 +279,19 @@ withSomeStorable :: SomeStorable
                  -> b
 withSomeStorable (SomeStorable x) f = f x
 
-someStorables :: [SomeStorable] -> S.ByteString
-someStorables stores0 =
-    unsafeCreate size start
+someStorable :: SomeStorable -> S.ByteString
+someStorable store =
+    fst $ unsafePerformIO $ createAndTrim' (size + align) start
   where
-    size = sum $ map (\x -> withSomeStorable x sizeOf) stores0
+    size = withSomeStorable store sizeOf
+    align = withSomeStorable store alignment
+    start ptr = do
+        let off = minusPtr ptr (alignPtr ptr align)
+        withSomeStorable store (pokeByteOff ptr off)
+        return (off, size, ())
 
-    start ptr =
-        go stores0 0
-      where
-        go [] _ = return ()
-        go (x:rest) off = do
-            withSomeStorable x (pokeByteOff ptr off)
-            go rest (off + withSomeStorable x sizeOf)
+someStorables :: [SomeStorable] -> S.ByteString
+someStorables = S.concat . map someStorable
 
 it' :: String -> IO () -> Spec
 it' = it
