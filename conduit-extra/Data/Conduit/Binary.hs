@@ -76,6 +76,10 @@ import Control.Monad.Trans.Resource (MonadResource)
 import Control.Monad.Catch (MonadThrow (..))
 import Control.Exception (Exception)
 import Data.Typeable (Typeable)
+import Foreign.Ptr (Ptr)
+#ifndef ALLOW_UNALIGNED_ACCESS
+import Foreign.Marshal (alloca, copyBytes)
+#endif
 
 -- | Stream the contents of a file as binary data.
 --
@@ -501,7 +505,14 @@ sinkStorableHelper wrap failure = do
 
     -- Given a bytestring of exactly the correct size, grab the value
     process bs = return $! wrap $! inlinePerformIO $!
-        unsafeUseAsCString bs (peek . castPtr)
+        unsafeUseAsCString bs (safePeek undefined . castPtr)
+
+    safePeek :: a -> Ptr a -> IO a
+#ifdef ALLOW_UNALIGNED_ACCESS
+    safePeek _ = peek
+#else
+    safePeek val ptr = alloca (\t -> copyBytes t ptr (sizeOf val) >> peek t)
+#endif
 {-# INLINE sinkStorableHelper #-}
 
 data SinkStorableException = SinkStorableInsufficientBytes
