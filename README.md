@@ -22,6 +22,7 @@ to start off.
 ```haskell
 import Control.Monad.Trans.Resource
 import Data.Conduit
+import Conduit
 import qualified Data.Conduit.List as CL
 import qualified Data.Conduit.Binary as CB
 
