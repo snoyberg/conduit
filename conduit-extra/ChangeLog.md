@@ -1,3 +1,7 @@
+## 1.1.13.2
+
+* Fix alignment issues on non-X86 archs
+
 ## 1.1.13.1
 
 * Fix an incorrect comment
