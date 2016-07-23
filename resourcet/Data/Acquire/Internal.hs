@@ -47,7 +47,7 @@ data Allocated a = Allocated !a !(ReleaseType -> IO ())
 -- different approach to async exception safety.
 --
 -- Since 1.1.0
-newtype Acquire a = Acquire ((forall b. IO b -> IO b) -> IO (Allocated a))
+newtype Acquire a = Acquire {unAcquire :: (forall b. IO b -> IO b) -> IO (Allocated a)}
     deriving Typeable
 
 instance Functor Acquire where
@@ -60,7 +60,7 @@ instance Monad Acquire where
     return = pure
     Acquire f >>= g' = Acquire $ \restore -> do
         Allocated x free1 <- f restore
-        let Acquire g = g' x
+        let g = unAcquire (g' x)
         Allocated y free2 <- g restore `E.onException` free1 ReleaseException
         return $! Allocated y (\rt -> free2 rt `E.finally` free1 rt)
 
