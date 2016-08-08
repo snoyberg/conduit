@@ -1,3 +1,7 @@
+## 1.2.7
+
+* Expose yieldM for ConduitM [#270](https://github.com/snoyberg/conduit/pull/270)
+
 ## 1.2.6.6
 
 * Fix test suite compilation on older GHCs

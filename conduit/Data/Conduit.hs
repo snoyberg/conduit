@@ -27,6 +27,7 @@ module Data.Conduit
       -- ** Primitives
     , await
     , yield
+    , yieldM
     , leftover
     , runConduit
 

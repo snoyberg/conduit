@@ -842,6 +842,9 @@ yield :: Monad m
 yield o = yieldOr o (return ())
 {-# INLINE yield #-}
 
+-- | Send a monadic value downstream for the next component to consume.
+--
+-- @since 1.2.7
 yieldM :: Monad m => m o -> ConduitM i o m ()
 yieldM mo = lift mo >>= yield
 {-# INLINE yieldM #-}
@@ -853,8 +856,8 @@ yieldM mo = lift mo >>= yield
 --
 -- /Note/: it is highly encouraged to only return leftover values from input
 -- already consumed from upstream.
---
 -- Since 0.5.0
+--
 leftover :: i -> ConduitM i o m ()
 leftover i = ConduitM $ \rest -> Leftover (rest ()) i
 {-# INLINE leftover #-}
