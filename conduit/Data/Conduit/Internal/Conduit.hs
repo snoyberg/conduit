@@ -419,7 +419,7 @@ toConsumer (ConduitM c0) = ConduitM $ \rest -> let
 -- example, if an exception is thrown in a @Source@ feeding to a @Sink@, and
 -- the @Sink@ uses @catchC@, the exception will /not/ be caught.
 --
--- Due to this behavior (as well as lack of async exception handling), you
+-- Due to this behavior (as well as lack of async exception safety), you
 -- should not try to implement combinators such as @onException@ in terms of this
 -- primitive function.
 --
