@@ -1,3 +1,7 @@
+## 1.1.7.5
+
+* Inline the tutorial from SoH
+
 ## 1.1.7.4
 
 * Make test suite slightly more robust
