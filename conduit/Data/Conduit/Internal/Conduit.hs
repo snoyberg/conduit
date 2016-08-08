@@ -856,8 +856,8 @@ yieldM mo = lift mo >>= yield
 --
 -- /Note/: it is highly encouraged to only return leftover values from input
 -- already consumed from upstream.
--- Since 0.5.0
 --
+-- @since 0.5.0
 leftover :: i -> ConduitM i o m ()
 leftover i = ConduitM $ \rest -> Leftover (rest ()) i
 {-# INLINE leftover #-}
