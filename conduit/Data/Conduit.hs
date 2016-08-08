@@ -3,7 +3,7 @@
 {-# LANGUAGE Safe #-}
 -- | If this is your first time with conduit, you should probably start with
 -- the tutorial:
--- <https://haskell.fpcomplete.com/user/snoyberg/library-documentation/conduit-overview>.
+-- <https://github.com/snoyberg/conduit#readme>.
 module Data.Conduit
     ( -- * Core interface
       -- ** Types
