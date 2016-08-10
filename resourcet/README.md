@@ -20,7 +20,7 @@ question.
 
 ResourceT is a monad transformer which creates a region of code where you can safely allocate resources. Let's write a simple example program: we'll ask the user for some input and pretend like it's a scarce resource that must be released. We'll then do something dangerous (potentially introducing a divide-by-zero error). We then want to immediately release our scarce resource and perform some long-running computation.
 
-```haskell active
+```haskell
 import Control.Monad.Trans.Resource
 import Control.Monad.IO.Class
 
@@ -46,7 +46,7 @@ Try entering a valid value, such as 3, and then enter 0. Notice that in both cas
 
 In this specific case, we could easily represent our code in terms of bracket with a little refactoring.
 
-```haskell active
+```haskell
 import Control.Exception (bracket)
 
 main = do
@@ -75,7 +75,7 @@ The first thing to demonstrate is that `ResourceT` is strictly more powerful tha
 
 The first one is pretty easy to demonstrate:
 
-```haskell active
+```haskell
 import Control.Monad.Trans.Resource
 import Control.Monad.Trans.Class
 
@@ -95,7 +95,7 @@ Now let's analyze why the second statement is true.
 
 The `bracket` pattern is designed with nested resource allocations. For example, consider the following program which copies data from one file to another. We'll open up the source file using `withFile`, and then nest within it another `withFile` to open the destination file, and finally do the copying with both file handles.
 
-```haskell active
+```haskell
 {-# START_FILE main.hs #-}
 import System.IO
 import qualified Data.ByteString as S
@@ -121,7 +121,7 @@ This is the kind of situation that `resourcet` solves well (we'll demonstrate in
 
 Let's demonstrate the interleaving example described above. To simplify the code, we'll use the conduit package for the actual chunking implementation. Notice when you run the program that there are never more than two file handles open at the same time.
 
-```haskell active
+```haskell
 import           Control.Monad.IO.Class (liftIO)
 import           Data.Conduit           (addCleanup, runResourceT, ($$), (=$))
 import           Data.Conduit.Binary    (isolate, sinkFile, sourceFile)
@@ -190,7 +190,7 @@ intrinsically linked. In fact, this is not true: each can be used separately
 from the other. The canonical demonstration of resourcet combined with conduit
 is the file copy function:
 
-```haskell active
+```haskell
 import Data.Conduit
 import Data.Conduit.Binary
 
@@ -204,7 +204,7 @@ main = do
 
 However, since this function does not actually use any of ResourceT's added functionality, it can easily be implemented with the bracket pattern instead:
 
-```haskell active
+```haskell
 import Data.Conduit
 import Data.Conduit.Binary
 import System.IO
