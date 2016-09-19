@@ -31,7 +31,7 @@ import Data.Conduit
 import Data.Conduit.Binary (sourceHandle, sinkHandle)
 import Data.ByteString (ByteString)
 import Control.Concurrent.Async (runConcurrently, Concurrently(..))
-import Control.Monad.Catch (MonadMask, onException, throwM, finally)
+import Control.Monad.Catch (MonadMask, onException, throwM, finally, bracket)
 #if (__GLASGOW_HASKELL__ < 710)
 import Control.Applicative ((<$>), (<*>))
 #endif
@@ -140,13 +140,15 @@ withCheckedProcessCleanup
     => CreateProcess
     -> (stdin -> stdout -> stderr -> m b)
     -> m b
-withCheckedProcessCleanup cp f = do
-    (x, y, z, sph) <- streamingProcess cp
-    res <- f x y z `onException` liftIO (terminateStreamingProcess sph)
-    ec <- waitForStreamingProcess sph
-    if ec == ExitSuccess
-        then return res
-        else throwM $ ProcessExitedUnsuccessfully cp ec
+withCheckedProcessCleanup cp f = bracket
+    (streamingProcess cp)
+    (\(_, _, _, sph) -> closeStreamingProcessHandle sph)
+    $ \(x, y, z, sph) -> do
+        res <- f x y z `onException` liftIO (terminateStreamingProcess sph)
+        ec <- waitForStreamingProcess sph
+        if ec == ExitSuccess
+            then return res
+            else throwM $ ProcessExitedUnsuccessfully cp ec
 
 
 terminateStreamingProcess :: StreamingProcessHandle -> IO ()

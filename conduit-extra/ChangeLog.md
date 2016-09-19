@@ -1,3 +1,8 @@
+## 1.1.13.3
+
+* `withCheckedProcessCleanup` properly closes opened `Handle`s
+  [#280](https://github.com/snoyberg/conduit/issues/280)
+
 ## 1.1.13.2
 
 * Fix alignment issues on non-X86 archs
