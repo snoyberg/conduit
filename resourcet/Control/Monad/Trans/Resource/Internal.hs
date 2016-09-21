@@ -248,6 +248,7 @@ instance Monad m => Monad (ResourceT m) where
         let ResourceT f' = f a
         f' r
 
+-- | @since 1.1.8
 instance MonadFix m => MonadFix (ResourceT m) where
   mfix f = ResourceT $ \r -> mfix $ \a -> unResourceT (f a) r
 

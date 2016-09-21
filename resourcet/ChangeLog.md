@@ -1,3 +1,8 @@
+## 1.1.8
+
+* Add `instance MonadFix ResourceT`
+  [#281](https://github.com/snoyberg/conduit/pull/281)
+
 ## 1.1.7.5
 
 * Inline the tutorial from SoH
