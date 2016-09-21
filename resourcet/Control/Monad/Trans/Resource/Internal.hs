@@ -32,6 +32,7 @@ module Control.Monad.Trans.Resource.Internal(
 import Control.Exception (throw,Exception,SomeException)
 import Control.Applicative (Applicative (..), Alternative(..))
 import Control.Monad (MonadPlus(..))
+import Control.Monad.Fix (MonadFix(..))
 import Control.Monad.Trans.Control
     ( MonadTransControl (..), MonadBaseControl (..) )
 import Control.Monad.Base (MonadBase, liftBase)
@@ -246,6 +247,9 @@ instance Monad m => Monad (ResourceT m) where
         a <- ma r
         let ResourceT f' = f a
         f' r
+
+instance MonadFix m => MonadFix (ResourceT m) where
+  mfix f = ResourceT $ \r -> mfix $ \a -> unResourceT (f a) r
 
 instance MonadTrans ResourceT where
     lift = ResourceT . const
