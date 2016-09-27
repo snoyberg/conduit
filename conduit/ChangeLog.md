@@ -1,3 +1,11 @@
+## 1.2.8
+
+* Implement
+  [the reskinning idea](http://www.snoyman.com/blog/2016/09/proposed-conduit-reskin):
+    * `.|`
+    * `runConduitPure`
+    * `runConduitRes`
+
 ## 1.2.7
 
 * Expose yieldM for ConduitM [#270](https://github.com/snoyberg/conduit/pull/270)

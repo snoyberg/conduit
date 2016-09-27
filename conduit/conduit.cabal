@@ -1,5 +1,5 @@
 Name:                conduit
-Version:             1.2.7
+Version:             1.2.8
 Synopsis:            Streaming data processing library.
 description:
     Hackage documentation generation is not reliable. For up to date documentation, please see: <http://www.stackage.org/package/conduit>.
@@ -35,6 +35,7 @@ Library
                      , transformers             >= 0.2.2
                      , mtl
                      , mmorph
+                     , monad-control
   if !impl(ghc>=7.9)
     build-depends:   void                     >= 0.5.5
   ghc-options:         -Wall
