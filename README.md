@@ -94,7 +94,7 @@ list. The conduit version does the exact same thing, but:
   many functions matching common list functions, but appends a `C` to
   disambguate the names. (If you'd prefer to use a qualified import,
   check out
-  [Data.Conduit.Combinators](https://www.stackage.org/haddock/lts-6.19/conduit-combinators-1.0.8/Data-Conduit-Combinators.html).
+  [Data.Conduit.Combinators](https://www.stackage.org/haddock/lts-6.19/conduit-combinators-1.0.8/Data-Conduit-Combinators.html)).
 * To consume all of our results back into a list, we use `sinkList`
 * We need to explicitly run our conduit pipeline to get a result from
   it. Since we're running a pure pipeline (no monadic effects), we can
@@ -106,10 +106,10 @@ list. The conduit version does the exact same thing, but:
   places. For example, notice how similar the code above looks to
   piping in a Unix shell: `ps | grep ghc | wc -l`.
 
-Alright, so what we've established is there we can use conduit as a
+Alright, so what we've established is that we can use conduit as a
 bad, inconvenient version of lists. Don't worry, we'll soon start to
 see cases where conduit far outshines lists, but we're not quite there
-yet. Let's build up a slight more complex pipeline:
+yet. Let's build up a slightly more complex pipeline:
 
 ```haskell
 #!/usr/bin/env stack
@@ -432,7 +432,11 @@ runConduitPure :: ConduitM () Void Identity r -> r
 
 * Folds
 * Monadic composition
+* Monadic effects
+* Type synonyms
+* Driven by downstream
 * Leftovers
+* ResourceT
 * ZipSink
 * Fuse with leftovers/upstream results
 
