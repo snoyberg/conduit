@@ -1,44 +1,440 @@
-`conduit` is a solution to the streaming data problem, allowing for production, transformation, and consumption of streams of data in constant memory. It can be used for processing files, dealing with network interfaces, or parsing structured data in an event-driven manner.
+Conduit is a framework for dealing with streaming data, such as
+reading raw bytes from a file, parsing a CSV response body from an
+HTTP request, or performing an action on all files in a directory
+tree. It standardizes various interfaces for streams of data, and
+allows a consistent interface for transforming, manipulating, and
+consuming that data.
 
-Below is a tutorial, originally posted on School of Haskell, on how to use conduit. In addition to this tutorial, there is [a set of slides on conduit](https://docs.google.com/presentation/d/1RBefOCZ7AKOo4f1yiF4mtKPAT3l5vY9ky2SR02O4Vvg/edit?usp=sharing) which covers a number of topics.
+Some of the reasons you'd like to use conduit are:
 
-## Libraries
+* Constant memory usage over large data
+* Deterministic resource usage (e.g., promptly close file handles)
+* Easily combine different data sources (HTTP, files) with data
+  consumers (XML/CSV processors)
 
-There are a large number of packages relevant to conduit, just search for
-conduit on [the LTS Haskell package list page](https://www.stackage.org/lts).
-However, there are three core packages most users will be interested in:
-
-* [conduit](https://www.stackage.org/package/conduit) defines the core data types, functions, and abstractions for using conduit, and provides the `Data.Conduit.List` module, containing some of the most common streaming functions. It has minimal dependencies.
-* [conduit-extra](https://www.stackage.org/package/conduit-extra) adds support for many common low-level operations, like streaming from files, performing textual encodings/decodings, etc. It adds more dependencies than the conduit package itself, but these are the libraries that most applications will end up depending on anyway.
-* [conduit-combinators](https://www.stackage.org/package/conduit-combinators) is the fully-loaded conduit library, offering a complete set of combinator functions and abstractions over chunked data (like `ByteString`, `Text`, and `Vector`). Importing the `Conduit` module will get you completely up-and-running with the conduit toolchain. The downside is that there are a significant number of dependencies.
-
-If you're looking for advice: use `conduit-combinators` if you're writing an
-application. If you're writing a library where others will be concerned about
-the transitive dependency list, try sticking to `conduit` and `conduit-extra`
-to start off.
+Want more motivation on why to use conduit? Check out
+[this presentation on conduit](https://docs.google.com/presentation/d/1RBefOCZ7AKOo4f1yiF4mtKPAT3l5vY9ky2SR02O4Vvg/edit?usp=sharing).
 
 ## Synopsis
 
+Basic examples of conduit usage, much more to follow!
+
 ```haskell
-import Control.Monad.Trans.Resource
-import Data.Conduit
-import qualified Data.Conduit.List as CL
-import qualified Data.Conduit.Binary as CB
+#!/usr/bin/env stack
+-- stack --resolver lts-6.19 runghc --package conduit-combinators
+import Conduit
 
 main = do
     -- Pure operations: summing numbers.
-    result <- CL.sourceList [1..10] $$ CL.fold (+) 0
-    print result
-    
+    print $ runConduitPure $ yieldMany [1..10] .| sumC
+
     -- Exception safe file access: copy a file.
-    writeFile "input.txt" "This is a test."
-    runResourceT $ CB.sourceFile "input.txt" $$ CB.sinkFile "output.txt"
-    readFile "output.txt" >>= putStrLn
-    
+    writeFile "input.txt" "This is a test." -- create the source file
+    runConduitRes $ sourceFileBS "input.txt" .| sinkFile "output.txt" -- actual copying
+    readFile "output.txt" >>= putStrLn -- prove that it worked
+
     -- Perform transformations.
-    result <- CL.sourceList [1..10] $$ CL.map (+ 1) =$ CL.consume
-    print result
+    print $ runConduitPure $ yieldMany [1..10] .| mapC (+ 1) .| sinkList
 ```
+
+## Libraries
+
+There are a large number of packages relevant to conduit, just search
+for conduit on
+[the LTS Haskell package list page](https://www.stackage.org/lts).  In
+this tutorial, we're going to rely mainly on the
+[conduit-combinators](https://www.stackage.org/package/conduit-combinators)
+library, which provides a large number of common functions
+built-in. If you're looking for something lighter-weight, you can use
+the [conduit](https://www.stackage.org/package/conduit) library, which
+defines the core datatypes and primitive functions, and
+[conduit-extra](https://www.stackage.org/package/conduit-extra), which
+adds support for many common low-level operations
+
+Generally, you should use conduit-combinators unless you're an open
+source library author looking to reduce your transitive dependency
+footprint.
+
+This tutorial relies on conduit-combinators version 1.0.8 or
+later. The examples are
+[Stack scripts](https://haskell-lang.org/tutorial/stack-script).
+
+## Conduit as a bad list
+
+Let's start off by comparing conduit to normal lists. We'll be able to
+compare and contrast with functions you're already used to working
+with.
+
+``` haskell
+#!/usr/bin/env stack
+-- stack --resolver lts-6.19 runghc --package conduit-combinators
+{-# LANGUAGE ExtendedDefaultRules #-}
+import Conduit
+
+main :: IO ()
+main = do
+    putStrLn "List version:"
+    print $ take 10 [1..]
+    putStrLn ""
+    putStrLn "Conduit version:"
+    print $ runConduitPure $ yieldMany [1..] .| takeC 10 .| sinkList
+```
+
+Our list function is pretty straightforward: creating an infinite list
+from 1 and ascending, take the first 10 elements, and then print the
+list. The conduit version does the exact same thing, but:
+
+* In order to convert the `[1..]` list into a conduit, we use the
+  `yieldMany` function. (And note that, like lists, conduit has no
+  problem dealing with infinite streams.)
+* We're not just doing function composition, and therefore we need to
+  use the `.|` composition operator. This combines multiple components
+  of a conduit pipeline together.
+* Instead of `take`, we use `takeC`. The `Conduit` module provides
+  many functions matching common list functions, but appends a `C` to
+  disambguate the names. (If you'd prefer to use a qualified import,
+  check out
+  [Data.Conduit.Combinators](https://www.stackage.org/haddock/lts-6.19/conduit-combinators-1.0.8/Data-Conduit-Combinators.html).
+* To consume all of our results back into a list, we use `sinkList`
+* We need to explicitly run our conduit pipeline to get a result from
+  it. Since we're running a pure pipeline (no monadic effects), we can
+  use `runConduitPure`.
+* And finally, the data flows from left to right in the conduit
+  composition, as opposed to right to left in normal function
+  composition. There's nothing deep to this; it's just intended to
+  make conduit feel more like common streaming abstraction from other
+  places. For example, notice how similar the code above looks to
+  piping in a Unix shell: `ps | grep ghc | wc -l`.
+
+Alright, so what we've established is there we can use conduit as a
+bad, inconvenient version of lists. Don't worry, we'll soon start to
+see cases where conduit far outshines lists, but we're not quite there
+yet. Let's build up a slight more complex pipeline:
+
+```haskell
+#!/usr/bin/env stack
+-- stack --resolver lts-6.19 runghc --package conduit-combinators
+{-# LANGUAGE ExtendedDefaultRules #-}
+import Conduit
+
+main :: IO ()
+main = do
+    putStrLn "List version:"
+    print $ takeWhile (< 18) $ map (* 2) $ take 10 [1..]
+    putStrLn ""
+    putStrLn "Conduit version:"
+    print $ runConduitPure
+          $ yieldMany [1..]
+         .| takeC 10
+         .| mapC (* 2)
+         .| takeWhileC (< 18)
+         .| sinkList
+```
+
+Nothing more magical going on, we're just looking at more
+functions. For our last bad-list example, let's move over from a pure
+pipeline to one which performs some side effects. Instead of
+`print`ing the whole result list, let's use `mapM_C` to print each
+value individually.
+
+```haskell
+#!/usr/bin/env stack
+-- stack --resolver lts-6.19 runghc --package conduit-combinators
+{-# LANGUAGE ExtendedDefaultRules #-}
+import Conduit
+
+main :: IO ()
+main = do
+    putStrLn "List version:"
+    mapM_ print $ takeWhile (< 18) $ map (* 2) $ take 10 [1..]
+    putStrLn ""
+    putStrLn "Conduit version:"
+    runConduit
+          $ yieldMany [1..]
+         .| takeC 10
+         .| mapC (* 2)
+         .| takeWhileC (< 18)
+         .| mapM_C print
+```
+
+For the list version, all we've done is added `mapM_` at the
+beginning. In the conduit version, we replace `print $ runConduitPure`
+with `runConduit` (since we're no longer generating a result to print,
+and our pipeline now has effects), and replaced `sinkList` with
+`mapM_C print`. We're no longer reconstructing a list at the end,
+instead just streaming the values one at a time into the `print`
+function.
+
+## Interleaved effects
+
+Let's make things a bit more difficult for lists. We've played to
+their strengths until now, having a pure series of functions composed,
+and then only performing effects at the end (either `print` or `mapM_
+print`). Suppose we have some new function:
+
+```haskell
+magic :: Int -> IO Int
+magic x = do
+    putStrLn $ "I'm doing magic with " ++ show x
+    return $ x * 2
+```
+
+And we want to use this in place of the `map (* 2)` that we were doing
+before. Let's see how the list and conduit versions adapt:
+
+```haskell
+#!/usr/bin/env stack
+-- stack --resolver lts-6.19 runghc --package conduit-combinators
+{-# LANGUAGE ExtendedDefaultRules #-}
+import Conduit
+
+magic :: Int -> IO Int
+magic x = do
+    putStrLn $ "I'm doing magic with " ++ show x
+    return $ x * 2
+
+main :: IO ()
+main = do
+    putStrLn "List version:"
+    mapM magic (take 10 [1..]) >>= mapM_ print . takeWhile (< 18)
+    putStrLn ""
+    putStrLn "Conduit version:"
+    runConduit
+          $ yieldMany [1..]
+         .| takeC 10
+         .| mapMC magic
+         .| takeWhileC (< 18)
+         .| mapM_C print
+```
+
+Notice how different the list version looks: we needed to break out
+`>>=` to allow us to have two different side-effecting actions (`mapM
+magic` and `mapM_ print`). Meanwhile, in conduit, all we did was
+replace `mapC (* 2)` with `mapMC magic`. This is where we begin to see
+the strength of conduit: it allows us to build up large pipelines of
+components, and each of those components can be side-effecting!
+
+However, we're not done with the difference yet. Try to guess what the
+output will be, and then ideally run it on your machine and see if
+you're correct. For those who won't be running it, here's the output:
+
+```
+List version:
+I'm doing magic with 1
+I'm doing magic with 2
+I'm doing magic with 3
+I'm doing magic with 4
+I'm doing magic with 5
+I'm doing magic with 6
+I'm doing magic with 7
+I'm doing magic with 8
+I'm doing magic with 9
+I'm doing magic with 10
+2
+4
+6
+8
+10
+12
+14
+16
+
+Conduit version:
+I'm doing magic with 1
+2
+I'm doing magic with 2
+4
+I'm doing magic with 3
+6
+I'm doing magic with 4
+8
+I'm doing magic with 5
+10
+I'm doing magic with 6
+12
+I'm doing magic with 7
+14
+I'm doing magic with 8
+16
+I'm doing magic with 9
+```
+
+In the list version, we apply the `magic` function to all 10 elements
+in the initial list, printing all the output at once and generating a
+new list. We then use `takeWhile` on this new list and exclude the
+values 18 and 20. Finally, we print out each element in our new
+8-value list. This has a number of downsides:
+
+* We had to force all 10 items of the list into memory at once. For 10
+  items, not a big deal. But if we were dealing with massive amounts
+  of data, this could cripple our program.
+* We did "more magic" than was strictly necessary: we applied `magic`
+  to 10 items in the list. However, our `takeWhile` knew when it
+  looked at the 9th result that it was going to ignore the rest of the
+  list. Nonetheless, because our two components (`magic` and
+  `takeWhile`) are separate from each other, we couldn't know that.
+
+Let's compare that to the conduit version:
+
+* From the output, we can see that the calls to `magic` are
+  interleaved with the calls to `print`. This shows that our data
+  flows through the whole pipeline one element at a time, and never
+  needs to build up an intermediate list. In other words, we get
+  constant memory usage in this pipeline, a huge selling point for
+  conduit.
+* Notice that we only perform "magic" 9 times: once we run `magic` on
+  9, get a result of 18, and find out that it fails our `takeWhileC (<
+  18)`, the conduit pipeline doesn't demand any more values, and
+  therefore `magic` isn't run again. We'll describe in more detail
+  later how conduit is consumer-driven, but this is your first taste
+  of this.
+
+To be clear, it's entirely possible to get this behavior with a
+list-based program. What you'll lose is easy composition. For example,
+here's one way to get the same behavior as was achieved with conduit:
+
+```haskell
+#!/usr/bin/env stack
+-- stack --resolver lts-6.19 runghc --package conduit-combinators
+{-# LANGUAGE ExtendedDefaultRules #-}
+import Conduit
+
+magic :: Int -> IO Int
+magic x = do
+    putStrLn $ "I'm doing magic with " ++ show x
+    return $ x * 2
+
+main :: IO ()
+main = do
+    let go [] = return ()
+        go (x:xs) = do
+            y <- magic x
+            if y < 18
+                then do
+                    print y
+                    go xs
+                else return ()
+
+    go $ take 10 [1..]
+```
+
+Notice how we've had to reimplement the behavior of `takeWhile`,
+`mapM`, and `mapM_` ourselves, and our logic is much harder to
+follow. Conduit makes it easy to get the right behavior: interleaved
+effects, constant memory, and (as we'll see later) deterministic
+resource usage.
+
+## Terminology and concepts
+
+Let's take a step back from the code and discuss some terminology and
+concepts in conduit. Conduit deals with _streams_ of data. Each
+_component_ of a _pipeline_ can _consume_ data from _upstream_, and
+_produce_ data to send _downstream_. For example:
+
+```haskell
+runConduit $ yieldMany [1..10] .| mapC show .| mapM_C print
+```
+
+In this snippet, `yieldMany [1..10]`, `mapC show`, and `mapM_C print` are
+each components. We use the `.|` operator - a synonym for the
+[`fuse` function](https://www.stackage.org/haddock/lts-6.19/conduit-1.2.8/Data-Conduit.html#v:fuse) -
+to compose these components into a pipeline. Then we run that pipeline
+with `runConduit`.
+
+From the perspective of `mapC show`, `yieldMany [1..10]` is its
+upstream, and `mapM_C` is its downstream. When we look at `yieldMany
+[1..10] .| mapC show`, what we're actually doing is combining these
+two components into a larger component. Let's look at the streams
+involved:
+
+* `yieldMany` consumes nothing from upstream, and produces a stream of
+  `Int`s
+* `mapC show` consumes a stream of `Int`s, and produces a stream of
+  `String`s
+* When we combine these two components together, we get something
+  which consumes nothing from upstream, and produces a stream of
+  `String`s.
+
+To add some type signatures into this:
+
+```haskell
+yieldMany [1..10] :: ConduitM ()  Int    IO ()
+mapC show         :: ConduitM Int String IO ()
+```
+
+There are four type parameters to `ConduitM`
+
+* The first indicates the upstream value, or input. For `yieldMany`,
+  we're using `()`, though really it could be any type since we never
+  read anything from upstream. For `mapC`, it's `Int`
+* The second indicates the downstream value, or output. For
+  `yieldMany`, this is `Int`. Notice how this matches the input of
+  `mapC`, which is what lets us combine these two. The output of
+  `mapC` is `String`.
+* The third indicates the base monad, which tells us what kinds of
+  effects we can perform. A `ConduitM` is a monad transformer, so you
+  can use `lift` to perform effects. (We'll learn more about conduit's
+  monadic nature later.) We're using `IO` in our example.
+* The final indicates the result type of the component. This is
+  typically only used for the most downstream component in a
+  pipeline. We'll get into this when we discuss folds below.
+
+Let's also look at the type of our `.|` operator:
+
+```haskell
+(.|) :: Monad m
+     => ConduitM a b m ()
+     -> ConduitM b c m r
+     -> ConduitM a c m r
+```
+
+This shows us that:
+
+* The output from the first component much match the input from the
+  second
+* We ignore the result type from the first component, and keep the
+  result of the second
+* The combined component consumes the same type as the first component
+  and produces the same type as the second component
+* Everything has to run in the same base monad
+
+__Exercise__ Work through what happens when we add `.| mapM_C print`
+to the mix above.
+
+Finally, let's look at the type of the `runConduit` function:
+
+```haskell
+runConduit :: Monad m => ConduitM () Void m r -> m r
+```
+
+This gives us a better idea of what a pipeline is: just a self
+contained component, which consumes nothing from upstream (denoted by
+`()`) and producing nothing to downstream (denoted by `Void`)\*. When
+we have such a stand-alone component, we can run it to extract a
+monadic action that will return a result (the `m r`).
+
+\* The choice of `()` and `Void` instead of, say, both `()` or both
+`Void`, is complicated. For now, I recommend just accepting that this
+makes sense. The short explanation is that the input is in negative
+position whereas the output is in positive position, and therefore we
+can give the stronger `Void` guarantee in the output case.
+
+Finally, we talked about pure pipelines before. Those are just
+pipelines with `Identity` as the base monad:
+
+```haskell
+runConduitPure :: ConduitM () Void Identity r -> r
+```
+
+* * *
+
+# FIXME NEED TO EDIT BELOW HERE
+
+* Folds
+* Monadic composition
+* Leftovers
+* ZipSink
+* Fuse with leftovers/upstream results
 
 ## Features of conduit
 
@@ -494,3 +890,9 @@ Connect and resume usually only comes up in more complicated control flow operat
 * Data.Conduit- Main module defining data types and core operations.
 * Data.Conduit.List- A collection of common helper utilities.
 * Data.Conduit.Network- Create network servers and clients.
+
+
+Below is a tutorial, originally posted on School of Haskell, on how to use conduit. In addition to this tutorial, there is [a set of slides on conduit](https://docs.google.com/presentation/d/1RBefOCZ7AKOo4f1yiF4mtKPAT3l5vY9ky2SR02O4Vvg/edit?usp=sharing) which covers a number of topics.
+http://www.yesodweb.com/blog/2014/03/network-conduit-async
+https://www.fpcomplete.com/blog/2016/09/practical-haskell-simple-file-mirror-1
+https://www.fpcomplete.com/blog/2016/09/practical-haskell-simple-file-mirror-2
