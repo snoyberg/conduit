@@ -426,18 +426,148 @@ pipelines with `Identity` as the base monad:
 runConduitPure :: ConduitM () Void Identity r -> r
 ```
 
+## Folds
+
+A common activity with lists is folding down to a single result. This
+concept translates directly into conduit, and works nicely at ensuring
+constant memory usage. If you're familiar with folding over lists, the
+concepts here should be pretty straightforward, so this will mostly
+just be a collection of examples.
+
+```haskell
+#!/usr/bin/env stack
+-- stack --resolver lts-6.19 runghc --package conduit-combinators
+{-# LANGUAGE ExtendedDefaultRules #-}
+import Conduit
+
+main :: IO ()
+main = print $ runConduitPure $ yieldMany [1..100 :: Int] .| sumC
+```
+
+Summing is straightforward, and can be done if desired with the
+`foldlC` function:
+
+```haskell
+#!/usr/bin/env stack
+-- stack --resolver lts-6.19 runghc --package conduit-combinators
+{-# LANGUAGE ExtendedDefaultRules #-}
+import Conduit
+
+main :: IO ()
+main = print $ runConduitPure $ yieldMany [1..100 :: Int] .| foldlC (+) 0
+```
+
+You can use `foldMapC` to fold monoids together:
+
+```haskell
+#!/usr/bin/env stack
+-- stack --resolver lts-6.19 runghc --package conduit-combinators
+{-# LANGUAGE ExtendedDefaultRules #-}
+import Conduit
+import Data.Monoid (Sum (..))
+
+main :: IO ()
+main = print $ getSum $ runConduitPure $ yieldMany [1..100 :: Int] .| foldMapC Sum
+```
+
+Or you can use `foldC` as a shortened form of `foldMapC id`:
+
+```haskell
+#!/usr/bin/env stack
+-- stack --resolver lts-6.19 runghc --package conduit-combinators
+{-# LANGUAGE ExtendedDefaultRules #-}
+import Conduit
+
+main :: IO ()
+main = putStrLn $ runConduitPure
+     $ yieldMany [1..10 :: Int]
+    .| mapC (\i -> show i ++ "\n")
+    .| foldC
+```
+
+Though if you want to make that easier you can use `unlinesC`:
+
+```haskell
+#!/usr/bin/env stack
+-- stack --resolver lts-6.19 runghc --package conduit-combinators
+{-# LANGUAGE ExtendedDefaultRules #-}
+import Conduit
+
+main :: IO ()
+main = putStrLn $ runConduitPure
+     $ yieldMany [1..10 :: Int]
+    .| mapC show
+    .| unlinesC
+    .| foldC
+```
+
+You can also do monadic folds:
+
+```haskell
+#!/usr/bin/env stack
+-- stack --resolver lts-6.19 runghc --package conduit-combinators
+{-# LANGUAGE ExtendedDefaultRules #-}
+import Conduit
+import Data.Monoid (Product (..))
+
+magic :: Int -> IO (Product Int)
+magic i = do
+    putStrLn $ "Doing magic on " ++ show i
+    return $ Product i
+
+main :: IO ()
+main = do
+    Product res <- runConduit $ yieldMany [1..10] .| foldMapMC magic
+    print res
+```
+
+Or with `foldMC`:
+
+```haskell
+#!/usr/bin/env stack
+-- stack --resolver lts-6.19 runghc --package conduit-combinators
+{-# LANGUAGE ExtendedDefaultRules #-}
+import Conduit
+import Data.Monoid (Product (..))
+
+magic :: Int -> Int -> IO Int
+magic total i = do
+    putStrLn $ "Doing magic on " ++ show i
+    return $! total * i
+
+main :: IO ()
+main = do
+    res <- runConduit $ yieldMany [1..10] .| foldMC magic 1
+    print res
+```
+
+There are plenty of other functions available in the
+conduit-combinator library. We won't be covering all of them in this
+tutorial, but hopefully this crash-course will give you an idea of
+what kinds of things you can do and help you understand the API docs.
+
 * * *
 
 # FIXME NEED TO EDIT BELOW HERE
 
-* Folds
+* Transformations
 * Monadic composition
+  * In a source
+  * In a consumer
+* Primitives
+  * await
+  * yield
+  * leftover
+  * demonstrate taking a single byte from a ByteString
 * Monadic effects
 * Type synonyms
 * Driven by downstream
+* Chunked data
 * Leftovers
 * ResourceT
 * ZipSink
+  * Average
+  * Save a file and get its hash
 * Fuse with leftovers/upstream results
 
 ## Features of conduit
