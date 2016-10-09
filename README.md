@@ -319,8 +319,8 @@ main = do
 ```
 
 Notice how we've had to reimplement the behavior of `takeWhile`,
-`mapM`, and `mapM_` ourselves, and our logic is much harder to
-follow. Conduit makes it easy to get the right behavior: interleaved
+`mapM`, and `mapM_` ourselves, and the solution is less compositional.
+Conduit makes it easy to get the right behavior: interleaved
 effects, constant memory, and (as we'll see later) deterministic
 resource usage.
 
