@@ -931,7 +931,7 @@ yieldOr o m = ConduitM $ \rest -> HaveOutput (rest ()) m o
 {-# INLINE yieldOr #-}
 
 -- | Wait for input forever, calling the given inner component for each piece of
--- new input. Returns the upstream result type.
+-- new input.
 --
 -- This function is provided as a convenience for the common pattern of
 -- @await@ing input, checking if it's @Just@ and then looping.
