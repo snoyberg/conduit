@@ -546,28 +546,821 @@ conduit-combinator library. We won't be covering all of them in this
 tutorial, but hopefully this crash-course will give you an idea of
 what kinds of things you can do and help you understand the API docs.
 
+## Transformations
+
+When learning lists, one of the first functions you'll see is `map`,
+which transforms each element of the list. We've already seen `mapC`,
+above, which does the same thing for conduit. This is just one of many
+functions available for performing transformations. Like folds, these
+functions are named and behave like their list counterparts in many
+examples, so we'll just blast through some examples.
+
+```haskell
+#!/usr/bin/env stack
+-- stack --resolver lts-6.19 runghc --package conduit-combinators
+{-# LANGUAGE ExtendedDefaultRules #-}
+import Conduit
+
+main :: IO ()
+main = runConduit $ yieldMany [1..10] .| mapC (* 2) .| mapM_C print
+```
+
+We can also filter out values:
+
+```haskell
+#!/usr/bin/env stack
+-- stack --resolver lts-6.19 runghc --package conduit-combinators
+{-# LANGUAGE ExtendedDefaultRules #-}
+import Conduit
+
+main :: IO ()
+main = runConduit $ yieldMany [1..10] .| filterC even .| mapM_C print
+```
+
+Or if desired we can add some values between each value in the list:
+
+```haskell
+#!/usr/bin/env stack
+-- stack --resolver lts-6.19 runghc --package conduit-combinators
+{-# LANGUAGE ExtendedDefaultRules #-}
+import Conduit
+
+main :: IO ()
+main = runConduit $ yieldMany [1..10] .| intersperseC 0 .| mapM_C print
+```
+
+It's also possible to "flatten out" a conduit, but converting a stream
+of chunks (like a list of vector) of data into the individual values.
+
+```haskell
+#!/usr/bin/env stack
+-- stack --resolver lts-6.19 runghc --package conduit-combinators
+{-# LANGUAGE ExtendedDefaultRules #-}
+import Conduit
+
+main :: IO ()
+main = runConduit
+     $ yieldMany (map (replicate 5) [1..10])
+    .| concatC
+    .| mapM_C print
+```
+
+__NOTE__ This is our first exposure to "chunked data" in conduit. This
+is actually a very important and common use case, especially around
+`ByteString`s and `Text`s. We'll cover it in much more detail in its
+own section later.
+
+There are even some built-in functions for doing some more advanced
+operations, like base-64 encoding data.
+
+```haskell
+#!/usr/bin/env stack
+-- stack --resolver lts-6.19 runghc --package conduit-combinators
+{-# LANGUAGE ExtendedDefaultRules #-}
+{-# LANGUAGE OverloadedStrings #-}
+import Conduit
+import Data.Text (Text)
+
+message :: Text
+message = "This is my message. Try to decode it with the base64 command.\n"
+
+main :: IO ()
+main = runConduit
+     $ yield message
+    .| encodeUtf8C
+    .| encodeBase64C
+    .| stdoutC
+```
+
+__EXERCISE__ Pipe the output of this snippet to `base64 -D` on the
+command line.
+
+You can also perform monadic actions while transforming. We've seen
+`mapMC` being used already, but other such functions exist:
+
+```haskell
+#!/usr/bin/env stack
+-- stack --resolver lts-6.19 runghc --package conduit-combinators
+{-# LANGUAGE ExtendedDefaultRules #-}
+{-# LANGUAGE OverloadedStrings #-}
+import Conduit
+
+evenM :: Int -> IO Bool
+evenM i = do
+    let res = even i
+    print (i, res)
+    return res
+
+main :: IO ()
+main = runConduit
+     $ yieldMany [1..10]
+    .| filterMC evenM
+    .| mapM_C print
+```
+
+Or you can use the `iterM` function, which performs a monadic action
+on the upstream values without modifying them:
+
+```haskell
+#!/usr/bin/env stack
+-- stack --resolver lts-6.19 runghc --package conduit-combinators
+{-# LANGUAGE ExtendedDefaultRules #-}
+import Conduit
+
+main :: IO ()
+main = do
+    res <- runConduit $ yieldMany [1..10] .| iterMC print .| sumC
+    print res
+```
+
+__EXERCISE__ Implement `iterMC` in terms of `mapMC`.
+
+## Monadic composition
+
+We've so far only really explored half of the power of conduit: being
+able to combine multiple components together by connecting the output
+of the upstream to the input of the downstream (via the `.|` operator
+or the `fuse` function). However, there's another way to combine
+simple conduits into more complex ones, using the standard monadic
+interface (or `do`-notation). Let's start with some examples,
+beginning with a data producer:
+
+```haskell
+#!/usr/bin/env stack
+-- stack --resolver lts-6.19 runghc --package conduit-combinators
+{-# LANGUAGE ExtendedDefaultRules #-}
+import Conduit
+
+source :: Monad m => ConduitM i Int m ()
+source = do
+    yieldMany [1..10]
+    yieldMany [11..20]
+
+main :: IO ()
+main = runConduit $ source .| mapM_C print
+```
+
+We've created a new conduit, `source`, which combines together two
+calls to `yieldMany`. Try to guess at intuitively what this will do
+before reading the explanation.
+
+As you may have guessed, this program will print the numbers 1
+through 20. What we've seen here is that, when you use monadic
+composition, the output from the first component is sent downstream,
+and then the output from the second component is sent downstream. Now
+let's look at the consuming side. Again, try to guess what this
+program will do before you read the explanation following it.
+
+```haskell
+#!/usr/bin/env stack
+-- stack --resolver lts-6.19 runghc --package conduit-combinators
+{-# LANGUAGE ExtendedDefaultRules #-}
+import Conduit
+
+sink :: Monad m => ConduitM Int o m (String, Int)
+sink = do
+    x <- takeC 5 .| mapC show .| foldC
+    y <- sumC
+    return (x, y)
+
+main :: IO ()
+main = do
+    let res = runConduitPure $ yieldMany [1..10] .| sink
+    print res
+```
+
+Let's first analyze `takeC 5 .| mapC show .| foldC`. This bit will
+take 5 elements from the stream, convert them to `String`s, and then
+combine those `String`s into one `String`. So if we actually have 10
+elements on the stream, what happens to the other 5? Well, up until
+now, the answer would have been "disappears into the aether." However,
+we've now introduced monadic composition. In this world, those values
+are still sitting on the stream, ready to be consumed by whatever
+comes next. In our case, that's `sumC`.
+
+__EXERCISE__ Rewrite `sink` to not use `do`-notation. Hint: it'll be
+easier to go `Applicative`.
+
+So we've seen how monadic composition works with both upstream and
+downstream, but in isolation. We can just as easily combine these two
+concepts together, and create a transformer using monadic composition.
+
+```haskell
+#!/usr/bin/env stack
+-- stack --resolver lts-6.19 runghc --package conduit-combinators
+{-# LANGUAGE ExtendedDefaultRules #-}
+import Conduit
+
+trans :: Monad m => ConduitM Int Int m ()
+trans = do
+    takeC 5 .| mapC (+ 1)
+    mapC (* 2)
+
+main :: IO ()
+main = runConduit $ yieldMany [1..10] .| trans .| mapM_C print
+```
+
+Here, we've set up a conduit that takes the first 5 values it's given,
+adds 1 to each, and sends the result downstream. Then, it takes
+everything else, multiplies it by 2, and sends it downstream.
+
+__EXERCISE__ Modify `trans` so that it does something different for
+the first 3, second 3, and final 3 values from upstream, and drops all
+other values.
+
+The only restriction we have in monadic composition is exactly what
+you'd expect from the types: the first three type parameters (input,
+output, and monad) must be the same for all components.
+
+## Primitives
+
+We've worked with high-level functions in conduit so far. However, at
+its core conduit is built on top of a number of simple
+primitives. Combined with monadic composition, we can build up all of
+the more advanced functions from these primitives. Let's start with
+likely the more expected one: `yield`. It's just like the `yieldMany`
+function we've been using until now, except it works in a single value
+instead of a collection of them.
+
+```haskell
+#!/usr/bin/env stack
+-- stack --resolver lts-6.19 runghc --package conduit-combinators
+{-# LANGUAGE ExtendedDefaultRules #-}
+import Conduit
+
+main :: IO ()
+main = runConduit $ yield 1 .| mapM_C print
+```
+
+Of course, we're not limited to using just a single call to `yield`:
+
+```haskell
+#!/usr/bin/env stack
+-- stack --resolver lts-6.19 runghc --package conduit-combinators
+{-# LANGUAGE ExtendedDefaultRules #-}
+import Conduit
+
+main :: IO ()
+main = runConduit $ (yield 1 >> yield 2) .| mapM_C print
+```
+
+__EXERCISE__ Reimplement `yieldMany` for lists using the `yield`
+primitive and monadic composition.
+
+Given that `yield` sends an output value downstream, we also need a
+function to get an input value from upstream. For that, we'll use
+`await`. Let's start really simple:
+
+```haskell
+#!/usr/bin/env stack
+-- stack --resolver lts-6.19 runghc --package conduit-combinators
+{-# LANGUAGE ExtendedDefaultRules #-}
+import Conduit
+
+main :: IO ()
+main = do
+    -- prints: Just 1
+    print $ runConduitPure $ yield 1 .| await
+    -- prints: Nothing
+    print $ runConduitPure $ yieldMany [] .| await
+
+    -- Note, that the above is equivalent to the following. Work out
+    -- why this works:
+    print $ runConduitPure $ return () .| await
+    print $ runConduitPure await
+```
+
+`await` will ask for a value from upstream, and return a `Just` if
+there is a value available. If not, it will return a `Nothing`.
+
+__NOTE__ I was specific in my phrasing of "`await` will ask." This has
+to do with the evaluation of a conduit pipeline, and how it is driven
+by downstream. We'll cover this in more detail in the next section.
+
+Of course, things get much more interesting when we combine both
+`yield` and `await` together. For example, we can implement our own
+`mapC` function:
+
+```haskell
+#!/usr/bin/env stack
+-- stack --resolver lts-6.19 runghc --package conduit-combinators
+{-# LANGUAGE ExtendedDefaultRules #-}
+import Conduit
+
+myMapC :: Monad m => (i -> o) -> ConduitM i o m ()
+myMapC f =
+    loop
+  where
+    loop = do
+        mx <- await
+        case mx of
+            Nothing -> return ()
+            Just x -> do
+                yield (f x)
+                loop
+
+main :: IO ()
+main = runConduit $ yieldMany [1..10] .| myMapC (+ 1) .| mapM_C print
+```
+
+__EXERCISE__ Try implementing `filterC` and `mapMC`. For the latter,
+you'll need to use the `lift` function.
+
+The next primitive requires a little motivation. Let's look at a
+simple example of using the `takeWhileC` function:
+
+```haskell
+#!/usr/bin/env stack
+-- stack --resolver lts-6.19 runghc --package conduit-combinators
+{-# LANGUAGE ExtendedDefaultRules #-}
+import Conduit
+
+main :: IO ()
+main = print $ runConduitPure $ yieldMany [1..10] .| do
+    x <- takeWhileC (<= 5) .| sinkList
+    y <- sinkList
+    return (x, y)
+```
+
+As you may guess, this will result in the output
+`([1,2,3,4,5],[6,7,8,9,10])`. Awesome. Let's go ahead and try to
+implement our own `takeWhileC` with just `await` and `yield`.
+
+```haskell
+#!/usr/bin/env stack
+-- stack --resolver lts-6.19 runghc --package conduit-combinators
+{-# LANGUAGE ExtendedDefaultRules #-}
+import Conduit
+
+myTakeWhileC :: Monad m => (i -> Bool) -> ConduitM i i m ()
+myTakeWhileC f =
+    loop
+  where
+    loop = do
+        mx <- await
+        case mx of
+            Nothing -> return ()
+            Just x
+                | f x -> do
+                    yield x
+                    loop
+                | otherwise -> return ()
+
+main :: IO ()
+main = print $ runConduitPure $ yieldMany [1..10] .| do
+    x <- myTakeWhileC (<= 5) .| sinkList
+    y <- sinkList
+    return (x, y)
+```
+
+I'd recommend looking over `myTakeWhileC` and making sure you're
+comfortable with what it's doing. When you've done that, run the
+program and compare the output. To make it easier, I'll put the output
+of the original (with the real `takeWhileC`) vs this program:
+
+```
+takeWhileC:
+([1,2,3,4,5],[6,7,8,9,10])
+myTakeWhileC:
+([1,2,3,4,5],[7,8,9,10])
+```
+
+What happened to `6`? Well, in the `otherwise` branch of the case
+statement, we've determined that the value that we received from
+upstream does not match our predicate function `f`. So what do we do
+with it? Well, we just throw it away! In our program, the first value
+to fail the predicate is `6`, so it's discarded, and then our second
+`sinkList` usage grabs the _next_ value, which is `7`.
+
+What we need is a primitive that let's us put a value back on the
+stream. And we have one that does just that: `leftover`. Let's fix up
+our `myTakeWhileC`:
+
+```haskell
+#!/usr/bin/env stack
+-- stack --resolver lts-6.19 runghc --package conduit-combinators
+{-# LANGUAGE ExtendedDefaultRules #-}
+import Conduit
+
+myGoodTakeWhileC :: Monad m => (i -> Bool) -> ConduitM i i m ()
+myGoodTakeWhileC f =
+    loop
+  where
+    loop = do
+        mx <- await
+        case mx of
+            Nothing -> return ()
+            Just x
+                | f x -> do
+                    yield x
+                    loop
+                | otherwise -> leftover x
+
+main :: IO ()
+main = print $ runConduitPure $ yieldMany [1..10] .| do
+    x <- myGoodTakeWhileC (<= 5) .| sinkList
+    y <- sinkList
+    return (x, y)
+```
+
+As expected, this has the same output as using the real `takeWhileC`
+function.
+
+__EXERCISE__ Implement a `peek` function that gets the next value from
+upstream, if available, and then puts it back on the stream.
+
+We can also call `leftover` as many times as we want, and even use
+values that didn't come from upstream, though this is a fairly unusual
+use case. Just to prove it's possible though:
+
+```haskell
+#!/usr/bin/env stack
+-- stack --resolver lts-6.19 runghc --package conduit-combinators
+{-# LANGUAGE ExtendedDefaultRules #-}
+import Conduit
+
+main :: IO ()
+main = print $ runConduitPure $ return () .| do
+    mapM_ leftover [1..10]
+    sinkList
+```
+
+There are two semi-advanced concepts to get across in this example:
+
+1. If you run this, the result is a _descending_ list from 10
+   to 1. This is because using `leftover` works in a FILO (first in
+   last out) fashion.
+2. If you take off the `return () .|` bit, this example will fail to
+   compile. That's because, by using `leftover`, we've stated that our
+   conduit actually takes some input from upstream. If you remember,
+   when you use `runConduitPure`, the complete pipeline cannot be
+   expected any input (it must have an input of type `()`). Adding
+   `return () .|` says "we're connecting you to an empty upstream
+   component" so satisfy the type system.
+
+The other primitives have to do with resource finalization. These
+primitives are not commonly used, instead relying on the more reliable
+`bracketP` function, which we'll cover below. If you want to learn
+more about these lower level functions, please see the API docs for
+`addCleanup` and `yieldOr`.
+
+## Evaluation strategy
+
+Let's talk about the evaluation strategy of a conduit pipeline. The
+most important thing to remember is _everything is driven by
+downstream_. To see what I mean, consider this example:
+
+```haskell
+#!/usr/bin/env stack
+-- stack --resolver lts-6.19 runghc --package conduit-combinators
+{-# LANGUAGE ExtendedDefaultRules #-}
+import Conduit
+
+main :: IO ()
+main = runConduit $ yieldMany [1..10] .| iterMC print .| return ()
+```
+
+This program will generate no output. The reason is that the most
+downstream component is `return ()`, which never `await`s any values
+from upstream and immediately exits. Once it exits, the entire
+pipeline exits. As a result, the two upstream components are never run
+at all. If you wanted to instead force all of the values and just
+discard them, you could use `sinkNull`:
+
+```haskell
+#!/usr/bin/env stack
+-- stack --resolver lts-6.19 runghc --package conduit-combinators
+{-# LANGUAGE ExtendedDefaultRules #-}
+import Conduit
+
+main :: IO ()
+main = runConduit $ yieldMany [1..10] .| iterMC print .| sinkNull
+```
+
+Now try and guess what the following program outputs:
+
+```haskell
+#!/usr/bin/env stack
+-- stack --resolver lts-6.19 runghc --package conduit-combinators
+{-# LANGUAGE ExtendedDefaultRules #-}
+import Conduit
+
+main :: IO ()
+main = runConduit $ yieldMany [1..10] .| iterMC print .| return () .| sinkNull
+```
+
+Answer: nothing! The `sinkNull` will `await` for all values from its
+immediate upstream. But its immediate upstream is `return ()`, which
+never `yield`s any value, causing the `sinkNull` to exit immediately.
+
+Alright, let's tweak this slightly: what will this one output:
+
+```haskell
+#!/usr/bin/env stack
+-- stack --resolver lts-6.19 runghc --package conduit-combinators
+{-# LANGUAGE ExtendedDefaultRules #-}
+import Conduit
+
+main :: IO ()
+main = runConduit
+     $ yieldMany [1..10]
+    .| iterMC print
+    .| liftIO (putStrLn "I was called")
+    .| sinkNull
+```
+
+In this case, `sinkNull` calls `await`, which forces execution to
+defer to the next upstream component (the `liftIO ...` bit). In order
+to see if it `yield`s, that component must be evaluated until it
+either (1) exits, (2) `yield`s, or (3) `await`s. We see that it exits
+after calling `liftIO`, causing the pipeline to terminate, but not
+before it prints its "I was called" message.
+
+There's really not too much to understanding conduit evaluation. It
+mostly works the way you'd expect, as long as you remember that
+_downstream drives_.
+
+## Type synonyms
+
+If you've been reading the API docs at all, you may have been confused
+by type signatures stating `Source`, `Sink`, `Producer`, `Consumer`,
+or `Conduit`. These are all type synonyms provided by the conduit
+library to make working with it easier (though, to be honest, it's not
+clear that they actually help at all). Here are the simple definitions
+of these types:
+
+* A `Source` produces values but does not consume any
+* A `Sink` consumes values and and provides a return value, but
+  produces none as an output stream
+* A `Conduit` consumes and produces values
+* A `Producer` is something that produces values, and may or may not
+  consume
+* A `Consumer` is something that consumes values and provides a return
+  value, but may or may not produce
+
+But it might be easier to understand all of this if you just look at
+the actual definitions:
+
+```haskell
+type Source     m o   =           ConduitM () o    m ()
+type Sink     i m   r =           ConduitM i  Void m r
+type Conduit  i m o   =           ConduitM i  o    m ()
+type Producer   m o   = forall i. ConduitM i  o    m ()
+type Consumer i m   r = forall o. ConduitM i  o    m r
+```
+
+We can see that a `Source` produces a stream of `o` values in the `m`
+base monad. We've set its upstream value to `()` to indicate it
+consumes nothing, and set its return value to `()` to indicate that it
+produces no (meaningful) return value. By constrast, a `Sink` consumes
+`i` values and returns an `r` result in the `m` base monad, but
+produces no output (`Void`).
+
+`Producer` and `Consumer` are both generalized versions of `Source`
+and `Sink`, which instead of specifying the input or output types to
+be `()` or `Void`, simply says they can be anything. These are the
+types that end up getting used more often in the conduit libraries,
+since it generalizes to working in more contexts. However, due to
+weaknesses in the `ImpredicativeTypes` language extension, these types
+can't always be used.
+
+You lose nothing by just sticking with the `ConduitM` data type
+directly and bypassing the type synonyms completely. In 20/20
+hindsight, that's probably the better direction for the conduit
+library to have been designed with in the first place. It's entirely
+possible that in future releases of the library, type signatures will
+bypass those synonyms completely. (If you want to weigh in on this,
+please
+[see the relevant Github issue](https://github.com/snoyberg/conduit/issues/283).)
+
+## Resource allocation
+
+Let's copy a file with conduit:
+
+```haskell
+#!/usr/bin/env stack
+-- stack --resolver lts-6.19 runghc --package conduit-combinators
+{-# LANGUAGE ExtendedDefaultRules #-}
+import Conduit
+import qualified System.IO as IO
+import qualified Data.Conduit.Binary as CB
+
+main :: IO ()
+main = IO.withBinaryFile "input.txt" IO.ReadMode $ \inH ->
+       IO.withBinaryFile "output.txt" IO.WriteMode $ \outH ->
+       runConduit $ CB.sourceHandle inH .| CB.sinkHandle outH
+```
+
+This works nicely, and follows the typical bracket pattern we
+typically expect in Haskell. However, it's got some downsides:
+
+* You have to allocate all of your resources outside of the conduit
+  pipeline. (This is because conduit is coroutine based, and
+  coroutines/continuations cannot guarantee a cleanup action is
+  called.)
+* You will sometimes end up needing to allocate too many resources, or
+  holding onto them for too long, if you allocate them in advance
+  instead of on demand.
+* Some control flows are impossible. For example, if you wanted to
+  write a function to traverse a directory tree, you can't open up all
+  of the directory handles before you enter your conduit pipeline.
+
+To solve these problems (and some others), conduit provides built in
+support for a related package
+([resourcet](https://www.stackage.org/package/resourcet)), which
+allows you to allocate resources and be guaranteed that they will be
+cleaned up. The basic idea is that you'll have a block like:
+
+```haskell
+runResourceT $ do
+    foo
+    bar
+    baz
+```
+
+Any resources that `foo`, `bar`, or `baz` allocate have a cleanup
+function registered in a mutable map. When the `runResourceT` call
+exits, all of those cleanup functions are called, regardless of
+whether the exiting occured normally or via an exception.
+
+In order to do this in a conduit, we have the built-in function
+`bracketP`, which takes an allocation function and a cleanup function,
+and provides you a resource. Putting this all together, we can rewrite
+our example as:
+
+```haskell
+#!/usr/bin/env stack
+-- stack --resolver lts-6.19 runghc --package conduit-combinators
+{-# LANGUAGE ExtendedDefaultRules #-}
+import Conduit
+import qualified System.IO as IO
+import Data.ByteString (ByteString)
+
+sourceFile' :: MonadResource m => FilePath -> ConduitM i ByteString m ()
+sourceFile' fp =
+    bracketP (IO.openBinaryFile fp IO.ReadMode) IO.hClose sourceHandle
+
+sinkFile' :: MonadResource m => FilePath -> ConduitM ByteString o m ()
+sinkFile' fp =
+    bracketP (IO.openBinaryFile fp IO.WriteMode) IO.hClose sinkHandle
+
+main :: IO ()
+main = runResourceT
+     $ runConduit
+     $ sourceFile' "input.txt"
+    .| sinkFile' "output.txt"
+```
+
+But that's certainly too tedious. Fortunately, conduit provides the
+`sourceFile` and `sinkFile` functions built in (as well as
+`sourceFileBS` and `sinkFileBS`, which are specialized to `ByteString`
+to avoid type inference issues), and defines a helper `runConduitRes`
+which is just `runResourceT . runConduit`. Putting all of that
+together, copying a file becomes absolutely trivial:
+
+```haskell
+#!/usr/bin/env stack
+-- stack --resolver lts-6.19 runghc --package conduit-combinators
+{-# LANGUAGE ExtendedDefaultRules #-}
+import Conduit
+
+main :: IO ()
+main = runConduitRes $ sourceFileBS "input.txt" .| sinkFileBS "output.txt"
+```
+
+Let's get a bit more inventive though. Let's traverse an entire
+directory tree and write the contents of all files with a `.hs` file
+extension into the file "all-haskell-files".
+
+```haskell
+#!/usr/bin/env stack
+-- stack --resolver lts-6.19 runghc --package conduit-combinators
+{-# LANGUAGE ExtendedDefaultRules #-}
+import Conduit
+import System.FilePath (takeExtension)
+
+main :: IO ()
+main = runConduitRes
+     $ sourceDirectoryDeep True "."
+    .| filterC (\fp -> takeExtension fp == ".hs")
+    .| awaitForever sourceFileBS
+    .| sinkFileBS "all-haskell-files"
+```
+
+What's great about this example is:
+
+* It guarantees that only two file handles are open at a time: the
+  `all-haskell-files` destination file and whichever file is being
+  read from.
+* It will only open as many directory handles as needed to traverse
+  the depth of the file structure.
+* If any exceptions occur, all resources will be cleaned up.
+
+## Chunked data
+
+I'd like to read a file, convert all of its characters to upper case,
+and then write it to standard output. That looks pretty
+straightforward:
+
+```haskell
+#!/usr/bin/env stack
+-- stack --resolver lts-6.19 runghc --package conduit-combinators
+{-# LANGUAGE ExtendedDefaultRules #-}
+import Conduit
+import qualified Data.Text as T
+import Data.Char (toUpper)
+
+main :: IO ()
+main = runConduitRes
+     $ sourceFile "input.txt"
+    .| decodeUtf8C
+    .| mapC (T.map toUpper)
+    .| stdoutC
+```
+
+This works just fine, but is inconvenient: isn't that `mapC (T.map
+...)` repetition just completely jarring? The issue is that instead of
+having a stream of `Char` values, we have a stream of `Text` values,
+and our `mapC` function will work on the `Text`s. But our `toUpper`
+function works on the `Char`s inside of the `Text`. We want to use
+`Text` (or `ByteString`, or sometimes `Vector`) because it's a more
+efficient representation of data, but don't want to have to deal with
+this overhead.
+
+This is where the chunked functions in conduit come into play. In
+addition to functions that work directly on the values in a stream, we
+have functions that work on the _elements_ inside those values. These
+functions get a `CE` suffix instead of `C`, and are very
+straightforward to use. To see it in action:
+
+```haskell
+#!/usr/bin/env stack
+-- stack --resolver lts-6.19 runghc --package conduit-combinators
+{-# LANGUAGE ExtendedDefaultRules #-}
+import Conduit
+import qualified Data.Text as T
+import Data.Char (toUpper)
+
+main :: IO ()
+main = runConduitRes
+     $ sourceFile "input.txt"
+    .| decodeUtf8C
+    .| omapCE toUpper
+    .| stdoutC
+```
+
+__NOTE__ We also had to prepend `o` to get the monomorphic mapping
+function, since `Text` is a monomorphic container.
+
+We can use this for other things too. For example, let's get just the
+first line of content:
+
+```haskell
+#!/usr/bin/env stack
+-- stack --resolver lts-6.19 runghc --package conduit-combinators
+{-# LANGUAGE ExtendedDefaultRules #-}
+import Conduit
+import qualified Data.Text as T
+import Data.Char (toUpper)
+
+main :: IO ()
+main = runConduitRes
+     $ sourceFile "input.txt"
+    .| decodeUtf8C
+    .| takeWhileCE (/= '\n')
+    .| stdoutC
+```
+
+Or just the first 5 bytes:
+
+```haskell
+#!/usr/bin/env stack
+-- stack --resolver lts-6.19 runghc --package conduit-combinators
+{-# LANGUAGE ExtendedDefaultRules #-}
+import Conduit
+
+main :: IO ()
+main = runConduitRes
+     $ sourceFile "input.txt"
+    .| takeCE 5
+    .| decodeUtf8C
+    .| stdoutC
+```
+
+There are many other functions available for working on chunked
+data. In fact, most non-chunked functions have a chunked
+equivalent. This means that most of the intuition you've built up for
+working with streams of values will automatically translate to dealing
+with chunked streams, a big win for binary and textual processing.
+
+__EXERCISE__ Try to implement the `takeCE` function on
+`ByteString`s. Hint: you'll need to use `leftover` to make it work
+correctly!
+
 * * *
 
 # FIXME NEED TO EDIT BELOW HERE
 
-* Transformations
-  * filterCE
-  * mapC, mapMC
-  * concatC
-* Monadic composition
-  * In a source
-  * In a consumer
-* Primitives
-  * await
-  * yield
-  * leftover
-  * demonstrate taking a single byte from a ByteString
-* Monadic effects
-* Type synonyms
-* Driven by downstream
-* Chunked data
-* Leftovers
-* ResourceT
 * ZipSink
   * Average
   * Save a file and get its hash
