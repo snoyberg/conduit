@@ -1357,13 +1357,131 @@ __EXERCISE__ Try to implement the `takeCE` function on
 `ByteString`s. Hint: you'll need to use `leftover` to make it work
 correctly!
 
+## ZipSink
+
+So far we've had very linear pipelines: a component feeds into exactly
+one downstream component, and so on. However, sometimes we may wish to
+allow for multiple consumers of a single stream. As a motivating
+example, let's consider taking the average of a stream of
+`Double`s. In the list world, this may look like:
+
+```haskell
+#!/usr/bin/env stack
+-- stack --resolver lts-6.19 runghc
+doubles :: [Double]
+doubles = [1, 2, 3, 4, 5, 6]
+
+average :: [Double] -> Double
+average xs = sum xs / fromIntegral (length xs)
+
+main :: IO ()
+main = print $ average doubles
+```
+
+However, performance afficionados will quickly point out that this has
+a space leak: the list will be traversed once for the `sum`, kept in
+memory, and then traversed a second time for the `length`. We could
+work around that by using lower-level functions, but we lose
+composability. (Though see the
+[foldl package](https://www.stackage.org/package/foldl) for composable
+folding.)
+
+```haskell
+#!/usr/bin/env stack
+-- stack --resolver lts-6.19 runghc --package conduit-combinators
+{-# LANGUAGE ExtendedDefaultRules #-}
+import Conduit
+import Data.Void (Void)
+
+doubles :: [Double]
+doubles = [1, 2, 3, 4, 5, 6]
+
+average :: Monad m => ConduitM Double Void m Double
+average =
+    getZipSink (go <$> ZipSink sumC <*> ZipSink lengthC)
+  where
+    go total len = total / fromIntegral len
+
+main :: IO ()
+main = print $ runConduitPure $ yieldMany doubles .| average
+```
+
+`ZipSink` is a newtype wrapper which provides an different
+`Applicative` instance than the standard one for `ConduitM`. Instead
+of sequencing the consumption of a stream, it allows two components to
+consume _in parallel_. Now, our `sumC` and `lengthC` are getting
+values at the same time, and then those values can be immediately
+thrown away. This leads to easy composition and constant memory usage.
+
+__NOTE__ Both the list and conduit versions of this are subject to a
+divide-by-zero error. You'd probably in practice want to make
+`average` return a `Maybe Double`.
+
+Another real world example of `ZipSink` is when you want to both
+consume a file and calculate its cryptographic hash. Working with the
+cryponite package:
+
+```haskell
+#!/usr/bin/env stack
+-- stack --resolver lts-6.19 runghc --package conduit-combinators --package cryptonite-conduit
+{-# LANGUAGE ExtendedDefaultRules #-}
+{-# LANGUAGE PackageImports #-}
+import Conduit
+import "cryptonite-conduit" Crypto.Hash.Conduit (sinkHash)
+import "cryptonite" Crypto.Hash (Digest, SHA256)
+import Data.Void (Void)
+
+average :: Monad m => ConduitM Double Void m Double
+average =
+    getZipSink (go <$> ZipSink sumC <*> ZipSink lengthC)
+  where
+    go total len = total / fromIntegral len
+
+main :: IO ()
+main = do
+    digest <- runConduitRes
+            $ sourceFile "input.txt"
+           .| getZipSink (ZipSink (sinkFile "output.txt") *> ZipSink sinkHash)
+    print (digest :: Digest SHA256)
+```
+
+Or we can get slightly more inventive, and read from an HTTP connection instead of a local file:
+
+```haskell
+#!/usr/bin/env stack
+{- stack --resolver lts-6.19 runghc
+    --package conduit-combinators
+    --package cryptonite-conduit
+    --package http-conduit
+-}
+{-# LANGUAGE PackageImports #-}
+{-# LANGUAGE OverloadedStrings #-}
+import Conduit
+import "cryptonite-conduit" Crypto.Hash.Conduit (sinkHash)
+import "cryptonite" Crypto.Hash (Digest, SHA256)
+import Data.Void (Void)
+import Network.HTTP.Simple (httpSink)
+
+average :: Monad m => ConduitM Double Void m Double
+average =
+    getZipSink (go <$> ZipSink sumC <*> ZipSink lengthC)
+  where
+    go total len = total / fromIntegral len
+
+main :: IO ()
+main = do
+    digest <- runResourceT $ httpSink "http://httpbin.org"
+              (\_res -> getZipSink (ZipSink (sinkFile "output.txt") *> ZipSink sinkHash))
+    print (digest :: Digest SHA256)
+```
+
+This provides a convenient and efficient method to consume data over a
+network connection.
+
 * * *
 
 # FIXME NEED TO EDIT BELOW HERE
 
-* ZipSink
-  * Average
-  * Save a file and get its hash
 * ZipSource
 * ZipConduit
 * Fuse with leftovers/upstream results
