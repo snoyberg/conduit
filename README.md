@@ -551,6 +551,9 @@ what kinds of things you can do and help you understand the API docs.
 # FIXME NEED TO EDIT BELOW HERE
 
 * Transformations
+  * filterCE
+  * mapC, mapMC
+  * concatC
 * Monadic composition
   * In a source
   * In a consumer
@@ -568,7 +571,10 @@ what kinds of things you can do and help you understand the API docs.
 * ZipSink
   * Average
   * Save a file and get its hash
+* ZipSource
+* ZipConduit
 * Fuse with leftovers/upstream results
+* Stream-of-streams, `lineC`, `takeExactlyC`
 
 ## Features of conduit
 
