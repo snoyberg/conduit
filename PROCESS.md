@@ -23,7 +23,7 @@ Some important headlines before we begin:
 
 ## Synopsis
 
-```haskell active
+```haskell
 {-# LANGUAGE OverloadedStrings #-}
 import           Control.Applicative      ((*>))
 import           Control.Concurrent.Async (Concurrently (..))
@@ -71,7 +71,7 @@ main = do
 
 There's a [well documented corner case](https://ghc.haskell.org/trac/ghc/ticket/9292) in `waitForProcess` whereby multiple calls can end up in a race condition, and therefore a deadlock. Data.Conduit.Process works around this issue by not providing direct access to a `ProcessHandle`. Instead, it wraps this with a `StreamingProcessHandle`, which uses an STM TMVar under the surface. This allows you to either poll to check if a process has exited, or block and wait for the process to exit. As a minimal example (ignore the streaming bits for now, they'll be explained shortly):
 
-```haskell active
+```haskell
 import Data.Conduit.Process
 
 main :: IO ()
@@ -102,7 +102,7 @@ One downside of the System.Process API is that there is no static type safety to
 
 Let's start with an example of using the simplest instances of our typeclasses. `Inherited` says to inherit the `Handle` from the parent process, while `ClosedStream` says to close the stream to the child process. For example, the next snippet will inherit stdin and stdout from the parent process and close standard error.
 
-```haskell active
+```haskell
 import Data.Conduit.Process
 
 main :: IO ()
@@ -146,7 +146,7 @@ Note that these `Source`s and `Sink`s will *never* close their `Handle`s. This i
 
 Let's say we'd like to close our input stream whenever the user types in "quit". To do that, we need to get an action to close the standard input `Handle`. This is simple: instead of just returning a `Source` or `Sink`, we ask for a tuple of a `Source`/`Sink` together with an `IO ()` action to close the handle.
 
-```haskell active
+```haskell
 {-# LANGUAGE OverloadedStrings #-}
 import           Data.ByteString      (ByteString)
 import           Data.Conduit         (Source, await, yield, ($$), ($=))
@@ -187,7 +187,7 @@ main = do
 
 Let's take a quick detour from our running example to talk about the last special type: `UseProvidedHandle`. This says to `streamingProcess`: use the example value of `UseHandle` provided in `std_in`/`std_out`/`std_err`. We can use this to redirect output directly to a file:
 
-```haskell active
+```haskell
 import Data.Conduit.Process
 import System.IO (withFile, IOMode (..))
 
@@ -221,7 +221,7 @@ When we listed four ways of interacting with a process, that wasn't completely a
 
 But there are in particular two ways of interacting with a child process that are very common on POSIX systems: sending signals (such as termination), and connecting over a pipe. The example below demonstrates these two methods, together with the previously mentioned four.
 
-```haskell active
+```haskell
 {-# LANGUAGE OverloadedStrings #-}
 import           Control.Applicative      ((*>))
 import           Control.Concurrent       (threadDelay)
