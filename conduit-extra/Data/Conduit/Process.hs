@@ -3,8 +3,8 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE CPP #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
--- | A full tutorial for this module is available on FP School of Haskell:
--- <https://www.fpcomplete.com/user/snoyberg/library-documentation/data-conduit-process>.
+-- | A full tutorial for this module is available at:
+-- <https://github.com/snoyberg/conduit/blob/master/PROCESS.md>.
 --
 -- Note that this is a very thin layer around the @Data.Streaming.Process@ module. In particular, it:
 --
