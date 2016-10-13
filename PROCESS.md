@@ -14,12 +14,13 @@ interactions. However, there are some downsides with using them:
 * There is a subtle race condition when checking for exit codes.
 * Dealing with `Handle`s directly is relatively low-level.
 
-Data.Conduit.Process provides a higher-level interface for these four
-interactions, based on conduit. It additionally leverages type classes
-to provide more static type safety than dealing directly with
-System.Process, as will be described below. The library is also
-designed to work with the wonderful async library, providing for easy,
-high-quality concurrency.
+[Data.Conduit.Process](https://www.stackage.org/haddock/lts-7.3/conduit-extra-1.1.13.3/Data-Conduit-Process.html)
+provides a higher-level interface for these four interactions, based
+on conduit. It additionally leverages type classes to provide more
+static type safety than dealing directly with System.Process, as will
+be described below. The library is also designed to work with the
+wonderful [async library](https://haskell-lang.org/library/async),
+providing for easy, high-quality concurrency.
 
 Some important headlines before we begin:
 
@@ -39,10 +40,12 @@ for more information.
 ## Synopsis
 
 ```haskell
+#!/usr/bin/env stack
+-- stack --resolver lts-6.19 --install-ghc runghc --package conduit-extra
 {-# LANGUAGE OverloadedStrings #-}
 import           Control.Applicative      ((*>))
 import           Control.Concurrent.Async (Concurrently (..))
-import           Data.Conduit             (await, yield, ($$), (=$))
+import           Data.Conduit             (await, yield, (.|), runConduit)
 import qualified Data.Conduit.Binary      as CB
 import qualified Data.Conduit.List        as CL
 import           Data.Conduit.Process     (ClosedStream (..), streamingProcess,
@@ -57,10 +60,11 @@ main = do
     ((toProcess, close), fromProcess, ClosedStream, cph) <-
         streamingProcess (proc "base64" [])
 
-    let input = CB.sourceHandle stdin
-             $$ CB.lines
-             =$ inputLoop
-             =$ toProcess
+    let input = runConduit
+              $ CB.sourceHandle stdin
+             .| CB.lines
+             .| inputLoop
+             .| toProcess
 
         inputLoop = do
             mbs <- await
@@ -71,7 +75,7 @@ main = do
                     yield bs
                     inputLoop
 
-        output = fromProcess $$ CL.mapM_
+        output = runConduit $ fromProcess .| CL.mapM_
             (\bs -> putStrLn $ "from process: " ++ show bs)
 
     ec <- runConcurrently $
@@ -140,6 +144,8 @@ process. For example, the next snippet will inherit stdin and stdout
 from the parent process and close standard error.
 
 ```haskell
+#!/usr/bin/env stack
+-- stack --resolver lts-6.19 --install-ghc runghc --package conduit-extra
 import Data.Conduit.Process
 
 main :: IO ()
@@ -162,11 +168,13 @@ didn't provide some conduit capabilities. You can additionally get a
 `Sink` to be used to feed data into the process via standard input,
 and `Source`s for consuming standard output and error.
 
-This next example reads standard input from the console, process
+This next example reads standard input from the console, processes
 standard output with a conduit, and closes standard error.
 
 ```haskell
-import           Data.Conduit         (($$))
+#!/usr/bin/env stack
+-- stack --resolver lts-6.19 --install-ghc runghc --package conduit-extra
+import           Data.Conduit         (runConduit, (.|))
 import qualified Data.Conduit.List    as CL
 import           Data.Conduit.Process
 
@@ -177,7 +185,7 @@ main = do
     (Inherited, src, ClosedStream, cph) <-
         streamingProcess (shell "cat")
 
-    src $$ CL.mapM_ print
+    runConduit $ src .| CL.mapM_ print
 
     waitForStreamingProcess cph >>= print
 ```
@@ -197,9 +205,11 @@ or `Sink`, we ask for a tuple of a `Source`/`Sink` together with an
 `IO ()` action to close the handle.
 
 ```haskell
+#!/usr/bin/env stack
+-- stack --resolver lts-6.19 --install-ghc runghc --package conduit-extra
 {-# LANGUAGE OverloadedStrings #-}
 import           Data.ByteString      (ByteString)
-import           Data.Conduit         (Source, await, yield, ($$), ($=))
+import           Data.Conduit         (Source, await, yield, runConduit, (.|))
 import qualified Data.Conduit.Binary  as CB
 import           Data.Conduit.Process
 import           System.IO            (stdin)
@@ -207,8 +217,8 @@ import           System.IO            (stdin)
 userInput :: Source IO ByteString
 userInput =
        CB.sourceHandle stdin
-    $= CB.lines
-    $= loop
+    .| CB.lines
+    .| loop
   where
     loop = do
         mbs <- await
@@ -227,7 +237,7 @@ main = do
     ((sink, close), Inherited, ClosedStream, cph) <-
         streamingProcess (shell "cat")
 
-    userInput $$ sink
+    runConduit $ userInput .| sink
     close
 
     waitForStreamingProcess cph >>= print
@@ -242,6 +252,8 @@ last special type: `UseProvidedHandle`. This says to
 directly to a file:
 
 ```haskell
+#!/usr/bin/env stack
+-- stack --resolver lts-6.19 --install-ghc runghc --package conduit-extra
 import Data.Conduit.Process
 import System.IO (withFile, IOMode (..))
 
@@ -296,15 +308,17 @@ demonstrates these two methods, together with the previously mentioned
 four.
 
 ```haskell
+#!/usr/bin/env stack
+-- stack --resolver lts-6.19 --install-ghc runghc --package conduit-extra
 {-# LANGUAGE OverloadedStrings #-}
-import           Control.Applicative      ((*>))
 import           Control.Concurrent       (threadDelay)
 import           Control.Concurrent.Async (Concurrently (..))
-import           Data.Conduit             (yield, ($$))
+import qualified Data.ByteString.Char8    as S8
+import           Data.Conduit             (yield, runConduit, (.|))
 import           Data.Conduit.Binary      (sourceHandle)
 import qualified Data.Conduit.List        as CL
-import           Data.Conduit.Process
-import           System.Posix.IO          (closeFd, createPipe, fdToHandle)
+import           Data.Conduit.Process     (streamingProcess, proc, terminateProcess, streamingProcessHandleRaw, waitForStreamingProcess)
+import           System.Posix.IO          (closeFd, fdToHandle, createPipe)
 
 main :: IO ()
 main = do
@@ -327,11 +341,13 @@ main = do
     closeFd writer
 
     let go src name =
-            Concurrently $ src
-            $$ CL.mapM_ (\bs -> putStrLn $ name ++ ": " ++ show bs)
+            Concurrently $ runConduit $ src
+            .| CL.mapM_ (\bs -> S8.putStr $ S8.pack $ name ++ ": " ++ show bs ++ "\n")
         feed = Concurrently $ do
             threadDelay 1000000
-            yield "Feeding standard input, then terminating" $$ input
+            runConduit
+                $ yield "Feeding standard input, then terminating"
+               .| input
             terminateProcess $ streamingProcessHandleRaw cph
             close
 
