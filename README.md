@@ -988,8 +988,8 @@ main = print $ runConduitPure $ return () .| do
 There are two semi-advanced concepts to get across in this example:
 
 1. If you run this, the result is a _descending_ list from 10
-   to 1. This is because using `leftover` works in a FILO (first in
-   last out) fashion.
+   to 1. This is because using `leftover` works in a LIFO (last in
+   first out) fashion.
 2. If you take off the `return () .|` bit, this example will fail to
    compile. That's because, by using `leftover`, we've stated that our
    conduit actually takes some input from upstream. If you remember,
