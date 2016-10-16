@@ -51,7 +51,7 @@ module Control.Monad.Trans.Resource
     , createInternalState
     , closeInternalState
       -- * Backwards compatibility
-    , ExceptionT (..)
+    , ExceptionT
     , runExceptionT
     , runExceptionT_
     , runException
@@ -61,16 +61,15 @@ module Control.Monad.Trans.Resource
     ) where
 
 import qualified Data.IntMap as IntMap
-import Control.Exception (SomeException, throw)
+import Control.Exception (SomeException)
 import Control.Monad.Trans.Control
     ( MonadBaseControl (..), liftBaseDiscard, control )
 import qualified Data.IORef as I
 import Control.Monad.Base (MonadBase, liftBase)
-import Control.Applicative (Applicative (..))
+import Control.Applicative as A (Applicative (..))
 import Control.Monad.IO.Class (MonadIO (..))
 import Control.Monad (liftM)
 import qualified Control.Exception as E
-import Data.Monoid (Monoid)
 import qualified Control.Exception.Lifted as L
 
 import Control.Monad.Trans.Resource.Internal
@@ -202,10 +201,6 @@ bracket_ alloc cleanupNormal cleanupExc inside =
         cleanupNormal
         return res
 
-finally :: MonadBaseControl IO m => m a -> IO () -> m a
-finally action cleanup =
-    control $ \run -> E.finally (run action) cleanup
-
 -- | This function mirrors @join@ at the transformer level: it will collapse
 -- two levels of @ResourceT@ into a single @ResourceT@.
 --
@@ -291,7 +286,7 @@ resourceForkIO (ResourceT f) = ResourceT $ \r -> L.mask $ \restore ->
 --
 -- Since 0.3.2
 #if __GLASGOW_HASKELL__ >= 704
-type MonadResourceBase m = (MonadBaseControl IO m, MonadThrow m, MonadBase IO m, MonadIO m, Applicative m)
+type MonadResourceBase m = (MonadBaseControl IO m, MonadThrow m, MonadBase IO m, MonadIO m, A.Applicative m)
 #else
 class (MonadBaseControl IO m, MonadThrow m, MonadIO m, Applicative m) => MonadResourceBase m
 instance (MonadBaseControl IO m, MonadThrow m, MonadIO m, Applicative m) => MonadResourceBase m

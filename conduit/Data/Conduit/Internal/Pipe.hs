@@ -44,7 +44,7 @@ module Data.Conduit.Internal.Pipe
     , generalizeUpstream
     ) where
 
-import Control.Applicative (Applicative (..))
+import Control.Applicative as A (Applicative (..))
 import Control.Exception.Lifted as E (Exception, catch)
 import Control.Monad ((>=>), liftM, ap)
 import Control.Monad.Error.Class(MonadError(..))
@@ -56,7 +56,7 @@ import Control.Monad.Trans.Class (MonadTrans (lift))
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Base (MonadBase (liftBase))
 import Data.Void (Void, absurd)
-import Data.Monoid (Monoid (mappend, mempty))
+import Data.Monoid (Monoid (..))
 import Control.Monad.Trans.Resource
 import qualified GHC.Exts
 import Control.Monad.Morph (MFunctor (..))
@@ -106,7 +106,7 @@ instance Monad m => Functor (Pipe l i o u m) where
     fmap = liftM
     {-# INLINE fmap #-}
 
-instance Monad m => Applicative (Pipe l i o u m) where
+instance Monad m => A.Applicative (Pipe l i o u m) where
     pure = Done
     {-# INLINE pure #-}
     (<*>) = ap
@@ -149,7 +149,7 @@ instance Catch.MonadCatch m => Catch.MonadCatch (Pipe l i o u m) where
         go (HaveOutput p c o) = HaveOutput (go p) c o
     {-# INLINE catch #-}
 
-instance Monad m => Monoid (Pipe l i o u m ()) where
+instance Monad m => Data.Monoid.Monoid (Pipe l i o u m ()) where
     mempty = return ()
     {-# INLINE mempty #-}
     mappend = (>>)

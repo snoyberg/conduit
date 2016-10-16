@@ -66,7 +66,8 @@ import Control.Applicative ((<$>))
 #endif
 import System.Directory (getTemporaryDirectory, removeFile)
 import Data.ByteString.Lazy.Internal (defaultChunkSize)
-import Data.ByteString.Internal (ByteString (PS), inlinePerformIO)
+import Data.ByteString.Internal (ByteString (PS))
+import Data.Text.Unsafe (inlinePerformIO)
 import Foreign.ForeignPtr.Unsafe (unsafeForeignPtrToPtr)
 import Foreign.ForeignPtr (touchForeignPtr)
 import Foreign.Ptr (plusPtr, castPtr)
@@ -490,13 +491,13 @@ sinkStorableHelper wrap failure = do
                             -- looks like we're stuck concating
                             leftover bs
                             lbs <- take size
-                            let bs = S.concat $ L.toChunks lbs
-                            case compare (S.length bs) size of
+                            let bs' = S.concat $ L.toChunks lbs
+                            case compare (S.length bs') size of
                                 LT -> do
-                                    leftover bs
+                                    leftover bs'
                                     failure
-                                EQ -> process bs
-                                GT -> assert False (process bs)
+                                EQ -> process bs'
+                                GT -> assert False (process bs')
                         EQ -> process bs
                         GT -> do
                             let (x, y) = S.splitAt size bs

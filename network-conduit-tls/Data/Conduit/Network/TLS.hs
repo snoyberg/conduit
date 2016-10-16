@@ -36,27 +36,22 @@ module Data.Conduit.Network.TLS
     , tlsClientConnectionContext
     ) where
 
-import Control.Applicative ((<$>), (<*>))
-import Control.Monad (forever, void)
+import Control.Applicative as A ((<$>), (<*>))
+import Control.Monad (void)
 import qualified Data.ByteString.Lazy as L
 import qualified Network.TLS as TLS
-import Data.Conduit.Network (sinkSocket, runTCPServerWithHandle, serverSettings, sourceSocket)
+import Data.Conduit.Network (runTCPServerWithHandle, serverSettings)
 import Data.Streaming.Network.Internal (AppData (..), HostPreference)
-import Data.Streaming.Network (ConnectionHandle, safeRecv)
+import Data.Streaming.Network (safeRecv)
 import Data.Conduit.Network.TLS.Internal
-import Data.Conduit (yield, awaitForever, Producer, Consumer)
-import qualified Data.Conduit.List as CL
 import Network.Socket (SockAddr (SockAddrInet), sClose)
 import Network.Socket.ByteString (sendAll)
 import Control.Exception (bracket)
-import Control.Monad.Trans.Class (lift)
-import Control.Monad.IO.Class (liftIO, MonadIO)
 import Control.Monad.Base (liftBase)
 import qualified Network.TLS.Extra as TLSExtra
 import Network.Socket (Socket)
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Char8 as S8
-import qualified Crypto.Random.AESCtr
 import qualified Network.Connection as NC
 import Control.Monad.Trans.Control
 import Data.Default
@@ -222,8 +217,9 @@ runTCPServerStartTLS TLSConfig{..} app = do
                 -- wrap up the current connection with TLS
                 startTls = \app' -> do
                   ctx <- liftBase $ serverHandshake socket creds
-                  app' (tlsAppData ctx addr mlocal)
+                  res <- app' (tlsAppData ctx addr mlocal)
                   liftBase $ TLS.bye ctx
+                  return res
                 in
                  void $ run $ app (clearData, startTls)
 
@@ -269,7 +265,7 @@ ciphers =
 
 readCreds :: TlsCertData -> IO TLS.Credentials
 readCreds (TlsCertData iocert iochains iokey) =
-    (TLS.credentialLoadX509ChainFromMemory <$> iocert <*> iochains <*> iokey)
+    (TLS.credentialLoadX509ChainFromMemory A.<$> iocert A.<*> iochains <*> iokey)
     >>= either
         (error . ("Error reading TLS credentials: " ++))
         (return . TLS.Credentials . return)
@@ -418,6 +414,7 @@ runTLSClientStartTLS TLSClientConfig {..} app = do
             )
 
 
+{- Never exposed for some reason
 -- | Read from a 'NC.Connection'.
 --
 -- Since 1.0.2
@@ -436,3 +433,4 @@ sourceConnection conn =
 -- Since 1.0.2
 sinkConnection :: MonadIO m => NC.Connection -> Consumer S.ByteString m ()
 sinkConnection conn = awaitForever (liftIO . NC.connectionPut conn)
+-}

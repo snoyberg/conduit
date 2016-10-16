@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -fno-warn-warnings-deprecations #-} -- ErrorT
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE Safe #-}
 -- | Allow monad transformers to be run\/eval\/exec in a section of conduit
@@ -382,7 +383,7 @@ execStateC s p = fmap snd $ runStateC s p
 --
 -- Since 1.0.11
 writerLC
-  :: (Monad m, Monad (t (WL.WriterT w m)), MonadTrans t, Monoid w,
+  :: (Monad m, Monad (t (WL.WriterT w m)), MonadTrans t, Data.Monoid.Monoid w,
       MFunctor t) =>
      t m (b, w) -> t (WL.WriterT w m) b
 writerLC p = do

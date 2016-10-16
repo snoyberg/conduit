@@ -1,4 +1,5 @@
 {-# OPTIONS_HADDOCK not-home #-}
+{-# OPTIONS_GHC -fno-warn-warnings-deprecations #-} -- ErrorT
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -30,7 +31,7 @@ module Control.Monad.Trans.Resource.Internal(
 ) where
 
 import Control.Exception (throw,Exception,SomeException)
-import Control.Applicative (Applicative (..), Alternative(..))
+import Control.Applicative as A (Applicative (..), Alternative(..))
 import Control.Monad (MonadPlus(..))
 import Control.Monad.Fix (MonadFix(..))
 import Control.Monad.Trans.Control
@@ -73,8 +74,8 @@ import qualified Data.IntMap as IntMap
 import qualified Data.IORef as I
 import Data.Monoid
 import Data.Typeable
-import Data.Word(Word)
-import Prelude hiding (catch)
+import Data.Word (Word)
+import Prelude
 import Data.Acquire.Internal (ReleaseType (..))
 
 import Control.Monad.Morph
@@ -104,7 +105,7 @@ class (MonadThrow m, MonadIO m, Applicative m, MonadBase IO m) => MonadResource 
 data ReleaseKey = ReleaseKey !(I.IORef ReleaseMap) !Int
     deriving Typeable
 
-type RefCount = Word
+type RefCount = Data.Word.Word
 type NextKey = Int
 
 data ReleaseMap =
@@ -153,7 +154,7 @@ instance MonadMask m => MonadMask (ResourceT m) where
   uninterruptibleMask a =
     ResourceT $ \e -> uninterruptibleMask $ \u -> unResourceT (a $ q u) e
       where q u (ResourceT b) = ResourceT (u . b)
-instance (MonadThrow m, MonadBase IO m, MonadIO m, Applicative m) => MonadResource (ResourceT m) where
+instance (MonadThrow m, MonadBase IO m, MonadIO m, A.Applicative m) => MonadResource (ResourceT m) where
     liftResourceT = transResourceT liftIO
 
 -- | Transform the monad a @ResourceT@ lives in. This is most often used to
@@ -230,7 +231,7 @@ instance Applicative m => Applicative (ResourceT m) where
         mf r <*> ma r
 
 -- | Since 1.1.5
-instance Alternative m => Alternative (ResourceT m) where
+instance A.Alternative m => Alternative (ResourceT m) where
     empty = ResourceT $ \_ -> empty
     (ResourceT mf) <|> (ResourceT ma) = ResourceT $ \r -> mf r <|> ma r
 

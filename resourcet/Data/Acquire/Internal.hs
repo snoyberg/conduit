@@ -15,7 +15,7 @@ module Data.Acquire.Internal
     , mkAcquireType
     ) where
 
-import Control.Applicative (Applicative (..))
+import Control.Applicative as A (Applicative (..))
 import Control.Monad.Base (MonadBase (..))
 import Control.Monad.IO.Class (MonadIO (..))
 import Control.Monad.Trans.Control (MonadBaseControl, control)
@@ -52,7 +52,7 @@ newtype Acquire a = Acquire ((forall b. IO b -> IO b) -> IO (Allocated a))
 
 instance Functor Acquire where
     fmap = liftM
-instance Applicative Acquire where
+instance A.Applicative Acquire where
     pure a = Acquire (\_ -> return (Allocated a (const $ return ())))
     (<*>) = ap
 

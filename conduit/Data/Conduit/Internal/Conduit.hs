@@ -85,8 +85,8 @@ module Data.Conduit.Internal.Conduit
     , sequenceConduits
     ) where
 
-import Prelude hiding (catch)
-import Control.Applicative (Applicative (..))
+import Prelude
+import Control.Applicative as A (Applicative (..))
 import Control.Exception.Lifted as E (Exception)
 import qualified Control.Exception.Lifted as E (catch)
 import Control.Monad (liftM, when, liftM2, ap)
@@ -99,7 +99,7 @@ import Control.Monad.Trans.Class (MonadTrans (lift))
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Base (MonadBase (liftBase))
 import Data.Void (Void, absurd)
-import Data.Monoid (Monoid (mappend, mempty))
+import Data.Monoid (Monoid (..))
 import Control.Monad.Trans.Resource
 import qualified Data.IORef as I
 import Control.Monad.Morph (MFunctor (..))
@@ -124,7 +124,7 @@ newtype ConduitM i o m r = ConduitM
 instance Functor (ConduitM i o m) where
     fmap f (ConduitM c) = ConduitM $ \rest -> c (rest . f)
 
-instance Applicative (ConduitM i o m) where
+instance A.Applicative (ConduitM i o m) where
     pure x = ConduitM ($ x)
     {-# INLINE pure #-}
     (<*>) = ap
@@ -245,7 +245,7 @@ instance MonadResource m => MonadResource (ConduitM i o m) where
     liftResourceT = lift . liftResourceT
     {-# INLINE liftResourceT #-}
 
-instance Monad m => Monoid (ConduitM i o m ()) where
+instance Monad m => Data.Monoid.Monoid (ConduitM i o m ()) where
     mempty = return ()
     {-# INLINE mempty #-}
     mappend = (>>)
@@ -1080,7 +1080,7 @@ instance Monad m => Applicative (ZipSource m) where
 -- Implemented on top of @ZipSource@, see that data type for more details.
 --
 -- Since 1.0.13
-sequenceSources :: (Traversable f, Monad m) => f (Source m o) -> Source m (f o)
+sequenceSources :: (Data.Traversable.Traversable f, Monad m) => f (Source m o) -> Source m (f o)
 sequenceSources = getZipSource . sequenceA . fmap ZipSource
 
 -- | A wrapper for defining an 'Applicative' instance for 'Sink's which allows
