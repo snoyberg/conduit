@@ -1431,12 +1431,6 @@ import "cryptonite-conduit" Crypto.Hash.Conduit (sinkHash)
 import "cryptonite" Crypto.Hash (Digest, SHA256)
 import Data.Void (Void)
 
-average :: Monad m => ConduitM Double Void m Double
-average =
-    getZipSink (go <$> ZipSink sumC <*> ZipSink lengthC)
-  where
-    go total len = total / fromIntegral len
-
 main :: IO ()
 main = do
     digest <- runConduitRes
@@ -1461,12 +1455,6 @@ import "cryptonite-conduit" Crypto.Hash.Conduit (sinkHash)
 import "cryptonite" Crypto.Hash (Digest, SHA256)
 import Data.Void (Void)
 import Network.HTTP.Simple (httpSink)
-
-average :: Monad m => ConduitM Double Void m Double
-average =
-    getZipSink (go <$> ZipSink sumC <*> ZipSink lengthC)
-  where
-    go total len = total / fromIntegral len
 
 main :: IO ()
 main = do
