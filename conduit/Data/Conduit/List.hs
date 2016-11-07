@@ -618,8 +618,7 @@ mapFoldableMC f = awaitForever $ F.mapM_ yield <=< lift . f
 STREAMING(mapFoldableM, mapFoldableMC, mapFoldableMS, f)
 
 -- | Consume all values from the stream and return as a list. Note that this
--- will pull all values into memory. For a lazy variant, see
--- "Data.Conduit.Lazy".
+-- will pull all values into memory.
 --
 -- Subject to fusion
 --
