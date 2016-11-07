@@ -132,7 +132,7 @@ resourceMask r = liftResourceT (resourceMaskRIO r)
 
 allocateRIO :: IO a -> (a -> IO ()) -> ResourceT IO (ReleaseKey, a)
 allocateRIO acquire rel = ResourceT $ \istate -> liftIO $ E.mask $ \restore -> do
-    a <- restore acquire
+    a <- acquire
     key <- register' istate $ rel a
     return (key, a)
 

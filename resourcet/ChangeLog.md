@@ -1,3 +1,7 @@
+## 1.1.8.1
+
+* Allocation actions should be masked
+
 ## 1.1.8
 
 * Add `instance MonadFix ResourceT`
