@@ -131,7 +131,7 @@ resourceMask :: MonadResource m => ((forall a. ResourceT IO a -> ResourceT IO a)
 resourceMask r = liftResourceT (resourceMaskRIO r)
 
 allocateRIO :: IO a -> (a -> IO ()) -> ResourceT IO (ReleaseKey, a)
-allocateRIO acquire rel = ResourceT $ \istate -> liftIO $ E.mask $ \restore -> do
+allocateRIO acquire rel = ResourceT $ \istate -> liftIO $ E.mask_ $ do
     a <- acquire
     key <- register' istate $ rel a
     return (key, a)
