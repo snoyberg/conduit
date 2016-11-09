@@ -1,3 +1,7 @@
+## 1.1.14
+
+* `sinkFileCautious`
+
 ## 1.1.13.3
 
 * `withCheckedProcessCleanup` properly closes opened `Handle`s

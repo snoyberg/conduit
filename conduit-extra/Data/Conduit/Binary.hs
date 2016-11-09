@@ -22,6 +22,7 @@ module Data.Conduit.Binary
     , sourceHandleRangeWithBuffer
       -- ** Sinks
     , sinkFile
+    , sinkFileCautious
     , sinkHandle
     , sinkIOHandle
       -- ** Conduits
@@ -80,6 +81,11 @@ import Foreign.Ptr (Ptr)
 #ifndef ALLOW_UNALIGNED_ACCESS
 import Foreign.Marshal (alloca, copyBytes)
 #endif
+import System.Directory (renameFile)
+import System.FilePath (takeDirectory, takeFileName, (<.>))
+import System.IO (hClose, openBinaryTempFile)
+import Control.Exception (throwIO, catch)
+import System.IO.Error (isDoesNotExistError)
 
 -- | Stream the contents of a file as binary data.
 --
@@ -244,6 +250,38 @@ sinkFile :: MonadResource m
          => FilePath
          -> Consumer S.ByteString m ()
 sinkFile fp = sinkIOHandle (IO.openBinaryFile fp IO.WriteMode)
+
+-- | Cautious version of 'sinkFile'. The idea here is to stream the
+-- values to a temporary file in the same directory of the destination
+-- file, and only on successfully writing the entire file, moves it
+-- atomically to the destination path.
+--
+-- In the event of an exception occurring, the temporary file will be
+-- deleted and no move will be made. If the application shuts down
+-- without running exception handling (such as machine failure or a
+-- SIGKILL), the temporary file will remain and the destination file
+-- will be untouched.
+--
+-- @since 1.1.14
+sinkFileCautious
+  :: MonadResource m
+  => FilePath
+  -> ConduitM S.ByteString o m ()
+sinkFileCautious fp =
+    bracketP acquire cleanup inner
+  where
+    acquire = openBinaryTempFile (takeDirectory fp) (takeFileName fp <.> "tmp")
+    cleanup (tmpFP, h) = do
+        hClose h
+        removeFile tmpFP `catch` \e ->
+            if isDoesNotExistError e
+                then return ()
+                else throwIO e
+    inner (tmpFP, h) = do
+        sinkHandle h
+        liftIO $ do
+            hClose h
+            renameFile tmpFP fp
 
 -- | Stream the contents of the input to a file, and also send it along the
 -- pipeline. Similar in concept to the Unix command @tee@.

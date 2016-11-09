@@ -157,6 +157,22 @@ spec = describe "Data.Conduit.Binary" $ do
                 lbs' `shouldBe` lbs
                 fromIntegral len `shouldBe` L.length lbs'
 
+    describe "sinkFileCautious" $ do
+      it' "success" $ do
+        runResourceT $ CB.sourceFile "conduit-extra.cabal" C.$$ CB.sinkFileCautious "tmp"
+        bs1 <- S.readFile "conduit-extra.cabal"
+        bs2 <- S.readFile "tmp"
+        bs2 `shouldBe` bs1
+      it' "failure" $ do
+        let bs1 = "This is the original content"
+        S.writeFile "tmp" bs1
+        runResourceT
+               ( (CB.sourceFile "conduit-extra.cabal" >> error "FIXME")
+            C.$$ CB.sinkFileCautious "tmp")
+               `shouldThrow` anyException
+        bs2 <- S.readFile "tmp"
+        bs2 `shouldBe` bs1
+
     describe "Data.Conduit.Binary.mapM_" $ do
         prop "telling works" $ \bytes ->
             let lbs = L.pack bytes
