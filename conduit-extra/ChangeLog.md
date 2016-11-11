@@ -1,3 +1,7 @@
+## 1.1.15
+
+* `sinkTempFile` and `sinkSystemTempFile`
+
 ## 1.1.14
 
 * `sinkFileCautious`

@@ -23,6 +23,8 @@ module Data.Conduit.Binary
       -- ** Sinks
     , sinkFile
     , sinkFileCautious
+    , sinkTempFile
+    , sinkSystemTempFile
     , sinkHandle
     , sinkIOHandle
       -- ** Conduits
@@ -282,6 +284,39 @@ sinkFileCautious fp =
         liftIO $ do
             hClose h
             renameFile tmpFP fp
+
+-- | Stream data into a temporary file in the given directory with the
+-- given filename pattern, and return the temporary filename. The
+-- temporary file will be automatically deleted when exiting the
+-- active 'ResourceT' block, if it still exists.
+--
+-- @since 1.1.15
+sinkTempFile :: MonadResource m
+             => FilePath -- ^ temp directory
+             -> String -- ^ filename pattern
+             -> ConduitM ByteString o m FilePath
+sinkTempFile tmpdir pattern = do
+    (_releaseKey, (fp, h)) <- allocate
+        (IO.openBinaryTempFile tmpdir pattern)
+        (\(fp, h) -> IO.hClose h `finally` (removeFile fp) `catch` \e ->
+            if isDoesNotExistError e
+                then return ()
+                else throwIO e)
+    sinkHandle h
+    liftIO $ IO.hClose h
+    return fp
+
+-- | Same as 'sinkTempFile', but will use the default temp file
+-- directory for the system as the first argument.
+--
+-- @since 1.1.15
+sinkSystemTempFile
+    :: MonadResource m
+    => String -- ^ filename pattern
+    -> ConduitM ByteString o m FilePath
+sinkSystemTempFile pattern = do
+    dir <- liftIO getTemporaryDirectory
+    sinkTempFile dir pattern
 
 -- | Stream the contents of the input to a file, and also send it along the
 -- pipeline. Similar in concept to the Unix command @tee@.

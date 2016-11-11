@@ -24,6 +24,7 @@ import Foreign.Storable (Storable, sizeOf, pokeByteOff, alignment)
 import Data.Typeable (Typeable)
 import Data.ByteString.Internal (createAndTrim')
 import Foreign.Ptr (alignPtr, minusPtr)
+import System.Directory (doesFileExist)
 import System.IO.Unsafe (unsafePerformIO)
 import Control.Applicative ((<$>), (<*>))
 
@@ -172,6 +173,16 @@ spec = describe "Data.Conduit.Binary" $ do
                `shouldThrow` anyException
         bs2 <- S.readFile "tmp"
         bs2 `shouldBe` bs1
+
+    it "sinkSystemTempFile" $ do
+        let bs = "Hello World!"
+        fp <- runResourceT $ do
+            fp <- C.yield bs C.$$ CB.sinkSystemTempFile "temp-file-test"
+            actual <- liftIO $ S.readFile fp
+            liftIO $ actual `shouldBe` bs
+            return fp
+        exists <- doesFileExist fp
+        exists `shouldBe` False
 
     describe "Data.Conduit.Binary.mapM_" $ do
         prop "telling works" $ \bytes ->
