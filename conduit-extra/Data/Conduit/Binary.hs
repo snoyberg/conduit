@@ -275,7 +275,7 @@ sinkFileCautious fp =
     acquire = openBinaryTempFile (takeDirectory fp) (takeFileName fp <.> "tmp")
     cleanup (tmpFP, h) = do
         hClose h
-        removeFile tmpFP `catch` \e ->
+        removeFile tmpFP `Control.Exception.catch` \e ->
             if isDoesNotExistError e
                 then return ()
                 else throwIO e
@@ -298,10 +298,10 @@ sinkTempFile :: MonadResource m
 sinkTempFile tmpdir pattern = do
     (_releaseKey, (fp, h)) <- allocate
         (IO.openBinaryTempFile tmpdir pattern)
-        (\(fp, h) -> IO.hClose h `finally` (removeFile fp) `catch` \e ->
+        (\(fp, h) -> IO.hClose h `finally` (removeFile fp `Control.Exception.catch` \e ->
             if isDoesNotExistError e
                 then return ()
-                else throwIO e)
+                else throwIO e))
     sinkHandle h
     liftIO $ IO.hClose h
     return fp
