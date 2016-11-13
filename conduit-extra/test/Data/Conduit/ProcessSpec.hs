@@ -73,7 +73,7 @@ spec = describe "Data.Conduit.Process" $ do
     it "feeds stdin" $ do
         let mystr = "this is a test string" :: S.ByteString
         sourceCmdWithStreams "cat"
-                             (mapM_ yield . L.toChunks $ L.fromStrict mystr)
+                             (yield mystr)
                              CL.consume -- stdout
                              CL.consume -- stderr
                 `shouldReturn` (ExitSuccess, [mystr], [])
