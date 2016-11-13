@@ -12,6 +12,7 @@ import qualified Data.Conduit as C
 import qualified Data.Conduit.List as CL
 import           Data.Serialize
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Char8 as S8
 import qualified Data.List as L
 import           Data.Word
 import           System.Exit
@@ -217,7 +218,7 @@ conduittest17 = TestCase (assertEqual "Leftover failure conduit with broken inpu
 -- see https://github.com/snoyberg/conduit/issues/246
 conduittest18 :: Test
 conduittest18 = TestCase $ assertEqual "Deals with Get that consumes everything"
-    (Right ["hello"])
+    (Right [S8.pack "hello"])
     (runIdentity $ runExceptionT
                  $ (C.yield "hello"
                C.$= conduitGet2 slurp
