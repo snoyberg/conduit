@@ -1684,6 +1684,30 @@ function for this.
 
 _Further exercises wanted, please feel free to send PRs!_
 
+## Legacy syntax
+
+As of version 1.2.8 of conduit, released September 2016, the above used
+operators and function names are recommended. However, prior to that, an
+alternate set of functions and operators was used instead. You may still find
+code and documentation out there which follows the legacy syntax, so it's worth
+being aware of it. Basically:
+
+* Instead of `.|`, we had three operators: `$=`, `=$`, and `=$=`. These were
+  all synonyms, and existed for historical reasons.
+* The `$$` operator is a combination of `runConduit` and `.|`.
+
+To put it simply in code:
+
+```haskell
+x $=  y = x .| y
+x =$  y = x .| y
+x =$= y = x .| y
+x $$  y = runConduit (x .| y)
+```
+
+If the old operators seem needlessly confusing/redundant... well, that's why we
+have new operators :).
+
 ## Further reading
 
 Some blogs posts making heavy usage of conduit:
