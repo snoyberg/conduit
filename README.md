@@ -390,7 +390,7 @@ Let's also look at the type of our `.|` operator:
 
 This shows us that:
 
-* The output from the first component much match the input from the
+* The output from the first component must match the input from the
   second
 * We ignore the result type from the first component, and keep the
   result of the second
