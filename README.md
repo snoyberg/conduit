@@ -92,7 +92,7 @@ list. The conduit version does the exact same thing, but:
   of a conduit pipeline together.
 * Instead of `take`, we use `takeC`. The `Conduit` module provides
   many functions matching common list functions, but appends a `C` to
-  disambguate the names. (If you'd prefer to use a qualified import,
+  disambiguate the names. (If you'd prefer to use a qualified import,
   check out
   [Data.Conduit.Combinators](https://www.stackage.org/haddock/lts-6.19/conduit-combinators-1.0.8/Data-Conduit-Combinators.html)).
 * To consume all of our results back into a list, we use `sinkList`
