@@ -25,8 +25,8 @@ module Control.Monad.Trans.Resource
       -- * Unwrap
     , runResourceT
       -- * Special actions
-    , resourceForkIO
     , resourceForkWith
+    , resourceForkIO
       -- * Monad transformation
     , transResourceT
     , joinResourceT
@@ -244,36 +244,18 @@ runException_ = runIdentity . runExceptionT_
 -- shared by multiple threads. Once the last thread exits, all remaining
 -- resources will be released.
 --
+-- The first parameter is a function which will be used to create the
+-- thread, such as @forkIO@ or @async@.
+--
 -- Note that abuse of this function will greatly delay the deallocation of
 -- registered resources. This function should be used with care. A general
 -- guideline:
 --
 -- If you are allocating a resource that should be shared by multiple threads,
 -- and will be held for a long time, you should allocate it at the beginning of
--- a new @ResourceT@ block and then call @resourceForkIO@ from there.
+-- a new @ResourceT@ block and then call @resourceForkWith@ from there.
 --
--- Since 0.3.0
-resourceForkIO :: MonadBaseControl IO m => ResourceT m () -> ResourceT m ThreadId
-resourceForkIO (ResourceT f) = ResourceT $ \r -> L.mask $ \restore ->
-    -- We need to make sure the counter is incremented before this call
-    -- returns. Otherwise, the parent thread may call runResourceT before
-    -- the child thread increments, and all resources will be freed
-    -- before the child gets called.
-    bracket_
-        (stateAlloc r)
-        (return ())
-        (return ())
-        (liftBaseDiscard forkIO $ bracket_
-            (return ())
-            (stateCleanup ReleaseNormal r)
-            (stateCleanup ReleaseException r)
-            (restore $ f r))
-
--- | This is identical to @resourceForkIO@, except that it allows the user
--- to specify a function other than @forkIO@ (e.g., @async@) to create
--- the thread.
---
--- Since 1.1.9
+-- @since 1.1.9
 resourceForkWith :: MonadBaseControl IO m => (IO () -> IO a) -> ResourceT m () -> ResourceT m a
 resourceForkWith g (ResourceT f) = ResourceT $ \r -> L.mask $ \restore ->
     -- We need to make sure the counter is incremented before this call
@@ -289,6 +271,14 @@ resourceForkWith g (ResourceT f) = ResourceT $ \r -> L.mask $ \restore ->
             (stateCleanup ReleaseNormal r)
             (stateCleanup ReleaseException r)
             (restore $ f r))
+
+-- | Launch a new reference counted resource context using @forkIO@.
+--
+-- This is defined as @resourceForkWith forkIO@.
+--
+-- @since 0.3.0
+resourceForkIO :: MonadBaseControl IO m => ResourceT m () -> ResourceT m ThreadId
+resourceForkIO = resourceForkWith forkIO
 
 -- | A @Monad@ which can be used as a base for a @ResourceT@.
 --
