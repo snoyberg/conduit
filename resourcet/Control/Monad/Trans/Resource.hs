@@ -26,6 +26,7 @@ module Control.Monad.Trans.Resource
     , runResourceT
       -- * Special actions
     , resourceForkIO
+    , resourceForkWith
       -- * Monad transformation
     , transResourceT
     , joinResourceT
@@ -268,7 +269,26 @@ resourceForkIO (ResourceT f) = ResourceT $ \r -> L.mask $ \restore ->
             (stateCleanup ReleaseException r)
             (restore $ f r))
 
-
+-- | This is identical to @resourceForkIO@, except that it allows the user
+-- to specify a function other than @forkIO@ (e.g., @async@) to create
+-- the thread.
+--
+-- Since 1.1.9
+resourceForkWith :: MonadBaseControl IO m => (IO () -> IO a) -> ResourceT m () -> ResourceT m a
+resourceForkWith g (ResourceT f) = ResourceT $ \r -> L.mask $ \restore ->
+    -- We need to make sure the counter is incremented before this call
+    -- returns. Otherwise, the parent thread may call runResourceT before
+    -- the child thread increments, and all resources will be freed
+    -- before the child gets called.
+    bracket_
+        (stateAlloc r)
+        (return ())
+        (return ())
+        (liftBaseDiscard g $ bracket_
+            (return ())
+            (stateCleanup ReleaseNormal r)
+            (stateCleanup ReleaseException r)
+            (restore $ f r))
 
 -- | A @Monad@ which can be used as a base for a @ResourceT@.
 --

@@ -1,3 +1,7 @@
+## 1.1.9
+
+* Add generalized version of resourceForkIO
+
 ## 1.1.8.1
 
 * Allocation actions should be masked
