@@ -236,19 +236,11 @@ main = hspec $ do
                     C.=$ CL.fold (+) 0
             x `shouldBe` 2 * sum [1..10 :: Int]
 
-        it "chunksOf" $ do
-            let input = [1..16] :: [Int]
-            x <- runResourceT $ CL.sourceList input
-                    C.$$ CL.chunksOf 5
-                    C.=$ CL.consume
-            x `shouldBe` DLS.chunksOf 5 input
+        prop "chunksOf" $ equivToList
+            (DLS.chunksOf 5 :: [Int]->[[Int]]) (CL.chunksOf 5)
 
-        it "chunksOf (negative)" $ do
-            let input = [1..16] :: [Int]
-            x <- runResourceT $ CL.sourceList input
-                    C.$$ CL.chunksOf (-5)
-                    C.=$ CL.consume
-            x `shouldBe` map pure input
+        prop "chunksOf (negative)" $ equivToList
+            (map (:[]) :: [Int]->[[Int]]) (CL.chunksOf (-5))
 
         it "groupBy" $ do
             let input = [1::Int, 1, 2, 3, 3, 3, 4, 5, 5]
