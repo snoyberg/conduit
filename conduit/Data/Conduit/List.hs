@@ -638,19 +638,19 @@ STREAMING0(consume, consumeC, consumeS)
 --
 -- Subject to fusion
 --
--- Since ???
+-- Since 1.2.9
 chunksOf :: Monad m => Int -> Conduit a m [a]
 chunksOf n =
     start
   where
-    start = await >>= maybe (return ()) (loop n id)
+    start = await >>= maybe (return ()) (\x -> loop n (x:))
 
-    loop count rest x =
-        await >>= maybe (yield (x : rest [])) go
+    loop !count rest =
+        await >>= maybe (yield (rest [])) go
       where
         go y
-            | count > 1 = loop (count - 1) (rest . (y:)) x
-            | otherwise = yield (x : rest []) >> loop n id y
+            | count > 1 = loop (count - 1) (rest . (y:))
+            | otherwise = yield (rest []) >> loop n (y:)
 
 -- | Grouping input according to an equality function.
 --
