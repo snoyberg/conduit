@@ -16,6 +16,7 @@ import Control.Exception (throw)
 import Control.Monad.Trans.Resource as C (runResourceT)
 import Data.Maybe   (fromMaybe,catMaybes,fromJust)
 import qualified Data.List as DL
+import qualified Data.List.Split as DLS (chunksOf)
 import Control.Monad.ST (runST)
 import Data.Monoid
 import qualified Data.IORef as I
@@ -234,6 +235,20 @@ main = hspec $ do
                     C.$$ CL.map (* 2)
                     C.=$ CL.fold (+) 0
             x `shouldBe` 2 * sum [1..10 :: Int]
+
+        it "chunksOf" $ do
+            let input = [1..16] :: [Int]
+            x <- runResourceT $ CL.sourceList input
+                    C.$$ CL.chunksOf 5
+                    C.=$ CL.consume
+            x `shouldBe` DLS.chunksOf 5 input
+
+        it "chunksOf (negative)" $ do
+            let input = [1..16] :: [Int]
+            x <- runResourceT $ CL.sourceList input
+                    C.$$ CL.chunksOf (-5)
+                    C.=$ CL.consume
+            x `shouldBe` map pure input
 
         it "groupBy" $ do
             let input = [1::Int, 1, 2, 3, 3, 3, 4, 5, 5]

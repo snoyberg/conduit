@@ -50,6 +50,7 @@ module Data.Conduit.List
     , scanl
     , scan
     , mapAccum
+    , chunksOf
     , groupBy
     , groupOn1
     , isolate
@@ -80,6 +81,7 @@ import Prelude
     , Enum, Eq
     , maybe
     , (<=)
+    , (>)
     )
 import Data.Monoid (Monoid, mempty, mappend)
 import qualified Data.Foldable as F
@@ -630,6 +632,25 @@ consumeC =
     loop front = await >>= maybe (return $ front []) (\x -> loop $ front . (x:))
 {-# INLINE consumeC #-}
 STREAMING0(consume, consumeC, consumeS)
+
+-- | Group a stream into chunks of a given size. The last chunk may contain
+-- fewer than n elements.
+--
+-- Subject to fusion
+--
+-- Since ???
+chunksOf :: Monad m => Int -> Conduit a m [a]
+chunksOf n =
+    start
+  where
+    start = await >>= maybe (return ()) (loop n id)
+
+    loop count rest x =
+        await >>= maybe (yield (x : rest [])) go
+      where
+        go y
+            | count > 1 = loop (count - 1) (rest . (y:)) x
+            | otherwise = yield (x : rest []) >> loop n id y
 
 -- | Grouping input according to an equality function.
 --
