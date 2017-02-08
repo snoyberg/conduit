@@ -1,5 +1,5 @@
 Name:                conduit
-Version:             1.2.8
+Version:             1.2.9
 Synopsis:            Streaming data processing library.
 description:
     `conduit` is a solution to the streaming data problem, allowing for production,
@@ -64,6 +64,7 @@ test-suite test
                    , containers
                    , exceptions >= 0.6
                    , safe
+                   , split >= 0.2.0.0
     if !impl(ghc>=7.9)
         build-depends: void
     ghc-options:     -Wall

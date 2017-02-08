@@ -1,3 +1,7 @@
+## 1.2.9
+
+* `chunksOf` [#296](https://github.com/snoyberg/conduit/pull/296)
+
 ## 1.2.8
 
 * Implement
