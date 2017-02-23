@@ -42,7 +42,7 @@ somethingElse = liftIO $ putStrLn
     "This could take a long time, don't delay releasing the resource!"
 ```
 
-Try entering a valid value, such as 3, and then enter 0. Notice that in both cases the "Freeing scarce resource" message it printed. And by using `release` before `somethingElse`, we guarantee that the resource is freed *before* running the potentially long process.
+Try entering a valid value, such as 3, and then enter 0. Notice that in both cases the "Freeing scarce resource" message is printed. And by using `release` before `somethingElse`, we guarantee that the resource is freed *before* running the potentially long process.
 
 In this specific case, we could easily represent our code in terms of bracket with a little refactoring.
 
