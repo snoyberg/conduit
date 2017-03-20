@@ -589,7 +589,7 @@ main :: IO ()
 main = runConduit $ yieldMany [1..10] .| intersperseC 0 .| mapM_C print
 ```
 
-It's also possible to "flatten out" a conduit, but converting a stream
+It's also possible to "flatten out" a conduit, by converting a stream
 of chunks (like a list of vector) of data into the individual values.
 
 ```haskell
