@@ -100,7 +100,7 @@ release :: MonadIO m => ReleaseKey -> m ()
 release (ReleaseKey istate rk) = liftIO $ release' istate rk
     (maybe (return ()) id)
 
--- | Unprotect resource from cleanup actions, this allowes you to send
+-- | Unprotect resource from cleanup actions; this allows you to send
 -- resource into another resourcet process and reregister it there.
 -- It returns an release action that should be run in order to clean
 -- resource or Nothing in case if resource is already freed.
