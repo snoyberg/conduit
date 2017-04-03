@@ -854,6 +854,15 @@ main = hspec $ do
             x <- I.readIORef ref
             x `shouldBe` (-1)
 
+        it "handles the last input correctly #304" $ do
+            ref <- I.newIORef (-1 :: Int)
+            let sink = CL.mapM_ (I.writeIORef ref)
+                conduit = C.passthroughSink sink (const (return ()))
+            res <- mapM_ C.yield [1..] C.$$ conduit C.=$ CL.take 5
+            res `shouldBe` [1..5]
+            x <- I.readIORef ref
+            x `shouldBe` 5
+
     describe "mtl instances" $ do
         it "ErrorT" $ do
             let src = flip catchError (const $ C.yield 4) $ do

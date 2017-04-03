@@ -1,3 +1,9 @@
+## 1.2.9.1
+
+* Ensure downstream and inner sink receive same inputs in
+  `passthroughSink`
+  [#304](https://github.com/snoyberg/conduit/issues/304)
+
 ## 1.2.9
 
 * `chunksOf` [#296](https://github.com/snoyberg/conduit/pull/296)
