@@ -8,6 +8,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE Trustworthy #-}
+{-# LANGUAGE TypeFamilies #-}
 module Data.Conduit.Internal.Conduit
     ( -- ** Types
       ConduitM (..)
@@ -98,6 +99,7 @@ import Control.Monad.State.Class(MonadState(..))
 import Control.Monad.Trans.Class (MonadTrans (lift))
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Base (MonadBase (liftBase))
+import Control.Monad.Primitive
 import Data.Void (Void, absurd)
 import Data.Monoid (Monoid (mappend, mempty))
 import Control.Monad.Trans.Resource
@@ -250,6 +252,10 @@ instance Monad m => Monoid (ConduitM i o m ()) where
     {-# INLINE mempty #-}
     mappend = (>>)
     {-# INLINE mappend #-}
+
+instance PrimMonad m => PrimMonad (ConduitM i o m) where
+  type PrimState (ConduitM i o m) = PrimState m
+  primitive = lift . primitive
 
 -- | Provides a stream of output values, without consuming any input or
 -- producing a final result.
