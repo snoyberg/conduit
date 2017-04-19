@@ -7,6 +7,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE Trustworthy #-}
+{-# LANGUAGE TypeFamilies #-}
 module Data.Conduit.Internal.Pipe
     ( -- ** Types
       Pipe (..)
@@ -55,6 +56,7 @@ import Control.Monad.State.Class(MonadState(..))
 import Control.Monad.Trans.Class (MonadTrans (lift))
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Base (MonadBase (liftBase))
+import Control.Monad.Primitive (PrimMonad, PrimState, primitive)
 import Data.Void (Void, absurd)
 import Data.Monoid (Monoid (mappend, mempty))
 import Control.Monad.Trans.Resource
@@ -154,6 +156,10 @@ instance Monad m => Monoid (Pipe l i o u m ()) where
     {-# INLINE mempty #-}
     mappend = (>>)
     {-# INLINE mappend #-}
+
+instance PrimMonad m => PrimMonad (Pipe l i o u m) where
+  type PrimState (Pipe l i o u m) = PrimState m
+  primitive = lift . primitive
 
 instance MonadResource m => MonadResource (Pipe l i o u m) where
     liftResourceT = lift . liftResourceT

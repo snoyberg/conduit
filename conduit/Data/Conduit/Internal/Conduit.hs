@@ -99,7 +99,7 @@ import Control.Monad.State.Class(MonadState(..))
 import Control.Monad.Trans.Class (MonadTrans (lift))
 import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Base (MonadBase (liftBase))
-import Control.Monad.Primitive
+import Control.Monad.Primitive (PrimMonad, PrimState, primitive)
 import Data.Void (Void, absurd)
 import Data.Monoid (Monoid (mappend, mempty))
 import Control.Monad.Trans.Resource

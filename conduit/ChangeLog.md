@@ -1,3 +1,8 @@
+## 1.2.10
+
+* Add `PrimMonad` instances for `ConduitM` and `Pipe`
+  [#306](https://github.com/snoyberg/conduit/pull/306)
+
 ## 1.2.9.1
 
 * Ensure downstream and inner sink receive same inputs in
