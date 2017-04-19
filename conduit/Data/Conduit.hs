@@ -12,6 +12,7 @@ module Data.Conduit
     , Conduit
     , Sink
     , ConduitM
+    , Void
       -- ** Connect/fuse operators
     , (.|)
     , ($$)
@@ -36,6 +37,7 @@ module Data.Conduit
     , runConduitRes
 
       -- ** Finalization
+    , bracketC
     , bracketP
     , addCleanup
     , yieldOr
@@ -101,55 +103,5 @@ module Data.Conduit
     ) where
 
 import Data.Conduit.Internal.Conduit
+import Data.Conduit.Internal.Deprecated
 import Data.Void (Void)
-import Data.Functor.Identity (Identity, runIdentity)
-import Control.Monad.Trans.Resource (ResourceT, runResourceT)
-import Control.Monad.Trans.Control (MonadBaseControl)
-
--- | Named function synonym for '$$'.
---
--- Since 1.2.3
-connect :: Monad m => Source m a -> Sink a m b -> m b
-connect = ($$)
-
--- | Named function synonym for '=$='.
---
--- Since 1.2.3
-fuse :: Monad m => Conduit a m b -> ConduitM b c m r -> ConduitM a c m r
-fuse = (=$=)
-
-infixr 2 .|
--- | Combine two @Conduit@s together into a new @Conduit@ (aka 'fuse').
---
--- Output from the upstream (left) conduit will be fed into the
--- downstream (right) conduit. Processing will terminate when
--- downstream (right) returns. Leftover data returned from the right
--- @Conduit@ will be discarded.
---
--- @since 1.2.8
-(.|) :: Monad m
-     => ConduitM a b m () -- ^ upstream
-     -> ConduitM b c m r -- ^ downstream
-     -> ConduitM a c m r
-(.|) = fuse
-{-# INLINE (.|) #-}
-
--- | Run a pure pipeline until processing completes, i.e. a pipeline
--- with @Identity@ as the base monad. This is equivalient to
--- @runIdentity . runConduit@.
---
--- @since 1.2.8
-runConduitPure :: ConduitM () Void Identity r -> r
-runConduitPure = runIdentity . runConduit
-{-# INLINE runConduitPure #-}
-
--- | Run a pipeline which acquires resources with @ResourceT@, and
--- then run the @ResourceT@ transformer. This is equivalent to
--- @runResourceT . runConduit@.
---
--- @since 1.2.8
-runConduitRes :: MonadBaseControl IO m
-              => ConduitM () Void (ResourceT m) r
-              -> m r
-runConduitRes = runResourceT . runConduit
-{-# INLINE runConduitRes #-}

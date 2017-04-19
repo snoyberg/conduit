@@ -1,3 +1,8 @@
+## 1.2.11
+
+* Perform deprecations of old identifiers
+* Re-export `Void` from `Data.Conduit`
+
 ## 1.2.10
 
 * Add `PrimMonad` instances for `ConduitM` and `Pipe`
