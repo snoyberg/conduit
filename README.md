@@ -67,7 +67,7 @@ with.
 
 ``` haskell
 #!/usr/bin/env stack
--- stack --resolver lts-6.19 runghc --package conduit-combinators
+-- stack script --resolver lts-8.12 --package conduit-combinators
 {-# LANGUAGE ExtendedDefaultRules #-}
 import Conduit
 
@@ -113,7 +113,7 @@ yet. Let's build up a slightly more complex pipeline:
 
 ```haskell
 #!/usr/bin/env stack
--- stack --resolver lts-6.19 runghc --package conduit-combinators
+-- stack script --resolver lts-8.12 --package conduit-combinators
 {-# LANGUAGE ExtendedDefaultRules #-}
 import Conduit
 
@@ -139,7 +139,7 @@ value individually.
 
 ```haskell
 #!/usr/bin/env stack
--- stack --resolver lts-6.19 runghc --package conduit-combinators
+-- stack script --resolver lts-8.12 --package conduit-combinators
 {-# LANGUAGE ExtendedDefaultRules #-}
 import Conduit
 
@@ -184,7 +184,7 @@ before. Let's see how the list and conduit versions adapt:
 
 ```haskell
 #!/usr/bin/env stack
--- stack --resolver lts-6.19 runghc --package conduit-combinators
+-- stack script --resolver lts-8.12 --package conduit-combinators
 {-# LANGUAGE ExtendedDefaultRules #-}
 import Conduit
 
@@ -295,7 +295,7 @@ here's one way to get the same behavior as was achieved with conduit:
 
 ```haskell
 #!/usr/bin/env stack
--- stack --resolver lts-6.19 runghc --package conduit-combinators
+-- stack script --resolver lts-8.12 --package conduit-combinators
 {-# LANGUAGE ExtendedDefaultRules #-}
 import Conduit
 
@@ -436,7 +436,7 @@ just be a collection of examples.
 
 ```haskell
 #!/usr/bin/env stack
--- stack --resolver lts-6.19 runghc --package conduit-combinators
+-- stack script --resolver lts-8.12 --package conduit-combinators
 {-# LANGUAGE ExtendedDefaultRules #-}
 import Conduit
 
@@ -449,7 +449,7 @@ Summing is straightforward, and can be done if desired with the
 
 ```haskell
 #!/usr/bin/env stack
--- stack --resolver lts-6.19 runghc --package conduit-combinators
+-- stack script --resolver lts-8.12 --package conduit-combinators
 {-# LANGUAGE ExtendedDefaultRules #-}
 import Conduit
 
@@ -461,7 +461,7 @@ You can use `foldMapC` to fold monoids together:
 
 ```haskell
 #!/usr/bin/env stack
--- stack --resolver lts-6.19 runghc --package conduit-combinators
+-- stack script --resolver lts-8.12 --package conduit-combinators
 {-# LANGUAGE ExtendedDefaultRules #-}
 import Conduit
 import Data.Monoid (Sum (..))
@@ -474,7 +474,7 @@ Or you can use `foldC` as a shortened form of `foldMapC id`:
 
 ```haskell
 #!/usr/bin/env stack
--- stack --resolver lts-6.19 runghc --package conduit-combinators
+-- stack script --resolver lts-8.12 --package conduit-combinators
 {-# LANGUAGE ExtendedDefaultRules #-}
 import Conduit
 
@@ -489,7 +489,7 @@ Though if you want to make that easier you can use `unlinesC`:
 
 ```haskell
 #!/usr/bin/env stack
--- stack --resolver lts-6.19 runghc --package conduit-combinators
+-- stack script --resolver lts-8.12 --package conduit-combinators
 {-# LANGUAGE ExtendedDefaultRules #-}
 import Conduit
 
@@ -505,7 +505,7 @@ You can also do monadic folds:
 
 ```haskell
 #!/usr/bin/env stack
--- stack --resolver lts-6.19 runghc --package conduit-combinators
+-- stack script --resolver lts-8.12 --package conduit-combinators
 {-# LANGUAGE ExtendedDefaultRules #-}
 import Conduit
 import Data.Monoid (Product (..))
@@ -525,7 +525,7 @@ Or with `foldMC`:
 
 ```haskell
 #!/usr/bin/env stack
--- stack --resolver lts-6.19 runghc --package conduit-combinators
+-- stack script --resolver lts-8.12 --package conduit-combinators
 {-# LANGUAGE ExtendedDefaultRules #-}
 import Conduit
 import Data.Monoid (Product (..))
@@ -557,7 +557,7 @@ examples, so we'll just blast through some examples.
 
 ```haskell
 #!/usr/bin/env stack
--- stack --resolver lts-6.19 runghc --package conduit-combinators
+-- stack script --resolver lts-8.12 --package conduit-combinators
 {-# LANGUAGE ExtendedDefaultRules #-}
 import Conduit
 
@@ -569,7 +569,7 @@ We can also filter out values:
 
 ```haskell
 #!/usr/bin/env stack
--- stack --resolver lts-6.19 runghc --package conduit-combinators
+-- stack script --resolver lts-8.12 --package conduit-combinators
 {-# LANGUAGE ExtendedDefaultRules #-}
 import Conduit
 
@@ -581,7 +581,7 @@ Or if desired we can add some values between each value in the list:
 
 ```haskell
 #!/usr/bin/env stack
--- stack --resolver lts-6.19 runghc --package conduit-combinators
+-- stack script --resolver lts-8.12 --package conduit-combinators
 {-# LANGUAGE ExtendedDefaultRules #-}
 import Conduit
 
@@ -594,7 +594,7 @@ of chunks (like a list of vector) of data into the individual values.
 
 ```haskell
 #!/usr/bin/env stack
--- stack --resolver lts-6.19 runghc --package conduit-combinators
+-- stack script --resolver lts-8.12 --package conduit-combinators
 {-# LANGUAGE ExtendedDefaultRules #-}
 import Conduit
 
@@ -615,7 +615,7 @@ operations, like base-64 encoding data.
 
 ```haskell
 #!/usr/bin/env stack
--- stack --resolver lts-6.19 runghc --package conduit-combinators
+-- stack script --resolver lts-8.12 --package conduit-combinators --package text
 {-# LANGUAGE ExtendedDefaultRules #-}
 {-# LANGUAGE OverloadedStrings #-}
 import Conduit
@@ -640,7 +640,7 @@ You can also perform monadic actions while transforming. We've seen
 
 ```haskell
 #!/usr/bin/env stack
--- stack --resolver lts-6.19 runghc --package conduit-combinators
+-- stack script --resolver lts-8.12 --package conduit-combinators
 {-# LANGUAGE ExtendedDefaultRules #-}
 {-# LANGUAGE OverloadedStrings #-}
 import Conduit
@@ -663,7 +663,7 @@ on the upstream values without modifying them:
 
 ```haskell
 #!/usr/bin/env stack
--- stack --resolver lts-6.19 runghc --package conduit-combinators
+-- stack script --resolver lts-8.12 --package conduit-combinators
 {-# LANGUAGE ExtendedDefaultRules #-}
 import Conduit
 
@@ -687,7 +687,7 @@ beginning with a data producer:
 
 ```haskell
 #!/usr/bin/env stack
--- stack --resolver lts-6.19 runghc --package conduit-combinators
+-- stack script --resolver lts-8.12 --package conduit-combinators
 {-# LANGUAGE ExtendedDefaultRules #-}
 import Conduit
 
@@ -713,7 +713,7 @@ program will do before you read the explanation following it.
 
 ```haskell
 #!/usr/bin/env stack
--- stack --resolver lts-6.19 runghc --package conduit-combinators
+-- stack script --resolver lts-8.12 --package conduit-combinators
 {-# LANGUAGE ExtendedDefaultRules #-}
 import Conduit
 
@@ -747,7 +747,7 @@ concepts together, and create a transformer using monadic composition.
 
 ```haskell
 #!/usr/bin/env stack
--- stack --resolver lts-6.19 runghc --package conduit-combinators
+-- stack script --resolver lts-8.12 --package conduit-combinators
 {-# LANGUAGE ExtendedDefaultRules #-}
 import Conduit
 
@@ -784,7 +784,7 @@ instead of a collection of them.
 
 ```haskell
 #!/usr/bin/env stack
--- stack --resolver lts-6.19 runghc --package conduit-combinators
+-- stack script --resolver lts-8.12 --package conduit-combinators
 {-# LANGUAGE ExtendedDefaultRules #-}
 import Conduit
 
@@ -796,7 +796,7 @@ Of course, we're not limited to using just a single call to `yield`:
 
 ```haskell
 #!/usr/bin/env stack
--- stack --resolver lts-6.19 runghc --package conduit-combinators
+-- stack script --resolver lts-8.12 --package conduit-combinators
 {-# LANGUAGE ExtendedDefaultRules #-}
 import Conduit
 
@@ -813,7 +813,7 @@ function to get an input value from upstream. For that, we'll use
 
 ```haskell
 #!/usr/bin/env stack
--- stack --resolver lts-6.19 runghc --package conduit-combinators
+-- stack script --resolver lts-8.12 --package conduit-combinators
 {-# LANGUAGE ExtendedDefaultRules #-}
 import Conduit
 
@@ -843,7 +843,7 @@ Of course, things get much more interesting when we combine both
 
 ```haskell
 #!/usr/bin/env stack
--- stack --resolver lts-6.19 runghc --package conduit-combinators
+-- stack script --resolver lts-8.12 --package conduit-combinators
 {-# LANGUAGE ExtendedDefaultRules #-}
 import Conduit
 
@@ -871,7 +871,7 @@ simple example of using the `takeWhileC` function:
 
 ```haskell
 #!/usr/bin/env stack
--- stack --resolver lts-6.19 runghc --package conduit-combinators
+-- stack script --resolver lts-8.12 --package conduit-combinators
 {-# LANGUAGE ExtendedDefaultRules #-}
 import Conduit
 
@@ -888,7 +888,7 @@ implement our own `takeWhileC` with just `await` and `yield`.
 
 ```haskell
 #!/usr/bin/env stack
--- stack --resolver lts-6.19 runghc --package conduit-combinators
+-- stack script --resolver lts-8.12 --package conduit-combinators
 {-# LANGUAGE ExtendedDefaultRules #-}
 import Conduit
 
@@ -938,7 +938,7 @@ our `myTakeWhileC`:
 
 ```haskell
 #!/usr/bin/env stack
--- stack --resolver lts-6.19 runghc --package conduit-combinators
+-- stack script --resolver lts-8.12 --package conduit-combinators
 {-# LANGUAGE ExtendedDefaultRules #-}
 import Conduit
 
@@ -975,7 +975,7 @@ use case. Just to prove it's possible though:
 
 ```haskell
 #!/usr/bin/env stack
--- stack --resolver lts-6.19 runghc --package conduit-combinators
+-- stack script --resolver lts-8.12 --package conduit-combinators
 {-# LANGUAGE ExtendedDefaultRules #-}
 import Conduit
 
@@ -1012,7 +1012,7 @@ downstream_. To see what I mean, consider this example:
 
 ```haskell
 #!/usr/bin/env stack
--- stack --resolver lts-6.19 runghc --package conduit-combinators
+-- stack script --resolver lts-8.12 --package conduit-combinators
 {-# LANGUAGE ExtendedDefaultRules #-}
 import Conduit
 
@@ -1029,7 +1029,7 @@ discard them, you could use `sinkNull`:
 
 ```haskell
 #!/usr/bin/env stack
--- stack --resolver lts-6.19 runghc --package conduit-combinators
+-- stack script --resolver lts-8.12 --package conduit-combinators
 {-# LANGUAGE ExtendedDefaultRules #-}
 import Conduit
 
@@ -1041,7 +1041,7 @@ Now try and guess what the following program outputs:
 
 ```haskell
 #!/usr/bin/env stack
--- stack --resolver lts-6.19 runghc --package conduit-combinators
+-- stack script --resolver lts-8.12 --package conduit-combinators
 {-# LANGUAGE ExtendedDefaultRules #-}
 import Conduit
 
@@ -1057,7 +1057,7 @@ Alright, let's tweak this slightly: what will this one output:
 
 ```haskell
 #!/usr/bin/env stack
--- stack --resolver lts-6.19 runghc --package conduit-combinators
+-- stack script --resolver lts-8.12 --package conduit-combinators
 {-# LANGUAGE ExtendedDefaultRules #-}
 import Conduit
 
@@ -1139,7 +1139,7 @@ Let's copy a file with conduit:
 
 ```haskell
 #!/usr/bin/env stack
--- stack --resolver lts-6.19 runghc --package conduit-combinators
+-- stack script --resolver lts-8.12 --package conduit-combinators --package conduit-extra
 {-# LANGUAGE ExtendedDefaultRules #-}
 import Conduit
 import qualified System.IO as IO
@@ -1190,7 +1190,7 @@ our example as:
 
 ```haskell
 #!/usr/bin/env stack
--- stack --resolver lts-6.19 runghc --package conduit-combinators
+-- stack script --resolver lts-8.12 --package conduit-combinators --package bytestring
 {-# LANGUAGE ExtendedDefaultRules #-}
 import Conduit
 import qualified System.IO as IO
@@ -1220,7 +1220,7 @@ together, copying a file becomes absolutely trivial:
 
 ```haskell
 #!/usr/bin/env stack
--- stack --resolver lts-6.19 runghc --package conduit-combinators
+-- stack script --resolver lts-8.12 --package conduit-combinators
 {-# LANGUAGE ExtendedDefaultRules #-}
 import Conduit
 
@@ -1234,7 +1234,7 @@ extension into the file "all-haskell-files".
 
 ```haskell
 #!/usr/bin/env stack
--- stack --resolver lts-6.19 runghc --package conduit-combinators
+-- stack script --resolver lts-8.12 --package conduit-combinators --package filepath
 {-# LANGUAGE ExtendedDefaultRules #-}
 import Conduit
 import System.FilePath (takeExtension)
@@ -1264,7 +1264,7 @@ straightforward:
 
 ```haskell
 #!/usr/bin/env stack
--- stack --resolver lts-6.19 runghc --package conduit-combinators
+-- stack script --resolver lts-8.12 --package conduit-combinators --package text
 {-# LANGUAGE ExtendedDefaultRules #-}
 import Conduit
 import qualified Data.Text as T
@@ -1275,6 +1275,7 @@ main = runConduitRes
      $ sourceFile "input.txt"
     .| decodeUtf8C
     .| mapC (T.map toUpper)
+    .| encodeUtf8C
     .| stdoutC
 ```
 
@@ -1295,7 +1296,7 @@ straightforward to use. To see it in action:
 
 ```haskell
 #!/usr/bin/env stack
--- stack --resolver lts-6.19 runghc --package conduit-combinators
+-- stack script --resolver lts-8.12 --package conduit-combinators --package text
 {-# LANGUAGE ExtendedDefaultRules #-}
 import Conduit
 import qualified Data.Text as T
@@ -1306,6 +1307,7 @@ main = runConduitRes
      $ sourceFile "input.txt"
     .| decodeUtf8C
     .| omapCE toUpper
+    .| encodeUtf8C
     .| stdoutC
 ```
 
@@ -1317,7 +1319,7 @@ first line of content:
 
 ```haskell
 #!/usr/bin/env stack
--- stack --resolver lts-6.19 runghc --package conduit-combinators
+-- stack script --resolver lts-8.12 --package conduit-combinators --package text
 {-# LANGUAGE ExtendedDefaultRules #-}
 import Conduit
 import qualified Data.Text as T
@@ -1328,6 +1330,7 @@ main = runConduitRes
      $ sourceFile "input.txt"
     .| decodeUtf8C
     .| takeWhileCE (/= '\n')
+    .| encodeUtf8C
     .| stdoutC
 ```
 
@@ -1335,7 +1338,7 @@ Or just the first 5 bytes:
 
 ```haskell
 #!/usr/bin/env stack
--- stack --resolver lts-6.19 runghc --package conduit-combinators
+-- stack script --resolver lts-8.12 --package conduit-combinators
 {-# LANGUAGE ExtendedDefaultRules #-}
 import Conduit
 
@@ -1343,7 +1346,6 @@ main :: IO ()
 main = runConduitRes
      $ sourceFile "input.txt"
     .| takeCE 5
-    .| decodeUtf8C
     .| stdoutC
 ```
 
@@ -1367,7 +1369,7 @@ example, let's consider taking the average of a stream of
 
 ```haskell
 #!/usr/bin/env stack
--- stack --resolver lts-6.19 runghc
+-- stack script --resolver lts-8.12 --package base
 doubles :: [Double]
 doubles = [1, 2, 3, 4, 5, 6]
 
@@ -1388,7 +1390,7 @@ folding.)
 
 ```haskell
 #!/usr/bin/env stack
--- stack --resolver lts-6.19 runghc --package conduit-combinators
+-- stack script --resolver lts-8.12 --package conduit-combinators
 {-# LANGUAGE ExtendedDefaultRules #-}
 import Conduit
 import Data.Void (Void)
@@ -1423,7 +1425,7 @@ cryponite package:
 
 ```haskell
 #!/usr/bin/env stack
--- stack --resolver lts-6.19 runghc --package conduit-combinators --package cryptonite-conduit
+-- stack script --resolver lts-8.12 --package conduit-combinators --package cryptonite --package cryptonite-conduit
 {-# LANGUAGE ExtendedDefaultRules #-}
 {-# LANGUAGE PackageImports #-}
 import Conduit
@@ -1443,8 +1445,9 @@ Or we can get slightly more inventive, and read from an HTTP connection instead 
 
 ```haskell
 #!/usr/bin/env stack
-{- stack --resolver lts-6.19 runghc
+{- stack script --resolver lts-8.12
     --package conduit-combinators
+    --package cryptonite
     --package cryptonite-conduit
     --package http-conduit
 -}
@@ -1477,7 +1480,7 @@ index in the sequence:
 
 ```haskell
 #!/usr/bin/env stack
--- stack --resolver lts-6.19 runghc --package conduit-combinators
+-- stack script --resolver lts-8.12 --package conduit-combinators
 import Conduit
 
 fibs :: [Int]
@@ -1514,7 +1517,7 @@ whole stream:
 
 ```haskell
 #!/usr/bin/env stack
--- stack --resolver lts-6.19 runghc --package conduit-combinators
+-- stack script --resolver lts-8.12 --package conduit-combinators
 import Conduit
 
 tagger :: Monad m => ConduitM Int (Either Int Int) m ()
@@ -1551,7 +1554,7 @@ amount of data is consumed. Consider:
 
 ```haskell
 #!/usr/bin/env stack
--- stack --resolver lts-6.19 runghc --package conduit-combinators
+-- stack script --resolver lts-8.12 --package conduit-combinators
 import Conduit
 
 withFiveSum :: Monad m
@@ -1579,7 +1582,7 @@ e.g.:
 
 ```haskell
 #!/usr/bin/env stack
--- stack --resolver lts-6.19 runghc --package conduit-combinators
+-- stack script --resolver lts-8.12 --package conduit-combinators
 import Conduit
 
 withFiveSum :: Monad m
@@ -1602,7 +1605,7 @@ pattern: `takeExactlyC`:
 
 ```haskell
 #!/usr/bin/env stack
--- stack --resolver lts-6.19 runghc --package conduit-combinators
+-- stack script --resolver lts-8.12 --package conduit-combinators
 import Conduit
 
 withFiveSum :: Monad m
@@ -1634,7 +1637,7 @@ length. Instead, we can just do:
 
 ```haskell
 #!/usr/bin/env stack
--- stack --resolver lts-6.19 runghc --package conduit-combinators
+-- stack script --resolver lts-8.12 --package conduit-combinators
 import Conduit
 
 main :: IO ()
@@ -1651,7 +1654,7 @@ line:
 
 ```haskell
 #!/usr/bin/env stack
--- stack --resolver lts-6.19 runghc --package conduit-combinators
+-- stack script --resolver lts-8.12 --package conduit-combinators
 import Conduit
 
 main :: IO ()
