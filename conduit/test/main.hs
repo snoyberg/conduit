@@ -1069,6 +1069,58 @@ main = hspec $ do
             mup `shouldBe` (Nothing :: Maybe ())
             down `shouldBe` sum [1..5]
 
+        it "fuseEither with result from downstream (upstream never exits)" $ do
+            let src = mapM_ C.yield [1 :: Int ..]
+                sink = CL.isolate 5 C.=$= CL.fold (+) 0
+            result <- C.runConduit $ C.fuseEither src sink
+            result `shouldBe` (Right (sum [1..5]) :: Either () Int)
+
+        it "fuseEither with result from upstream" $ do
+            let src = mapM_ C.yield [1 :: Int .. 4] >> return 'q'
+                sink = CL.isolate 5 C.=$= CL.fold (+) 0
+            result <- C.runConduit $ C.fuseEither src sink
+            result `shouldBe` (Left 'q' :: Either Char Int)
+
+        it "fuseEither with result from upstream (downstream never exits)" $ do
+            let src = mapM_ C.yield [1 :: Int .. 4] >> return 'q'
+                sink = CL.fold (+) 0
+            result <- C.runConduit $ C.fuseEither src sink
+            result `shouldBe` (Left 'q' :: Either Char Int)
+
+        it "fuseEither with result from downstream (upstream almost exits)" $ do
+            let src = mapM_ C.yield [1 :: Int .. 5] >> return 'q'
+                sink = CL.isolate 5 C.=$= CL.fold (+) 0
+            result <- C.runConduit $ C.fuseEither src sink
+            result `shouldBe` (Right (sum [1..5]) :: Either Char Int)
+
+        it "fuseEither with result from upstream still runs finalisers" $ do
+            let tellCleanup conduitName didComplete
+                  = tell [conduitName ++ if didComplete then " completed" else " interrupted" :: String]
+            let src = C.addCleanup (tellCleanup "src") $ do
+                        mapM_ C.yield [1 :: Int .. 4]
+                        return 'q'
+                sink = C.addCleanup (tellCleanup "sink")
+                     $ CL.isolate 5 C.=$= CL.fold (+) 0
+            result <- runWriterT $ C.runConduit $ C.fuseEither src sink
+            result `shouldBe` ((Left 'q',
+                                  [ "src completed"
+                                  , "sink interrupted"
+                                  ]) :: (Either Char Int, [String]))
+
+        it "fuseEither with result from downstream still runs finalisers" $ do
+            let tellCleanup conduitName didComplete
+                  = tell [conduitName ++ if didComplete then " completed" else " interrupted" :: String]
+            let src = C.addCleanup (tellCleanup "src") $ do
+                        mapM_ C.yield [1 :: Int ..]
+                        return 'q'
+                sink = C.addCleanup (tellCleanup "sink")
+                     $ CL.isolate 5 C.=$= CL.fold (+) 0
+            result <- runWriterT $ C.runConduit $ C.fuseEither src sink
+            result `shouldBe` ((Right (sum [1..5]),
+                                  [ "sink completed"
+                                  , "src interrupted"
+                                  ]) :: (Either Char Int, [String]))
+
     describe "catching exceptions" $ do
         it "works" $ do
             let src = do

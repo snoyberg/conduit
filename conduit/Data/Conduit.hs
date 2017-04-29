@@ -25,6 +25,7 @@ module Data.Conduit
     , fuseBoth
     , fuseBothMaybe
     , fuseUpstream
+    , fuseEither
 
       -- ** Primitives
     , await
