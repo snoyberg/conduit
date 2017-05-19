@@ -1,3 +1,8 @@
+## 1.1.16
+
+* Add `Data.Conduit.Foldl` adapter module for the `foldl`
+  package. [#312](https://github.com/snoyberg/conduit/pull/312)
+
 ## 1.1.15
 
 * `sinkTempFile` and `sinkSystemTempFile`

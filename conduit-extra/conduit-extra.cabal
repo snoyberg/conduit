@@ -1,5 +1,5 @@
 Name:                conduit-extra
-Version:             1.1.15
+Version:             1.1.16
 Synopsis:            Batteries included conduit: adapters for common libraries.
 Description:
     The conduit package itself maintains relative small dependencies. The purpose of this package is to collect commonly used utility functions wrapping other library dependencies, without depending on heavier-weight dependencies. The basic idea is that this package should only depend on haskell-platform packages and conduit.
@@ -24,6 +24,7 @@ Library
                        Data.Conduit.Blaze
                        Data.Conduit.ByteString.Builder
                        Data.Conduit.Filesystem
+                       Data.Conduit.Foldl
                        Data.Conduit.Lazy
                        Data.Conduit.Network
                        Data.Conduit.Network.UDP
