@@ -21,7 +21,7 @@ Basic examples of conduit usage, much more to follow!
 
 ```haskell
 #!/usr/bin/env stack
--- stack --resolver lts-6.19 runghc --package conduit-combinators
+-- stack script --resolver lts-8.12 --package conduit-combinators
 import Conduit
 
 main = do
