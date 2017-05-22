@@ -1,5 +1,5 @@
 Name:                conduit
-Version:             1.2.10
+Version:             1.2.11
 Synopsis:            Streaming data processing library.
 description:
     `conduit` is a solution to the streaming data problem, allowing for production,
@@ -33,7 +33,8 @@ Library
                        Data.Conduit.Internal.List.Stream
   other-modules:       Data.Conduit.Internal.Pipe
                        Data.Conduit.Internal.Conduit
-  Build-depends:       base                     >= 4.5          && < 5
+                       Data.Conduit.Internal.Deprecated
+  Build-depends:       base                     >= 4.6          && < 5
                      , resourcet                >= 1.1          && < 1.2
                      , exceptions               >= 0.6
                      , lifted-base              >= 0.1

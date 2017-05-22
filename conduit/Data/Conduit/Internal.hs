@@ -5,6 +5,7 @@ module Data.Conduit.Internal
       module Data.Conduit.Internal.Pipe
       -- * Conduit
     , module Data.Conduit.Internal.Conduit
+    , module Data.Conduit.Internal.Deprecated
       -- * Fusion (highly experimental!!!)
     , module Data.Conduit.Internal.Fusion
     ) where
@@ -14,5 +15,6 @@ import           Data.Conduit.Internal.Conduit hiding (addCleanup, await,
                                                 leftover, mapInput, mapOutput,
                                                 mapOutputMaybe, transPipe,
                                                 yield, yieldM, yieldOr)
+import           Data.Conduit.Internal.Deprecated
 import           Data.Conduit.Internal.Pipe
 import           Data.Conduit.Internal.Fusion
