@@ -23,6 +23,19 @@ unfoldS f s0 _ =
             Just (x, s') -> Emit s' x
 {-# INLINE unfoldS #-}
 
+unfoldEitherS :: Monad m
+              => (b -> Either r (a, b))
+              -> b
+              -> StreamConduitM i a m r
+unfoldEitherS f s0 _ =
+    Stream step (return s0)
+  where
+    step s = return $
+        case f s of
+            Left r        -> Stop r
+            Right (x, s') -> Emit s' x
+{-# INLINE unfoldEitherS #-}
+
 unfoldMS :: Monad m
          => (b -> m (Maybe (a, b)))
          -> b
@@ -37,6 +50,19 @@ unfoldMS f s0 _ =
             Just (x, s') -> Emit s' x
 {-# INLINE unfoldMS #-}
 
+unfoldEitherMS :: Monad m
+         => (b -> m (Either r (a, b)))
+         -> b
+         -> StreamConduitM i a m r
+unfoldEitherMS f s0 _ =
+    Stream step (return s0)
+  where
+    step s = do
+        ms' <- f s
+        return $ case ms' of
+            Left r        -> Stop r
+            Right (x, s') -> Emit s' x
+{-# INLINE unfoldEitherMS #-}
 sourceListS :: Monad m => [a] -> StreamProducer m a
 sourceListS xs0 _ =
     Stream (return . step) (return xs0)

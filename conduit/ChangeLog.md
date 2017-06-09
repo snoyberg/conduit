@@ -1,3 +1,7 @@
+## 1.2.11
+
+* Add `unfoldEither` and `unfoldEitherM` to `Data.Conduit.List`
+
 ## 1.2.10
 
 * Add `PrimMonad` instances for `ConduitM` and `Pipe`
