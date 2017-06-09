@@ -19,7 +19,9 @@ module Data.Conduit.List
       sourceList
     , sourceNull
     , unfold
+    , unfoldEither
     , unfoldM
+    , unfoldEitherM
     , enumFromTo
     , iterate
     , replicate
@@ -73,6 +75,7 @@ import qualified Prelude
 import Prelude
     ( ($), return, (==), (-), Int
     , (.), id, Maybe (..), Monad
+    , Either (..)
     , Bool (..)
     , (>>)
     , (>>=)
@@ -114,6 +117,25 @@ unfoldC f =
 {-# INLINE unfoldC #-}
 STREAMING(unfold, unfoldC, unfoldS, f x)
 
+-- | Generate a source from a seed value with a return value.
+--
+-- Subject to fusion
+--
+-- @since 1.2.11
+unfoldEither, unfoldEitherC :: Monad m
+                            => (b -> Either r (a, b))
+                            -> b
+                            -> ConduitM i a m r
+unfoldEitherC f =
+    go
+  where
+    go seed =
+        case f seed of
+            Right (a, seed') -> yield a >> go seed'
+            Left r -> return r
+{-# INLINE unfoldEitherC #-}
+STREAMING(unfoldEither, unfoldEitherC, unfoldEitherS, f x)
+
 -- | A monadic unfold.
 --
 -- Subject to fusion
@@ -132,6 +154,25 @@ unfoldMC f =
             Just (a, seed') -> yield a >> go seed'
             Nothing -> return ()
 STREAMING(unfoldM, unfoldMC, unfoldMS, f seed)
+
+-- | A monadic unfoldEither.
+--
+-- Subject to fusion
+--
+-- @since 1.2.11
+unfoldEitherM, unfoldEitherMC :: Monad m
+                              => (b -> m (Either r (a, b)))
+                              -> b
+                              -> ConduitM i a m r
+unfoldEitherMC f =
+    go
+  where
+    go seed = do
+        mres <- lift $ f seed
+        case mres of
+            Right (a, seed') -> yield a >> go seed'
+            Left r -> return r
+STREAMING(unfoldEitherM, unfoldEitherMC, unfoldEitherMS, f seed)
 
 -- | Yield the values from the list.
 --
