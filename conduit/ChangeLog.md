@@ -1,3 +1,7 @@
+## 1.2.12
+
+* Add `exceptC`, `runExceptC` and `catchExceptC` to `Data.Conduit.Lift`
+
 ## 1.2.11
 
 * Add `unfoldEither` and `unfoldEitherM` to `Data.Conduit.List`

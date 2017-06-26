@@ -8,6 +8,11 @@
 --
 -- This module was added in conduit 1.0.11.
 module Data.Conduit.Lift (
+    -- * ExceptT
+    exceptC,
+    runExceptC,
+    catchExceptC,
+
     -- * ErrorT
     errorC,
     runErrorC,
@@ -75,6 +80,7 @@ import Control.Exception (SomeException)
 import Data.Monoid (Monoid(..))
 
 
+import qualified Control.Monad.Trans.Except as Ex
 import qualified Control.Monad.Trans.Error as E
 import qualified Control.Monad.Trans.Maybe as M
 import qualified Control.Monad.Trans.Reader as R
@@ -121,6 +127,59 @@ distribute
       MFunctor t) =>
      ConduitM b o (t m) () -> t (ConduitM b o m) ()
 distribute p = catAwaitLifted =$= hoist (hoist lift) p $$ catYieldLifted
+
+-- | Wrap the base monad in 'Ex.ExceptT'
+--
+-- Since 1.2.12
+exceptC
+  :: (Monad m, Monad (t (Ex.ExceptT e m)), MonadTrans t, MFunctor t) =>
+     t m (Either e b) -> t (Ex.ExceptT e m) b
+exceptC p = do
+    x <- hoist lift p
+    lift $ Ex.ExceptT (return x)
+
+-- | Run 'Ex.ExceptT' in the base monad
+--
+-- Since 1.2.12
+runExceptC
+  :: Monad m =>
+     ConduitM i o (Ex.ExceptT e m) r -> ConduitM i o m (Either e r)
+runExceptC (ConduitM c0) =
+    ConduitM $ \rest ->
+        let go (Done r) = rest (Right r)
+            go (PipeM mp) = PipeM $ do
+                eres <- Ex.runExceptT mp
+                return $ case eres of
+                    Left e -> rest $ Left e
+                    Right p -> go p
+            go (Leftover p i) = Leftover (go p) i
+            go (HaveOutput p f o) = HaveOutput (go p) (Ex.runExceptT f >> return ()) o
+            go (NeedInput x y) = NeedInput (go . x) (go . y)
+         in go (c0 Done)
+{-# INLINABLE runExceptC #-}
+
+-- | Catch an error in the base monad
+--
+-- Since 1.2.12
+catchExceptC
+  :: Monad m =>
+     ConduitM i o (Ex.ExceptT e m) r
+     -> (e -> ConduitM i o (Ex.ExceptT e m) r)
+     -> ConduitM i o (Ex.ExceptT e m) r
+catchExceptC c0 h =
+    ConduitM $ \rest ->
+        let go (Done r) = rest r
+            go (PipeM mp) = PipeM $ do
+                eres <- lift $ Ex.runExceptT mp
+                return $ case eres of
+                    Left e -> unConduitM (h e) rest
+                    Right p -> go p
+            go (Leftover p i) = Leftover (go p) i
+            go (HaveOutput p f o) = HaveOutput (go p) f o
+            go (NeedInput x y) = NeedInput (go . x) (go . y)
+         in go $ unConduitM c0 Done
+  where
+{-# INLINABLE catchExceptC #-}
 
 -- | Wrap the base monad in 'E.ErrorT'
 --

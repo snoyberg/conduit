@@ -1,5 +1,5 @@
 Name:                conduit
-Version:             1.2.11
+Version:             1.2.12
 Synopsis:            Streaming data processing library.
 description:
     `conduit` is a solution to the streaming data problem, allowing for production,
@@ -39,6 +39,7 @@ Library
                      , lifted-base              >= 0.1
                      , transformers-base        >= 0.4.1        && < 0.5
                      , transformers             >= 0.2.2
+                     , transformers-compat      >= 0.3
                      , mtl
                      , mmorph
                      , monad-control
