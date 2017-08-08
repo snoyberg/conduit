@@ -1090,7 +1090,7 @@ clear that they actually help at all). Here are the simple definitions
 of these types:
 
 * A `Source` produces values but does not consume any
-* A `Sink` consumes values and and provides a return value, but
+* A `Sink` consumes values and provides a return value, but
   produces none as an output stream
 * A `Conduit` consumes and produces values
 * A `Producer` is something that produces values, and may or may not
