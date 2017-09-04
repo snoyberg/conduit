@@ -417,7 +417,8 @@ monadic action that will return a result (the `m r`).
 `Void`, is complicated. For now, I recommend just accepting that this
 makes sense. The short explanation is that the input is in negative
 position whereas the output is in positive position, and therefore we
-can give the stronger `Void` guarantee in the output case.
+can give the stronger `Void` guarantee in the output case. The long
+explanation can be found [here](https://www.fpcomplete.com/blog/2017/07/to-void-or-to-void).
 
 Finally, we talked about pure pipelines before. Those are just
 pipelines with `Identity` as the base monad:
