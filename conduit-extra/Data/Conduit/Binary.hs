@@ -167,9 +167,7 @@ sourceIOHandle alloc = bracketP alloc IO.hClose sourceHandle
 sinkHandle :: MonadIO m
            => IO.Handle
            -> Consumer S.ByteString m ()
-sinkHandle h = awaitForever $ \bs -> liftIO $ do
-    S.hPut h bs
-    IO.hFlush h
+sinkHandle h = awaitForever (liftIO . S.hPut h)
 
 -- | An alternative to 'sinkHandle'.
 -- Instead of taking a pre-opened 'IO.Handle', it takes an action that opens
