@@ -1,3 +1,8 @@
+## 1.1.17
+
+* Speed up `sinkHandle` by not flushing after every output operation.
+  [#322](https://github.com/snoyberg/conduit/issues/322)
+
 ## 1.1.16
 
 * Add `Data.Conduit.Foldl` adapter module for the `foldl`
