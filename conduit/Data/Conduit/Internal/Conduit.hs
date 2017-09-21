@@ -94,7 +94,7 @@ import Control.Monad (liftM, when, liftM2, ap)
 import Control.Monad.Error.Class(MonadError(..))
 import Control.Monad.Reader.Class(MonadReader(..))
 import Control.Monad.RWS.Class(MonadRWS())
-import Control.Monad.Writer.Class(MonadWriter(..))
+import Control.Monad.Writer.Class(MonadWriter(..), censor)
 import Control.Monad.State.Class(MonadState(..))
 import Control.Monad.Trans.Class (MonadTrans (lift))
 import Control.Monad.IO.Class (MonadIO (liftIO))
@@ -207,12 +207,16 @@ instance MonadWriter w m => MonadWriter w (ConduitM i o m) where
          in go mempty (c0 Done)
 
     pass (ConduitM c0) = ConduitM $ \rest ->
-        let go (HaveOutput p c o) = HaveOutput (go p) c o
-            go (NeedInput p c) = NeedInput (\i -> go (p i)) (\u -> go (c u))
-            go (PipeM mp) = PipeM $ mp >>= (return . go)
-            go (Done (x,_)) = rest x
-            go (Leftover p i) = Leftover (go p) i
-         in go (c0 Done)
+        let go front (HaveOutput p c o) = HaveOutput (go front p) c o
+            go front (NeedInput p c) = NeedInput (\i -> go front (p i)) (\u -> go front (c u))
+            go front (PipeM mp) = PipeM $ do
+                (p,w) <- censor (const mempty) (listen mp)
+                return $ go (front `mappend` w) p
+            go front (Done (x,f)) = PipeM $ do
+                tell (f front)
+                return $ rest x
+            go front (Leftover p i) = Leftover (go front p) i
+         in go mempty (c0 Done)
 
 instance MonadState s m => MonadState s (ConduitM i o m) where
     get = lift get
