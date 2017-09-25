@@ -27,6 +27,7 @@ import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Writer (execWriter, tell, runWriterT)
 import Control.Monad.Trans.State (evalStateT, get, put, modify)
 import Control.Monad.Trans.Maybe (MaybeT (..))
+import qualified Control.Monad.Writer as W
 import Control.Applicative (pure, (<$>), (<*>))
 import qualified Control.Monad.Catch as Catch
 import Data.Functor.Identity (Identity,runIdentity)
@@ -876,6 +877,12 @@ main = hspec $ do
                     C.yield 3
                     lift $ return ()
             (src C.$$ CL.consume) `shouldBe` Right [1, 2, 4 :: Int]
+        describe "WriterT" $
+            it "pass" $
+                let writer = W.pass $ do
+                    W.tell [1 :: Int]
+                    pure ((), (2:))
+                in execWriter (C.runConduit writer) `shouldBe` [2, 1]
 
     describe "finalizers" $ do
         it "promptness" $ do

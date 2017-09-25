@@ -1,3 +1,7 @@
+## 1.2.12.1
+
+* Fix `pass` in `ConduitM` `MonadWriter` instance
+
 ## 1.2.12
 
 * Add `exceptC`, `runExceptC` and `catchExceptC` to `Data.Conduit.Lift`
