@@ -112,7 +112,7 @@ data ReleaseMap =
   | ReleaseMapClosed
 
 -- | Convenient alias for @ResourceT IO@.
-type ResIO a = ResourceT IO a
+type ResIO = ResourceT IO
 
 
 instance MonadCont m => MonadCont (ResourceT m) where
