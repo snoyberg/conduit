@@ -22,6 +22,7 @@ spec = describe "Data.Conduit.AttoparsecSpec" $ do
             let input = ["aaa\na", "aaa\n\n", "aaa", "aab\n\naaaa"]
                 badLine = 4
                 badCol = 6
+                badOff = 0
                 parser = Data.Attoparsec.Text.endOfInput <|> (Data.Attoparsec.Text.notChar 'b' >> parser)
                 sink = sinkParser parser
                 sink' = sinkParserEither parser
@@ -30,15 +31,16 @@ spec = describe "Data.Conduit.AttoparsecSpec" $ do
                 Left e ->
                     case fromException e of
                         Just pe -> do
-                            errorPosition pe `shouldBe` Position badLine badCol
+                            errorPosition pe `shouldBe` Position badLine badCol badOff
             ea' <- CL.sourceList input $$ sink'
             case ea' of
                 Left pe ->
-                    errorPosition pe `shouldBe` Position badLine badCol
+                    errorPosition pe `shouldBe` Position badLine badCol badOff
         it "works for bytestring" $ do
             let input = ["aaa\na", "aaa\n\n", "aaa", "aab\n\naaaa"]
                 badLine = 4
                 badCol = 6
+                badOff = 0
                 parser = Data.Attoparsec.ByteString.Char8.endOfInput <|> (Data.Attoparsec.ByteString.Char8.notChar 'b' >> parser)
                 sink = sinkParser parser
                 sink' = sinkParserEither parser
@@ -47,15 +49,16 @@ spec = describe "Data.Conduit.AttoparsecSpec" $ do
                 Left e ->
                     case fromException e of
                         Just pe -> do
-                            errorPosition pe `shouldBe` Position badLine badCol
+                            errorPosition pe `shouldBe` Position badLine badCol badOff
             ea' <- CL.sourceList input $$ sink'
             case ea' of
                 Left pe ->
-                    errorPosition pe `shouldBe` Position badLine badCol
+                    errorPosition pe `shouldBe` Position badLine badCol badOff
         it "works in last chunk" $ do
             let input = ["aaa\na", "aaa\n\n", "aaa", "aab\n\naaaa"]
                 badLine = 6
                 badCol = 5
+                badOff = 0
                 parser = Data.Attoparsec.Text.char 'c' <|> (Data.Attoparsec.Text.anyChar >> parser)
                 sink = sinkParser parser
                 sink' = sinkParserEither parser
@@ -64,15 +67,16 @@ spec = describe "Data.Conduit.AttoparsecSpec" $ do
                 Left e ->
                     case fromException e of
                         Just pe -> do
-                            errorPosition pe `shouldBe` Position badLine badCol
+                            errorPosition pe `shouldBe` Position badLine badCol badOff
             ea' <- CL.sourceList input $$ sink'
             case ea' of
                 Left pe ->
-                    errorPosition pe `shouldBe` Position badLine badCol
+                    errorPosition pe `shouldBe` Position badLine badCol badOff
         it "works in last chunk" $ do
             let input = ["aaa\na", "aaa\n\n", "aaa", "aa\n\naaaab"]
                 badLine = 6
                 badCol = 6
+                badOff = 0
                 parser = Data.Attoparsec.Text.string "bc" <|> (Data.Attoparsec.Text.anyChar >> parser)
                 sink = sinkParser parser
                 sink' = sinkParserEither parser
@@ -81,15 +85,16 @@ spec = describe "Data.Conduit.AttoparsecSpec" $ do
                 Left e ->
                     case fromException e of
                         Just pe -> do
-                            errorPosition pe `shouldBe` Position badLine badCol
+                            errorPosition pe `shouldBe` Position badLine badCol badOff
             ea' <- CL.sourceList input $$ sink'
             case ea' of
                 Left pe ->
-                    errorPosition pe `shouldBe` Position badLine badCol
+                    errorPosition pe `shouldBe` Position badLine badCol badOff
         it "works after new line in text" $ do
             let input = ["aaa\n", "aaa\n\n", "aaa", "aa\nb\naaaa"]
                 badLine = 5
                 badCol = 1
+                badOff = 0
                 parser = Data.Attoparsec.Text.endOfInput <|> (Data.Attoparsec.Text.notChar 'b' >> parser)
                 sink = sinkParser parser
                 sink' = sinkParserEither parser
@@ -98,15 +103,16 @@ spec = describe "Data.Conduit.AttoparsecSpec" $ do
                 Left e ->
                     case fromException e of
                         Just pe -> do
-                            errorPosition pe `shouldBe` Position badLine badCol
+                            errorPosition pe `shouldBe` Position badLine badCol badOff
             ea' <- CL.sourceList input $$ sink'
             case ea' of
                 Left pe ->
-                    errorPosition pe `shouldBe` Position badLine badCol
+                    errorPosition pe `shouldBe` Position badLine badCol badOff
         it "works after new line in bytestring" $ do
             let input = ["aaa\n", "aaa\n\n", "aaa", "aa\nb\naaaa"]
                 badLine = 5
                 badCol = 1
+                badOff = 16
                 parser = Data.Attoparsec.ByteString.Char8.endOfInput <|> (Data.Attoparsec.ByteString.Char8.notChar 'b' >> parser)
                 sink = sinkParser parser
                 sink' = sinkParserEither parser
@@ -115,11 +121,11 @@ spec = describe "Data.Conduit.AttoparsecSpec" $ do
                 Left e ->
                     case fromException e of
                         Just pe -> do
-                            errorPosition pe `shouldBe` Position badLine badCol
+                            errorPosition pe `shouldBe` Position badLine badCol badOff
             ea' <- CL.sourceList input $$ sink'
             case ea' of
                 Left pe ->
-                    errorPosition pe `shouldBe` Position badLine badCol
+                    errorPosition pe `shouldBe` Position badLine badCol badOff
         it "works for first line" $ do
             let input = ["aab\na", "aaa\n\n", "aaa", "aab\n\naaaa"]
                 badLine = 1
@@ -132,11 +138,11 @@ spec = describe "Data.Conduit.AttoparsecSpec" $ do
                 Left e ->
                     case fromException e of
                         Just pe -> do
-                            errorPosition pe `shouldBe` Position badLine badCol
+                            errorPosition pe `shouldBe` Position badLine badCol badCol
             ea' <- CL.sourceList input $$ sink'
             case ea' of
                 Left pe ->
-                    errorPosition pe `shouldBe` Position badLine badCol
+                    errorPosition pe `shouldBe` Position badLine badCol badCol
 
     describe "conduitParser" $ do
         it "parses a repeated stream" $ do
@@ -147,7 +153,7 @@ spec = describe "Data.Conduit.AttoparsecSpec" $ do
             let chk a = case a of
                           Left{} -> False
                           Right (_, xs) -> xs == "aaa"
-                chkp l = (PositionRange (Position l 1) (Position (l+1) 1))
+                chkp l = PositionRange (Position l 1 ((l - 1) * 3)) (Position (l+1) 1 (l * 3 + 1))
             forM_ ea $ \ a -> a `shouldSatisfy` chk :: Expectation
             forM_ (zip ea [1..]) $ \ (Right (pos, _), l) -> pos `shouldBe` chkp l
             length ea `shouldBe` 4
@@ -156,14 +162,14 @@ spec = describe "Data.Conduit.AttoparsecSpec" $ do
             results <- yield "hihihi\nhihi"
                 $$ conduitParser (Data.Attoparsec.Text.string "\n" <|> Data.Attoparsec.Text.string "hi")
                 =$ CL.consume
-            let f (a, b, c, d, e) = (PositionRange (Position a b) (Position c d), e)
+            let f (a, b, c, d, e, f, g) = (PositionRange (Position a b c) (Position d e f), g)
             results `shouldBe` map f
-                [ (1, 1, 1, 3, "hi")
-                , (1, 3, 1, 5, "hi")
-                , (1, 5, 1, 7, "hi")
+                [ (1, 1, 0, 1, 3, 2, "hi")
+                , (1, 3, 2, 1, 5, 4, "hi")
+                , (1, 5, 4, 1, 7, 6, "hi")
 
-                , (1, 7, 2, 1, "\n")
+                , (1, 7, 6, 2, 1, 7, "\n")
 
-                , (2, 1, 2, 3, "hi")
-                , (2, 3, 2, 5, "hi")
+                , (2, 1, 7, 2, 3, 9, "hi")
+                , (2, 3, 9, 2, 5, 11, "hi")
                 ]

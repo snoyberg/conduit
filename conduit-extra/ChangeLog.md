@@ -1,3 +1,9 @@
+## 1.2.0
+
+* Added the `posOffset` field to the
+  `Data.Conduit.Attoparsec.Position` data type
+  [#331](https://github.com/snoyberg/conduit/issues/331).
+
 ## 1.1.17
 
 * Speed up `sinkHandle` by not flushing after every output operation.
