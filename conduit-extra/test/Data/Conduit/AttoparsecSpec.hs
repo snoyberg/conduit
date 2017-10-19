@@ -22,7 +22,7 @@ spec = describe "Data.Conduit.AttoparsecSpec" $ do
             let input = ["aaa\na", "aaa\n\n", "aaa", "aab\n\naaaa"]
                 badLine = 4
                 badCol = 6
-                badOff = 0
+                badOff = 15
                 parser = Data.Attoparsec.Text.endOfInput <|> (Data.Attoparsec.Text.notChar 'b' >> parser)
                 sink = sinkParser parser
                 sink' = sinkParserEither parser
@@ -40,7 +40,7 @@ spec = describe "Data.Conduit.AttoparsecSpec" $ do
             let input = ["aaa\na", "aaa\n\n", "aaa", "aab\n\naaaa"]
                 badLine = 4
                 badCol = 6
-                badOff = 0
+                badOff = 15
                 parser = Data.Attoparsec.ByteString.Char8.endOfInput <|> (Data.Attoparsec.ByteString.Char8.notChar 'b' >> parser)
                 sink = sinkParser parser
                 sink' = sinkParserEither parser
@@ -58,7 +58,7 @@ spec = describe "Data.Conduit.AttoparsecSpec" $ do
             let input = ["aaa\na", "aaa\n\n", "aaa", "aab\n\naaaa"]
                 badLine = 6
                 badCol = 5
-                badOff = 0
+                badOff = 22
                 parser = Data.Attoparsec.Text.char 'c' <|> (Data.Attoparsec.Text.anyChar >> parser)
                 sink = sinkParser parser
                 sink' = sinkParserEither parser
@@ -76,7 +76,7 @@ spec = describe "Data.Conduit.AttoparsecSpec" $ do
             let input = ["aaa\na", "aaa\n\n", "aaa", "aa\n\naaaab"]
                 badLine = 6
                 badCol = 6
-                badOff = 0
+                badOff = 22
                 parser = Data.Attoparsec.Text.string "bc" <|> (Data.Attoparsec.Text.anyChar >> parser)
                 sink = sinkParser parser
                 sink' = sinkParserEither parser
@@ -94,7 +94,7 @@ spec = describe "Data.Conduit.AttoparsecSpec" $ do
             let input = ["aaa\n", "aaa\n\n", "aaa", "aa\nb\naaaa"]
                 badLine = 5
                 badCol = 1
-                badOff = 0
+                badOff = 15
                 parser = Data.Attoparsec.Text.endOfInput <|> (Data.Attoparsec.Text.notChar 'b' >> parser)
                 sink = sinkParser parser
                 sink' = sinkParserEither parser
@@ -112,7 +112,7 @@ spec = describe "Data.Conduit.AttoparsecSpec" $ do
             let input = ["aaa\n", "aaa\n\n", "aaa", "aa\nb\naaaa"]
                 badLine = 5
                 badCol = 1
-                badOff = 16
+                badOff = 15
                 parser = Data.Attoparsec.ByteString.Char8.endOfInput <|> (Data.Attoparsec.ByteString.Char8.notChar 'b' >> parser)
                 sink = sinkParser parser
                 sink' = sinkParserEither parser
@@ -130,6 +130,7 @@ spec = describe "Data.Conduit.AttoparsecSpec" $ do
             let input = ["aab\na", "aaa\n\n", "aaa", "aab\n\naaaa"]
                 badLine = 1
                 badCol = 3
+                badOff = 2
                 parser = Data.Attoparsec.Text.endOfInput <|> (Data.Attoparsec.Text.notChar 'b' >> parser)
                 sink = sinkParser parser
                 sink' = sinkParserEither parser
@@ -138,11 +139,11 @@ spec = describe "Data.Conduit.AttoparsecSpec" $ do
                 Left e ->
                     case fromException e of
                         Just pe -> do
-                            errorPosition pe `shouldBe` Position badLine badCol badCol
+                            errorPosition pe `shouldBe` Position badLine badCol badOff
             ea' <- CL.sourceList input $$ sink'
             case ea' of
                 Left pe ->
-                    errorPosition pe `shouldBe` Position badLine badCol badCol
+                    errorPosition pe `shouldBe` Position badLine badCol badOff
 
     describe "conduitParser" $ do
         it "parses a repeated stream" $ do
@@ -153,7 +154,7 @@ spec = describe "Data.Conduit.AttoparsecSpec" $ do
             let chk a = case a of
                           Left{} -> False
                           Right (_, xs) -> xs == "aaa"
-                chkp l = PositionRange (Position l 1 ((l - 1) * 3)) (Position (l+1) 1 (l * 3 + 1))
+                chkp l = PositionRange (Position l 1 ((l - 1) * 4)) (Position (l+1) 1 (l * 4))
             forM_ ea $ \ a -> a `shouldSatisfy` chk :: Expectation
             forM_ (zip ea [1..]) $ \ (Right (pos, _), l) -> pos `shouldBe` chkp l
             length ea `shouldBe` 4
