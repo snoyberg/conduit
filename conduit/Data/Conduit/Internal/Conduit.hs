@@ -1118,7 +1118,10 @@ instance Monad m => Applicative (ZipSource m) where
 
 -- | Coalesce all values yielded by all of the @Source@s.
 --
--- Implemented on top of @ZipSource@, see that data type for more details.
+-- Implemented on top of @ZipSource@ and as such, it exhibits the same
+-- short-circuiting behavior as @ZipSource@. See that data type for more
+-- details. If you want to create a source that yields *all* values from
+-- multiple sources, use `sequence_`.
 --
 -- Since 1.0.13
 sequenceSources :: (Traversable f, Monad m) => f (Source m o) -> Source m (f o)
