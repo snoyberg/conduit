@@ -27,6 +27,8 @@ module Data.Conduit.Binary
     , sinkSystemTempFile
     , sinkHandle
     , sinkIOHandle
+    , sinkHandleBuilder
+    , sinkHandleFlush
       -- ** Conduits
     , conduitFile
     , conduitHandle
@@ -51,6 +53,7 @@ module Data.Conduit.Binary
     ) where
 
 import qualified Data.Streaming.FileRead as FR
+import qualified Data.ByteString.Builder as BB
 import Prelude hiding (head, take, drop, takeWhile, dropWhile, mapM_)
 import qualified Data.ByteString as S
 import Data.ByteString.Unsafe (unsafeUseAsCString)
@@ -168,6 +171,16 @@ sinkHandle :: MonadIO m
            => IO.Handle
            -> Consumer S.ByteString m ()
 sinkHandle h = awaitForever (liftIO . S.hPut h)
+
+sinkHandleBuilder :: MonadIO m => IO.Handle -> ConduitM BB.Builder o m ()
+sinkHandleBuilder h = awaitForever (liftIO . BB.hPutBuilder h)
+
+sinkHandleFlush :: MonadIO m => IO.Handle -> ConduitM (Flush S.ByteString) o m ()
+sinkHandleFlush h =
+  awaitForever $ \mbs -> liftIO $
+  case mbs of
+    Chunk bs -> S.hPut h bs
+    Flush -> IO.hFlush h
 
 -- | An alternative to 'sinkHandle'.
 -- Instead of taking a pre-opened 'IO.Handle', it takes an action that opens

@@ -28,16 +28,21 @@ import System.Exit (ExitCode (..))
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import System.IO (hClose)
 import Data.Conduit
-import Data.Conduit.Binary (sourceHandle, sinkHandle)
+import Data.Conduit.Binary (sourceHandle, sinkHandle, sinkHandleBuilder, sinkHandleFlush)
 import Data.ByteString (ByteString)
+import Data.ByteString.Builder (Builder)
 import Control.Concurrent.Async (runConcurrently, Concurrently(..))
 import Control.Monad.Catch (MonadMask, onException, throwM, finally, bracket)
 #if (__GLASGOW_HASKELL__ < 710)
 import Control.Applicative ((<$>), (<*>))
 #endif
 
-instance (r ~ (), MonadIO m, i ~ ByteString) => InputSource (ConduitM i o m r) where
+instance (r ~ (), MonadIO m) => InputSource (ConduitM ByteString o m r) where
     isStdStream = (\(Just h) -> return $ sinkHandle h, Just CreatePipe)
+instance (r ~ (), MonadIO m) => InputSource (ConduitM Builder o m r) where
+    isStdStream = (\(Just h) -> return $ sinkHandleBuilder h, Just CreatePipe)
+instance (r ~ (), MonadIO m) => InputSource (ConduitM (Flush ByteString) o m r) where
+    isStdStream = (\(Just h) -> return $ sinkHandleFlush h, Just CreatePipe)
 instance (r ~ (), r' ~ (), MonadIO m, MonadIO n, i ~ ByteString) => InputSource (ConduitM i o m r, n r') where
     isStdStream = (\(Just h) -> return (sinkHandle h, liftIO $ hClose h), Just CreatePipe)
 
