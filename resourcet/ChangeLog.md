@@ -1,3 +1,7 @@
+## 1.1.10
+
+* Added `MonadUnliftIO` instances and `UnliftIO.Resource`
+
 ## 1.1.9
 
 * Add generalized version of resourceForkIO
