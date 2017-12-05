@@ -2,15 +2,17 @@
 --
 -- @since 1.1.10
 module UnliftIO.Resource
-  ( ResourceT
-  , runResourceT
+  ( -- * UnliftIO variants
+    runResourceT
   , liftResourceT
-  -- FIXME add relevant reexports
+    -- * Reexports
+  , module Control.Monad.Trans.Resource
   ) where
 
 import qualified Control.Monad.Trans.Resource as Res
 import Control.Monad.Trans.Resource.Internal (ResourceT (..))
 import Control.Monad.IO.Unlift
+import Control.Monad.Trans.Resource (ResourceT, ReleaseKey, allocate, register, release, unprotect, MonadResource)
 
 -- | Unlifted version of 'Res.runResourceT'.
 --
