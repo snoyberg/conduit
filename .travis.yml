@@ -169,7 +169,7 @@ install:
     stack)
       # Add in extra-deps for older snapshots, as necessary
       stack --no-terminal --install-ghc $ARGS test --bench --dry-run || ( \
-        stack --no-terminal $ARGS build cabal-install && \
+        stack --no-terminal --resolver nightly install cabal-install && \
         stack --no-terminal $ARGS solver --update-config)
 
       # Build the dependencies
