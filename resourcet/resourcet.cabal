@@ -17,6 +17,7 @@ Library
                        Control.Monad.Trans.Resource.Internal
                        Data.Acquire
                        Data.Acquire.Internal
+                       UnliftIO.Resource
   Build-depends:       base                     >= 4.5          && < 5
                      , lifted-base              >= 0.1
                      , transformers-base        >= 0.4.4        && < 0.5
