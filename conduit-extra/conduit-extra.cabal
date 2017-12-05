@@ -1,5 +1,5 @@
 Name:                conduit-extra
-Version:             1.2.0
+Version:             1.2.1
 Synopsis:            Batteries included conduit: adapters for common libraries.
 Description:
     The conduit package itself maintains relative small dependencies. The purpose of this package is to collect commonly used utility functions wrapping other library dependencies, without depending on heavier-weight dependencies. The basic idea is that this package should only depend on haskell-platform packages and conduit.
@@ -29,6 +29,7 @@ Library
                        Data.Conduit.Network
                        Data.Conduit.Network.UDP
                        Data.Conduit.Process
+                       Data.Conduit.Process.Typed
                        Data.Conduit.Text
                        Data.Conduit.Zlib
   if !os(windows)
@@ -61,6 +62,8 @@ Library
                      , resourcet                >= 1.1
                      , stm
                      , streaming-commons        >= 0.1.16
+                     , typed-process            >= 0.2
+                     , unliftio-core
 
   ghc-options:     -Wall
 

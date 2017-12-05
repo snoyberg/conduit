@@ -7,3 +7,4 @@ packages:
 - resourcet
 extra-deps:
 - streaming-commons-0.1.17
+- typed-process-0.2.0.0
