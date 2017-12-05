@@ -28,7 +28,7 @@ import System.IO (hClose)
 createSink :: MonadIO m => StreamSpec 'STInput (ConduitM S.ByteString o m ())
 createSink =
     (\h -> C.addCleanup (\_ -> liftIO $ hClose h) (CB.sinkHandle h))
-    <$> createPipe
+    `fmap` createPipe
 
 -- | Read output from a process by read from a conduit.
 --
@@ -36,7 +36,7 @@ createSink =
 createSource :: MonadIO m => StreamSpec 'STOutput (ConduitM i S.ByteString m ())
 createSource =
     (\h -> C.addCleanup (\_ -> liftIO $ hClose h) (CB.sourceHandle h))
-    <$> createPipe
+    `fmap` createPipe
 
 -- | Same as 'P.withProcess', but generalized to 'MonadUnliftIO'.
 --
