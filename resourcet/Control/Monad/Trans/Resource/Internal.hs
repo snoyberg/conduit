@@ -33,6 +33,7 @@ import Control.Exception (throw,Exception,SomeException)
 import Control.Applicative (Applicative (..), Alternative(..))
 import Control.Monad (MonadPlus(..))
 import Control.Monad.Fix (MonadFix(..))
+import Control.Monad.IO.Unlift
 import Control.Monad.Trans.Control
     ( MonadTransControl (..), MonadBaseControl (..) )
 import Control.Monad.Base (MonadBase, liftBase)
@@ -288,6 +289,12 @@ instance MonadBaseControl b m => MonadBaseControl b (ResourceT m) where
              f $ liftM StMT . runInBase . (\(ResourceT r) -> r reader'  )
      restoreM (StMT base) = ResourceT $ const $ restoreM base
 #endif
+
+-- | @since 1.1.10
+instance MonadUnliftIO m => MonadUnliftIO (ResourceT m) where
+  askUnliftIO = ResourceT $ \r ->
+                withUnliftIO $ \u ->
+                return (UnliftIO (unliftIO u . flip unResourceT r))
 
 #define GO(T) instance (MonadResource m) => MonadResource (T m) where liftResourceT = lift . liftResourceT
 #define GOX(X, T) instance (X, MonadResource m) => MonadResource (T m) where liftResourceT = lift . liftResourceT

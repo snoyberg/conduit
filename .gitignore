@@ -2,8 +2,12 @@
 dist/
 conduit/tmp
 conduit/tmp2
+conduit-extra/tmp
+conduit-extra/tmp2
 *.hi
 *.o
 tarballs/
 .hsenv/
 .stack-work/
+*~
+*#

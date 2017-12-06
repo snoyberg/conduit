@@ -1,3 +1,8 @@
+## 1.2.1
+
+* `Data.Conduit.Process.Typed`
+* `withSourceFile`, `withSinkFile`, and `withSinkFileBuilder`
+
 ## 1.2.0
 
 * Added the `posOffset` field to the

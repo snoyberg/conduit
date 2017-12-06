@@ -20,6 +20,7 @@ module Data.Conduit.Binary
     , sourceFileRange
     , sourceHandleRange
     , sourceHandleRangeWithBuffer
+    , withSourceFile
       -- ** Sinks
     , sinkFile
     , sinkFileCautious
@@ -27,6 +28,8 @@ module Data.Conduit.Binary
     , sinkSystemTempFile
     , sinkHandle
     , sinkIOHandle
+    , withSinkFile
+    , withSinkFileBuilder
       -- ** Conduits
     , conduitFile
     , conduitHandle
@@ -57,9 +60,11 @@ import Data.ByteString.Unsafe (unsafeUseAsCString)
 import qualified Data.ByteString.Lazy as L
 import Data.Conduit
 import Data.Conduit.List (sourceList, consume)
+import qualified Data.Conduit.List as CL
 import Control.Exception (assert, finally)
 import Control.Monad (unless, when)
 import Control.Monad.IO.Class (liftIO, MonadIO)
+import Control.Monad.IO.Unlift
 import Control.Monad.Trans.Resource (allocate, release)
 import Control.Monad.Trans.Class (lift)
 import qualified System.IO as IO
@@ -88,6 +93,7 @@ import System.FilePath (takeDirectory, takeFileName, (<.>))
 import System.IO (hClose, openBinaryTempFile)
 import Control.Exception (throwIO, catch)
 import System.IO.Error (isDoesNotExistError)
+import qualified Data.ByteString.Builder as BB
 
 -- | Stream the contents of a file as binary data.
 --
@@ -589,3 +595,42 @@ sinkStorableHelper wrap failure = do
 data SinkStorableException = SinkStorableInsufficientBytes
     deriving (Show, Typeable)
 instance Exception SinkStorableException
+
+-- | Like 'IO.withBinaryFile', but provides a source to read bytes from.
+--
+-- @since 1.2.1
+withSourceFile
+  :: (MonadUnliftIO m, MonadIO n)
+  => FilePath
+  -> (ConduitM i ByteString n () -> m a)
+  -> m a
+withSourceFile fp inner =
+  withRunInIO $ \run ->
+  IO.withBinaryFile fp IO.ReadMode $
+  run . inner . sourceHandle
+
+-- | Like 'IO.withBinaryFile', but provides a sink to write bytes to.
+--
+-- @since 1.2.1
+withSinkFile
+  :: (MonadUnliftIO m, MonadIO n)
+  => FilePath
+  -> (ConduitM ByteString o n () -> m a)
+  -> m a
+withSinkFile fp inner =
+  withRunInIO $ \run ->
+  IO.withBinaryFile fp IO.ReadMode $
+  run . inner . sinkHandle
+
+-- | Same as 'withSinkFile', but lets you use a 'BB.Builder'.
+--
+-- @since 1.2.1
+withSinkFileBuilder
+  :: (MonadUnliftIO m, MonadIO n)
+  => FilePath
+  -> (ConduitM BB.Builder o n () -> m a)
+  -> m a
+withSinkFileBuilder fp inner =
+  withRunInIO $ \run ->
+  IO.withBinaryFile fp IO.ReadMode $ \h ->
+  run $ inner $ CL.mapM_ (liftIO . BB.hPutBuilder h)
