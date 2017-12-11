@@ -28,8 +28,9 @@ import System.Exit (ExitCode (..))
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import System.IO (hClose)
 import Data.Conduit
-import Data.Conduit.Binary (sourceHandle, sinkHandle)
+import Data.Conduit.Binary (sourceHandle, sinkHandle, sinkHandleBuilder, sinkHandleFlush)
 import Data.ByteString (ByteString)
+import Data.ByteString.Builder (Builder)
 import Control.Concurrent.Async (runConcurrently, Concurrently(..))
 import Control.Monad.Catch (MonadMask, onException, throwM, finally, bracket)
 #if (__GLASGOW_HASKELL__ < 710)
@@ -40,6 +41,28 @@ instance (r ~ (), MonadIO m, i ~ ByteString) => InputSource (ConduitM i o m r) w
     isStdStream = (\(Just h) -> return $ sinkHandle h, Just CreatePipe)
 instance (r ~ (), r' ~ (), MonadIO m, MonadIO n, i ~ ByteString) => InputSource (ConduitM i o m r, n r') where
     isStdStream = (\(Just h) -> return (sinkHandle h, liftIO $ hClose h), Just CreatePipe)
+
+-- | Wrapper for input source which accepts 'Data.ByteString.Builder.Builder's.
+-- You can pass 'Data.ByteString.Builder.Extra.flush' to flush the input. Note
+-- that the pipe will /not/ automatically close when the processing completes.
+--
+-- @since 1.2.2
+newtype BuilderInput o m r = BuilderInput (ConduitM Builder o m r)
+
+-- | Wrapper for input source  which accepts @Flush@es. Note that the pipe
+-- will /not/ automatically close then processing completes.
+--
+-- @since 1.2.2
+newtype FlushInput o m r = FlushInput (ConduitM (Flush ByteString) o m r)
+
+instance (MonadIO m, r ~ ()) => InputSource (BuilderInput o m r) where
+  isStdStream = (\(Just h) -> return $ BuilderInput $ sinkHandleBuilder h, Just CreatePipe)
+instance (MonadIO m, MonadIO n, r ~ (), r' ~ ()) => InputSource (BuilderInput o m r, n r') where
+  isStdStream = (\(Just h) -> return (BuilderInput $ sinkHandleBuilder h, liftIO $ hClose h), Just CreatePipe)
+instance (MonadIO m, r ~ ()) => InputSource (FlushInput o m r) where
+  isStdStream = (\(Just h) -> return $ FlushInput $ sinkHandleFlush h, Just CreatePipe)
+instance (MonadIO m, MonadIO n, r ~ (), r' ~ ()) => InputSource (FlushInput o m r, n r') where
+  isStdStream = (\(Just h) -> return (FlushInput $ sinkHandleFlush h, liftIO $ hClose h), Just CreatePipe)
 
 instance (r ~ (), MonadIO m, o ~ ByteString) => OutputSink (ConduitM i o m r) where
     osStdStream = (\(Just h) -> return $ sourceHandle h, Just CreatePipe)

@@ -28,6 +28,8 @@ module Data.Conduit.Binary
     , sinkSystemTempFile
     , sinkHandle
     , sinkIOHandle
+    , sinkHandleBuilder
+    , sinkHandleFlush
     , withSinkFile
     , withSinkFileBuilder
       -- ** Conduits
@@ -53,6 +55,7 @@ module Data.Conduit.Binary
     , Data.Conduit.Binary.lines
     ) where
 
+import qualified Data.ByteString.Builder as BB
 import qualified Data.Streaming.FileRead as FR
 import Prelude hiding (head, take, drop, takeWhile, dropWhile, mapM_)
 import qualified Data.ByteString as S
@@ -167,13 +170,36 @@ sourceIOHandle :: MonadResource m
 sourceIOHandle alloc = bracketP alloc IO.hClose sourceHandle
 
 -- | Stream all incoming data to the given 'IO.Handle'. Note that this function
--- will /not/ automatically close the @Handle@ when processing completes.
+-- does /not/ flush and will /not/ close the @Handle@ when processing completes.
 --
 -- Since 0.3.0
 sinkHandle :: MonadIO m
            => IO.Handle
            -> Consumer S.ByteString m ()
 sinkHandle h = awaitForever (liftIO . S.hPut h)
+
+-- | Stream incoming builders, executing them directly on the buffer of the
+-- given 'IO.Handle'. Note that this function does /not/ automatically close the
+-- @Handle@ when processing completes.
+-- Pass 'Data.ByteString.Builder.Extra.flush' to flush the buffer.
+--
+-- @since 1.2.2
+sinkHandleBuilder :: MonadIO m => IO.Handle -> ConduitM BB.Builder o m ()
+sinkHandleBuilder h = awaitForever (liftIO . BB.hPutBuilder h)
+
+-- | Stream incoming @Flush@es, executing them on @IO.Handle@
+-- Note that this function does /not/ automatically close the @Handle@ when
+-- processing completes
+--
+-- @since 1.2.2
+sinkHandleFlush :: MonadIO m
+                => IO.Handle
+                -> ConduitM (Flush S.ByteString) o m ()
+sinkHandleFlush h =
+  awaitForever $ \mbs -> liftIO $
+  case mbs of
+    Chunk bs -> S.hPut h bs
+    Flush -> IO.hFlush h
 
 -- | An alternative to 'sinkHandle'.
 -- Instead of taking a pre-opened 'IO.Handle', it takes an action that opens
