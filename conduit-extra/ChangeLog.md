@@ -2,6 +2,7 @@
 
 * `sinkHandleBuilder`, `sinkHandleFlush`, `BuilderInput`, and `FlushInput`
   [#336](https://github.com/snoyberg/conduit/pull/336)
+* `withSinkFileCautious`
 
 ## 1.2.1
 

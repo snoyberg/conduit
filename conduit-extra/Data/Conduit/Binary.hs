@@ -32,6 +32,7 @@ module Data.Conduit.Binary
     , sinkHandleFlush
     , withSinkFile
     , withSinkFileBuilder
+    , withSinkFileCautious
       -- ** Conduits
     , conduitFile
     , conduitHandle
@@ -64,7 +65,7 @@ import qualified Data.ByteString.Lazy as L
 import Data.Conduit
 import Data.Conduit.List (sourceList, consume)
 import qualified Data.Conduit.List as CL
-import Control.Exception (assert, finally)
+import Control.Exception (assert, finally, bracket)
 import Control.Monad (unless, when)
 import Control.Monad.IO.Class (liftIO, MonadIO)
 import Control.Monad.IO.Unlift
@@ -300,15 +301,8 @@ sinkFileCautious
   => FilePath
   -> ConduitM S.ByteString o m ()
 sinkFileCautious fp =
-    bracketP acquire cleanup inner
+    bracketP (cautiousAcquire fp) cautiousCleanup inner
   where
-    acquire = openBinaryTempFile (takeDirectory fp) (takeFileName fp <.> "tmp")
-    cleanup (tmpFP, h) = do
-        hClose h
-        removeFile tmpFP `Control.Exception.catch` \e ->
-            if isDoesNotExistError e
-                then return ()
-                else throwIO e
     inner (tmpFP, h) = do
         sinkHandle h
         liftIO $ do
@@ -660,3 +654,34 @@ withSinkFileBuilder fp inner =
   withRunInIO $ \run ->
   IO.withBinaryFile fp IO.ReadMode $ \h ->
   run $ inner $ CL.mapM_ (liftIO . BB.hPutBuilder h)
+
+-- | Like 'sinkFileCautious', but uses the @with@ pattern instead of
+-- @MonadResource@.
+--
+-- @since 1.2.2
+withSinkFileCautious
+  :: (MonadUnliftIO m, MonadIO n)
+  => FilePath
+  -> (ConduitM S.ByteString o n () -> m a)
+  -> m a
+withSinkFileCautious fp inner =
+  withRunInIO $ \run -> bracket
+    (cautiousAcquire fp)
+    cautiousCleanup
+    (\(tmpFP, h) -> do
+        a <- run $ inner $ sinkHandle h
+        renameFile tmpFP fp
+        return a)
+
+-- | Helper function for Cautious functions above, do not export!
+cautiousAcquire :: FilePath -> IO (FilePath, IO.Handle)
+cautiousAcquire fp = openBinaryTempFile (takeDirectory fp) (takeFileName fp <.> "tmp")
+
+-- | Helper function for Cautious functions above, do not export!
+cautiousCleanup :: (FilePath, IO.Handle) -> IO ()
+cautiousCleanup (tmpFP, h) = do
+  hClose h
+  removeFile tmpFP `Control.Exception.catch` \e ->
+    if isDoesNotExistError e
+      then return ()
+      else throwIO e
