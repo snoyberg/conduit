@@ -670,6 +670,7 @@ withSinkFileCautious fp inner =
     cautiousCleanup
     (\(tmpFP, h) -> do
         a <- run $ inner $ sinkHandle h
+        hClose h
         renameFile tmpFP fp
         return a)
 

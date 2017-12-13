@@ -1,3 +1,7 @@
+## 1.2.2.1
+
+* Add missing `hClose` to `withSinkFileCautious`
+
 ## 1.2.2
 
 * `sinkHandleBuilder`, `sinkHandleFlush`, `BuilderInput`, and `FlushInput`
