@@ -1,3 +1,8 @@
+## 1.2.2
+
+* `sinkHandleBuilder`, `sinkHandleFlush`, `BuilderInput`, and `FlushInput`
+  [#336](https://github.com/snoyberg/conduit/pull/336)
+
 ## 1.2.1
 
 * `Data.Conduit.Process.Typed`
