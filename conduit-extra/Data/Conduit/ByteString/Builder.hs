@@ -55,15 +55,14 @@ import Control.Monad.Trans.Class (lift, MonadTrans)
 import qualified Data.ByteString                   as S
 
 import Control.Monad.Primitive (PrimMonad, unsafePrimToPrim)
-import Control.Monad.Base (MonadBase, liftBase)
 import Data.Streaming.ByteString.Builder.Class
 
-unsafeLiftIO :: (MonadBase base m, PrimMonad base) => IO a -> m a
-unsafeLiftIO = liftBase . unsafePrimToPrim
+unsafeLiftIO :: PrimMonad m => IO a -> m a
+unsafeLiftIO = unsafePrimToPrim
 
 -- | Incrementally execute builders and pass on the filled chunks as
 -- bytestrings.
-builderToByteString :: (MonadBase base m, PrimMonad base, StreamingBuilder b)
+builderToByteString :: (PrimMonad m, StreamingBuilder b)
                     => Conduit b m S.ByteString
 builderToByteString =
   builderToByteStringWith defaultStrategy
@@ -72,7 +71,7 @@ builderToByteString =
 -- |
 --
 -- Since 0.0.2
-builderToByteStringFlush :: (MonadBase base m, PrimMonad base, StreamingBuilder b)
+builderToByteStringFlush :: (PrimMonad m, StreamingBuilder b)
                          => Conduit (Flush b) m (Flush S.ByteString)
 builderToByteStringFlush =
   builderToByteStringWithFlush defaultStrategy
@@ -85,7 +84,7 @@ builderToByteStringFlush =
 -- WARNING: This conduit yields bytestrings that are NOT
 -- referentially transparent. Their content will be overwritten as soon
 -- as control is returned from the inner sink!
-unsafeBuilderToByteString :: (MonadBase base m, PrimMonad base, StreamingBuilder b)
+unsafeBuilderToByteString :: (PrimMonad m, StreamingBuilder b)
                           => IO Buffer  -- action yielding the inital buffer.
                           -> Conduit b m S.ByteString
 unsafeBuilderToByteString = builderToByteStringWith . reuseBufferStrategy
@@ -96,7 +95,7 @@ unsafeBuilderToByteString = builderToByteStringWith . reuseBufferStrategy
 -- filled chunks as bytestrings to an inner sink.
 --
 -- INV: All bytestrings passed to the inner sink are non-empty.
-builderToByteStringWith :: (MonadBase base m, PrimMonad base, StreamingBuilder b)
+builderToByteStringWith :: (PrimMonad m, StreamingBuilder b)
                         => BufferAllocStrategy
                         -> Conduit b m S.ByteString
 builderToByteStringWith =
@@ -110,13 +109,13 @@ builderToByteStringWith =
 --
 -- Since 0.0.2
 builderToByteStringWithFlush
-    :: (MonadBase base m, PrimMonad base, StreamingBuilder b)
+    :: (PrimMonad m, StreamingBuilder b)
     => BufferAllocStrategy
     -> Conduit (Flush b) m (Flush S.ByteString)
 builderToByteStringWithFlush = helper await yield
 {-# INLINE builderToByteStringWithFlush #-}
 
-helper :: (MonadBase base m, PrimMonad base, Monad (t m), MonadTrans t, StreamingBuilder b)
+helper :: (PrimMonad m, Monad (t m), MonadTrans t, StreamingBuilder b)
        => t m (Maybe (Flush b))
        -> (Flush S.ByteString -> t m ())
        -> BufferAllocStrategy

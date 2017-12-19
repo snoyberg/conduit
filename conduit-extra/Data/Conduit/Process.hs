@@ -25,14 +25,14 @@ module Data.Conduit.Process
 import Data.Streaming.Process
 import Data.Streaming.Process.Internal
 import System.Exit (ExitCode (..))
-import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.IO.Unlift (MonadIO, liftIO, MonadUnliftIO, withRunInIO)
 import System.IO (hClose)
 import Data.Conduit
 import Data.Conduit.Binary (sourceHandle, sinkHandle, sinkHandleBuilder, sinkHandleFlush)
 import Data.ByteString (ByteString)
 import Data.ByteString.Builder (Builder)
 import Control.Concurrent.Async (runConcurrently, Concurrently(..))
-import Control.Monad.Catch (MonadMask, onException, throwM, finally, bracket)
+import Control.Exception (onException, throwIO, finally, bracket)
 #if (__GLASGOW_HASKELL__ < 710)
 import Control.Applicative ((<$>), (<*>))
 #endif
@@ -157,21 +157,20 @@ withCheckedProcessCleanup
     :: ( InputSource stdin
        , OutputSink stderr
        , OutputSink stdout
-       , MonadIO m
-       , MonadMask m
+       , MonadUnliftIO m
        )
     => CreateProcess
     -> (stdin -> stdout -> stderr -> m b)
     -> m b
-withCheckedProcessCleanup cp f = bracket
+withCheckedProcessCleanup cp f = withRunInIO $ \run -> bracket
     (streamingProcess cp)
     (\(_, _, _, sph) -> closeStreamingProcessHandle sph)
     $ \(x, y, z, sph) -> do
-        res <- f x y z `onException` liftIO (terminateStreamingProcess sph)
+        res <- run (f x y z) `onException` terminateStreamingProcess sph
         ec <- waitForStreamingProcess sph
         if ec == ExitSuccess
             then return res
-            else throwM $ ProcessExitedUnsuccessfully cp ec
+            else throwIO $ ProcessExitedUnsuccessfully cp ec
 
 
 terminateStreamingProcess :: StreamingProcessHandle -> IO ()

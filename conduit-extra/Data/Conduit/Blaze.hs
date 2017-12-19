@@ -48,23 +48,22 @@ import Data.Conduit
 
 import qualified Data.ByteString                   as S
 
-import Blaze.ByteString.Builder (Builder)
+import Data.ByteString.Builder (Builder)
 import Control.Monad.Primitive (PrimMonad)
-import Control.Monad.Base (MonadBase)
 import Data.Streaming.Blaze
 
 import qualified Data.Conduit.ByteString.Builder as B
 
 -- | Incrementally execute builders and pass on the filled chunks as
 -- bytestrings.
-builderToByteString :: (MonadBase base m, PrimMonad base) => Conduit Builder m S.ByteString
+builderToByteString :: PrimMonad m => Conduit Builder m S.ByteString
 builderToByteString = B.builderToByteString
 {-# INLINE builderToByteString #-}
 
 -- |
 --
 -- Since 0.0.2
-builderToByteStringFlush :: (MonadBase base m, PrimMonad base) => Conduit (Flush Builder) m (Flush S.ByteString)
+builderToByteStringFlush :: PrimMonad m => Conduit (Flush Builder) m (Flush S.ByteString)
 builderToByteStringFlush = B.builderToByteStringFlush
 {-# INLINE builderToByteStringFlush #-}
 
@@ -75,7 +74,7 @@ builderToByteStringFlush = B.builderToByteStringFlush
 -- WARNING: This conduit yields bytestrings that are NOT
 -- referentially transparent. Their content will be overwritten as soon
 -- as control is returned from the inner sink!
-unsafeBuilderToByteString :: (MonadBase base m, PrimMonad base)
+unsafeBuilderToByteString :: PrimMonad m
                           => IO Buffer  -- action yielding the inital buffer.
                           -> Conduit Builder m S.ByteString
 unsafeBuilderToByteString = B.unsafeBuilderToByteString
@@ -86,7 +85,7 @@ unsafeBuilderToByteString = B.unsafeBuilderToByteString
 -- filled chunks as bytestrings to an inner sink.
 --
 -- INV: All bytestrings passed to the inner sink are non-empty.
-builderToByteStringWith :: (MonadBase base m, PrimMonad base)
+builderToByteStringWith :: PrimMonad m
                         => BufferAllocStrategy
                         -> Conduit Builder m S.ByteString
 builderToByteStringWith = B.builderToByteStringWith
@@ -96,7 +95,7 @@ builderToByteStringWith = B.builderToByteStringWith
 --
 -- Since 0.0.2
 builderToByteStringWithFlush
-    :: (MonadBase base m, PrimMonad base)
+    :: PrimMonad m
     => BufferAllocStrategy
     -> Conduit (Flush Builder) m (Flush S.ByteString)
 builderToByteStringWithFlush = B.builderToByteStringWithFlush

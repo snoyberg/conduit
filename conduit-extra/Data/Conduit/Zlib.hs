@@ -21,20 +21,19 @@ import qualified Data.ByteString as S
 import Control.Monad (unless, liftM)
 import Control.Monad.Trans.Class (lift, MonadTrans)
 import Control.Monad.Primitive (PrimMonad, unsafePrimToPrim)
-import Control.Monad.Base (MonadBase, liftBase)
 import Control.Monad.Trans.Resource (MonadThrow, monadThrow)
 import Data.Function (fix)
 
 -- | Gzip compression with default parameters.
-gzip :: (MonadThrow m, MonadBase base m, PrimMonad base) => Conduit ByteString m ByteString
+gzip :: (MonadThrow m, PrimMonad m) => Conduit ByteString m ByteString
 gzip = compress 1 (WindowBits 31)
 
 -- | Gzip decompression with default parameters.
-ungzip :: (MonadBase base m, PrimMonad base, MonadThrow m) => Conduit ByteString m ByteString
+ungzip :: (PrimMonad m, MonadThrow m) => Conduit ByteString m ByteString
 ungzip = decompress (WindowBits 31)
 
-unsafeLiftIO :: (MonadBase base m, PrimMonad base, MonadThrow m) => IO a -> m a
-unsafeLiftIO = liftBase . unsafePrimToPrim
+unsafeLiftIO :: (PrimMonad m, MonadThrow m) => IO a -> m a
+unsafeLiftIO = unsafePrimToPrim
 
 -- |
 -- Decompress (inflate) a stream of 'ByteString's. For example:
@@ -42,7 +41,7 @@ unsafeLiftIO = liftBase . unsafePrimToPrim
 -- >    sourceFile "test.z" $= decompress defaultWindowBits $$ sinkFile "test"
 
 decompress
-    :: (MonadBase base m, PrimMonad base, MonadThrow m)
+    :: (PrimMonad m, MonadThrow m)
     => WindowBits -- ^ Zlib parameter (see the zlib-bindings package as well as the zlib C library)
     -> Conduit ByteString m ByteString
 decompress =
@@ -53,12 +52,12 @@ decompress =
 
 -- | Same as 'decompress', but allows you to explicitly flush the stream.
 decompressFlush
-    :: (MonadBase base m, PrimMonad base, MonadThrow m)
+    :: (PrimMonad m, MonadThrow m)
     => WindowBits -- ^ Zlib parameter (see the zlib-bindings package as well as the zlib C library)
     -> Conduit (Flush ByteString) m (Flush ByteString)
 decompressFlush = helperDecompress await yield (leftover . Chunk)
 
-helperDecompress :: (Monad (t m), MonadBase base m, PrimMonad base, MonadThrow m, MonadTrans t)
+helperDecompress :: (Monad (t m), PrimMonad m, MonadThrow m, MonadTrans t)
                  => t m (Maybe (Flush ByteString))
                  -> (Flush ByteString -> t m ())
                  -> (ByteString -> t m ())
@@ -142,7 +141,7 @@ helperDecompress await' yield' leftover' config = do
 -- the format (zlib vs. gzip).
 
 compress
-    :: (MonadBase base m, PrimMonad base, MonadThrow m)
+    :: (PrimMonad m, MonadThrow m)
     => Int         -- ^ Compression level
     -> WindowBits  -- ^ Zlib parameter (see the zlib-bindings package as well as the zlib C library)
     -> Conduit ByteString m ByteString
@@ -154,13 +153,13 @@ compress =
 
 -- | Same as 'compress', but allows you to explicitly flush the stream.
 compressFlush
-    :: (MonadBase base m, PrimMonad base, MonadThrow m)
+    :: (PrimMonad m, MonadThrow m)
     => Int         -- ^ Compression level
     -> WindowBits  -- ^ Zlib parameter (see the zlib-bindings package as well as the zlib C library)
     -> Conduit (Flush ByteString) m (Flush ByteString)
 compressFlush = helperCompress await yield
 
-helperCompress :: (Monad (t m), MonadBase base m, PrimMonad base, MonadThrow m, MonadTrans t)
+helperCompress :: (Monad (t m), PrimMonad m, MonadThrow m, MonadTrans t)
                => t m (Maybe (Flush ByteString))
                -> (Flush ByteString -> t m ())
                -> Int

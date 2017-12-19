@@ -27,12 +27,12 @@ instance MonadBase base m => MonadBase base (CatchT m) where
 
 spec :: Spec
 spec = describe "Data.Conduit.Zlib" $ do
-        prop "idempotent" $ \bss' -> runST $ do
+        prop "idempotent" $ \bss' -> do
             let bss = map S.pack bss'
                 lbs = L.fromChunks bss
                 src = mconcat $ map (CL.sourceList . return) bss
-            outBss <- runExceptionT_ $ src C.$= CZ.gzip C.$= CZ.ungzip C.$$ CL.consume
-            return $ lbs == L.fromChunks outBss
+            outBss <- src C.$= CZ.gzip C.$= CZ.ungzip C.$$ CL.consume
+            L.fromChunks outBss `shouldBe` lbs
         prop "flush" $ \bss' -> do
             let bss = map S.pack $ filter (not . null) bss'
                 bssC = concatMap (\bs -> [C.Chunk bs, C.Flush]) bss
