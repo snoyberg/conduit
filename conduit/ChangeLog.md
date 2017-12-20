@@ -2,6 +2,7 @@
 
 * Drop monad-control and exceptions in favor of unliftio
 * Drop mmorph dependency
+* Deprecate old type synonyms and operators
 
 ## 1.2.12.1
 

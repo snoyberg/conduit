@@ -4,7 +4,6 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE Trustworthy #-}
 module Data.Acquire.Internal
     ( Acquire (..)
     , Allocated (..)

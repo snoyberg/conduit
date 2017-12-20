@@ -42,7 +42,7 @@ spec = describe "Data.Conduit.Network" $ do
 
 
 echo :: AppData -> IO ()
-echo ad = appSource ad $$ appSink ad
+echo ad = runConduit $ appSource ad .| appSink ad
 
 doNothing :: AppData -> IO ()
 doNothing _ = return ()

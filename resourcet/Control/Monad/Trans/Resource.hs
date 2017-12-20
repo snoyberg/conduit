@@ -56,21 +56,15 @@ module Control.Monad.Trans.Resource
     ) where
 
 import qualified Data.IntMap as IntMap
-import Control.Exception (SomeException, throw)
 import qualified Data.IORef as I
-import Control.Applicative (Applicative (..))
 import Control.Monad.IO.Unlift (MonadIO (..), MonadUnliftIO, withRunInIO)
-import Control.Monad (liftM)
 import qualified Control.Exception as E
-import Data.Monoid (Monoid)
 
 import Control.Monad.Trans.Resource.Internal
 
 import Control.Concurrent (ThreadId, forkIO)
 
-import Data.Functor.Identity (Identity, runIdentity)
 import Control.Monad.Catch (MonadThrow, throwM)
-import Control.Monad.Catch.Pure (CatchT, runCatchT)
 import Data.Acquire.Internal (ReleaseType (..))
 
 
@@ -192,10 +186,6 @@ bracket_ alloc cleanupNormal cleanupExc inside =
         res <- restore (run inside) `E.onException` cleanupExc
         cleanupNormal
         return res
-
-finally :: MonadUnliftIO m => m a -> IO () -> m a
-finally action cleanup =
-    withRunInIO $ \run -> E.finally (run action) cleanup
 
 -- | This function mirrors @join@ at the transformer level: it will collapse
 -- two levels of @ResourceT@ into a single @ResourceT@.

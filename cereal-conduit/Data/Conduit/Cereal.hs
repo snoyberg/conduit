@@ -22,7 +22,7 @@ import           Control.Exception.Base
 import           Control.Monad.Trans.Resource (MonadThrow, throwM)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
-import qualified Data.Conduit as C
+import           Data.Conduit (ConduitT, leftover, await, yield)
 import qualified Data.Conduit.List as CL
 import           Data.Serialize hiding (get, put)
 import           Data.Typeable
@@ -35,7 +35,7 @@ data GetException = GetException String
 instance Exception GetException
 
 -- | Run a 'Get' repeatedly on the input stream, producing an output stream of whatever the 'Get' outputs.
-conduitGet :: MonadThrow m => Get o -> C.Conduit BS.ByteString m o
+conduitGet :: MonadThrow m => Get o -> ConduitT BS.ByteString o m ()
 conduitGet = mkConduitGet errorHandler
   where errorHandler msg = throwM $ GetException msg
 {-# DEPRECATED conduitGet "Please switch to conduitGet2, see comment on that function" #-}
@@ -44,20 +44,20 @@ conduitGet = mkConduitGet errorHandler
 --
 -- If 'Get' succeed it will return the data read and unconsumed part of the input stream.
 -- If the 'Get' fails due to deserialization error or early termination of the input stream it raise an error.
-sinkGet :: MonadThrow m => Get r -> C.Consumer BS.ByteString m r
+sinkGet :: MonadThrow m => Get r -> ConduitT BS.ByteString o m r
 sinkGet = mkSinkGet errorHandler terminationHandler
   where errorHandler msg = throwM $ GetException msg
         terminationHandler f = case f BS.empty of
           Fail msg _ -> throwM $ GetException msg
-          Done r lo -> C.leftover lo >> return r
+          Done r lo -> leftover lo >> return r
           Partial _ -> throwM $ GetException "Failed reading: Internal error: unexpected Partial."
 
 -- | Convert a 'Put' into a 'Source'. Runs in constant memory.
-sourcePut :: Monad m => Put -> C.Producer m BS.ByteString
+sourcePut :: Monad m => Put -> ConduitT i BS.ByteString m ()
 sourcePut put = CL.sourceList $ LBS.toChunks $ runPutLazy put
 
 -- | Run a 'Putter' repeatedly on the input stream, producing a concatenated 'ByteString' stream.
-conduitPut :: Monad m => Putter a -> C.Conduit a m BS.ByteString
+conduitPut :: Monad m => Putter a -> ConduitT a BS.ByteString m ()
 conduitPut p = CL.map $ runPut . p
 
 -- | Reapply @Get o@ to a stream of bytes as long as more data is available,
@@ -82,7 +82,7 @@ conduitPut p = CL.map $ runPut . p
 -- no data left to be consumed in the stream.
 --
 -- @since 0.7.3
-conduitGet2 :: MonadThrow m => Get o -> C.Conduit BS.ByteString m o
+conduitGet2 :: MonadThrow m => Get o -> ConduitT BS.ByteString o m ()
 conduitGet2 get =
     awaitNE >>= start
   where
@@ -91,7 +91,7 @@ conduitGet2 get =
     awaitNE =
         loop
       where
-        loop = C.await >>= maybe (return BS.empty) check
+        loop = await >>= maybe (return BS.empty) check
         check bs
             | BS.null bs = loop
             | otherwise = return bs
@@ -108,7 +108,7 @@ conduitGet2 get =
     -- giving us anyway.
     result (Partial f) = awaitNE >>= result . f
     result (Done x rest) = do
-        C.yield x
+        yield x
         if BS.null rest
             then awaitNE >>= start
             else start rest

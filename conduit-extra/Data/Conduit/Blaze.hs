@@ -56,14 +56,14 @@ import qualified Data.Conduit.ByteString.Builder as B
 
 -- | Incrementally execute builders and pass on the filled chunks as
 -- bytestrings.
-builderToByteString :: PrimMonad m => Conduit Builder m S.ByteString
+builderToByteString :: PrimMonad m => ConduitT Builder S.ByteString m ()
 builderToByteString = B.builderToByteString
 {-# INLINE builderToByteString #-}
 
 -- |
 --
 -- Since 0.0.2
-builderToByteStringFlush :: PrimMonad m => Conduit (Flush Builder) m (Flush S.ByteString)
+builderToByteStringFlush :: PrimMonad m => ConduitT (Flush Builder) (Flush S.ByteString) m ()
 builderToByteStringFlush = B.builderToByteStringFlush
 {-# INLINE builderToByteStringFlush #-}
 
@@ -76,7 +76,7 @@ builderToByteStringFlush = B.builderToByteStringFlush
 -- as control is returned from the inner sink!
 unsafeBuilderToByteString :: PrimMonad m
                           => IO Buffer  -- action yielding the inital buffer.
-                          -> Conduit Builder m S.ByteString
+                          -> ConduitT Builder S.ByteString m ()
 unsafeBuilderToByteString = B.unsafeBuilderToByteString
 {-# INLINE unsafeBuilderToByteString #-}
 
@@ -87,7 +87,7 @@ unsafeBuilderToByteString = B.unsafeBuilderToByteString
 -- INV: All bytestrings passed to the inner sink are non-empty.
 builderToByteStringWith :: PrimMonad m
                         => BufferAllocStrategy
-                        -> Conduit Builder m S.ByteString
+                        -> ConduitT Builder S.ByteString m ()
 builderToByteStringWith = B.builderToByteStringWith
 {-# INLINE builderToByteStringWith #-}
 
@@ -97,6 +97,6 @@ builderToByteStringWith = B.builderToByteStringWith
 builderToByteStringWithFlush
     :: PrimMonad m
     => BufferAllocStrategy
-    -> Conduit (Flush Builder) m (Flush S.ByteString)
+    -> ConduitT (Flush Builder) (Flush S.ByteString) m ()
 builderToByteStringWithFlush = B.builderToByteStringWithFlush
 {-# INLINE builderToByteStringWithFlush #-}

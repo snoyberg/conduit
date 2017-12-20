@@ -25,11 +25,11 @@ import Control.Monad.Trans.Resource (MonadThrow, throwM)
 import Data.Function (fix)
 
 -- | Gzip compression with default parameters.
-gzip :: (MonadThrow m, PrimMonad m) => Conduit ByteString m ByteString
+gzip :: (MonadThrow m, PrimMonad m) => ConduitT ByteString ByteString m ()
 gzip = compress 1 (WindowBits 31)
 
 -- | Gzip decompression with default parameters.
-ungzip :: (PrimMonad m, MonadThrow m) => Conduit ByteString m ByteString
+ungzip :: (PrimMonad m, MonadThrow m) => ConduitT ByteString ByteString m ()
 ungzip = decompress (WindowBits 31)
 
 unsafeLiftIO :: (PrimMonad m, MonadThrow m) => IO a -> m a
@@ -43,7 +43,7 @@ unsafeLiftIO = unsafePrimToPrim
 decompress
     :: (PrimMonad m, MonadThrow m)
     => WindowBits -- ^ Zlib parameter (see the zlib-bindings package as well as the zlib C library)
-    -> Conduit ByteString m ByteString
+    -> ConduitT ByteString ByteString m ()
 decompress =
     helperDecompress (liftM (fmap Chunk) await) yield' leftover
   where
@@ -54,7 +54,7 @@ decompress =
 decompressFlush
     :: (PrimMonad m, MonadThrow m)
     => WindowBits -- ^ Zlib parameter (see the zlib-bindings package as well as the zlib C library)
-    -> Conduit (Flush ByteString) m (Flush ByteString)
+    -> ConduitT (Flush ByteString) (Flush ByteString) m ()
 decompressFlush = helperDecompress await yield (leftover . Chunk)
 
 helperDecompress :: (Monad (t m), PrimMonad m, MonadThrow m, MonadTrans t)
@@ -144,7 +144,7 @@ compress
     :: (PrimMonad m, MonadThrow m)
     => Int         -- ^ Compression level
     -> WindowBits  -- ^ Zlib parameter (see the zlib-bindings package as well as the zlib C library)
-    -> Conduit ByteString m ByteString
+    -> ConduitT ByteString ByteString m ()
 compress =
     helperCompress (liftM (fmap Chunk) await) yield'
   where
@@ -156,7 +156,7 @@ compressFlush
     :: (PrimMonad m, MonadThrow m)
     => Int         -- ^ Compression level
     -> WindowBits  -- ^ Zlib parameter (see the zlib-bindings package as well as the zlib C library)
-    -> Conduit (Flush ByteString) m (Flush ByteString)
+    -> ConduitT (Flush ByteString) (Flush ByteString) m ()
 compressFlush = helperCompress await yield
 
 helperCompress :: (Monad (t m), PrimMonad m, MonadThrow m, MonadTrans t)
@@ -220,8 +220,8 @@ helperCompress await' yield' level config =
 --
 -- @since 1.1.10
 multiple :: Monad m
-         => Conduit ByteString m a
-         -> Conduit ByteString m a
+         => ConduitT ByteString a m ()
+         -> ConduitT ByteString a m ()
 multiple inner =
     loop
   where

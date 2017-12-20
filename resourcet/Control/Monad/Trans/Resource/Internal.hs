@@ -7,13 +7,6 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE RankNTypes #-}
--- Can only mark as Safe when using a newer GHC, otherwise we get build
--- failures due to the manual Typeable instance below.
-#if __GLASGOW_HASKELL__ >= 707
-{-# LANGUAGE Safe #-}
-#else
-{-# LANGUAGE Trustworthy #-}
-#endif
 
 module Control.Monad.Trans.Resource.Internal(
     InvalidAccess(..)
@@ -46,7 +39,6 @@ import Control.Monad.Writer.Class ( MonadWriter (..) )
 import Control.Monad.Trans.Identity ( IdentityT)
 import Control.Monad.Trans.List     ( ListT    )
 import Control.Monad.Trans.Maybe    ( MaybeT   )
-import Control.Monad.Trans.Error    ( ErrorT, Error)
 import Control.Monad.Trans.Except   ( ExceptT  )
 import Control.Monad.Trans.Reader   ( ReaderT  )
 import Control.Monad.Trans.State    ( StateT   )
@@ -65,7 +57,6 @@ import Control.Monad.Catch (MonadThrow (..), MonadCatch (..), MonadMask (..))
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
 import qualified Data.IORef as I
-import Data.Monoid
 import Data.Typeable
 import Data.Word(Word)
 import Data.Acquire.Internal (ReleaseType (..))
@@ -249,7 +240,6 @@ instance MonadUnliftIO m => MonadUnliftIO (ResourceT m) where
 GO(IdentityT)
 GO(ListT)
 GO(MaybeT)
-GOX(Error e, ErrorT e)
 GO(ExceptT e)
 GO(ReaderT r)
 GO(ContT r)

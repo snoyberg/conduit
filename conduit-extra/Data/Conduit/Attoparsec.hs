@@ -76,7 +76,6 @@ class AttoparsecInput a where
     feedA :: A.IResult a b -> a -> A.IResult a b
     empty :: a
     isNull :: a -> Bool
-    notEmpty :: [a] -> [a]
     getLinesCols :: a -> Position
 
     -- | Return the beginning of the first input with the length of
@@ -89,7 +88,6 @@ instance AttoparsecInput B.ByteString where
     feedA = Data.Attoparsec.ByteString.feed
     empty = B.empty
     isNull = B.null
-    notEmpty = filter (not . B.null)
     getLinesCols = B.foldl' f (Position 0 0 0)
       where
         f (Position l c o) ch
@@ -102,7 +100,6 @@ instance AttoparsecInput T.Text where
     feedA = Data.Attoparsec.Text.feed
     empty = T.empty
     isNull = T.null
-    notEmpty = filter (not . T.null)
     getLinesCols = T.foldl' f (Position 0 0 0)
       where
         f (Position l c o) ch
@@ -117,14 +114,14 @@ instance AttoparsecInput T.Text where
 -- If parsing fails, a 'ParseError' will be thrown with 'throwM'.
 --
 -- Since 0.5.0
-sinkParser :: (AttoparsecInput a, MonadThrow m) => A.Parser a b -> Consumer a m b
+sinkParser :: (AttoparsecInput a, MonadThrow m) => A.Parser a b -> ConduitT a o m b
 sinkParser = fmap snd . sinkParserPosErr (Position 1 1 0)
 
 -- | Same as 'sinkParser', but we return an 'Either' type instead
 -- of raising an exception.
 --
 -- Since 1.1.5
-sinkParserEither :: (AttoparsecInput a, Monad m) => A.Parser a b -> Consumer a m (Either ParseError b)
+sinkParserEither :: (AttoparsecInput a, Monad m) => A.Parser a b -> ConduitT a o m (Either ParseError b)
 sinkParserEither = (fmap.fmap) snd . sinkParserPos (Position 1 1 0)
 
 
@@ -133,7 +130,7 @@ sinkParserEither = (fmap.fmap) snd . sinkParserPos (Position 1 1 0)
 -- on bad input.
 --
 -- Since 0.5.0
-conduitParser :: (AttoparsecInput a, MonadThrow m) => A.Parser a b -> Conduit a m (PositionRange, b)
+conduitParser :: (AttoparsecInput a, MonadThrow m) => A.Parser a b -> ConduitT a (PositionRange, b) m ()
 conduitParser parser =
     conduit $ Position 1 1 0
        where
@@ -147,11 +144,11 @@ conduitParser parser =
 {-# SPECIALIZE conduitParser
                    :: MonadThrow m
                    => A.Parser T.Text b
-                   -> Conduit T.Text m (PositionRange, b) #-}
+                   -> ConduitT T.Text (PositionRange, b) m () #-}
 {-# SPECIALIZE conduitParser
                    :: MonadThrow m
                    => A.Parser B.ByteString b
-                   -> Conduit B.ByteString m (PositionRange, b) #-}
+                   -> ConduitT B.ByteString (PositionRange, b) m () #-}
 
 
 
@@ -160,7 +157,7 @@ conduitParser parser =
 conduitParserEither
     :: (Monad m, AttoparsecInput a)
     => A.Parser a b
-    -> Conduit a m (Either ParseError (PositionRange, b))
+    -> ConduitT a (Either ParseError (PositionRange, b)) m ()
 conduitParserEither parser =
     conduit $ Position 1 1 0
   where
@@ -177,11 +174,11 @@ conduitParserEither parser =
 {-# SPECIALIZE conduitParserEither
                    :: Monad m
                    => A.Parser T.Text b
-                   -> Conduit T.Text m (Either ParseError (PositionRange, b)) #-}
+                   -> ConduitT T.Text (Either ParseError (PositionRange, b)) m () #-}
 {-# SPECIALIZE conduitParserEither
                    :: Monad m
                    => A.Parser B.ByteString b
-                   -> Conduit B.ByteString m (Either ParseError (PositionRange, b)) #-}
+                   -> ConduitT B.ByteString (Either ParseError (PositionRange, b)) m () #-}
 
 
 
@@ -190,7 +187,7 @@ sinkParserPosErr
     :: (AttoparsecInput a, MonadThrow m)
     => Position
     -> A.Parser a b
-    -> Consumer a m (Position, b)
+    -> ConduitT a o m (Position, b)
 sinkParserPosErr pos0 p = sinkParserPos pos0 p >>= f
     where
       f (Left e) = throwM e
@@ -202,7 +199,7 @@ sinkParserPos
     :: (AttoparsecInput a, Monad m)
     => Position
     -> A.Parser a b
-    -> Consumer a m (Either ParseError (Position, b))
+    -> ConduitT a o m (Either ParseError (Position, b))
 sinkParserPos pos0 p = sink empty pos0 (parseA p)
   where
     sink prev pos parser = await >>= maybe close push

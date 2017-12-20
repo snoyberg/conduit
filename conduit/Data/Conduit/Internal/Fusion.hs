@@ -62,11 +62,12 @@ fuseStream :: Monad m
            => ConduitWithStream a b m ()
            -> ConduitWithStream b c m r
            -> ConduitWithStream a c m r
-fuseStream (ConduitWithStream a x) (ConduitWithStream b y) = ConduitWithStream (a =$= b) (y . x)
+fuseStream (ConduitWithStream a x) (ConduitWithStream b y) =
+  ConduitWithStream (a .| b) (y . x)
 {-# INLINE fuseStream #-}
 
 {-# RULES "conduit: fuseStream" forall left right.
-        unstream left =$= unstream right = unstream (fuseStream left right)
+        unstream left .| unstream right = unstream (fuseStream left right)
   #-}
 
 runStream :: Monad m
@@ -91,6 +92,7 @@ runStream (ConduitWithStream _ f) =
         runConduit (unstream stream) = runStream stream
   #-}
 
+{-
 connectStream :: Monad m
               => ConduitWithStream () i    m ()
               -> ConduitWithStream i  Void m r
@@ -109,7 +111,9 @@ connectStream (ConduitWithStream _ stream) (ConduitWithStream _ f) =
                 Skip s' -> loop s'
                 Emit _ o -> absurd o
 {-# INLINE connectStream #-}
+-}
 
+{- Deprecated
 {-# RULES "conduit: connectStream" forall left right.
         unstream left $$ unstream right = connectStream left right
   #-}
@@ -134,10 +138,13 @@ connectStream1 (ConduitWithStream _ fstream) (ConduitT sink0) =
                         Emit s' i -> loop [] (p i) s'
              in ms0 >>= loop [] (sink0 Done)
 {-# INLINE connectStream1 #-}
+-}
 
+{- Deprecated
 {-# RULES "conduit: connectStream1" forall left right.
         unstream left $$ right = connectStream1 left right
   #-}
+-}
 
 {-
 

@@ -21,7 +21,7 @@ import qualified Data.Streaming.Filesystem as F
 -- @foo/bar@ and @foo/baz@.
 --
 -- Since 1.1.0
-sourceDirectory :: MonadResource m => FilePath -> Producer m FilePath
+sourceDirectory :: MonadResource m => FilePath -> ConduitT i FilePath m ()
 sourceDirectory dir =
     bracketP (F.openDirStream dir) F.closeDirStream go
   where
@@ -46,14 +46,14 @@ sourceDirectory dir =
 sourceDirectoryDeep :: MonadResource m
                     => Bool -- ^ Follow directory symlinks
                     -> FilePath -- ^ Root directory
-                    -> Producer m FilePath
+                    -> ConduitT i FilePath m ()
 sourceDirectoryDeep followSymlinks =
     start
   where
-    start :: MonadResource m => FilePath -> Producer m FilePath
-    start dir = sourceDirectory dir =$= awaitForever go
+    start :: MonadResource m => FilePath -> ConduitT i FilePath m ()
+    start dir = sourceDirectory dir .| awaitForever go
 
-    go :: MonadResource m => FilePath -> Producer m FilePath
+    go :: MonadResource m => FilePath -> ConduitT i FilePath m ()
     go fp = do
         ft <- liftIO $ F.getFileType fp
         case ft of

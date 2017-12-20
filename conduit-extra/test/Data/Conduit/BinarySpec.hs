@@ -3,6 +3,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Data.Conduit.BinarySpec (spec) where
 
+import Data.Conduit (runConduit, runConduitRes, (.|), runConduitPure, ConduitT, Void)
 import qualified Data.Conduit.Binary as CB
 import qualified Data.Conduit as C
 import qualified Data.Conduit.List as CL
@@ -26,7 +27,7 @@ import Data.ByteString.Internal (createAndTrim')
 import Foreign.Ptr (alignPtr, minusPtr)
 import System.Directory (doesFileExist)
 import System.IO.Unsafe (unsafePerformIO)
-import Control.Applicative ((<$>), (<*>))
+import Control.Applicative ((<$>))
 
 spec :: Spec
 spec = describe "Data.Conduit.Binary" $ do
@@ -34,24 +35,25 @@ spec = describe "Data.Conduit.Binary" $ do
     describe "file access" $ do
         it "read" $ do
             bs <- S.readFile "conduit-extra.cabal"
-            bss <- runResourceT $ CB.sourceFile "conduit-extra.cabal" C.$$ CL.consume
+            bss <- runConduitRes $ CB.sourceFile "conduit-extra.cabal" .| CL.consume
             S.concat bss `shouldBe` bs
 
         it "read range" $ do
             S.writeFile "tmp" "0123456789"
-            bss <- runResourceT $ CB.sourceFileRange "tmp" (Just 2) (Just 3) C.$$ CL.consume
+            bss <- runConduitRes $ CB.sourceFileRange "tmp" (Just 2) (Just 3) .| CL.consume
             S.concat bss `shouldBe` "234"
 
         it "write" $ do
-            runResourceT $ CB.sourceFile "conduit-extra.cabal" C.$$ CB.sinkFile "tmp"
+            runConduitRes $ CB.sourceFile "conduit-extra.cabal" .| CB.sinkFile "tmp"
             bs1 <- S.readFile "conduit-extra.cabal"
             bs2 <- S.readFile "tmp"
             bs2 `shouldBe` bs1
 
         it "conduit" $ do
-            runResourceT $ CB.sourceFile "conduit-extra.cabal"
-                C.$= CB.conduitFile "tmp"
-                C.$$ CB.sinkFile "tmp2"
+            runConduitRes
+                $ CB.sourceFile "conduit-extra.cabal"
+               .| CB.conduitFile "tmp"
+               .| CB.sinkFile "tmp2"
             bs1 <- S.readFile "conduit-extra.cabal"
             bs2 <- S.readFile "tmp"
             bs3 <- S.readFile "tmp2"
@@ -59,14 +61,15 @@ spec = describe "Data.Conduit.Binary" $ do
             bs3 `shouldBe` bs1
     describe "binary isolate" $ do
         it "works" $ do
-            bss <- runResourceT $ CL.sourceList (replicate 1000 "X")
-                           C.$= CB.isolate 6
-                           C.$$ CL.consume
+            bss <- runConduitRes
+                 $ CL.sourceList (replicate 1000 "X")
+                .| CB.isolate 6
+                .| CL.consume
             S.concat bss `shouldBe` "XXXXXX"
 
     describe "properly using binary file reading" $ do
         it "sourceFile" $ do
-            x <- runResourceT $ CB.sourceFile "test/random" C.$$ CL.consume
+            x <- runConduitRes $ CB.sourceFile "test/random" .| CL.consume
             lbs <- L.readFile "test/random"
             L.fromChunks x `shouldBe` lbs
 
@@ -81,19 +84,18 @@ spec = describe "Data.Conduit.Binary" $ do
 
         prop "works" $ \bss' ->
             let bss = map S.pack bss'
-             in runIdentity $
-                CL.sourceList bss C.$$ go (L.fromChunks bss)
+             in runConduitPure $ CL.sourceList bss .| go (L.fromChunks bss)
     describe "binary takeWhile" $ do
         prop "works" $ \bss' ->
             let bss = map S.pack bss'
              in runIdentity $ do
-                bss2 <- CL.sourceList bss C.$$ CB.takeWhile (>= 5) C.=$ CL.consume
+                bss2 <- runConduit $ CL.sourceList bss .| CB.takeWhile (>= 5) .| CL.consume
                 return $ L.fromChunks bss2 == L.takeWhile (>= 5) (L.fromChunks bss)
         prop "leftovers present" $ \bss' ->
             let bss = map S.pack bss'
              in runIdentity $ do
-                result <- CL.sourceList bss C.$$ do
-                    x <- CB.takeWhile (>= 5) C.=$ CL.consume
+                result <- runConduit $ CL.sourceList bss .| do
+                    x <- CB.takeWhile (>= 5) .| CL.consume
                     y <- CL.consume
                     return (S.concat x, S.concat y)
                 let expected = S.span (>= 5) $ S.concat bss
@@ -105,13 +107,13 @@ spec = describe "Data.Conduit.Binary" $ do
         prop "works" $ \bss' ->
             let bss = map S.pack bss'
              in runIdentity $ do
-                bss2 <- CL.sourceList bss C.$$ do
+                bss2 <- runConduit $ CL.sourceList bss .| do
                     CB.dropWhile (< 5)
                     CL.consume
                 return $ L.fromChunks bss2 == L.dropWhile (< 5) (L.fromChunks bss)
 
     describe "binary take" $ do
-      let go n l = CL.sourceList l C.$$ do
+      let go n l = runConduit $ CL.sourceList l .| do
               a <- CB.take n
               b <- CL.consume
               return (a, b)
@@ -145,14 +147,14 @@ spec = describe "Data.Conduit.Binary" $ do
             let bss = map S.pack bss'
                 bs = S.concat bss
                 src = CL.sourceList bss
-            res <- src C.$$ CB.lines C.=$ CL.consume
+            res <- runConduit $ src .| CB.lines .| CL.consume
             return $ S8.lines bs == res
 
     describe "sinkCacheLength" $ do
         it' "works" $ runResourceT $ do
             lbs <- liftIO $ L.readFile "test/Data/Conduit/BinarySpec.hs"
-            (len, src) <- CB.sourceLbs lbs C.$$ CB.sinkCacheLength
-            lbs' <- src C.$$ CB.sinkLbs
+            (len, src) <- runConduit $ CB.sourceLbs lbs .| CB.sinkCacheLength
+            lbs' <- runConduit $ src .| CB.sinkLbs
             liftIO $ do
                 fromIntegral len `shouldBe` L.length lbs
                 lbs' `shouldBe` lbs
@@ -160,27 +162,25 @@ spec = describe "Data.Conduit.Binary" $ do
 
     describe "sinkFileCautious" $ do
       it' "success" $ do
-        runResourceT $ CB.sourceFile "conduit-extra.cabal" C.$$ CB.sinkFileCautious "tmp"
+        runConduitRes $ CB.sourceFile "conduit-extra.cabal" .| CB.sinkFileCautious "tmp"
         bs1 <- S.readFile "conduit-extra.cabal"
         bs2 <- S.readFile "tmp"
         bs2 `shouldBe` bs1
       it' "failure" $ do
         let bs1 = "This is the original content"
         S.writeFile "tmp" bs1
-        runResourceT
+        runConduitRes
                ( (CB.sourceFile "conduit-extra.cabal" >> error "FIXME")
-            C.$$ CB.sinkFileCautious "tmp")
+            .| CB.sinkFileCautious "tmp")
                `shouldThrow` anyException
         bs2 <- S.readFile "tmp"
         bs2 `shouldBe` bs1
 
     it "sinkSystemTempFile" $ do
         let bs = "Hello World!"
-        fp <- runResourceT $ do
-            fp <- C.yield bs C.$$ CB.sinkSystemTempFile "temp-file-test"
-            actual <- liftIO $ S.readFile fp
-            liftIO $ actual `shouldBe` bs
-            return fp
+        fp <- runConduitRes $ C.yield bs .| CB.sinkSystemTempFile "temp-file-test"
+        actual <- liftIO $ S.readFile fp
+        actual `shouldBe` bs
         exists <- doesFileExist fp
         exists `shouldBe` False
 
@@ -189,7 +189,7 @@ spec = describe "Data.Conduit.Binary" $ do
             let lbs = L.pack bytes
                 src = CB.sourceLbs lbs
                 sink = CB.mapM_ (tell . return . S.singleton)
-                bss = execWriter $ src C.$$ sink
+                bss = execWriter $ runConduit $ src .| sink
              in L.fromChunks bss == lbs
 
     describe "exception handling" $ do
@@ -201,7 +201,7 @@ spec = describe "Data.Conduit.Binary" $ do
                 onErr :: MonadIO m => IOException -> m ()
                 onErr _ = liftIO $ I.modifyIORef ref (+ 1)
             contents <- L.readFile "conduit-extra.cabal"
-            res <- runResourceT $ src C.$$ CB.sinkLbs
+            res <- runConduitRes $ src .| CB.sinkLbs
             res `shouldBe` contents
             errCount <- I.readIORef ref
             errCount `shouldBe` (1 :: Int)
@@ -212,7 +212,7 @@ spec = describe "Data.Conduit.Binary" $ do
                     res2 <- C.tryC $ CB.sourceFile "conduit-extra.cabal"
                     liftIO $ I.writeIORef ref (res1, res2)
             contents <- L.readFile "conduit-extra.cabal"
-            res <- runResourceT $ src C.$$ CB.sinkLbs
+            res <- runConduitRes $ src .| CB.sinkLbs
             res `shouldBe` contents
             exc <- I.readIORef ref
             case exc :: (Either IOException (), Either IOException ()) of
@@ -222,9 +222,9 @@ spec = describe "Data.Conduit.Binary" $ do
 
     describe "normalFuseLeft" $ do
         it "does not double close conduit" $ do
-            x <- runResourceT $ do
+            x <- runConduitRes $
                 let src = CL.sourceList ["foobarbazbin"]
-                src C.$= CB.isolate 10 C.$$ CL.head
+                 in src .| CB.isolate 10 .| CL.head
             x `shouldBe` Just "foobarbazb"
 
     describe "Storable" $ do
@@ -242,7 +242,7 @@ spec = describe "Data.Conduit.Binary" $ do
                                         loop y
 
                             sink :: [SomeStorable]
-                                 -> C.Sink S.ByteString IO ()
+                                 -> ConduitT S.ByteString Void IO ()
                             sink [] = do
                                 mw <- CB.head
                                 case mw of
@@ -254,7 +254,7 @@ spec = describe "Data.Conduit.Binary" $ do
 
                             checkOne :: (Storable a, Eq a, Show a)
                                      => a
-                                     -> C.Sink S.ByteString IO ()
+                                     -> ConduitT S.ByteString Void IO ()
                             checkOne expected = do
                                 mactual <-
                                     if func
@@ -266,7 +266,7 @@ spec = describe "Data.Conduit.Binary" $ do
                                         Just actual -> return actual
                                 liftIO $ actual `shouldBe` expected
 
-                        src C.$$ sink stores0 :: IO ()
+                        runConduit $ src .| sink stores0 :: IO ()
                 mapM_ test' [1, 5, 10, 100]
 
         test "sink Maybe" True
@@ -274,7 +274,7 @@ spec = describe "Data.Conduit.Binary" $ do
 
         it' "insufficient bytes are leftovers, one chunk" $ do
             let src = C.yield $ S.singleton 1
-            src C.$$ do
+            runConduit $ src .| do
                 mactual <- CB.sinkStorable
                 liftIO $ mactual `shouldBe` (Nothing :: Maybe Int)
                 lbs <- CB.sinkLbs
@@ -284,7 +284,7 @@ spec = describe "Data.Conduit.Binary" $ do
             let src = do
                     C.yield $ S.singleton 1
                     C.yield $ S.singleton 2
-            src C.$$ do
+            runConduit $ src .| do
                 mactual <- CB.sinkStorable
                 liftIO $ mactual `shouldBe` (Nothing :: Maybe Int)
                 lbs <- CB.sinkLbs

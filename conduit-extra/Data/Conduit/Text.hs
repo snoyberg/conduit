@@ -84,7 +84,7 @@ instance Show Codec where
 -- | Emit each line separately
 --
 -- Since 0.4.1
-lines :: Monad m => Conduit T.Text m T.Text
+lines :: Monad m => ConduitT T.Text T.Text m ()
 lines =
     awaitText T.empty
   where
@@ -111,7 +111,7 @@ lines =
 -- user input (e.g. a file upload) because we can't be sure that
 -- user input won't have extraordinarily large lines which would
 -- require large amounts of memory if consumed.
-linesBounded :: MonadThrow m => Int -> Conduit T.Text m T.Text
+linesBounded :: MonadThrow m => Int -> ConduitT T.Text T.Text m ()
 linesBounded maxLineLen =
     awaitText 0 T.empty
   where
@@ -136,7 +136,7 @@ linesBounded maxLineLen =
 -- not capable of representing an input character, an exception will be thrown.
 --
 -- Since 0.3.0
-encode :: MonadThrow m => Codec -> Conduit T.Text m B.ByteString
+encode :: MonadThrow m => Codec -> ConduitT T.Text B.ByteString m ()
 encode (NewCodec _ enc _) = CL.map enc
 encode codec = CL.mapM $ \t -> do
     let (bs, mexc) = codecEncode codec t
@@ -144,11 +144,11 @@ encode codec = CL.mapM $ \t -> do
 
 decodeNew
     :: Monad m
-    => (Int -> B.ByteString -> T.Text -> B.ByteString -> Conduit B.ByteString m T.Text)
+    => (Int -> B.ByteString -> T.Text -> B.ByteString -> ConduitT B.ByteString T.Text m ())
     -> t
     -> Int
     -> (B.ByteString -> DecodeResult)
-    -> Conduit B.ByteString m T.Text
+    -> ConduitT B.ByteString T.Text m ()
 decodeNew onFailure _name =
     loop
   where
@@ -176,7 +176,7 @@ decodeNew onFailure _name =
 -- replacement character.
 --
 -- Since 1.1.1
-decodeUtf8Lenient :: Monad m => Conduit B.ByteString m T.Text
+decodeUtf8Lenient :: Monad m => ConduitT B.ByteString T.Text m ()
 decodeUtf8Lenient =
     decodeNew onFailure "UTF8-lenient" 0 Data.Streaming.Text.decodeUtf8
   where
@@ -193,7 +193,7 @@ decodeUtf8Lenient =
 -- not capable of decoding an input byte sequence, an exception will be thrown.
 --
 -- Since 0.3.0
-decode :: MonadThrow m => Codec -> Conduit B.ByteString m T.Text
+decode :: MonadThrow m => Codec -> ConduitT B.ByteString T.Text m ()
 decode (NewCodec name _ start) =
     decodeNew onFailure name 0 start
   where
@@ -317,7 +317,7 @@ iso8859_1 = Codec name enc dec where
 -- Since 1.0.8
 takeWhile :: Monad m
           => (Char -> Bool)
-          -> Conduit T.Text m T.Text
+          -> ConduitT T.Text T.Text m ()
 takeWhile p =
     loop
   where
@@ -333,7 +333,7 @@ takeWhile p =
 -- Since 1.0.8
 dropWhile :: Monad m
           => (Char -> Bool)
-          -> Consumer T.Text m ()
+          -> ConduitT T.Text o m ()
 dropWhile p =
     loop
   where
@@ -347,7 +347,7 @@ dropWhile p =
 -- |
 --
 -- Since 1.0.8
-take :: Monad m => Int -> Conduit T.Text m T.Text
+take :: Monad m => Int -> ConduitT T.Text T.Text m ()
 take =
     loop
   where
@@ -364,7 +364,7 @@ take =
 -- |
 --
 -- Since 1.0.8
-drop :: Monad m => Int -> Consumer T.Text m ()
+drop :: Monad m => Int -> ConduitT T.Text o m ()
 drop =
     loop
   where
@@ -382,15 +382,15 @@ drop =
 foldLines :: Monad m
           => (a -> ConduitM T.Text o m a)
           -> a
-          -> ConduitM T.Text o m a
+          -> ConduitT T.Text o m a
 foldLines f =
     start
   where
     start a = CL.peek >>= maybe (return a) (const $ loop $ f a)
 
     loop consumer = do
-        a <- takeWhile (/= '\n') =$= do
-            a <- CL.map (T.filter (/= '\r')) =$= consumer
+        a <- takeWhile (/= '\n') .| do
+            a <- CL.map (T.filter (/= '\r')) .| consumer
             CL.sinkNull
             return a
         drop 1
@@ -400,15 +400,15 @@ foldLines f =
 --
 -- Since 1.0.8
 withLine :: Monad m
-         => Sink T.Text m a
-         -> Consumer T.Text m (Maybe a)
+         => ConduitT T.Text Void m a
+         -> ConduitT T.Text o m (Maybe a)
 withLine consumer = toConsumer $ do
     mx <- CL.peek
     case mx of
         Nothing -> return Nothing
         Just _ -> do
-            x <- takeWhile (/= '\n') =$ do
-                x <- CL.map (T.filter (/= '\r')) =$ consumer
+            x <- takeWhile (/= '\n') .| do
+                x <- CL.map (T.filter (/= '\r')) .| consumer
                 CL.sinkNull
                 return x
             drop 1
@@ -418,7 +418,7 @@ withLine consumer = toConsumer $ do
 -- exception on invalid input.
 --
 -- Since 1.0.15
-decodeUtf8 :: MonadThrow m => Conduit B.ByteString m T.Text
+decodeUtf8 :: MonadThrow m => ConduitM B.ByteString T.Text m ()
 decodeUtf8 = decode utf8
     {- no meaningful performance advantage
     CI.ConduitM (loop 0 decodeUtf8)
@@ -456,7 +456,7 @@ decodeUtf8 = decode utf8
 -- | Encode a stream of text into a stream of bytes.
 --
 -- Since 1.0.15
-encodeUtf8 :: Monad m => Conduit T.Text m B.ByteString
+encodeUtf8 :: Monad m => ConduitT T.Text B.ByteString m ()
 encodeUtf8 = CL.map TE.encodeUtf8
 {-# INLINE encodeUtf8 #-}
 
@@ -464,7 +464,7 @@ encodeUtf8 = CL.map TE.encodeUtf8
 -- checks for BOMs, removing them as necessary. It defaults to assuming UTF-8.
 --
 -- Since 1.1.9
-detectUtf :: MonadThrow m => Conduit B.ByteString m T.Text
+detectUtf :: MonadThrow m => ConduitT B.ByteString T.Text m ()
 detectUtf =
     go id
   where

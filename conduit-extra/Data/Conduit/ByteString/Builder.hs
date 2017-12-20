@@ -63,7 +63,7 @@ unsafeLiftIO = unsafePrimToPrim
 -- | Incrementally execute builders and pass on the filled chunks as
 -- bytestrings.
 builderToByteString :: (PrimMonad m, StreamingBuilder b)
-                    => Conduit b m S.ByteString
+                    => ConduitT b S.ByteString m ()
 builderToByteString =
   builderToByteStringWith defaultStrategy
 {-# INLINE builderToByteString #-}
@@ -72,7 +72,7 @@ builderToByteString =
 --
 -- Since 0.0.2
 builderToByteStringFlush :: (PrimMonad m, StreamingBuilder b)
-                         => Conduit (Flush b) m (Flush S.ByteString)
+                         => ConduitT (Flush b) (Flush S.ByteString) m ()
 builderToByteStringFlush =
   builderToByteStringWithFlush defaultStrategy
 {-# INLINE builderToByteStringFlush #-}
@@ -86,7 +86,7 @@ builderToByteStringFlush =
 -- as control is returned from the inner sink!
 unsafeBuilderToByteString :: (PrimMonad m, StreamingBuilder b)
                           => IO Buffer  -- action yielding the inital buffer.
-                          -> Conduit b m S.ByteString
+                          -> ConduitT b S.ByteString m ()
 unsafeBuilderToByteString = builderToByteStringWith . reuseBufferStrategy
 {-# INLINE unsafeBuilderToByteString #-}
 
@@ -97,7 +97,7 @@ unsafeBuilderToByteString = builderToByteStringWith . reuseBufferStrategy
 -- INV: All bytestrings passed to the inner sink are non-empty.
 builderToByteStringWith :: (PrimMonad m, StreamingBuilder b)
                         => BufferAllocStrategy
-                        -> Conduit b m S.ByteString
+                        -> ConduitT b S.ByteString m ()
 builderToByteStringWith =
     helper (liftM (fmap Chunk) await) yield'
   where
@@ -111,7 +111,7 @@ builderToByteStringWith =
 builderToByteStringWithFlush
     :: (PrimMonad m, StreamingBuilder b)
     => BufferAllocStrategy
-    -> Conduit (Flush b) m (Flush S.ByteString)
+    -> ConduitT (Flush b) (Flush S.ByteString) m ()
 builderToByteStringWithFlush = helper await yield
 {-# INLINE builderToByteStringWithFlush #-}
 

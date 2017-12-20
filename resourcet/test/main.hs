@@ -17,7 +17,7 @@ main :: IO ()
 main = hspec $ do
     describe "general" $ do
         it "survives releasing bottom" $ do
-            x <- newIORef 0
+            x <- newIORef (0 :: Int)
             handle (\(_ :: SomeException) -> return ()) $ runResourceT $ do
                 _ <- register $ writeIORef x 1
                 release undefined
@@ -25,7 +25,7 @@ main = hspec $ do
             x' `shouldBe` 1
     describe "early release" $ do
         it "works from a different context" $ do
-            x <- newIORef 0
+            x <- newIORef (0 :: Int)
             runResourceT $ do
                 key <- register $ writeIORef x 1
                 runResourceT $ release key
@@ -34,11 +34,11 @@ main = hspec $ do
     describe "resourceForkIO" $ do
         it "waits for all threads" $ do
             x <- newEmptyMVar
-            y <- newIORef 0
+            y <- newIORef (0 :: Int)
             z <- newEmptyMVar
             w <- newEmptyMVar
 
-            runResourceT $ do
+            _ <- runResourceT $ do
                 _ <- register $ do
                     writeIORef y 1
                     putMVar w ()
@@ -61,8 +61,8 @@ main = hspec $ do
             Just y2 `shouldBe` Just 1
     describe "unprotecting" $ do
         it "unprotect keeps resource from being cleared" $ do
-            x <- newIORef 0
-            runResourceT $ do
+            x <- newIORef (0 :: Int)
+            _ <- runResourceT $ do
               key <- register $ writeIORef x 1
               unprotect key
             y <- readIORef x
@@ -72,11 +72,11 @@ main = hspec $ do
                 ms <- getMaskingState
                 unless (ms == MaskedInterruptible) $
                     error $ show (name, ms)
-        runResourceT $ do
+        _ <- runResourceT $ do
             register (checkMasked "release") >>= release
             register (checkMasked "normal")
         Left Dummy <- try $ runResourceT $ do
-            register (checkMasked "exception")
+            _ <- register (checkMasked "exception")
             liftIO $ throwIO Dummy
         return ()
     describe "mkAcquireType" $ do

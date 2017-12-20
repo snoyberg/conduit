@@ -101,6 +101,9 @@ module Data.Conduit
       -- ** ZipConduit
     , ZipConduit (..)
     , sequenceConduits
+
+      -- * Convenience reexports
+    , Void -- FIXME consider instead relaxing type of runConduit
     ) where
 
 import Data.Conduit.Internal.Conduit
@@ -108,37 +111,6 @@ import Data.Void (Void)
 import Data.Functor.Identity (Identity, runIdentity)
 import Control.Monad.Trans.Resource (ResourceT, runResourceT)
 import Control.Monad.IO.Unlift (MonadUnliftIO)
-
--- | Equivalent to using 'runConduit' and '.|' together.
---
--- Since 1.2.3
-connect :: Monad m
-        => ConduitT () a m ()
-        -> ConduitT a Void m r
-        -> m r
-connect = ($$)
-
--- | Named function synonym for '.|'.
---
--- Since 1.2.3
-fuse :: Monad m => Conduit a m b -> ConduitM b c m r -> ConduitM a c m r
-fuse = (=$=)
-
-infixr 2 .|
--- | Combine two @Conduit@s together into a new @Conduit@ (aka 'fuse').
---
--- Output from the upstream (left) conduit will be fed into the
--- downstream (right) conduit. Processing will terminate when
--- downstream (right) returns. Leftover data returned from the right
--- @Conduit@ will be discarded.
---
--- @since 1.2.8
-(.|) :: Monad m
-     => ConduitM a b m () -- ^ upstream
-     -> ConduitM b c m r -- ^ downstream
-     -> ConduitM a c m r
-(.|) = fuse
-{-# INLINE (.|) #-}
 
 -- | Run a pure pipeline until processing completes, i.e. a pipeline
 -- with @Identity@ as the base monad. This is equivalient to

@@ -33,6 +33,8 @@ module Data.Conduit.Internal.Conduit
     , yieldOr
     , leftover
     , runConduit
+    , fuse
+    , connect
       -- ** Composition
     , connectResume
     , connectResumeConduit
@@ -49,6 +51,7 @@ module Data.Conduit.Internal.Conduit
     , ($=)
     , (=$)
     , (=$=)
+    , (.|)
       -- ** Generalizing
     , sourceToPipe
     , sinkToPipe
@@ -752,6 +755,37 @@ infixr 0 $$+
 infixr 0 $$++
 infixr 0 $$+-
 infixl 1 $=+
+infixr 2 .|
+
+-- | Equivalent to using 'runConduit' and '.|' together.
+--
+-- Since 1.2.3
+connect :: Monad m
+        => ConduitT () a m ()
+        -> ConduitT a Void m r
+        -> m r
+connect = ($$)
+
+-- | Named function synonym for '.|'.
+--
+-- Since 1.2.3
+fuse :: Monad m => Conduit a m b -> ConduitM b c m r -> ConduitM a c m r
+fuse = (=$=)
+
+-- | Combine two @Conduit@s together into a new @Conduit@ (aka 'fuse').
+--
+-- Output from the upstream (left) conduit will be fed into the
+-- downstream (right) conduit. Processing will terminate when
+-- downstream (right) returns. Leftover data returned from the right
+-- @Conduit@ will be discarded.
+--
+-- @since 1.2.8
+(.|) :: Monad m
+     => ConduitM a b m () -- ^ upstream
+     -> ConduitM b c m r -- ^ downstream
+     -> ConduitM a c m r
+(.|) = fuse
+{-# INLINE (.|) #-}
 
 -- | The connect operator, which pulls data from a source and pushes to a sink.
 -- If you would like to keep the @Source@ open to be used for other

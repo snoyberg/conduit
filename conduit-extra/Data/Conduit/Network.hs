@@ -46,7 +46,7 @@ import Data.ByteString (ByteString)
 import qualified GHC.Conc as Conc (yield)
 import qualified Data.ByteString as S
 import Control.Monad.IO.Class (MonadIO (liftIO))
-import Control.Monad (unless, void)
+import Control.Monad (unless)
 import Control.Monad.Trans.Class (lift)
 import Control.Concurrent (forkIO, newEmptyMVar, putMVar, takeMVar, MVar, ThreadId)
 import qualified Data.Streaming.Network as SN
@@ -57,7 +57,7 @@ import Control.Monad.IO.Unlift (MonadUnliftIO, withRunInIO)
 -- This function does /not/ automatically close the socket.
 --
 -- Since 0.0.0
-sourceSocket :: MonadIO m => Socket -> Producer m ByteString
+sourceSocket :: MonadIO m => Socket -> ConduitT i ByteString m ()
 sourceSocket socket =
     loop
   where
@@ -72,7 +72,7 @@ sourceSocket socket =
 -- This function does /not/ automatically close the socket.
 --
 -- Since 0.0.0
-sinkSocket :: MonadIO m => Socket -> Consumer ByteString m ()
+sinkSocket :: MonadIO m => Socket -> ConduitT ByteString o m ()
 sinkSocket socket =
     loop
   where
@@ -84,7 +84,7 @@ serverSettings = SN.serverSettingsTCP
 clientSettings :: Int -> ByteString -> SN.ClientSettings
 clientSettings = SN.clientSettingsTCP
 
-appSource :: (SN.HasReadWrite ad, MonadIO m) => ad -> Producer m ByteString
+appSource :: (SN.HasReadWrite ad, MonadIO m) => ad -> ConduitT i ByteString m ()
 appSource ad =
     loop
   where
@@ -95,7 +95,7 @@ appSource ad =
             yield bs
             loop
 
-appSink :: (SN.HasReadWrite ad, MonadIO m) => ad -> Consumer ByteString m ()
+appSink :: (SN.HasReadWrite ad, MonadIO m) => ad -> ConduitT ByteString o m ()
 appSink ad = awaitForever $ \d -> liftIO $ SN.appWrite ad d >> Conc.yield
 
 addBoundSignal::MVar ()-> SN.ServerSettings -> SN.ServerSettings

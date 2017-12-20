@@ -258,8 +258,11 @@ yieldOr o f = HaveOutput (Done ()) f o
 {-# RULES
     "CI.yield o >> p" forall o (p :: Pipe l i o u m r). yield o >> p = HaveOutput p (return ()) o
   ; "CI.yieldOr o c >> p" forall o c (p :: Pipe l i o u m r). yieldOr o c >> p = HaveOutput p c o
-  ; "lift m >>= CI.yield" forall m. lift m >>= yield = yieldM m
   #-}
+
+  -- Rule does not fire due to inlining of lift
+  -- ; "lift m >>= CI.yield" forall m. lift m >>= yield = yieldM m
+
   -- FIXME: Too much inlining on mapM_, can't enforce; "mapM_ CI.yield" mapM_ yield = sourceList
   -- Maybe we can get a rewrite rule on foldr instead? Need a benchmark to back this up.
 
@@ -609,5 +612,7 @@ generalizeUpstream =
     go (Leftover p l) = Leftover (go p) l
 {-# INLINE generalizeUpstream #-}
 
+{- Rules don't fire due to inlining of lift
 {-# RULES "conduit: Pipe: lift x >>= f" forall m f. lift m >>= f = PipeM (liftM f m) #-}
 {-# RULES "conduit: Pipe: lift x >> f" forall m f. lift m >> f = PipeM (liftM (\_ -> f) m) #-}
+-}

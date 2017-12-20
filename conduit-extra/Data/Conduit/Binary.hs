@@ -78,7 +78,7 @@ import Control.Applicative ((<$>))
 #endif
 import System.Directory (getTemporaryDirectory, removeFile)
 import Data.ByteString.Lazy.Internal (defaultChunkSize)
-import Data.ByteString.Internal (ByteString (PS), inlinePerformIO)
+import Data.ByteString.Internal (ByteString (PS), accursedUnutterablePerformIO)
 import Foreign.ForeignPtr.Unsafe (unsafeForeignPtrToPtr)
 import Foreign.ForeignPtr (touchForeignPtr)
 import Foreign.Ptr (plusPtr, castPtr)
@@ -96,14 +96,13 @@ import System.FilePath (takeDirectory, takeFileName, (<.>))
 import System.IO (hClose, openBinaryTempFile)
 import Control.Exception (throwIO, catch)
 import System.IO.Error (isDoesNotExistError)
-import qualified Data.ByteString.Builder as BB
 
 -- | Stream the contents of a file as binary data.
 --
 -- Since 0.3.0
 sourceFile :: MonadResource m
            => FilePath
-           -> Producer m S.ByteString
+           -> ConduitT i S.ByteString m ()
 sourceFile fp =
     bracketP
         (FR.openFile fp)
@@ -123,7 +122,7 @@ sourceFile fp =
 -- Since 0.3.0
 sourceHandle :: MonadIO m
              => IO.Handle
-             -> Producer m S.ByteString
+             -> ConduitT i S.ByteString m ()
 sourceHandle h =
     loop
   where
@@ -144,7 +143,7 @@ sourceHandle h =
 -- thereof) between two calls to @await@.
 --
 -- Since 1.0.12
-sourceHandleUnsafe :: MonadIO m => IO.Handle -> Source m ByteString
+sourceHandleUnsafe :: MonadIO m => IO.Handle -> ConduitT i ByteString m ()
 sourceHandleUnsafe handle = do
     fptr <- liftIO $ mallocPlainForeignPtrBytes defaultChunkSize
     let ptr = unsafeForeignPtrToPtr fptr
@@ -166,7 +165,7 @@ sourceHandleUnsafe handle = do
 -- Since 0.3.0
 sourceIOHandle :: MonadResource m
                => IO IO.Handle
-               -> Producer m S.ByteString
+               -> ConduitT i S.ByteString m ()
 sourceIOHandle alloc = bracketP alloc IO.hClose sourceHandle
 
 -- | Stream all incoming data to the given 'IO.Handle'. Note that this function
@@ -175,7 +174,7 @@ sourceIOHandle alloc = bracketP alloc IO.hClose sourceHandle
 -- Since 0.3.0
 sinkHandle :: MonadIO m
            => IO.Handle
-           -> Consumer S.ByteString m ()
+           -> ConduitT S.ByteString o m ()
 sinkHandle h = awaitForever (liftIO . S.hPut h)
 
 -- | Stream incoming builders, executing them directly on the buffer of the
@@ -209,7 +208,7 @@ sinkHandleFlush h =
 -- Since 0.3.0
 sinkIOHandle :: MonadResource m
              => IO IO.Handle
-             -> Consumer S.ByteString m ()
+             -> ConduitT S.ByteString o m ()
 sinkIOHandle alloc = bracketP alloc IO.hClose sinkHandle
 
 -- | Stream the contents of a file as binary data, starting from a certain
@@ -220,7 +219,7 @@ sourceFileRange :: MonadResource m
                 => FilePath
                 -> Maybe Integer -- ^ Offset
                 -> Maybe Integer -- ^ Maximum count
-                -> Producer m S.ByteString
+                -> ConduitT i S.ByteString m ()
 sourceFileRange fp offset count = bracketP
     (IO.openBinaryFile fp IO.ReadMode)
     IO.hClose
@@ -234,7 +233,7 @@ sourceHandleRange :: MonadIO m
                   => IO.Handle
                   -> Maybe Integer -- ^ Offset
                   -> Maybe Integer -- ^ Maximum count
-                  -> Producer m S.ByteString
+                  -> ConduitT i S.ByteString m ()
 sourceHandleRange handle offset count =
   sourceHandleRangeWithBuffer handle offset count defaultChunkSize
 
@@ -248,7 +247,7 @@ sourceHandleRangeWithBuffer :: MonadIO m
                   -> Maybe Integer -- ^ Offset
                   -> Maybe Integer -- ^ Maximum count
                   -> Int -- ^ Buffer size
-                  -> Producer m S.ByteString
+                  -> ConduitT i S.ByteString m ()
 sourceHandleRangeWithBuffer handle offset count buffer = do
     case offset of
         Nothing -> return ()
@@ -280,7 +279,7 @@ sourceHandleRangeWithBuffer handle offset count buffer = do
 -- Since 0.3.0
 sinkFile :: MonadResource m
          => FilePath
-         -> Consumer S.ByteString m ()
+         -> ConduitT S.ByteString o m ()
 sinkFile fp = sinkIOHandle (IO.openBinaryFile fp IO.WriteMode)
 
 -- | Cautious version of 'sinkFile'. The idea here is to stream the
@@ -347,7 +346,7 @@ sinkSystemTempFile pattern = do
 -- Since 0.3.0
 conduitFile :: MonadResource m
             => FilePath
-            -> Conduit S.ByteString m S.ByteString
+            -> ConduitT S.ByteString S.ByteString m ()
 conduitFile fp = bracketP
     (IO.openBinaryFile fp IO.WriteMode)
     IO.hClose
@@ -358,7 +357,7 @@ conduitFile fp = bracketP
 -- does not close the handle on completion. Related to: @conduitFile@.
 --
 -- Since 1.0.9
-conduitHandle :: MonadIO m => IO.Handle -> Conduit S.ByteString m S.ByteString
+conduitHandle :: MonadIO m => IO.Handle -> ConduitT S.ByteString S.ByteString m ()
 conduitHandle h = awaitForever $ \bs -> liftIO (S.hPut h bs) >> yield bs
 
 -- | Ensure that only up to the given number of bytes are consumed by the inner
@@ -368,7 +367,7 @@ conduitHandle h = awaitForever $ \bs -> liftIO (S.hPut h bs) >> yield bs
 -- Since 0.3.0
 isolate :: Monad m
         => Int
-        -> Conduit S.ByteString m S.ByteString
+        -> ConduitT S.ByteString S.ByteString m ()
 isolate =
     loop
   where
@@ -388,7 +387,7 @@ isolate =
 -- | Return the next byte from the stream, if available.
 --
 -- Since 0.3.0
-head :: Monad m => Consumer S.ByteString m (Maybe Word8)
+head :: Monad m => ConduitT S.ByteString o m (Maybe Word8)
 head = do
     mbs <- await
     case mbs of
@@ -401,7 +400,7 @@ head = do
 -- | Return all bytes while the predicate returns @True@.
 --
 -- Since 0.3.0
-takeWhile :: Monad m => (Word8 -> Bool) -> Conduit S.ByteString m S.ByteString
+takeWhile :: Monad m => (Word8 -> Bool) -> ConduitT S.ByteString S.ByteString m ()
 takeWhile p =
     loop
   where
@@ -417,7 +416,7 @@ takeWhile p =
 -- | Ignore all bytes while the predicate returns @True@.
 --
 -- Since 0.3.0
-dropWhile :: Monad m => (Word8 -> Bool) -> Consumer S.ByteString m ()
+dropWhile :: Monad m => (Word8 -> Bool) -> ConduitT S.ByteString o m ()
 dropWhile p =
     loop
   where
@@ -432,7 +431,7 @@ dropWhile p =
 -- | Take the given number of bytes, if available.
 --
 -- Since 0.3.0
-take :: Monad m => Int -> Consumer S.ByteString m L.ByteString
+take :: Monad m => Int -> ConduitT S.ByteString o m L.ByteString
 take  0 = return L.empty
 take n0 = go n0 id
   where
@@ -450,7 +449,7 @@ take n0 = go n0 id
 -- | Drop up to the given number of bytes.
 --
 -- Since 0.5.0
-drop :: Monad m => Int -> Consumer S.ByteString m ()
+drop :: Monad m => Int -> ConduitT S.ByteString o m ()
 drop  0 = return ()
 drop n0 = go n0
   where
@@ -469,7 +468,7 @@ drop n0 = go n0
 -- (10), and strip it from the output.
 --
 -- Since 0.3.0
-lines :: Monad m => Conduit S.ByteString m S.ByteString
+lines :: Monad m => ConduitT S.ByteString S.ByteString m ()
 lines =
     loop []
   where
@@ -489,7 +488,7 @@ lines =
 -- | Stream the chunks from a lazy bytestring.
 --
 -- Since 0.5.0
-sourceLbs :: Monad m => L.ByteString -> Producer m S.ByteString
+sourceLbs :: Monad m => L.ByteString -> ConduitT i S.ByteString m ()
 sourceLbs = sourceList . L.toChunks
 
 -- | Stream the input data into a temp file and count the number of bytes
@@ -500,7 +499,7 @@ sourceLbs = sourceList . L.toChunks
 --
 -- Since 1.0.5
 sinkCacheLength :: (MonadResource m1, MonadResource m2)
-                => Sink S.ByteString m1 (Word64, Source m2 S.ByteString)
+                => ConduitT S.ByteString o m1 (Word64, ConduitT i S.ByteString m2 ())
 sinkCacheLength = do
     tmpdir <- liftIO getTemporaryDirectory
     (releaseKey, (fp, h)) <- allocate
@@ -510,7 +509,7 @@ sinkCacheLength = do
     liftIO $ IO.hClose h
     return (len, sourceFile fp >> release releaseKey)
   where
-    sinkHandleLen :: MonadResource m => IO.Handle -> Sink S.ByteString m Word64
+    sinkHandleLen :: MonadResource m => IO.Handle -> ConduitT S.ByteString o m Word64
     sinkHandleLen h =
         loop 0
       where
@@ -525,7 +524,7 @@ sinkCacheLength = do
 -- is performed, but rather all content is read into memory strictly.
 --
 -- Since 1.0.5
-sinkLbs :: Monad m => Sink S.ByteString m L.ByteString
+sinkLbs :: Monad m => ConduitT S.ByteString o m L.ByteString
 sinkLbs = fmap L.fromChunks consume
 
 mapM_BS :: Monad m => (Word8 -> m ()) -> S.ByteString -> m ()
@@ -533,9 +532,9 @@ mapM_BS f (PS fptr offset len) = do
     let start = unsafeForeignPtrToPtr fptr `plusPtr` offset
         end = start `plusPtr` len
         loop ptr
-            | ptr >= end = inlinePerformIO (touchForeignPtr fptr) `seq` return ()
+            | ptr >= end = accursedUnutterablePerformIO (touchForeignPtr fptr) `seq` return ()
             | otherwise = do
-                f (inlinePerformIO (peek ptr))
+                f (accursedUnutterablePerformIO (peek ptr))
                 loop (ptr `plusPtr` 1)
     loop start
 {-# INLINE mapM_BS #-}
@@ -543,7 +542,7 @@ mapM_BS f (PS fptr offset len) = do
 -- | Perform a computation on each @Word8@ in a stream.
 --
 -- Since 1.0.10
-mapM_ :: Monad m => (Word8 -> m ()) -> Consumer S.ByteString m ()
+mapM_ :: Monad m => (Word8 -> m ()) -> ConduitT S.ByteString o m ()
 mapM_ f = awaitForever (lift . mapM_BS f)
 {-# INLINE mapM_ #-}
 
@@ -552,7 +551,7 @@ mapM_ f = awaitForever (lift . mapM_BS f)
 -- all unused input as leftovers.
 --
 -- @since 1.1.13
-sinkStorable :: (Monad m, Storable a) => Consumer S.ByteString m (Maybe a)
+sinkStorable :: (Monad m, Storable a) => ConduitT S.ByteString o m (Maybe a)
 sinkStorable = sinkStorableHelper Just (return Nothing)
 
 -- | Same as 'sinkStorable', but throws a 'SinkStorableInsufficientBytes'
@@ -561,13 +560,13 @@ sinkStorable = sinkStorableHelper Just (return Nothing)
 -- construct/deconstruct a @Maybe@ wrapper in the success case.
 --
 -- @since 1.1.13
-sinkStorableEx :: (MonadThrow m, Storable a) => Consumer S.ByteString m a
+sinkStorableEx :: (MonadThrow m, Storable a) => ConduitT S.ByteString o m a
 sinkStorableEx = sinkStorableHelper id (throwM SinkStorableInsufficientBytes)
 
-sinkStorableHelper :: forall m a b. (Monad m, Storable a)
+sinkStorableHelper :: forall m a b o. (Monad m, Storable a)
                    => (a -> b)
-                   -> (Consumer S.ByteString m b)
-                   -> Consumer S.ByteString m b
+                   -> (ConduitT S.ByteString o m b)
+                   -> ConduitT S.ByteString o m b
 sinkStorableHelper wrap failure = do
     start
   where
@@ -586,13 +585,13 @@ sinkStorableHelper wrap failure = do
                             -- looks like we're stuck concating
                             leftover bs
                             lbs <- take size
-                            let bs = S.concat $ L.toChunks lbs
-                            case compare (S.length bs) size of
+                            let bs' = S.concat $ L.toChunks lbs
+                            case compare (S.length bs') size of
                                 LT -> do
-                                    leftover bs
+                                    leftover bs'
                                     failure
-                                EQ -> process bs
-                                GT -> assert False (process bs)
+                                EQ -> process bs'
+                                GT -> assert False (process bs')
                         EQ -> process bs
                         GT -> do
                             let (x, y) = S.splitAt size bs
@@ -600,7 +599,7 @@ sinkStorableHelper wrap failure = do
                             process x
 
     -- Given a bytestring of exactly the correct size, grab the value
-    process bs = return $! wrap $! inlinePerformIO $!
+    process bs = return $! wrap $! accursedUnutterablePerformIO $!
         unsafeUseAsCString bs (safePeek undefined . castPtr)
 
     safePeek :: a -> Ptr a -> IO a
