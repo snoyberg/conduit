@@ -34,22 +34,23 @@ module Data.Conduit.Network.TLS
     , tlsClientTLSSettings
     , tlsClientSockSettings
     , tlsClientConnectionContext
+      -- * Misc
+    , sourceConnection
+    , sinkConnection
     ) where
 
 import Control.Applicative ((<$>), (<*>))
-import Control.Monad (forever, void)
 import qualified Data.ByteString.Lazy as L
 import qualified Network.TLS as TLS
-import Data.Conduit.Network (sinkSocket, runTCPServerWithHandle, serverSettings, sourceSocket)
+import Data.Conduit.Network (runTCPServerWithHandle, serverSettings)
 import Data.Streaming.Network.Internal (AppData (..), HostPreference)
-import Data.Streaming.Network (ConnectionHandle, safeRecv)
+import Data.Streaming.Network (safeRecv)
 import Data.Conduit.Network.TLS.Internal
-import Data.Conduit (yield, awaitForever, Producer, Consumer)
-import qualified Data.Conduit.List as CL
-import Network.Socket (SockAddr (SockAddrInet), sClose)
+import Data.Conduit (yield, awaitForever, ConduitT)
+import Network.Socket (SockAddr (SockAddrInet))
+import qualified Network.Socket as NS
 import Network.Socket.ByteString (sendAll)
 import Control.Exception (bracket)
-import Control.Monad.Trans.Class (lift)
 import Control.Monad.IO.Unlift (liftIO, MonadIO, MonadUnliftIO, withRunInIO, withUnliftIO, unliftIO)
 import qualified Network.TLS.Extra as TLSExtra
 import Network.Socket (Socket)
@@ -201,13 +202,13 @@ runTCPServerStartTLS TLSConfig{..} app = withRunInIO $ \run -> do
                   , appWrite' = sendAll socket
                   , appSockAddr' = addr
                   , appLocalAddr' = mlocal
-                  , appCloseConnection' = sClose socket
+                  , appCloseConnection' = NS.close socket
                   , appRawSocket' = Just socket
                   }
                 -- wrap up the current connection with TLS
                 startTls = \app' -> liftIO $ do
                   ctx <- serverHandshake socket creds
-                  run $ app' (tlsAppData ctx addr mlocal)
+                  () <- run $ app' (tlsAppData ctx addr mlocal)
                   TLS.bye ctx
                 in
                  run $ app (clearData, startTls)
@@ -389,8 +390,8 @@ runTLSClientStartTLS TLSClientConfig {..} app = withUnliftIO $ \u -> do
 
 -- | Read from a 'NC.Connection'.
 --
--- Since 1.0.2
-sourceConnection :: MonadIO m => NC.Connection -> Producer m S.ByteString
+-- @since 1.3.0
+sourceConnection :: MonadIO m => NC.Connection -> ConduitT i S.ByteString m ()
 sourceConnection conn =
     loop
   where
@@ -402,6 +403,6 @@ sourceConnection conn =
 
 -- | Write to a 'NC.Connection'.
 --
--- Since 1.0.2
-sinkConnection :: MonadIO m => NC.Connection -> Consumer S.ByteString m ()
+-- @since 1.3.0
+sinkConnection :: MonadIO m => NC.Connection -> ConduitT S.ByteString o m ()
 sinkConnection conn = awaitForever (liftIO . NC.connectionPut conn)

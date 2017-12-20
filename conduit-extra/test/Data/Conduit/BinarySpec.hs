@@ -178,9 +178,12 @@ spec = describe "Data.Conduit.Binary" $ do
 
     it "sinkSystemTempFile" $ do
         let bs = "Hello World!"
-        fp <- runConduitRes $ C.yield bs .| CB.sinkSystemTempFile "temp-file-test"
-        actual <- liftIO $ S.readFile fp
-        actual `shouldBe` bs
+        fp <- runResourceT $ do
+          fp <- runConduit $ C.yield bs .| CB.sinkSystemTempFile "temp-file-test"
+          liftIO $ do
+            actual <- S.readFile fp
+            actual `shouldBe` bs
+          return fp
         exists <- doesFileExist fp
         exists `shouldBe` False
 

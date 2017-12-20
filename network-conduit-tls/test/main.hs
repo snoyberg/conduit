@@ -31,14 +31,14 @@ testSimpleServerClient :: IO ()
 testSimpleServerClient = do
     -- a simple server that says hello over tls 
     serverThreadId <- forkIO $ runTCPServerTLS serverConfig $ \ad ->
-      yield "hello world" $$ appSink ad
+      runConduit $ yield "hello world" .| appSink ad
       
     -- wait for server to be ready 
     threadDelay 1000000
     
     -- default settings checks CA, the test cert is self-signed. should
     runTLSClient clientConfigNoCA $ \ad -> do
-      d <- appSource ad $$ (await >>= return)
+      d <- runConduit $ appSource ad .| (await >>= return)
       assertEqual "client receives hello world" (Just "hello world") d
       
     -- kill the server 
@@ -56,16 +56,16 @@ testSimpleServerClientStartTLS = do
 
   where
     serve (ad, startTls) = do
-      yield "proceed" $$ appSink ad
-      startTls $ \app -> (yield "crypted") $$ appSink app
+      runConduit $ yield "proceed" .| appSink ad
+      startTls $ \app -> runConduit $ (yield "crypted") .| appSink app
 
 
     client (ad, startTls) = do
       -- reads one message from server
-      msg <- appSource ad $$ (await >>= return)
+      msg <- runConduit $ appSource ad .| (await >>= return)
       assertEqual "server sends proceed" (Just "proceed") msg
       startTls $ \app -> do
-        msgTls <- appSource app $$ (await >>= return)
+        msgTls <- runConduit $ appSource app .| (await >>= return)
         assertEqual "server sends crypted" (Just "crypted") msgTls
 
 
