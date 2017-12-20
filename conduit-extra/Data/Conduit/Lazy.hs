@@ -14,7 +14,7 @@ module Data.Conduit.Lazy
     ) where
 
 import Data.Conduit
-import Data.Conduit.Internal (Pipe (..), ConduitM (..))
+import Data.Conduit.Internal (Pipe (..), ConduitT (..))
 import System.IO.Unsafe (unsafeInterleaveIO)
 
 import Control.Monad.Trans.Class (lift)
@@ -53,7 +53,7 @@ lazyConsume
      (MonadUnliftIO m, MonadActive m)
   => Source m a
   -> m [a]
-lazyConsume (ConduitM f0) =
+lazyConsume (ConduitT f0) =
     withUnliftIO $ \u ->
       let go :: Pipe () () a () m () -> IO [a]
           go (Done _) = return []
@@ -115,5 +115,5 @@ GOX(Monoid w, Strict.WriterT w)
 
 instance MonadActive m => MonadActive (Pipe l i o u m) where
     monadActive = lift monadActive
-instance MonadActive m => MonadActive (ConduitM i o m) where
+instance MonadActive m => MonadActive (ConduitT i o m) where
     monadActive = lift monadActive

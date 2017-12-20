@@ -11,7 +11,8 @@
 {-# LANGUAGE TypeFamilies #-}
 module Data.Conduit.Internal.Conduit
     ( -- ** Types
-      ConduitM (..)
+      ConduitT (..)
+    , ConduitM
     , Source
     , Producer
     , Sink
@@ -114,36 +115,39 @@ import Data.Traversable (Traversable (..))
 -- type.
 --
 -- Since 1.0.0
-newtype ConduitM i o m r = ConduitM
-    { unConduitM :: forall b.
+newtype ConduitT i o m r = ConduitT
+    { unConduitT :: forall b.
                     (r -> Pipe i i o () m b) -> Pipe i i o () m b
     }
 
-instance Functor (ConduitM i o m) where
-    fmap f (ConduitM c) = ConduitM $ \rest -> c (rest . f)
+-- | Same as 'ConduitT', for backwards compat
+type ConduitM = ConduitT
 
-instance Applicative (ConduitM i o m) where
-    pure x = ConduitM ($ x)
+instance Functor (ConduitT i o m) where
+    fmap f (ConduitT c) = ConduitT $ \rest -> c (rest . f)
+
+instance Applicative (ConduitT i o m) where
+    pure x = ConduitT ($ x)
     {-# INLINE pure #-}
     (<*>) = ap
     {-# INLINE (<*>) #-}
 
-instance Monad (ConduitM i o m) where
+instance Monad (ConduitT i o m) where
     return = pure
-    ConduitM f >>= g = ConduitM $ \h -> f $ \a -> unConduitM (g a) h
+    ConduitT f >>= g = ConduitT $ \h -> f $ \a -> unConduitT (g a) h
 
-instance MonadThrow m => MonadThrow (ConduitM i o m) where
+instance MonadThrow m => MonadThrow (ConduitT i o m) where
     throwM = lift . throwM
 
-instance MonadIO m => MonadIO (ConduitM i o m) where
+instance MonadIO m => MonadIO (ConduitT i o m) where
     liftIO = lift . liftIO
     {-# INLINE liftIO #-}
 
-instance MonadReader r m => MonadReader r (ConduitM i o m) where
+instance MonadReader r m => MonadReader r (ConduitT i o m) where
     ask = lift ask
     {-# INLINE ask #-}
 
-    local f (ConduitM c0) = ConduitM $ \rest ->
+    local f (ConduitT c0) = ConduitT $ \rest ->
         let go (HaveOutput p c o) = HaveOutput (go p) c o
             go (NeedInput p c) = NeedInput (\i -> go (p i)) (\u -> go (c u))
             go (Done x) = rest x
@@ -155,13 +159,13 @@ instance MonadReader r m => MonadReader r (ConduitM i o m) where
 #define MIN_VERSION_mtl(x, y, z) 0
 #endif
 
-instance MonadWriter w m => MonadWriter w (ConduitM i o m) where
+instance MonadWriter w m => MonadWriter w (ConduitT i o m) where
 #if MIN_VERSION_mtl(2, 1, 0)
     writer = lift . writer
 #endif
     tell = lift . tell
 
-    listen (ConduitM c0) = ConduitM $ \rest ->
+    listen (ConduitT c0) = ConduitT $ \rest ->
         let go front (HaveOutput p c o) = HaveOutput (go front p) c o
             go front (NeedInput p c) = NeedInput (\i -> go front (p i)) (\u -> go front (c u))
             go front (Done x) = rest (x, front)
@@ -171,7 +175,7 @@ instance MonadWriter w m => MonadWriter w (ConduitM i o m) where
             go front (Leftover p i) = Leftover (go front p) i
          in go mempty (c0 Done)
 
-    pass (ConduitM c0) = ConduitM $ \rest ->
+    pass (ConduitT c0) = ConduitT $ \rest ->
         let go front (HaveOutput p c o) = HaveOutput (go front p) c o
             go front (NeedInput p c) = NeedInput (\i -> go front (p i)) (\u -> go front (c u))
             go front (PipeM mp) = PipeM $ do
@@ -183,78 +187,83 @@ instance MonadWriter w m => MonadWriter w (ConduitM i o m) where
             go front (Leftover p i) = Leftover (go front p) i
          in go mempty (c0 Done)
 
-instance MonadState s m => MonadState s (ConduitM i o m) where
+instance MonadState s m => MonadState s (ConduitT i o m) where
     get = lift get
     put = lift . put
 #if MIN_VERSION_mtl(2, 1, 0)
     state = lift . state
 #endif
 
-instance MonadRWS r w s m => MonadRWS r w s (ConduitM i o m)
+instance MonadRWS r w s m => MonadRWS r w s (ConduitT i o m)
 
-instance MonadError e m => MonadError e (ConduitM i o m) where
+instance MonadError e m => MonadError e (ConduitT i o m) where
     throwError = lift . throwError
-    catchError (ConduitM c0) f = ConduitM $ \rest ->
+    catchError (ConduitT c0) f = ConduitT $ \rest ->
         let go (HaveOutput p c o) = HaveOutput (go p) c o
             go (NeedInput p c) = NeedInput (\i -> go (p i)) (\u -> go (c u))
             go (Done x) = rest x
             go (PipeM mp) =
               PipeM $ catchError (liftM go mp) $ \e -> do
-                return $ unConduitM (f e) rest
+                return $ unConduitT (f e) rest
             go (Leftover p i) = Leftover (go p) i
          in go (c0 Done)
 
-instance MonadTrans (ConduitM i o) where
-    lift mr = ConduitM $ \rest -> PipeM (liftM rest mr)
+instance MonadTrans (ConduitT i o) where
+    lift mr = ConduitT $ \rest -> PipeM (liftM rest mr)
     {-# INLINE [1] lift #-}
 
-instance MonadResource m => MonadResource (ConduitM i o m) where
+instance MonadResource m => MonadResource (ConduitT i o m) where
     liftResourceT = lift . liftResourceT
     {-# INLINE liftResourceT #-}
 
-instance Monad m => Monoid (ConduitM i o m ()) where
+instance Monad m => Monoid (ConduitT i o m ()) where
     mempty = return ()
     {-# INLINE mempty #-}
     mappend = (>>)
     {-# INLINE mappend #-}
 
-instance PrimMonad m => PrimMonad (ConduitM i o m) where
-  type PrimState (ConduitM i o m) = PrimState m
+instance PrimMonad m => PrimMonad (ConduitT i o m) where
+  type PrimState (ConduitT i o m) = PrimState m
   primitive = lift . primitive
 
 -- | Provides a stream of output values, without consuming any input or
 -- producing a final result.
 --
 -- Since 0.5.0
-type Source m o = ConduitM () o m ()
+type Source m o = ConduitT () o m ()
+{-# DEPRECATED Source "Use ConduitT directly" #-}
 
 -- | A component which produces a stream of output values, regardless of the
 -- input stream. A @Producer@ is a generalization of a @Source@, and can be
 -- used as either a @Source@ or a @Conduit@.
 --
 -- Since 1.0.0
-type Producer m o = forall i. ConduitM i o m ()
+type Producer m o = forall i. ConduitT i o m ()
+{-# DEPRECATED Producer "Use ConduitT directly" #-}
 
 -- | Consumes a stream of input values and produces a final result, without
 -- producing any output.
 --
--- > type Sink i m r = ConduitM i Void m r
+-- > type Sink i m r = ConduitT i Void m r
 --
 -- Since 0.5.0
-type Sink i = ConduitM i Void
+type Sink i = ConduitT i Void
+{-# DEPRECATED Sink "Use ConduitT directly" #-}
 
 -- | A component which consumes a stream of input values and produces a final
 -- result, regardless of the output stream. A @Consumer@ is a generalization of
 -- a @Sink@, and can be used as either a @Sink@ or a @Conduit@.
 --
 -- Since 1.0.0
-type Consumer i m r = forall o. ConduitM i o m r
+type Consumer i m r = forall o. ConduitT i o m r
+{-# DEPRECATED Consumer "Use ConduitT directly" #-}
 
 -- | Consumes a stream of input values and produces a stream of output values,
 -- without producing a final result.
 --
 -- Since 0.5.0
-type Conduit i m o = ConduitM i o m ()
+type Conduit i m o = ConduitT i o m ()
+{-# DEPRECATED Conduit "Use ConduitT directly" #-}
 
 -- | A @Source@ which has been started, but has not yet completed.
 --
@@ -275,7 +284,7 @@ connectResume :: Monad m
               => ResumableSource m o
               -> Sink o m r
               -> m (ResumableSource m o, r)
-connectResume (ResumableSource left0 leftFinal0) (ConduitM right0) =
+connectResume (ResumableSource left0 leftFinal0) (ConduitT right0) =
     goRight leftFinal0 left0 (right0 Done)
   where
     goRight leftFinal left right =
@@ -298,7 +307,7 @@ connectResume (ResumableSource left0 leftFinal0) (ConduitM right0) =
 
 sourceToPipe :: Monad m => Source m o -> Pipe l i o u m ()
 sourceToPipe =
-    go . flip unConduitM Done
+    go . flip unConduitT Done
   where
     go (HaveOutput p c o) = HaveOutput (go p) c o
     go (NeedInput _ c) = go $ c ()
@@ -308,7 +317,7 @@ sourceToPipe =
 
 sinkToPipe :: Monad m => Sink i m r -> Pipe l i o u m r
 sinkToPipe =
-    go . injectLeftovers . flip unConduitM Done
+    go . injectLeftovers . flip unConduitT Done
   where
     go (HaveOutput _ _ o) = absurd o
     go (NeedInput p c) = NeedInput (go . p) (const $ go $ c ())
@@ -318,7 +327,7 @@ sinkToPipe =
 
 conduitToPipe :: Monad m => Conduit i m o -> Pipe l i o u m ()
 conduitToPipe =
-    go . injectLeftovers . flip unConduitM Done
+    go . injectLeftovers . flip unConduitT Done
   where
     go (HaveOutput p c o) = HaveOutput (go p) c o
     go (NeedInput p c) = NeedInput (go . p) (const $ go $ c ())
@@ -348,19 +357,19 @@ unwrapResumable (ResumableSource src final) = do
     let final' = do
             x <- liftIO $ I.readIORef ref
             when x final
-    return (liftIO (I.writeIORef ref False) >> (ConduitM (src >>=)), final')
+    return (liftIO (I.writeIORef ref False) >> (ConduitT (src >>=)), final')
 
 -- | Turn a @Source@ into a @ResumableSource@ with no attached finalizer.
 --
 -- Since 1.1.4
 newResumableSource :: Monad m => Source m o -> ResumableSource m o
-newResumableSource (ConduitM s) = ResumableSource (s Done) (return ())
+newResumableSource (ConduitT s) = ResumableSource (s Done) (return ())
 
 -- | Generalize a 'Source' to a 'Producer'.
 --
 -- Since 1.0.0
 toProducer :: Monad m => Source m a -> Producer m a
-toProducer (ConduitM c0) = ConduitM $ \rest -> let
+toProducer (ConduitT c0) = ConduitT $ \rest -> let
     go (HaveOutput p c o) = HaveOutput (go p) c o
     go (NeedInput _ c) = go (c ())
     go (Done r) = rest r
@@ -372,7 +381,7 @@ toProducer (ConduitM c0) = ConduitM $ \rest -> let
 --
 -- Since 1.0.0
 toConsumer :: Monad m => Sink a m b -> Consumer a m b
-toConsumer (ConduitM c0) = ConduitM $ \rest -> let
+toConsumer (ConduitT c0) = ConduitT $ \rest -> let
     go (HaveOutput _ _ o) = absurd o
     go (NeedInput p c) = NeedInput (go . p) (go . c)
     go (Done r) = rest r
@@ -395,13 +404,13 @@ toConsumer (ConduitM c0) = ConduitM $ \rest -> let
 --
 -- Since 1.0.11
 catchC :: (MonadUnliftIO m, Exception e)
-       => ConduitM i o m r
-       -> (e -> ConduitM i o m r)
-       -> ConduitM i o m r
-catchC (ConduitM p0) onErr = ConduitM $ \rest -> let
+       => ConduitT i o m r
+       -> (e -> ConduitT i o m r)
+       -> ConduitT i o m r
+catchC (ConduitT p0) onErr = ConduitT $ \rest -> let
     go (Done r) = rest r
     go (PipeM mp) = PipeM $ withRunInIO $ \run -> E.catch (run (liftM go mp))
-        (return . flip unConduitM rest . onErr)
+        (return . flip unConduitT rest . onErr)
     go (Leftover p i) = Leftover (go p) i
     go (NeedInput x y) = NeedInput (go . x) (go . y)
     go (HaveOutput p c o) = HaveOutput (go p) c o
@@ -412,9 +421,9 @@ catchC (ConduitM p0) onErr = ConduitM $ \rest -> let
 --
 -- Since 1.0.11
 handleC :: (MonadUnliftIO m, Exception e)
-        => (e -> ConduitM i o m r)
-        -> ConduitM i o m r
-        -> ConduitM i o m r
+        => (e -> ConduitT i o m r)
+        -> ConduitT i o m r
+        -> ConduitT i o m r
 handleC = flip catchC
 {-# INLINE handleC #-}
 
@@ -423,8 +432,8 @@ handleC = flip catchC
 --
 -- Since 1.0.11
 tryC :: (MonadUnliftIO m, Exception e)
-     => ConduitM i o m r
-     -> ConduitM i o m (Either e r)
+     => ConduitT i o m r
+     -> ConduitT i o m (Either e r)
 tryC c = fmap Right c `catchC` (return . Left)
 {-# INLINE tryC #-}
 
@@ -435,7 +444,7 @@ tryC c = fmap Right c `catchC` (return . Left)
 --
 -- Since 0.4.1
 zipSinks :: Monad m => Sink i m r -> Sink i m r' -> Sink i m (r, r')
-zipSinks (ConduitM x0) (ConduitM y0) = ConduitM $ \rest -> let
+zipSinks (ConduitT x0) (ConduitT y0) = ConduitT $ \rest -> let
     Leftover _  i    >< _                = absurd i
     _                >< Leftover _  i    = absurd i
     HaveOutput _ _ o >< _                = absurd o
@@ -454,7 +463,7 @@ zipSinks (ConduitM x0) (ConduitM y0) = ConduitM $ \rest -> let
 --
 -- Since 1.0.13
 zipSources :: Monad m => Source m a -> Source m b -> Source m (a, b)
-zipSources (ConduitM left0) (ConduitM right0) = ConduitM $ \rest -> let
+zipSources (ConduitT left0) (ConduitT right0) = ConduitT $ \rest -> let
     go (Leftover left ()) right = go left right
     go left (Leftover right ())  = go left right
     go (Done ()) (Done ()) = rest ()
@@ -475,7 +484,7 @@ zipSources (ConduitM left0) (ConduitM right0) = ConduitM $ \rest -> let
 --
 -- Since 1.0.13
 zipSourcesApp :: Monad m => Source m (a -> b) -> Source m a -> Source m b
-zipSourcesApp (ConduitM left0) (ConduitM right0) = ConduitM $ \rest -> let
+zipSourcesApp (ConduitT left0) (ConduitT right0) = ConduitT $ \rest -> let
     go (Leftover left ()) right = go left right
     go left (Leftover right ())  = go left right
     go (Done ()) (Done ()) = rest ()
@@ -496,10 +505,10 @@ zipSourcesApp (ConduitM left0) (ConduitM right0) = ConduitM $ \rest -> let
 -- Since 1.0.17
 zipConduitApp
     :: Monad m
-    => ConduitM i o m (x -> y)
-    -> ConduitM i o m x
-    -> ConduitM i o m y
-zipConduitApp (ConduitM left0) (ConduitM right0) = ConduitM $ \rest -> let
+    => ConduitT i o m (x -> y)
+    -> ConduitT i o m x
+    -> ConduitT i o m y
+zipConduitApp (ConduitT left0) (ConduitT right0) = ConduitT $ \rest -> let
     go _ _ (Done f) (Done x) = rest (f x)
     go finalX finalY (PipeM mx) y = PipeM (flip (go finalX finalY) y `liftM` mx)
     go finalX finalY x (PipeM my) = PipeM (go finalX finalY x `liftM` my)
@@ -529,10 +538,10 @@ zipConduitApp (ConduitM left0) (ConduitM right0) = ConduitM $ \rest -> let
 --
 -- Since 1.0.17
 fuseReturnLeftovers :: Monad m
-                    => ConduitM a b m ()
-                    -> ConduitM b c m r
-                    -> ConduitM a c m (r, [b])
-fuseReturnLeftovers (ConduitM left0) (ConduitM right0) = ConduitM $ \rest -> let
+                    => ConduitT a b m ()
+                    -> ConduitT b c m r
+                    -> ConduitT a c m (r, [b])
+fuseReturnLeftovers (ConduitT left0) (ConduitT right0) = ConduitT $ \rest -> let
     goRight final bs left right =
         case right of
             HaveOutput p c o -> HaveOutput (recurse p) (c >> final) o
@@ -564,9 +573,9 @@ fuseReturnLeftovers (ConduitM left0) (ConduitM right0) = ConduitM $ \rest -> let
 fuseLeftovers
     :: Monad m
     => ([b] -> [a])
-    -> ConduitM a b m ()
-    -> ConduitM b c m r
-    -> ConduitM a c m r
+    -> ConduitT a b m ()
+    -> ConduitT b c m r
+    -> ConduitT a c m r
 fuseLeftovers f left right = do
     (r, bs) <- fuseReturnLeftovers left right
     mapM_ leftover $ reverse $ f bs
@@ -588,7 +597,7 @@ connectResumeConduit
     => ResumableConduit i m o
     -> Sink o m r
     -> Sink i m (ResumableConduit i m o, r)
-connectResumeConduit (ResumableConduit left0 leftFinal0) (ConduitM right0) = ConduitM $ \rest -> let
+connectResumeConduit (ResumableConduit left0 leftFinal0) (ConduitT right0) = ConduitT $ \rest -> let
     goRight leftFinal left right =
         case right of
             HaveOutput _ _ o -> absurd o
@@ -619,13 +628,13 @@ unwrapResumableConduit (ResumableConduit src final) = do
     let final' = do
             x <- liftIO $ I.readIORef ref
             when x final
-    return (ConduitM ((liftIO (I.writeIORef ref False) >> src) >>=), final')
+    return (ConduitT ((liftIO (I.writeIORef ref False) >> src) >>=), final')
 
 -- | Turn a @Conduit@ into a @ResumableConduit@ with no attached finalizer.
 --
 -- Since 1.1.4
 newResumableConduit :: Monad m => Conduit i m o -> ResumableConduit i m o
-newResumableConduit (ConduitM c) = ResumableConduit (c Done) (return ())
+newResumableConduit (ConduitT c) = ResumableConduit (c Done) (return ())
 
 
 -- | Merge a @Source@ into a @Conduit@.
@@ -663,7 +672,7 @@ passthroughSink :: Monad m
                 => Sink i m r
                 -> (r -> m ()) -- ^ finalizer
                 -> Conduit i m i
-passthroughSink (ConduitM sink0) final = ConduitM $ \rest -> let
+passthroughSink (ConduitT sink0) final = ConduitT $ \rest -> let
     -- A bit of explanation is in order, this function is
     -- non-obvious. The purpose of go is to keep track of the sink
     -- we're passing values to, and then yield values downstream. The
@@ -698,7 +707,7 @@ passthroughSink (ConduitM sink0) final = ConduitM $ \rest -> let
     go mbuf _ (Done r) = do
         maybe (return ()) CI.yield mbuf
         lift $ final r
-        unConduitM (awaitForever yield) rest
+        unConduitT (awaitForever yield) rest
     go mbuf is (Leftover sink i) = go mbuf (i:is) sink
     go _ _ (HaveOutput _ _ o) = absurd o
     go mbuf is (PipeM mx) = do
@@ -726,7 +735,7 @@ passthroughSink (ConduitM sink0) final = ConduitM $ \rest -> let
 -- Since 1.2.6
 sourceToList :: Monad m => Source m a -> m [a]
 sourceToList =
-    go . flip unConduitM Done
+    go . flip unConduitT Done
   where
     go (Done _) = return []
     go (HaveOutput src _ x) = liftM (x:) (go src)
@@ -755,22 +764,25 @@ src $$ sink = do
     rsrc $$+- return ()
     return res
 {-# INLINE [1] ($$) #-}
+{-# DEPRECATED ($$) "Use runConduit and .|" #-}
 
 -- | A synonym for '=$=' for backwards compatibility.
 --
 -- Since 0.4.0
-($=) :: Monad m => Conduit a m b -> ConduitM b c m r -> ConduitM a c m r
+($=) :: Monad m => Conduit a m b -> ConduitT b c m r -> ConduitT a c m r
 ($=) = (=$=)
 {-# INLINE [0] ($=) #-}
 {-# RULES "conduit: $= is =$=" ($=) = (=$=) #-}
+{-# DEPRECATED ($=) "Use .|" #-}
 
 -- | A synonym for '=$=' for backwards compatibility.
 --
 -- Since 0.4.0
-(=$) :: Monad m => Conduit a m b -> ConduitM b c m r -> ConduitM a c m r
+(=$) :: Monad m => Conduit a m b -> ConduitT b c m r -> ConduitT a c m r
 (=$) = (=$=)
 {-# INLINE [0] (=$) #-}
 {-# RULES "conduit: =$ is =$=" (=$) = (=$=) #-}
+{-# DEPRECATED (=$) "Use .|" #-}
 
 -- | Fusion operator, combining two @Conduit@s together into a new @Conduit@.
 --
@@ -779,8 +791,8 @@ src $$ sink = do
 -- Leftover data returned from the right @Conduit@ will be discarded.
 --
 -- Since 0.4.0
-(=$=) :: Monad m => Conduit a m b -> ConduitM b c m r -> ConduitM a c m r
-ConduitM left0 =$= ConduitM right0 = ConduitM $ \rest ->
+(=$=) :: Monad m => Conduit a m b -> ConduitT b c m r -> ConduitT a c m r
+ConduitT left0 =$= ConduitT right0 = ConduitT $ \rest ->
     let goRight final left right =
             case right of
                 HaveOutput p c o  -> HaveOutput (recurse p) (c >> final) o
@@ -803,6 +815,7 @@ ConduitM left0 =$= ConduitM right0 = ConduitM $ \rest ->
      in goRight (return ()) (left0 Done) (right0 Done)
   where
 {-# INLINE [1] (=$=) #-}
+{-# DEPRECATED (=$=) "Use .|" #-}
 
 -- | Wait for a single input value from upstream. If no data is available,
 -- returns @Nothing@. Once @await@ returns @Nothing@, subsequent calls will
@@ -810,16 +823,16 @@ ConduitM left0 =$= ConduitM right0 = ConduitM $ \rest ->
 --
 -- Since 0.5.0
 await :: Monad m => Consumer i m (Maybe i)
-await = ConduitM $ \f -> NeedInput (f . Just) (const $ f Nothing)
+await = ConduitT $ \f -> NeedInput (f . Just) (const $ f Nothing)
 {-# INLINE [0] await #-}
 
 await' :: Monad m
-       => ConduitM i o m r
-       -> (i -> ConduitM i o m r)
-       -> ConduitM i o m r
-await' f g = ConduitM $ \rest -> NeedInput
-    (\i -> unConduitM (g i) rest)
-    (const $ unConduitM f rest)
+       => ConduitT i o m r
+       -> (i -> ConduitT i o m r)
+       -> ConduitT i o m r
+await' f g = ConduitT $ \rest -> NeedInput
+    (\i -> unConduitT (g i) rest)
+    (const $ unConduitT f rest)
 {-# INLINE await' #-}
 {-# RULES "conduit: await >>= maybe" forall x y. await >>= maybe x y = await' x y #-}
 
@@ -830,18 +843,18 @@ await' f g = ConduitM $ \rest -> NeedInput
 -- Since 0.5.0
 yield :: Monad m
       => o -- ^ output value
-      -> ConduitM i o m ()
+      -> ConduitT i o m ()
 yield o = yieldOr o (return ())
 {-# INLINE yield #-}
 
 -- | Send a monadic value downstream for the next component to consume.
 --
 -- @since 1.2.7
-yieldM :: Monad m => m o -> ConduitM i o m ()
+yieldM :: Monad m => m o -> ConduitT i o m ()
 yieldM mo = lift mo >>= yield
 {-# INLINE yieldM #-}
 
-  -- FIXME rule won't fire, see FIXME in .Pipe; "mapM_ yield" mapM_ yield = ConduitM . sourceList
+  -- FIXME rule won't fire, see FIXME in .Pipe; "mapM_ yield" mapM_ yield = ConduitT . sourceList
 
 -- | Provide a single piece of leftover input to be consumed by the next
 -- component in the current monadic binding.
@@ -850,15 +863,15 @@ yieldM mo = lift mo >>= yield
 -- already consumed from upstream.
 --
 -- @since 0.5.0
-leftover :: i -> ConduitM i o m ()
-leftover i = ConduitM $ \rest -> Leftover (rest ()) i
+leftover :: i -> ConduitT i o m ()
+leftover i = ConduitT $ \rest -> Leftover (rest ()) i
 {-# INLINE leftover #-}
 
 -- | Run a pipeline until processing completes.
 --
 -- Since 1.2.1
-runConduit :: Monad m => ConduitM () Void m r -> m r
-runConduit (ConduitM p) = runPipe $ injectLeftovers $ p Done
+runConduit :: Monad m => ConduitT () Void m r -> m r
+runConduit (ConduitT p) = runPipe $ injectLeftovers $ p Done
 {-# INLINE [0] runConduit #-}
 
 -- | Bracket a conduit computation between allocation and release of a
@@ -876,13 +889,13 @@ bracketP :: MonadResource m
             -- ^ computation to run first (\"acquire resource\")
          -> (a -> IO ())
             -- ^ computation to run last (\"release resource\")
-         -> (a -> ConduitM i o m r)
+         -> (a -> ConduitT i o m r)
             -- ^ computation to run in-between
-         -> ConduitM i o m r
+         -> ConduitT i o m r
             -- returns the value from the in-between computation
-bracketP alloc free inside = ConduitM $ \rest -> PipeM $ do
+bracketP alloc free inside = ConduitT $ \rest -> PipeM $ do
     (key, seed) <- allocate alloc free
-    return $ unConduitM (addCleanup (const $ release key) (inside seed)) rest
+    return $ unConduitT (addCleanup (const $ release key) (inside seed)) rest
 
 -- | Add some code to be run when the given component cleans up.
 --
@@ -896,9 +909,9 @@ bracketP alloc free inside = ConduitM $ \rest -> PipeM $ do
 -- Since 0.4.1
 addCleanup :: Monad m
            => (Bool -> m ())
-           -> ConduitM i o m r
-           -> ConduitM i o m r
-addCleanup cleanup (ConduitM c0) = ConduitM $ \rest -> let
+           -> ConduitT i o m r
+           -> ConduitT i o m r
+addCleanup cleanup (ConduitT c0) = ConduitT $ \rest -> let
     go (Done r) = PipeM (cleanup True >> return (rest r))
     go (HaveOutput src close x) = HaveOutput
         (go src)
@@ -918,8 +931,8 @@ addCleanup cleanup (ConduitM c0) = ConduitM $ \rest -> let
 yieldOr :: Monad m
         => o
         -> m () -- ^ finalizer
-        -> ConduitM i o m ()
-yieldOr o m = ConduitM $ \rest -> HaveOutput (rest ()) m o
+        -> ConduitT i o m ()
+yieldOr o m = ConduitT $ \rest -> HaveOutput (rest ()) m o
 {-# INLINE yieldOr #-}
 
 -- | Wait for input forever, calling the given inner component for each piece of
@@ -929,12 +942,12 @@ yieldOr o m = ConduitM $ \rest -> HaveOutput (rest ()) m o
 -- @await@ing input, checking if it's @Just@ and then looping.
 --
 -- Since 0.5.0
-awaitForever :: Monad m => (i -> ConduitM i o m r) -> ConduitM i o m ()
-awaitForever f = ConduitM $ \rest ->
-    let go = NeedInput (\i -> unConduitM (f i) (const go)) rest
+awaitForever :: Monad m => (i -> ConduitT i o m r) -> ConduitT i o m ()
+awaitForever f = ConduitT $ \rest ->
+    let go = NeedInput (\i -> unConduitT (f i) (const go)) rest
      in go
 
--- | Transform the monad that a @ConduitM@ lives in.
+-- | Transform the monad that a @ConduitT@ lives in.
 --
 -- Note that the monad transforming function will be run multiple times,
 -- resulting in unintuitive behavior in some cases. For a fuller treatment,
@@ -943,8 +956,8 @@ awaitForever f = ConduitM $ \rest ->
 -- <https://github.com/snoyberg/conduit/wiki/Dealing-with-monad-transformers>
 --
 -- Since 0.4.0
-transPipe :: Monad m => (forall a. m a -> n a) -> ConduitM i o m r -> ConduitM i o n r
-transPipe f (ConduitM c0) = ConduitM $ \rest -> let
+transPipe :: Monad m => (forall a. m a -> n a) -> ConduitT i o m r -> ConduitT i o n r
+transPipe f (ConduitT c0) = ConduitT $ \rest -> let
         go (HaveOutput p c o) = HaveOutput (go p) (f c) o
         go (NeedInput p c) = NeedInput (go . p) (go . c)
         go (Done r) = rest r
@@ -965,15 +978,15 @@ transPipe f (ConduitM c0) = ConduitM $ \rest -> let
         go (Leftover p i) = Leftover (go p) i
         in go (c0 Done)
 
--- | Apply a function to all the output values of a @ConduitM@.
+-- | Apply a function to all the output values of a @ConduitT@.
 --
 -- This mimics the behavior of `fmap` for a `Source` and `Conduit` in pre-0.4
 -- days. It can also be simulated by fusing with the @map@ conduit from
 -- "Data.Conduit.List".
 --
 -- Since 0.4.1
-mapOutput :: Monad m => (o1 -> o2) -> ConduitM i o1 m r -> ConduitM i o2 m r
-mapOutput f (ConduitM c0) = ConduitM $ \rest -> let
+mapOutput :: Monad m => (o1 -> o2) -> ConduitT i o1 m r -> ConduitT i o2 m r
+mapOutput f (ConduitT c0) = ConduitT $ \rest -> let
     go (HaveOutput p c o) = HaveOutput (go p) c (f o)
     go (NeedInput p c) = NeedInput (go . p) (go . c)
     go (Done r) = rest r
@@ -984,8 +997,8 @@ mapOutput f (ConduitM c0) = ConduitM $ \rest -> let
 -- | Same as 'mapOutput', but use a function that returns @Maybe@ values.
 --
 -- Since 0.5.0
-mapOutputMaybe :: Monad m => (o1 -> Maybe o2) -> ConduitM i o1 m r -> ConduitM i o2 m r
-mapOutputMaybe f (ConduitM c0) = ConduitM $ \rest -> let
+mapOutputMaybe :: Monad m => (o1 -> Maybe o2) -> ConduitT i o1 m r -> ConduitT i o2 m r
+mapOutputMaybe f (ConduitT c0) = ConduitT $ \rest -> let
     go (HaveOutput p c o) = maybe id (\o' p' -> HaveOutput p' c o') (f o) (go p)
     go (NeedInput p c) = NeedInput (go . p) (go . c)
     go (Done r) = rest r
@@ -993,15 +1006,15 @@ mapOutputMaybe f (ConduitM c0) = ConduitM $ \rest -> let
     go (Leftover p i) = Leftover (go p) i
     in go (c0 Done)
 
--- | Apply a function to all the input values of a @ConduitM@.
+-- | Apply a function to all the input values of a @ConduitT@.
 --
 -- Since 0.5.0
 mapInput :: Monad m
          => (i1 -> i2) -- ^ map initial input to new input
          -> (i2 -> Maybe i1) -- ^ map new leftovers to initial leftovers
-         -> ConduitM i2 o m r
-         -> ConduitM i1 o m r
-mapInput f f' (ConduitM c0) = ConduitM $ \rest -> let
+         -> ConduitT i2 o m r
+         -> ConduitT i1 o m r
+mapInput f f' (ConduitT c0) = ConduitT $ \rest -> let
     go (HaveOutput p c o) = HaveOutput (go p) c o
     go (NeedInput p c) = NeedInput (go . p . f) (go . c)
     go (Done r) = rest r
@@ -1018,7 +1031,7 @@ mapInput f f' (ConduitM c0) = ConduitM $ \rest -> let
 --
 -- Since 0.5.0
 ($$+) :: Monad m => Source m a -> Sink a m b -> m (ResumableSource m a, b)
-ConduitM src $$+ sink =
+ConduitT src $$+ sink =
     connectResume (ResumableSource (src Done) (return ())) sink
 {-# INLINE ($$+) #-}
 
@@ -1045,7 +1058,7 @@ rsrc $$+- sink = do
 --
 -- Since 1.0.16
 ($=+) :: Monad m => ResumableSource m a -> Conduit a m b -> ResumableSource m b
-ResumableSource src final $=+ ConduitM sink =
+ResumableSource src final $=+ ConduitT sink =
     ResumableSource (src `pipeL` sink Done) final
 
 -- | Execute the finalizer associated with a @ResumableSource@, rendering the
@@ -1146,7 +1159,7 @@ sequenceSinks = getZipSink . sequenceA . fmap ZipSink
 --
 -- Since 1.0.17
 (=$$+) :: Monad m => Conduit a m b -> Sink b m r -> Sink a m (ResumableConduit a m b, r)
-(=$$+) (ConduitM conduit) = connectResumeConduit (ResumableConduit (conduit Done) (return ()))
+(=$$+) (ConduitT conduit) = connectResumeConduit (ResumableConduit (conduit Done) (return ()))
 {-# INLINE (=$$+) #-}
 
 -- | Continue processing after usage of '=$$+'. Connect a 'ResumableConduit' to
@@ -1176,9 +1189,9 @@ infixr 0 =$$+
 infixr 0 =$$++
 infixr 0 =$$+-
 
--- | Provides an alternative @Applicative@ instance for @ConduitM@. In this instance,
--- every incoming value is provided to all @ConduitM@s, and output is coalesced together.
--- Leftovers from individual @ConduitM@s will be used within that component, and then discarded
+-- | Provides an alternative @Applicative@ instance for @ConduitT@. In this instance,
+-- every incoming value is provided to all @ConduitT@s, and output is coalesced together.
+-- Leftovers from individual @ConduitT@s will be used within that component, and then discarded
 -- at the end of their computation. Output and finalizers will both be handled in a left-biased manner.
 --
 -- As an example, take the following program:
@@ -1197,7 +1210,7 @@ infixr 0 =$$+-
 -- It will produce the output: 2, 1, 1, 3, 2, 2, 4, 3, 3
 --
 -- Since 1.0.17
-newtype ZipConduit i o m r = ZipConduit { getZipConduit :: ConduitM i o m r }
+newtype ZipConduit i o m r = ZipConduit { getZipConduit :: ConduitT i o m r }
     deriving Functor
 instance Monad m => Applicative (ZipConduit i o m) where
     pure = ZipConduit . pure
@@ -1209,17 +1222,17 @@ instance Monad m => Applicative (ZipConduit i o m) where
 -- Implemented on top of @ZipConduit@, see that data type for more details.
 --
 -- Since 1.0.17
-sequenceConduits :: (Traversable f, Monad m) => f (ConduitM i o m r) -> ConduitM i o m (f r)
+sequenceConduits :: (Traversable f, Monad m) => f (ConduitT i o m r) -> ConduitT i o m (f r)
 sequenceConduits = getZipConduit . sequenceA . fmap ZipConduit
 
--- | Fuse two @ConduitM@s together, and provide the return value of both. Note
--- that this will force the entire upstream @ConduitM@ to be run to produce the
+-- | Fuse two @ConduitT@s together, and provide the return value of both. Note
+-- that this will force the entire upstream @ConduitT@ to be run to produce the
 -- result value, even if the downstream terminates early.
 --
 -- Since 1.1.5
-fuseBoth :: Monad m => ConduitM a b m r1 -> ConduitM b c m r2 -> ConduitM a c m (r1, r2)
-fuseBoth (ConduitM up) (ConduitM down) =
-    ConduitM (pipeL (up Done) (withUpstream $ generalizeUpstream $ down Done) >>=)
+fuseBoth :: Monad m => ConduitT a b m r1 -> ConduitT b c m r2 -> ConduitT a c m (r1, r2)
+fuseBoth (ConduitT up) (ConduitT down) =
+    ConduitT (pipeL (up Done) (withUpstream $ generalizeUpstream $ down Done) >>=)
 {-# INLINE fuseBoth #-}
 
 -- | Like 'fuseBoth', but does not force consumption of the @Producer@.
@@ -1236,11 +1249,11 @@ fuseBoth (ConduitM up) (ConduitM down) =
 -- Since 1.2.4
 fuseBothMaybe
     :: Monad m
-    => ConduitM a b m r1
-    -> ConduitM b c m r2
-    -> ConduitM a c m (Maybe r1, r2)
-fuseBothMaybe (ConduitM up) (ConduitM down) =
-    ConduitM (pipeL (up Done) (go Nothing $ down Done) >>=)
+    => ConduitT a b m r1
+    -> ConduitT b c m r2
+    -> ConduitT a c m (Maybe r1, r2)
+fuseBothMaybe (ConduitT up) (ConduitT down) =
+    ConduitT (pipeL (up Done) (go Nothing $ down Done) >>=)
   where
     go mup (Done r) = Done (mup, r)
     go mup (PipeM mp) = PipeM $ liftM (go mup) mp
@@ -1255,32 +1268,32 @@ fuseBothMaybe (ConduitM up) (ConduitM down) =
 -- @Conduit@. Same caveats of forced consumption apply.
 --
 -- Since 1.1.5
-fuseUpstream :: Monad m => ConduitM a b m r -> Conduit b m c -> ConduitM a c m r
+fuseUpstream :: Monad m => ConduitT a b m r -> Conduit b m c -> ConduitT a c m r
 fuseUpstream up down = fmap fst (fuseBoth up down)
 {-# INLINE fuseUpstream #-}
 
 -- Rewrite rules
 
 {- FIXME
-{-# RULES "conduit: ConduitM: lift x >>= f" forall m f. lift m >>= f = ConduitM (PipeM (liftM (unConduitM . f) m)) #-}
-{-# RULES "conduit: ConduitM: lift x >> f" forall m f. lift m >> f = ConduitM (PipeM (liftM (\_ -> unConduitM f) m)) #-}
+{-# RULES "conduit: ConduitT: lift x >>= f" forall m f. lift m >>= f = ConduitT (PipeM (liftM (unConduitT . f) m)) #-}
+{-# RULES "conduit: ConduitT: lift x >> f" forall m f. lift m >> f = ConduitT (PipeM (liftM (\_ -> unConduitT f) m)) #-}
 
-{-# RULES "conduit: ConduitM: liftIO x >>= f" forall m (f :: MonadIO m => a -> ConduitM i o m r). liftIO m >>= f = ConduitM (PipeM (liftM (unConduitM . f) (liftIO m))) #-}
-{-# RULES "conduit: ConduitM: liftIO x >> f" forall m (f :: MonadIO m => ConduitM i o m r). liftIO m >> f = ConduitM (PipeM (liftM (\_ -> unConduitM f) (liftIO m))) #-}
+{-# RULES "conduit: ConduitT: liftIO x >>= f" forall m (f :: MonadIO m => a -> ConduitT i o m r). liftIO m >>= f = ConduitT (PipeM (liftM (unConduitT . f) (liftIO m))) #-}
+{-# RULES "conduit: ConduitT: liftIO x >> f" forall m (f :: MonadIO m => ConduitT i o m r). liftIO m >> f = ConduitT (PipeM (liftM (\_ -> unConduitT f) (liftIO m))) #-}
 
-{-# RULES "conduit: ConduitM: liftBase x >>= f" forall m (f :: MonadBase b m => a -> ConduitM i o m r). liftBase m >>= f = ConduitM (PipeM (liftM (unConduitM . f) (liftBase m))) #-}
-{-# RULES "conduit: ConduitM: liftBase x >> f" forall m (f :: MonadBase b m => ConduitM i o m r). liftBase m >> f = ConduitM (PipeM (liftM (\_ -> unConduitM f) (liftBase m))) #-}
+{-# RULES "conduit: ConduitT: liftBase x >>= f" forall m (f :: MonadBase b m => a -> ConduitT i o m r). liftBase m >>= f = ConduitT (PipeM (liftM (unConduitT . f) (liftBase m))) #-}
+{-# RULES "conduit: ConduitT: liftBase x >> f" forall m (f :: MonadBase b m => ConduitT i o m r). liftBase m >> f = ConduitT (PipeM (liftM (\_ -> unConduitT f) (liftBase m))) #-}
 
 {-# RULES
-    "yield o >> p" forall o (p :: ConduitM i o m r). yield o >> p = ConduitM (HaveOutput (unConduitM p) (return ()) o)
-  ; "yieldOr o c >> p" forall o c (p :: ConduitM i o m r). yieldOr o c >> p =
-        ConduitM (HaveOutput (unConduitM p) c o)
+    "yield o >> p" forall o (p :: ConduitT i o m r). yield o >> p = ConduitT (HaveOutput (unConduitT p) (return ()) o)
+  ; "yieldOr o c >> p" forall o c (p :: ConduitT i o m r). yieldOr o c >> p =
+        ConduitT (HaveOutput (unConduitT p) c o)
   ; "when yield next" forall b o p. when b (yield o) >> p =
-        if b then ConduitM (HaveOutput (unConduitM p) (return ()) o) else p
+        if b then ConduitT (HaveOutput (unConduitT p) (return ()) o) else p
   ; "unless yield next" forall b o p. unless b (yield o) >> p =
-        if b then p else ConduitM (HaveOutput (unConduitM p) (return ()) o)
+        if b then p else ConduitT (HaveOutput (unConduitT p) (return ()) o)
   ; "lift m >>= yield" forall m. lift m >>= yield = yieldM m
    #-}
-{-# RULES "conduit: leftover l >> p" forall l (p :: ConduitM i o m r). leftover l >> p =
-    ConduitM (Leftover (unConduitM p) l) #-}
+{-# RULES "conduit: leftover l >> p" forall l (p :: ConduitT i o m r). leftover l >> p =
+    ConduitT (Leftover (unConduitT p) l) #-}
     -}

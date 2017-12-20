@@ -8,18 +8,21 @@
 module Data.Conduit
     ( -- * Core interface
       -- ** Types
-      Source
+      ConduitT
+      -- *** Deprecated
+    , Source
     , Conduit
     , Sink
     , ConduitM
       -- ** Connect/fuse operators
     , (.|)
+    , connect
+    , fuse
+      -- *** Deprecated
     , ($$)
     , ($=)
     , (=$)
     , (=$=)
-    , connect
-    , fuse
 
       -- *** Fuse with upstream results
     , fuseBoth
@@ -106,13 +109,16 @@ import Data.Functor.Identity (Identity, runIdentity)
 import Control.Monad.Trans.Resource (ResourceT, runResourceT)
 import Control.Monad.IO.Unlift (MonadUnliftIO)
 
--- | Named function synonym for '$$'.
+-- | Equivalent to using 'runConduit' and '.|' together.
 --
 -- Since 1.2.3
-connect :: Monad m => Source m a -> Sink a m b -> m b
+connect :: Monad m
+        => ConduitT () a m ()
+        -> ConduitT a Void m r
+        -> m r
 connect = ($$)
 
--- | Named function synonym for '=$='.
+-- | Named function synonym for '.|'.
 --
 -- Since 1.2.3
 fuse :: Monad m => Conduit a m b -> ConduitM b c m r -> ConduitM a c m r
