@@ -2,6 +2,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# OPTIONS_GHC -fno-warn-warnings-deprecations #-} -- Due to usage of conduitGet below
 
 import           Control.Applicative (many, optional)
 import           Control.Exception.Base
@@ -111,63 +112,63 @@ sinktest9 = TestCase (assertEqual "Properly terminate Partials"
 conduittest1 :: Test
 conduittest1 = TestCase (assertEqual "Handles starting with empty bytestring"
   (Right [])
-  (showLeft (runConduit ((CL.sourceList [BS.pack [], BS.pack [1]]) .| conduitGet2 twoItemGet .| CL.consume))))
+  (showLeft (runConduit ((CL.sourceList [BS.pack [], BS.pack [1]]) .| conduitGet twoItemGet .| CL.consume))))
 
 conduittest2 :: Test
 conduittest2 = TestCase (assertEqual "Works when the get is split across items"
   (Right [3])
-  (showLeft (runConduit ((CL.sourceList [BS.pack [1], BS.pack [2]]) .| conduitGet2 twoItemGet .| CL.consume))))
+  (showLeft (runConduit ((CL.sourceList [BS.pack [1], BS.pack [2]]) .| conduitGet twoItemGet .| CL.consume))))
 
 conduittest3 :: Test
 conduittest3 = TestCase (assertEqual "Works when empty bytestring in middle of get"
   (Right [3])
-  (showLeft (runConduit ((CL.sourceList [BS.pack [1], BS.pack [], BS.pack [2]]) .| conduitGet2 twoItemGet .| CL.consume))))
+  (showLeft (runConduit ((CL.sourceList [BS.pack [1], BS.pack [], BS.pack [2]]) .| conduitGet twoItemGet .| CL.consume))))
 
 conduittest4 :: Test
 conduittest4 = TestCase (assertEqual "Works when empty bytestring at end of get"
   (Right [3])
-  (showLeft (runConduit ((CL.sourceList [BS.pack [1, 2], BS.pack []]) .| conduitGet2 twoItemGet .| CL.consume))))
+  (showLeft (runConduit ((CL.sourceList [BS.pack [1, 2], BS.pack []]) .| conduitGet twoItemGet .| CL.consume))))
 
 conduittest5 :: Test
 conduittest5 = TestCase (assertEqual "Works when multiple gets are in an item"
   (Right [3, 7])
-  (showLeft (runConduit ((CL.sourceList [BS.pack [1, 2, 3, 4]]) .| conduitGet2 twoItemGet .| CL.consume))))
+  (showLeft (runConduit ((CL.sourceList [BS.pack [1, 2, 3, 4]]) .| conduitGet twoItemGet .| CL.consume))))
 
 conduittest6 :: Test
 conduittest6 = TestCase (assertEqual "Works with leftovers"
   (Right [3])
-  (showLeft (runConduit ((CL.sourceList [BS.pack [1, 2, 3]]) .| conduitGet2 twoItemGet .| CL.consume))))
+  (showLeft (runConduit ((CL.sourceList [BS.pack [1, 2, 3]]) .| conduitGet twoItemGet .| CL.consume))))
 
 conduittest7 :: Test
 conduittest7 = let c = 10 in TestCase (assertEqual "Works with infinite lists"
   (Right $ L.replicate c ())
-  (showLeft (runConduit ((CL.sourceList [BS.pack [1, 2, 3]]) .| conduitGet2 (return ()) .| CL.take c))))
+  (showLeft (runConduit ((CL.sourceList [BS.pack [1, 2, 3]]) .| conduitGet (return ()) .| CL.take c))))
 
 conduittest8 :: Test
 conduittest8 = let c = 10 in TestCase (assertEqual "Works with empty source and infinite lists"
   (Right $ L.replicate c ())
-  (showLeft (runConduit ((CL.sourceList []) .| conduitGet2 (return ()) .| CL.take c))))
+  (showLeft (runConduit ((CL.sourceList []) .| conduitGet (return ()) .| CL.take c))))
 
 conduittest9 :: Test
 conduittest9 = TestCase (assertEqual "Works with two well-placed items"
   (Right [3, 7])
-  (showLeft (runConduit ((CL.sourceList [BS.pack [1, 2], BS.pack [3, 4]]) .| conduitGet2 twoItemGet .| CL.consume))))
+  (showLeft (runConduit ((CL.sourceList [BS.pack [1, 2], BS.pack [3, 4]]) .| conduitGet twoItemGet .| CL.consume))))
 
 conduittest10 :: Test
 conduittest10 = TestCase (assertBool "Failure works"
-  (case runConduit $ (CL.sourceList [BS.pack [1, 2], BS.pack [3, 4]]) .| conduitGet2 (getWord8 >> fail "omfg") .| CL.consume of
+  (case runConduit $ (CL.sourceList [BS.pack [1, 2], BS.pack [3, 4]]) .| conduitGet (getWord8 >> fail "omfg") .| CL.consume of
     Left _ -> True
     Right _ -> False))
 
 conduittest11 :: Test
 conduittest11 = TestCase (assertBool "Immediate failure works"
-  (case runConduit $ (CL.sourceList [BS.pack [1, 2], BS.pack [3, 4]]) .| conduitGet2 (fail "omfg") .| CL.consume of
+  (case runConduit $ (CL.sourceList [BS.pack [1, 2], BS.pack [3, 4]]) .| conduitGet (fail "omfg") .| CL.consume of
     Left _ -> True
     Right _ -> False))
 
 conduittest12 :: Test
 conduittest12 = TestCase (assertBool "Immediate failure with empty input works"
-  (case runConduit $ (CL.sourceList []) .| conduitGet2 (fail "omfg") .| CL.consume of
+  (case runConduit $ (CL.sourceList []) .| conduitGet (fail "omfg") .| CL.consume of
     Left _ -> True
     Right _ -> False))
 
@@ -176,7 +177,7 @@ conduittest13 = TestCase (assertEqual "Leftover success conduit input works"
   (Right [Right 12, Right 7, Left (BS.pack [5])])
   (showLeft (runConduit ((CL.sourceList [BS.pack [10, 2, 3], BS.pack [4, 5]]) .| fancyConduit .| CL.consume))))
   where fancyConduit = do
-          conduitGet2 twoItemGet .| CL.map (\ x -> Right x)
+          conduitGet twoItemGet .| CL.map (\ x -> Right x)
           recurse
           where recurse = await >>= maybe (return ()) (\ x -> yield (Left x) >> recurse)
 
@@ -189,7 +190,7 @@ conduittest14 = TestCase (assertEqual "Leftover coercing works"
   (Right [Left (BS.pack [10, 2])])
   (showLeft (runConduit ((CL.sourceList [BS.pack [10], BS.pack [2]]) .| fancyConduit .| CL.consume))))
   where fancyConduit = do
-          conduitGet2 threeItemGet .| CL.map (\ x -> Right x)
+          conduitGet threeItemGet .| CL.map (\ x -> Right x)
           recurse
           where recurse = await >>= maybe (return ()) (\ x -> yield (Left x) >> recurse)
 
@@ -197,7 +198,7 @@ conduittest15 :: Test
 conduittest15 = TestCase (assertEqual "Leftover premature end conduit input works"
   (Right ([], BS.singleton 1))
   (showLeft (runConduit ((CL.sourceList [BS.singleton 1]) .| (do
-    output <- (conduitGet2 twoItemGet) .| (CL.take 1)
+    output <- (conduitGet twoItemGet) .| (CL.take 1)
     output' <- CL.consume
     return (output, BS.concat output'))))))
 
