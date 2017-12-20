@@ -34,7 +34,6 @@ test-suite test
     build-depends:   resourcet
                    , base
                    , hspec >= 1.3
-                   , lifted-base
                    , transformers
     ghc-options:     -Wall
 

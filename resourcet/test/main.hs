@@ -2,7 +2,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 import           Control.Concurrent
-import           Control.Concurrent.Lifted    (fork)
 import           Control.Exception            (Exception, MaskingState (MaskedInterruptible),
                                                getMaskingState, throwIO, try)
 import           Control.Exception            (SomeException, handle)
