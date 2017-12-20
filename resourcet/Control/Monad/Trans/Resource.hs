@@ -42,7 +42,7 @@ module Control.Monad.Trans.Resource
       -- ** Low-level
     , InvalidAccess (..)
       -- * Re-exports
-    , MonadBaseControl
+    , MonadUnliftIO
       -- * Internal state
       -- $internalState
     , InternalState
@@ -51,28 +51,18 @@ module Control.Monad.Trans.Resource
     , withInternalState
     , createInternalState
     , closeInternalState
-      -- * Backwards compatibility
-    , ExceptionT (..)
-    , runExceptionT
-    , runExceptionT_
-    , runException
-    , runException_
+      -- * Reexport
     , MonadThrow (..)
-    , monadThrow
     ) where
 
 import qualified Data.IntMap as IntMap
 import Control.Exception (SomeException, throw)
-import Control.Monad.Trans.Control
-    ( MonadBaseControl (..), liftBaseDiscard, control )
 import qualified Data.IORef as I
-import Control.Monad.Base (MonadBase, liftBase)
 import Control.Applicative (Applicative (..))
-import Control.Monad.IO.Class (MonadIO (..))
+import Control.Monad.IO.Unlift (MonadIO (..), MonadUnliftIO, withRunInIO)
 import Control.Monad (liftM)
 import qualified Control.Exception as E
 import Data.Monoid (Monoid)
-import qualified Control.Exception.Lifted as L
 
 import Control.Monad.Trans.Resource.Internal
 
@@ -181,8 +171,8 @@ release' istate key act = E.mask_ $ do
 -- last call to @runResourceT@ will deallocate the resources.
 --
 -- Since 0.3.0
-runResourceT :: MonadBaseControl IO m => ResourceT m a -> m a
-runResourceT (ResourceT r) = control $ \run -> do
+runResourceT :: MonadUnliftIO m => ResourceT m a -> m a
+runResourceT (ResourceT r) = withRunInIO $ \run -> do
     istate <- createInternalState
     E.mask $ \restore -> do
         res <- restore (run (r istate)) `E.onException`
@@ -190,22 +180,22 @@ runResourceT (ResourceT r) = control $ \run -> do
         stateCleanup ReleaseNormal istate
         return res
 
-bracket_ :: MonadBaseControl IO m
+bracket_ :: MonadUnliftIO m
          => IO () -- ^ allocate
          -> IO () -- ^ normal cleanup
          -> IO () -- ^ exceptional cleanup
          -> m a
          -> m a
 bracket_ alloc cleanupNormal cleanupExc inside =
-    control $ \run -> E.mask $ \restore -> do
+    withRunInIO $ \run -> E.mask $ \restore -> do
         alloc
         res <- restore (run inside) `E.onException` cleanupExc
         cleanupNormal
         return res
 
-finally :: MonadBaseControl IO m => m a -> IO () -> m a
+finally :: MonadUnliftIO m => m a -> IO () -> m a
 finally action cleanup =
-    control $ \run -> E.finally (run action) cleanup
+    withRunInIO $ \run -> E.finally (run action) cleanup
 
 -- | This function mirrors @join@ at the transformer level: it will collapse
 -- two levels of @ResourceT@ into a single @ResourceT@.
@@ -214,31 +204,6 @@ finally action cleanup =
 joinResourceT :: ResourceT (ResourceT m) a
               -> ResourceT m a
 joinResourceT (ResourceT f) = ResourceT $ \r -> unResourceT (f r) r
-
--- | For backwards compatibility.
-type ExceptionT = CatchT
-
--- | For backwards compatibility.
-runExceptionT :: ExceptionT m a -> m (Either SomeException a)
-runExceptionT = runCatchT
-
--- | Same as 'runExceptionT', but immediately 'E.throw' any exception returned.
---
--- Since 0.3.0
-runExceptionT_ :: Monad m => ExceptionT m a -> m a
-runExceptionT_ = liftM (either E.throw id) . runExceptionT
-
--- | Run an @ExceptionT Identity@ stack.
---
--- Since 0.4.2
-runException :: ExceptionT Identity a -> Either SomeException a
-runException = runIdentity . runExceptionT
-
--- | Run an @ExceptionT Identity@ stack, but immediately 'E.throw' any exception returned.
---
--- Since 0.4.2
-runException_ :: ExceptionT Identity a -> a
-runException_ = runIdentity . runExceptionT_
 
 -- | Introduce a reference-counting scheme to allow a resource context to be
 -- shared by multiple threads. Once the last thread exits, all remaining
@@ -256,8 +221,13 @@ runException_ = runIdentity . runExceptionT_
 -- a new @ResourceT@ block and then call @resourceForkWith@ from there.
 --
 -- @since 1.1.9
-resourceForkWith :: MonadBaseControl IO m => (IO () -> IO a) -> ResourceT m () -> ResourceT m a
-resourceForkWith g (ResourceT f) = ResourceT $ \r -> L.mask $ \restore ->
+resourceForkWith
+  :: MonadUnliftIO m
+  => (IO () -> IO a)
+  -> ResourceT m ()
+  -> ResourceT m a
+resourceForkWith g (ResourceT f) =
+  ResourceT $ \r -> withRunInIO $ \run -> E.mask $ \restore ->
     -- We need to make sure the counter is incremented before this call
     -- returns. Otherwise, the parent thread may call runResourceT before
     -- the child thread increments, and all resources will be freed
@@ -266,46 +236,35 @@ resourceForkWith g (ResourceT f) = ResourceT $ \r -> L.mask $ \restore ->
         (stateAlloc r)
         (return ())
         (return ())
-        (liftBaseDiscard g $ bracket_
+        (g $ bracket_
             (return ())
             (stateCleanup ReleaseNormal r)
             (stateCleanup ReleaseException r)
-            (restore $ f r))
+            (restore $ run $ f r))
 
 -- | Launch a new reference counted resource context using @forkIO@.
 --
 -- This is defined as @resourceForkWith forkIO@.
 --
 -- @since 0.3.0
-resourceForkIO :: MonadBaseControl IO m => ResourceT m () -> ResourceT m ThreadId
+resourceForkIO :: MonadUnliftIO m => ResourceT m () -> ResourceT m ThreadId
 resourceForkIO = resourceForkWith forkIO
 
--- | A @Monad@ which can be used as a base for a @ResourceT@.
+-- | Just use 'MonadUnliftIO' directly now, legacy explanation continues:
+--
+-- A @Monad@ which can be used as a base for a @ResourceT@.
 --
 -- A @ResourceT@ has some restrictions on its base monad:
 --
--- * @runResourceT@ requires an instance of @MonadBaseControl IO@.
--- * @MonadResource@ requires an instance of @MonadThrow@, @MonadIO@, and @Applicative@.
---
--- While any instance of @MonadBaseControl IO@ should be an instance of the
--- other classes, this is not guaranteed by the type system (e.g., you may have
--- a transformer in your stack with does not implement @MonadThrow@). Ideally,
--- we would like to simply create an alias for the five type classes listed,
--- but this is not possible with GHC currently.
---
--- Instead, this typeclass acts as a proxy for the other five. Its only purpose
--- is to make your type signatures shorter.
+-- * @runResourceT@ requires an instance of @MonadUnliftIO@.
+-- * @MonadResource@ requires an instance of @MonadIO@
 --
 -- Note that earlier versions of @conduit@ had a typeclass @ResourceIO@. This
 -- fulfills much the same role.
 --
 -- Since 0.3.2
-#if __GLASGOW_HASKELL__ >= 704
-type MonadResourceBase m = (MonadBaseControl IO m, MonadThrow m, MonadBase IO m, MonadIO m, Applicative m)
-#else
-class (MonadBaseControl IO m, MonadThrow m, MonadIO m, Applicative m) => MonadResourceBase m
-instance (MonadBaseControl IO m, MonadThrow m, MonadIO m, Applicative m) => MonadResourceBase m
-#endif
+type MonadResourceBase = MonadUnliftIO
+{-# DEPRECATED MonadResourceBase "Use MonadUnliftIO directly instead" #-}
 
 -- $internalState
 --
@@ -321,16 +280,16 @@ instance (MonadBaseControl IO m, MonadThrow m, MonadIO m, Applicative m) => Mona
 -- Caveat emptor!
 --
 -- Since 0.4.9
-createInternalState :: MonadBase IO m => m InternalState
-createInternalState = liftBase
+createInternalState :: MonadIO m => m InternalState
+createInternalState = liftIO
                     $ I.newIORef
                     $ ReleaseMap maxBound (minBound + 1) IntMap.empty
 
 -- | Close an internal state created by @createInternalState@.
 --
 -- Since 0.4.9
-closeInternalState :: MonadBase IO m => InternalState -> m ()
-closeInternalState = liftBase . stateCleanup ReleaseNormal
+closeInternalState :: MonadIO m => InternalState -> m ()
+closeInternalState = liftIO . stateCleanup ReleaseNormal
 
 -- | Get the internal state of the current @ResourceT@.
 --
@@ -354,7 +313,3 @@ runInternalState = unResourceT
 -- Since 0.4.6
 withInternalState :: (InternalState -> m a) -> ResourceT m a
 withInternalState = ResourceT
-
--- | Backwards compatibility
-monadThrow :: (E.Exception e, MonadThrow m) => e -> m a
-monadThrow = throwM

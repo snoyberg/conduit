@@ -104,7 +104,7 @@ import Data.Conduit.Internal.Conduit
 import Data.Void (Void)
 import Data.Functor.Identity (Identity, runIdentity)
 import Control.Monad.Trans.Resource (ResourceT, runResourceT)
-import Control.Monad.Trans.Control (MonadBaseControl)
+import Control.Monad.IO.Unlift (MonadUnliftIO)
 
 -- | Named function synonym for '$$'.
 --
@@ -148,7 +148,7 @@ runConduitPure = runIdentity . runConduit
 -- @runResourceT . runConduit@.
 --
 -- @since 1.2.8
-runConduitRes :: MonadBaseControl IO m
+runConduitRes :: MonadUnliftIO m
               => ConduitM () Void (ResourceT m) r
               -> m r
 runConduitRes = runResourceT . runConduit

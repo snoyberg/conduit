@@ -21,7 +21,7 @@ import qualified Data.ByteString as S
 import Control.Monad (unless, liftM)
 import Control.Monad.Trans.Class (lift, MonadTrans)
 import Control.Monad.Primitive (PrimMonad, unsafePrimToPrim)
-import Control.Monad.Trans.Resource (MonadThrow, monadThrow)
+import Control.Monad.Trans.Resource (MonadThrow, throwM)
 import Data.Function (fix)
 
 -- | Gzip compression with default parameters.
@@ -126,7 +126,7 @@ helperDecompress await' yield' leftover' config = do
                             yield' (Chunk bs)
                             pop
                         -- An error occurred inside zlib, throw it
-                        PRError e -> lift $ monadThrow e
+                        PRError e -> lift $ throwM e
             -- We've been asked to flush the stream
             Just Flush -> do
                 -- Get any uncompressed data waiting for us
@@ -179,7 +179,7 @@ helperCompress await' yield' level config =
         case mbs of
             PRDone -> return ()
             PRNext bs -> yield' (Chunk bs) >> goPopper popper
-            PRError e -> lift $ monadThrow e
+            PRError e -> lift $ throwM e
 
     push def (Chunk x) = do
         popper <- lift $ unsafeLiftIO $ feedDeflate def x
@@ -191,7 +191,7 @@ helperCompress await' yield' level config =
         case mchunk of
             PRDone -> return ()
             PRNext x -> yield' $ Chunk x
-            PRError e -> lift $ monadThrow e
+            PRError e -> lift $ throwM e
         yield' Flush
         continue def
 
@@ -200,7 +200,7 @@ helperCompress await' yield' level config =
         case mchunk of
             PRDone -> return ()
             PRNext chunk -> yield' (Chunk chunk) >> close def
-            PRError e -> lift $ monadThrow e
+            PRError e -> lift $ throwM e
 
 -- | The standard 'decompress' and 'ungzip' functions will only decompress a
 -- single compressed entity from the stream. This combinator will exhaust the

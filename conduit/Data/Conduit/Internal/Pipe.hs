@@ -46,7 +46,6 @@ module Data.Conduit.Internal.Pipe
     ) where
 
 import Control.Applicative (Applicative (..))
-import Control.Exception.Lifted as E (Exception, catch)
 import Control.Monad ((>=>), liftM, ap)
 import Control.Monad.Error.Class(MonadError(..))
 import Control.Monad.Reader.Class(MonadReader(..))
@@ -54,15 +53,13 @@ import Control.Monad.RWS.Class(MonadRWS())
 import Control.Monad.Writer.Class(MonadWriter(..))
 import Control.Monad.State.Class(MonadState(..))
 import Control.Monad.Trans.Class (MonadTrans (lift))
-import Control.Monad.IO.Class (MonadIO (liftIO))
-import Control.Monad.Base (MonadBase (liftBase))
+import Control.Monad.IO.Unlift (MonadIO (liftIO), MonadUnliftIO, withRunInIO)
 import Control.Monad.Primitive (PrimMonad, PrimState, primitive)
 import Data.Void (Void, absurd)
 import Data.Monoid (Monoid (mappend, mempty))
-import Control.Monad.Trans.Resource
+import Control.Monad.Trans.Resource (MonadThrow (..), MonadResource (..), allocate, release)
 import qualified GHC.Exts
-import Control.Monad.Morph (MFunctor (..))
-import qualified Control.Monad.Catch as Catch
+import qualified Control.Exception as E
 
 -- | The underlying datatype for all the types in this package.  In has six
 -- type parameters:
@@ -124,10 +121,6 @@ instance Monad m => Monad (Pipe l i o u m) where
     PipeM mp         >>= fp = PipeM      ((>>= fp) `liftM` mp)
     Leftover p i     >>= fp = Leftover   (p >>= fp)            i
 
-instance MonadBase base m => MonadBase base (Pipe l i o u m) where
-    liftBase = lift . liftBase
-    {-# INLINE liftBase #-}
-
 instance MonadTrans (Pipe l i o u) where
     lift mr = PipeM (Done `liftM` mr)
     {-# INLINE [1] lift #-}
@@ -139,17 +132,6 @@ instance MonadIO m => MonadIO (Pipe l i o u m) where
 instance MonadThrow m => MonadThrow (Pipe l i o u m) where
     throwM = lift . throwM
     {-# INLINE throwM #-}
-
-instance Catch.MonadCatch m => Catch.MonadCatch (Pipe l i o u m) where
-    catch p0 onErr =
-        go p0
-      where
-        go (Done r) = Done r
-        go (PipeM mp) = PipeM $ Catch.catch (liftM go mp) (return . onErr)
-        go (Leftover p i) = Leftover (go p) i
-        go (NeedInput x y) = NeedInput (go . x) (go . y)
-        go (HaveOutput p c o) = HaveOutput (go p) c o
-    {-# INLINE catch #-}
 
 instance Monad m => Monoid (Pipe l i o u m ()) where
     mempty = return ()
@@ -576,14 +558,10 @@ infixl 9 >+>
 (<+<) = flip pipe
 {-# INLINE (<+<) #-}
 
--- | Since 1.0.4
-instance MFunctor (Pipe l i o u) where
-    hoist = transPipe
-
 -- | See 'catchC' for more details.
 --
 -- Since 1.0.11
-catchP :: (MonadBaseControl IO m, Exception e)
+catchP :: (MonadUnliftIO m, E.Exception e)
        => Pipe l i o u m r
        -> (e -> Pipe l i o u m r)
        -> Pipe l i o u m r
@@ -591,7 +569,8 @@ catchP p0 onErr =
     go p0
   where
     go (Done r) = Done r
-    go (PipeM mp) = PipeM $ E.catch (liftM go mp) (return . onErr)
+    go (PipeM mp) = PipeM $ withRunInIO $ \run ->
+      E.catch (run (liftM go mp)) (return . onErr)
     go (Leftover p i) = Leftover (go p) i
     go (NeedInput x y) = NeedInput (go . x) (go . y)
     go (HaveOutput p c o) = HaveOutput (go p) c o
@@ -600,7 +579,7 @@ catchP p0 onErr =
 -- | The same as @flip catchP@.
 --
 -- Since 1.0.11
-handleP :: (MonadBaseControl IO m, Exception e)
+handleP :: (MonadUnliftIO m, E.Exception e)
         => (e -> Pipe l i o u m r)
         -> Pipe l i o u m r
         -> Pipe l i o u m r
@@ -610,17 +589,10 @@ handleP = flip catchP
 -- | See 'tryC' for more details.
 --
 -- Since 1.0.11
-tryP :: (MonadBaseControl IO m, Exception e)
+tryP :: (MonadUnliftIO m, E.Exception e)
      => Pipe l i o u m r
      -> Pipe l i o u m (Either e r)
-tryP =
-    go
-  where
-    go (Done r) = Done (Right r)
-    go (PipeM mp) = PipeM $ E.catch (liftM go mp) (return . Done . Left)
-    go (Leftover p i) = Leftover (go p) i
-    go (NeedInput x y) = NeedInput (go . x) (go . y)
-    go (HaveOutput p c o) = HaveOutput (go p) c o
+tryP p = (fmap Right p) `catchP` (return . Left)
 {-# INLINABLE tryP #-}
 
 -- | Generalize the upstream return value for a @Pipe@ from unit to any type.

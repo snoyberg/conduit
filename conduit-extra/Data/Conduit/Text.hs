@@ -52,7 +52,7 @@ import           Data.Typeable (Typeable)
 import Data.Conduit
 import qualified Data.Conduit.List as CL
 import Control.Monad.Trans.Class (lift)
-import Control.Monad.Trans.Resource (MonadThrow, monadThrow)
+import Control.Monad.Trans.Resource (MonadThrow, throwM)
 import Control.Monad (unless)
 import Data.Streaming.Text
 
@@ -123,7 +123,7 @@ linesBounded maxLineLen =
       let (line, rest) = T.break (== '\n') text
           len' = len + T.length line
       in  if len' > maxLineLen
-            then lift $ monadThrow (LengthExceeded maxLineLen)
+            then lift $ throwM (LengthExceeded maxLineLen)
             else case T.uncons rest of
                    Just (_, rest') ->
                      yield (buf `T.append` line) >> process 0 T.empty rest'
@@ -140,7 +140,7 @@ encode :: MonadThrow m => Codec -> Conduit T.Text m B.ByteString
 encode (NewCodec _ enc _) = CL.map enc
 encode codec = CL.mapM $ \t -> do
     let (bs, mexc) = codecEncode codec t
-    maybe (return bs) (monadThrow . fst) mexc
+    maybe (return bs) (throwM . fst) mexc
 
 decodeNew
     :: Monad m
@@ -201,7 +201,7 @@ decode (NewCodec name _ start) =
         unless (T.null t) (yield t)
         leftover rest -- rest will never be null, no need to check
         let consumed' = consumed + B.length bs - B.length rest
-        monadThrow $ NewDecodeException name consumed' (B.take 4 rest)
+        throwM $ NewDecodeException name consumed' (B.take 4 rest)
     {-# INLINE onFailure #-}
 decode codec =
     loop id
@@ -211,11 +211,11 @@ decode codec =
     finish front =
         case B.uncons $ front B.empty of
             Nothing -> return ()
-            Just (w, _) -> lift $ monadThrow $ DecodeException codec w
+            Just (w, _) -> lift $ throwM $ DecodeException codec w
 
     go front bs' =
         case extra of
-            Left (exc, _) -> lift $ monadThrow exc
+            Left (exc, _) -> lift $ throwM exc
             Right bs'' -> yield text >> loop (B.append bs'')
       where
         (text, extra) = codecDecode codec bs
@@ -448,7 +448,7 @@ decodeUtf8 = decode utf8
             unless (T.null t) (CI.yield t)
             unless (B.null rest) (CI.leftover rest)
             let consumed' = consumed + B.length bs - B.length rest
-            monadThrow $ NewDecodeException (T.pack "UTF-8") consumed' (B.take 4 rest)
+            throwM $ NewDecodeException (T.pack "UTF-8") consumed' (B.take 4 rest)
         {-# INLINE onFailure #-}
     -}
 {-# INLINE decodeUtf8 #-}

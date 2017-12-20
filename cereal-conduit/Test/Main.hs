@@ -45,36 +45,36 @@ putter c = put x >> put (x + 1)
 sinktest1 :: Test
 sinktest1 = TestCase (assertEqual "Handles starting with empty bytestring"
   (Right 1)
-  (runIdentity $ runExceptionT $ (CL.sourceList [BS.pack [], BS.pack [1]]) C.$$ (sinkGet getWord8)))
+  ((CL.sourceList [BS.pack [], BS.pack [1]]) C.$$ (sinkGet getWord8)))
 
 sinktest2 :: Test
 sinktest2 = TestCase (assertEqual "Handles empty bytestring in middle"
   (Right [1, 3])
-  (runIdentity $ runExceptionT $ (CL.sourceList [BS.pack [1], BS.pack [], BS.pack [3]]) C.$$ (sinkGet (do
+  (CL.sourceList [BS.pack [1], BS.pack [], BS.pack [3]] C.$$ (sinkGet (do
     x <- getWord8
     y <- getWord8
     return [x, y]))))
 
 sinktest3 :: Test
 sinktest3 = TestCase (assertBool "Handles no data"
-  (case runIdentity $ runExceptionT $ (CL.sourceList []) C.$$ (sinkGet getWord8) of
+  (case return () C.$$ sinkGet getWord8 of
     Right _ -> False
     Left _ -> True))
 
 sinktest4 :: Test
 sinktest4 = TestCase (assertEqual "Consumes no data"
   (Right ())
-  (runIdentity $ runExceptionT $ (CL.sourceList [BS.pack [1]]) C.$$ (sinkGet $ return ())))
+  (CL.sourceList [BS.pack [1]] C.$$ (sinkGet $ return ())))
 
 sinktest5 :: Test
 sinktest5 = TestCase (assertEqual "Empty list"
   (Right ())
-  (runIdentity $ runExceptionT $ (CL.sourceList []) C.$$ (sinkGet $ return ())))
+  ((CL.sourceList []) C.$$ (sinkGet $ return ())))
 
 sinktest6 :: Test
 sinktest6 = TestCase (assertEqual "Leftover input works"
   (Right (1, BS.pack [2, 3, 4, 5]))
-  (runIdentity $ runExceptionT $ (CL.sourceList [BS.pack [1, 2, 3], BS.pack [4, 5]]) C.$$ (do
+  ((CL.sourceList [BS.pack [1, 2, 3], BS.pack [4, 5]]) C.$$ (do
     output <- sinkGet getWord8
     output' <- CL.consume
     return (output, BS.concat output'))))
@@ -82,7 +82,7 @@ sinktest6 = TestCase (assertEqual "Leftover input works"
 -- Current sink implementation will terminate the pipe in case of error. 
 -- One may need non-terminating version like one defined below to get access to Leftovers
 
-sinkGetMaybe :: Get Word8 -> C.Consumer BS.ByteString (ExceptionT Identity) Word8
+sinkGetMaybe :: Get Word8 -> C.Consumer BS.ByteString (Either SomeException) Word8
 sinkGetMaybe = mkSinkGet errorHandler terminationHandler
   where errorHandler       _ = return 34
         terminationHandler _ = return 114
@@ -90,7 +90,7 @@ sinkGetMaybe = mkSinkGet errorHandler terminationHandler
 sinktest7 :: Test
 sinktest7 = TestCase (assertEqual "Leftover input with failure works"
   (Right (34, BS.pack [1, 2]))
-  (runIdentity $ runExceptionT $ (CL.sourceList [BS.pack [1, 2]]) C.$$ (do
+  ((CL.sourceList [BS.pack [1, 2]]) C.$$ (do
     output <- sinkGetMaybe (getWord8 >> fail "" :: Get Word8)
     output' <- CL.consume
     return (output, BS.concat output'))))
@@ -98,7 +98,7 @@ sinktest7 = TestCase (assertEqual "Leftover input with failure works"
 sinktest8 :: Test
 sinktest8 = TestCase (assertEqual "Leftover with incomplete input works"
   (Right (114, BS.singleton 1))
-  (runIdentity $ runExceptionT $ (CL.sourceList [BS.singleton 1]) C.$$ (do
+  ((CL.sourceList [BS.singleton 1]) C.$$ (do
     output <- sinkGetMaybe twoItemGet
     output' <- CL.consume
     return (output, BS.concat output'))))
@@ -106,75 +106,75 @@ sinktest8 = TestCase (assertEqual "Leftover with incomplete input works"
 sinktest9 :: Test
 sinktest9 = TestCase (assertEqual "Properly terminate Partials"
   (Right [0..255])
-  (runIdentity $ runExceptionT $ mapM_ (C.yield . BS.singleton) [0..255] C.$$ sinkGet (many getWord8)))
+  (mapM_ (C.yield . BS.singleton) [0..255] C.$$ sinkGet (many getWord8)))
 
 conduittest1 :: Test
 conduittest1 = TestCase (assertEqual "Handles starting with empty bytestring"
   (Right [])
-  (runIdentity $ runExceptionT $ (CL.sourceList [BS.pack [], BS.pack [1]]) C.$= conduitGet twoItemGet C.$$ CL.consume))
+  ((CL.sourceList [BS.pack [], BS.pack [1]]) C.$= conduitGet twoItemGet C.$$ CL.consume))
 
 conduittest2 :: Test
 conduittest2 = TestCase (assertEqual "Works when the get is split across items"
   (Right [3])
-  (runIdentity $ runExceptionT $ (CL.sourceList [BS.pack [1], BS.pack [2]]) C.$= conduitGet twoItemGet C.$$ CL.consume))
+  ((CL.sourceList [BS.pack [1], BS.pack [2]]) C.$= conduitGet twoItemGet C.$$ CL.consume))
 
 conduittest3 :: Test
 conduittest3 = TestCase (assertEqual "Works when empty bytestring in middle of get"
   (Right [3])
-  (runIdentity $ runExceptionT $ (CL.sourceList [BS.pack [1], BS.pack [], BS.pack [2]]) C.$= conduitGet twoItemGet C.$$ CL.consume))
+  ((CL.sourceList [BS.pack [1], BS.pack [], BS.pack [2]]) C.$= conduitGet twoItemGet C.$$ CL.consume))
 
 conduittest4 :: Test
 conduittest4 = TestCase (assertEqual "Works when empty bytestring at end of get"
   (Right [3])
-  (runIdentity $ runExceptionT $ (CL.sourceList [BS.pack [1, 2], BS.pack []]) C.$= conduitGet twoItemGet C.$$ CL.consume))
+  ((CL.sourceList [BS.pack [1, 2], BS.pack []]) C.$= conduitGet twoItemGet C.$$ CL.consume))
 
 conduittest5 :: Test
 conduittest5 = TestCase (assertEqual "Works when multiple gets are in an item"
   (Right [3, 7])
-  (runIdentity $ runExceptionT $ (CL.sourceList [BS.pack [1, 2, 3, 4]]) C.$= conduitGet twoItemGet C.$$ CL.consume))
+  ((CL.sourceList [BS.pack [1, 2, 3, 4]]) C.$= conduitGet twoItemGet C.$$ CL.consume))
 
 conduittest6 :: Test
 conduittest6 = TestCase (assertEqual "Works with leftovers"
   (Right [3])
-  (runIdentity $ runExceptionT $ (CL.sourceList [BS.pack [1, 2, 3]]) C.$= conduitGet twoItemGet C.$$ CL.consume))
+  ((CL.sourceList [BS.pack [1, 2, 3]]) C.$= conduitGet twoItemGet C.$$ CL.consume))
 
 conduittest7 :: Test
 conduittest7 = let c = 10 in TestCase (assertEqual "Works with infinite lists"
   (Right $ L.replicate c ())
-  (runIdentity $ runExceptionT $ (CL.sourceList [BS.pack [1, 2, 3]]) C.$= conduitGet (return ()) C.$$ CL.take c))
+  ((CL.sourceList [BS.pack [1, 2, 3]]) C.$= conduitGet (return ()) C.$$ CL.take c))
 
 conduittest8 :: Test
 conduittest8 = let c = 10 in TestCase (assertEqual "Works with empty source and infinite lists"
   (Right $ L.replicate c ())
-  (runIdentity $ runExceptionT $ (CL.sourceList []) C.$= conduitGet (return ()) C.$$ CL.take c))
+  ((CL.sourceList []) C.$= conduitGet (return ()) C.$$ CL.take c))
 
 conduittest9 :: Test
 conduittest9 = let c = 10 in TestCase (assertEqual "Works with two well-placed items"
   (Right [3, 7])
-  (runIdentity $ runExceptionT $ (CL.sourceList [BS.pack [1, 2], BS.pack [3, 4]]) C.$= conduitGet twoItemGet C.$$ CL.consume))
+  ((CL.sourceList [BS.pack [1, 2], BS.pack [3, 4]]) C.$= conduitGet twoItemGet C.$$ CL.consume))
 
 conduittest10 :: Test
 conduittest10 = TestCase (assertBool "Failure works"
-  (case runIdentity $ runExceptionT $ (CL.sourceList [BS.pack [1, 2], BS.pack [3, 4]]) C.$= conduitGet (getWord8 >> fail "omfg") C.$$ CL.consume of
+  (case (CL.sourceList [BS.pack [1, 2], BS.pack [3, 4]]) C.$= conduitGet (getWord8 >> fail "omfg") C.$$ CL.consume of
     Left _ -> True
     Right _ -> False))
 
 conduittest11 :: Test
 conduittest11 = TestCase (assertBool "Immediate failure works"
-  (case runIdentity $ runExceptionT $ (CL.sourceList [BS.pack [1, 2], BS.pack [3, 4]]) C.$= conduitGet (fail "omfg") C.$$ CL.consume of
+  (case (CL.sourceList [BS.pack [1, 2], BS.pack [3, 4]]) C.$= conduitGet (fail "omfg") C.$$ CL.consume of
     Left _ -> True
     Right _ -> False))
 
 conduittest12 :: Test
 conduittest12 = TestCase (assertBool "Immediate failure with empty input works"
-  (case runIdentity $ runExceptionT $ (CL.sourceList []) C.$= conduitGet (fail "omfg") C.$$ CL.consume of
+  (case (CL.sourceList []) C.$= conduitGet (fail "omfg") C.$$ CL.consume of
     Left _ -> True
     Right _ -> False))
 
 conduittest13 :: Test
 conduittest13 = TestCase (assertEqual "Leftover success conduit input works"
   (Right [Right 12, Right 7, Left (BS.pack [5])])
-  (runIdentity $ runExceptionT $ (CL.sourceList [BS.pack [10, 2, 3], BS.pack [4, 5]]) C.$= fancyConduit C.$$ CL.consume))
+  ((CL.sourceList [BS.pack [10, 2, 3], BS.pack [4, 5]]) C.$= fancyConduit C.$$ CL.consume))
   where fancyConduit = do
           conduitGet twoItemGet C.=$= CL.map (\ x -> Right x)
           recurse
@@ -183,7 +183,7 @@ conduittest13 = TestCase (assertEqual "Leftover success conduit input works"
 conduittest14 :: Test
 conduittest14 = TestCase (assertEqual "Leftover coercing works"
   (Right [Left (BS.pack [10, 2])])
-  (runIdentity $ runExceptionT $ (CL.sourceList [BS.pack [10], BS.pack [2]]) C.$= fancyConduit C.$$ CL.consume))
+  ((CL.sourceList [BS.pack [10], BS.pack [2]]) C.$= fancyConduit C.$$ CL.consume))
   where fancyConduit = do
           conduitGet threeItemGet C.=$= CL.map (\ x -> Right x)
           recurse
@@ -192,15 +192,16 @@ conduittest14 = TestCase (assertEqual "Leftover coercing works"
 conduittest15 :: Test
 conduittest15 = TestCase (assertEqual "Leftover premature end conduit input works"
   (Right ([], BS.singleton 1))
-  (runIdentity $ runExceptionT $ (CL.sourceList [BS.singleton 1]) C.$$ (do
+  ((CL.sourceList [BS.singleton 1]) C.$$ (do
     output <- (conduitGet twoItemGet) C.=$ (CL.take 1)
     output' <- CL.consume
     return (output, BS.concat output'))))
 
 conduittest16 :: Test
 conduittest16 = TestCase (assertEqual "Leftover failure conduit input works"
-  (Right [Left $ BS.pack [10, 11], Left $ BS.singleton 2])
-  (runIdentity $ runExceptionT $ (CL.sourceList [BS.pack [10, 11], BS.pack [2]]) C.$= fancyConduit C.$$ CL.consume))
+  (Right [Left $ BS.pack [10, 11], Left $ BS.singleton 2]
+    :: Either SomeException [Either BS.ByteString Word8])
+  ((CL.sourceList [BS.pack [10, 11], BS.pack [2]]) C.$= fancyConduit C.$$ CL.consume))
   where fancyConduit = do
           mkConduitGet (const $ return ()) (getWord8 >> fail "asdf" :: Get Word8) C.=$= CL.map (\ x -> Right x)
           recurse
@@ -208,8 +209,9 @@ conduittest16 = TestCase (assertEqual "Leftover failure conduit input works"
 
 conduittest17 :: Test
 conduittest17 = TestCase (assertEqual "Leftover failure conduit with broken input works"
-  (Right [Left $ BS.pack [10, 11], Left $ BS.singleton 12])
-  (runIdentity $ runExceptionT $ (CL.sourceList [BS.singleton 10, BS.singleton 11, BS.singleton 12]) C.$= fancyConduit C.$$ CL.consume))
+  (Right [Left $ BS.pack [10, 11], Left $ BS.singleton 12]
+    :: Either SomeException [Either BS.ByteString Word8])
+  ((CL.sourceList [BS.singleton 10, BS.singleton 11, BS.singleton 12]) C.$= fancyConduit C.$$ CL.consume))
   where fancyConduit = do
           mkConduitGet (const $ return ()) (twoItemGet >> fail "asdf" :: Get Word8) C.=$= CL.map (\ x -> Right x)
           recurse
@@ -219,8 +221,8 @@ conduittest17 = TestCase (assertEqual "Leftover failure conduit with broken inpu
 conduittest18 :: Test
 conduittest18 = TestCase $ assertEqual "Deals with Get that consumes everything"
     (Right [S8.pack "hello"])
-    (runIdentity $ runExceptionT
-                 $ (C.yield "hello"
+    (
+                   (C.yield "hello"
                C.$= conduitGet2 slurp
                C.$$ CL.consume))
 

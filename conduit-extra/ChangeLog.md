@@ -1,3 +1,7 @@
+## 1.3.0
+
+* Switch over to unliftio
+
 ## 1.2.2.1
 
 * Add missing `hClose` to `withSinkFileCautious`

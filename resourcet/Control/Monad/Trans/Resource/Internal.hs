@@ -34,9 +34,7 @@ import Control.Applicative (Applicative (..), Alternative(..))
 import Control.Monad (MonadPlus(..))
 import Control.Monad.Fix (MonadFix(..))
 import Control.Monad.IO.Unlift
-import Control.Monad.Trans.Control
-    ( MonadTransControl (..), MonadBaseControl (..) )
-import Control.Monad.Base (MonadBase, liftBase)
+import Control.Monad.Trans.Class    (MonadTrans (..))
 import Control.Monad.Trans.Cont     ( ContT  )
 import Control.Monad.Cont.Class   ( MonadCont (..) )
 import Control.Monad.Error.Class  ( MonadError (..) )
@@ -60,38 +58,30 @@ import qualified Control.Monad.Trans.State.Strict  as Strict ( StateT )
 import qualified Control.Monad.Trans.Writer.Strict as Strict ( WriterT )
 
 import Control.Monad.IO.Class (MonadIO (..))
-#if !(MIN_VERSION_monad_control(1,0,0))
-import Control.Monad (liftM)
-#endif
 import qualified Control.Exception as E
-import Control.Monad.Catch (MonadThrow (..), MonadCatch (..)
-#if MIN_VERSION_exceptions(0,6,0)
-    , MonadMask (..)
-#endif
-    )
+
+-- FIXME Do we want to only support MonadThrow?
+import Control.Monad.Catch (MonadThrow (..), MonadCatch (..), MonadMask (..))
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
 import qualified Data.IORef as I
 import Data.Monoid
 import Data.Typeable
 import Data.Word(Word)
-import Prelude hiding (catch)
 import Data.Acquire.Internal (ReleaseType (..))
-
-import Control.Monad.Morph
 
 -- | A @Monad@ which allows for safe resource allocation. In theory, any monad
 -- transformer stack which includes a @ResourceT@ can be an instance of
 -- @MonadResource@.
 --
--- Note: @runResourceT@ has a requirement for a @MonadBaseControl IO m@ monad,
+-- Note: @runResourceT@ has a requirement for a @MonadUnliftIO m@ monad,
 -- which allows control operations to be lifted. A @MonadResource@ does not
 -- have this requirement. This means that transformers such as @ContT@ can be
 -- an instance of @MonadResource@. However, the @ContT@ wrapper will need to be
 -- unwrapped before calling @runResourceT@.
 --
 -- Since 0.3.0
-class (MonadThrow m, MonadIO m, Applicative m, MonadBase IO m) => MonadResource m where
+class MonadIO m => MonadResource m where
     -- | Lift a @ResourceT IO@ action into the current @Monad@.
     --
     -- Since 0.4.0
@@ -146,15 +136,13 @@ instance MonadThrow m => MonadThrow (ResourceT m) where
 instance MonadCatch m => MonadCatch (ResourceT m) where
   catch (ResourceT m) c =
       ResourceT $ \r -> m r `catch` \e -> unResourceT (c e) r
-#if MIN_VERSION_exceptions(0,6,0)
 instance MonadMask m => MonadMask (ResourceT m) where
-#endif
   mask a = ResourceT $ \e -> mask $ \u -> unResourceT (a $ q u) e
     where q u (ResourceT b) = ResourceT (u . b)
   uninterruptibleMask a =
     ResourceT $ \e -> uninterruptibleMask $ \u -> unResourceT (a $ q u) e
       where q u (ResourceT b) = ResourceT (u . b)
-instance (MonadThrow m, MonadBase IO m, MonadIO m, Applicative m) => MonadResource (ResourceT m) where
+instance MonadIO m => MonadResource (ResourceT m) where
     liftResourceT = transResourceT liftIO
 
 -- | Transform the monad a @ResourceT@ lives in. This is most often used to
@@ -167,13 +155,6 @@ transResourceT :: (m a -> n b)
                -> ResourceT m a
                -> ResourceT n b
 transResourceT f (ResourceT mx) = ResourceT (\r -> f (mx r))
-
--- | Since 0.4.7
-instance MFunctor ResourceT where
-    hoist f (ResourceT mx) = ResourceT (\r -> f (mx r))
--- | Since 0.4.7
-instance MMonad ResourceT where
-    embed f m = ResourceT (\i -> unResourceT (f (unResourceT m i)) i)
 
 -- | The Resource transformer. This transformer keeps track of all registered
 -- actions, and calls them upon exit (via 'runResourceT'). Actions may be
@@ -241,9 +222,7 @@ instance MonadPlus m => MonadPlus (ResourceT m) where
     (ResourceT mf) `mplus` (ResourceT ma) = ResourceT $ \r -> mf r `mplus` ma r
 
 instance Monad m => Monad (ResourceT m) where
-#if !MIN_VERSION_base(4,8,0)
-    return = ResourceT . const . return
-#endif
+    return = pure
     ResourceT ma >>= f = ResourceT $ \r -> do
         a <- ma r
         let ResourceT f' = f a
@@ -259,37 +238,6 @@ instance MonadTrans ResourceT where
 instance MonadIO m => MonadIO (ResourceT m) where
     liftIO = lift . liftIO
 
-instance MonadBase b m => MonadBase b (ResourceT m) where
-    liftBase = lift . liftBase
-
-instance MonadTransControl ResourceT where
-#if MIN_VERSION_monad_control(1,0,0)
-    type StT ResourceT a = a
-    liftWith f = ResourceT $ \r -> f $ \(ResourceT t) -> t r
-    restoreT = ResourceT . const
-#else
-    newtype StT ResourceT a = StReader {unStReader :: a}
-    liftWith f = ResourceT $ \r -> f $ \(ResourceT t) -> liftM StReader $ t r
-    restoreT = ResourceT . const . liftM unStReader
-#endif
-    {-# INLINE liftWith #-}
-    {-# INLINE restoreT #-}
-
-instance MonadBaseControl b m => MonadBaseControl b (ResourceT m) where
-#if MIN_VERSION_monad_control(1,0,0)
-     type StM (ResourceT m) a = StM m a
-     liftBaseWith f = ResourceT $ \reader' ->
-         liftBaseWith $ \runInBase ->
-             f $ runInBase . (\(ResourceT r) -> r reader'  )
-     restoreM = ResourceT . const . restoreM
-#else
-     newtype StM (ResourceT m) a = StMT (StM m a)
-     liftBaseWith f = ResourceT $ \reader' ->
-         liftBaseWith $ \runInBase ->
-             f $ liftM StMT . runInBase . (\(ResourceT r) -> r reader'  )
-     restoreM (StMT base) = ResourceT $ const $ restoreM base
-#endif
-
 -- | @since 1.1.10
 instance MonadUnliftIO m => MonadUnliftIO (ResourceT m) where
   askUnliftIO = ResourceT $ \r ->
@@ -302,9 +250,7 @@ GO(IdentityT)
 GO(ListT)
 GO(MaybeT)
 GOX(Error e, ErrorT e)
-#if MIN_VERSION_exceptions(0, 8, 0)
 GO(ExceptT e)
-#endif
 GO(ReaderT r)
 GO(ContT r)
 GO(StateT s)

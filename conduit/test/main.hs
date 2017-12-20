@@ -8,7 +8,7 @@ import Test.Hspec.QuickCheck (prop)
 import Test.QuickCheck.Monadic (assert, monadicIO, run)
 
 import qualified Data.Conduit as C
-import qualified Data.Conduit.Lift as C
+--import qualified Data.Conduit.Lift as C
 import qualified Data.Conduit.Internal as CI
 import qualified Data.Conduit.List as CL
 import Data.Typeable (Typeable)
@@ -983,6 +983,7 @@ main = hspec $ do
             -- FIXME this is broken it "test2" $ verify test2L test2R "p2" "p1" "p3"
             it "test3" $ verify test3L test3R "p2" "p3" "p1"
 
+    {- FIXME move to new package
     describe "Data.Conduit.Lift" $ do
         it "execStateC" $ do
             let sink = C.execStateLC 0 $ CL.mapM_ $ modify . (+)
@@ -1011,6 +1012,7 @@ main = hspec $ do
                 sink = CL.consume
             res <- src C.$$ sink
             res `shouldBe` [1 :: Int]
+    -}
 
     describe "sequenceSources" $ do
         it "works" $ do
@@ -1083,7 +1085,7 @@ main = hspec $ do
                     () <- Catch.throwM DummyError
                     C.yield 2
                 src' = do
-                    Catch.catch src (\DummyError -> C.yield (3 :: Int))
+                    CI.catchC src (\DummyError -> C.yield (3 :: Int))
             res <- src' C.$$ CL.consume
             res `shouldBe` [1, 3]
 

@@ -1,3 +1,7 @@
+## 1.2.0
+
+* Drop `monad-control` and `mmorph` dependencies
+
 ## 1.1.10
 
 * Added `MonadUnliftIO` instances and `UnliftIO.Resource`

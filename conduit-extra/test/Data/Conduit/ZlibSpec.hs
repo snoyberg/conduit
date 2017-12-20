@@ -10,13 +10,10 @@ import Test.Hspec.QuickCheck (prop)
 import qualified Data.Conduit as C
 import qualified Data.Conduit.List as CL
 import qualified Data.Conduit.Zlib as CZ
-import Control.Monad.ST (runST)
-import Data.Monoid
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Lazy as L
 import Data.ByteString.Char8 ()
 import Data.ByteString.Lazy.Char8 ()
-import Control.Monad.Trans.Resource (runExceptionT_)
 import Control.Monad.Trans.Class
 import Control.Monad.Catch.Pure
 import Control.Monad.Base

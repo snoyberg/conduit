@@ -19,7 +19,7 @@ module Data.Conduit.Cereal ( GetException
                            ) where
 
 import           Control.Exception.Base
-import           Control.Monad.Trans.Resource (MonadThrow, monadThrow)
+import           Control.Monad.Trans.Resource (MonadThrow, throwM)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.Conduit as C
@@ -37,7 +37,7 @@ instance Exception GetException
 -- | Run a 'Get' repeatedly on the input stream, producing an output stream of whatever the 'Get' outputs.
 conduitGet :: MonadThrow m => Get o -> C.Conduit BS.ByteString m o
 conduitGet = mkConduitGet errorHandler
-  where errorHandler msg = monadThrow $ GetException msg
+  where errorHandler msg = throwM $ GetException msg
 {-# DEPRECATED conduitGet "Please switch to conduitGet2, see comment on that function" #-}
 
 -- | Convert a 'Get' into a 'Sink'. The 'Get' will be streamed bytes until it returns 'Done' or 'Fail'.
@@ -46,11 +46,11 @@ conduitGet = mkConduitGet errorHandler
 -- If the 'Get' fails due to deserialization error or early termination of the input stream it raise an error.
 sinkGet :: MonadThrow m => Get r -> C.Consumer BS.ByteString m r
 sinkGet = mkSinkGet errorHandler terminationHandler
-  where errorHandler msg = monadThrow $ GetException msg
+  where errorHandler msg = throwM $ GetException msg
         terminationHandler f = case f BS.empty of
-          Fail msg _ -> monadThrow $ GetException msg
+          Fail msg _ -> throwM $ GetException msg
           Done r lo -> C.leftover lo >> return r
-          Partial _ -> monadThrow $ GetException "Failed reading: Internal error: unexpected Partial."
+          Partial _ -> throwM $ GetException "Failed reading: Internal error: unexpected Partial."
 
 -- | Convert a 'Put' into a 'Source'. Runs in constant memory.
 sourcePut :: Monad m => Put -> C.Producer m BS.ByteString
@@ -100,7 +100,7 @@ conduitGet2 get =
         | BS.null bs = return ()
         | otherwise = result (runGetPartial get bs)
 
-    result (Fail msg _) = monadThrow (GetException msg)
+    result (Fail msg _) = throwM (GetException msg)
     -- This will feed an empty ByteString into f at end of stream, which is how
     -- we indicate to cereal that there is no data left. If we wanted to be
     -- more pedantic, we could ensure that cereal only ever consumes a single

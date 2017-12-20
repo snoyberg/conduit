@@ -38,7 +38,7 @@ import qualified Data.Attoparsec.ByteString
 import qualified Data.Attoparsec.Text
 import qualified Data.Attoparsec.Types      as A
 import           Data.Conduit
-import Control.Monad.Trans.Resource (MonadThrow, monadThrow)
+import Control.Monad.Trans.Resource (MonadThrow, throwM)
 
 -- | The context and message from a 'A.Fail' value.
 data ParseError = ParseError
@@ -114,7 +114,7 @@ instance AttoparsecInput T.Text where
 -- | Convert an Attoparsec 'A.Parser' into a 'Sink'. The parser will
 -- be streamed bytes until it returns 'A.Done' or 'A.Fail'.
 --
--- If parsing fails, a 'ParseError' will be thrown with 'monadThrow'.
+-- If parsing fails, a 'ParseError' will be thrown with 'throwM'.
 --
 -- Since 0.5.0
 sinkParser :: (AttoparsecInput a, MonadThrow m) => A.Parser a b -> Consumer a m b
@@ -193,7 +193,7 @@ sinkParserPosErr
     -> Consumer a m (Position, b)
 sinkParserPosErr pos0 p = sinkParserPos pos0 p >>= f
     where
-      f (Left e) = monadThrow e
+      f (Left e) = throwM e
       f (Right a) = return a
 {-# INLINE sinkParserPosErr #-}
 

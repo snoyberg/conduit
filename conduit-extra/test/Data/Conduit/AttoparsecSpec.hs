@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns      #-}
 {-# LANGUAGE CPP               #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TupleSections     #-}
@@ -8,7 +9,6 @@ import           Test.Hspec
 
 import           Control.Applicative              ((<*), (<|>))
 import           Control.Monad
-import           Control.Monad.Trans.Resource (runExceptionT)
 import qualified Data.Attoparsec.ByteString.Char8
 import qualified Data.Attoparsec.Text
 import           Data.Conduit
@@ -26,7 +26,7 @@ spec = describe "Data.Conduit.AttoparsecSpec" $ do
                 parser = Data.Attoparsec.Text.endOfInput <|> (Data.Attoparsec.Text.notChar 'b' >> parser)
                 sink = sinkParser parser
                 sink' = sinkParserEither parser
-            ea <- runExceptionT $ CL.sourceList input $$ sink
+                ea = CL.sourceList input $$ sink
             case ea of
                 Left e ->
                     case fromException e of
@@ -44,7 +44,7 @@ spec = describe "Data.Conduit.AttoparsecSpec" $ do
                 parser = Data.Attoparsec.ByteString.Char8.endOfInput <|> (Data.Attoparsec.ByteString.Char8.notChar 'b' >> parser)
                 sink = sinkParser parser
                 sink' = sinkParserEither parser
-            ea <- runExceptionT $ CL.sourceList input $$ sink
+                ea = CL.sourceList input $$ sink
             case ea of
                 Left e ->
                     case fromException e of
@@ -62,7 +62,7 @@ spec = describe "Data.Conduit.AttoparsecSpec" $ do
                 parser = Data.Attoparsec.Text.char 'c' <|> (Data.Attoparsec.Text.anyChar >> parser)
                 sink = sinkParser parser
                 sink' = sinkParserEither parser
-            ea <- runExceptionT $ CL.sourceList input $$ sink
+                ea = CL.sourceList input $$ sink
             case ea of
                 Left e ->
                     case fromException e of
@@ -80,7 +80,7 @@ spec = describe "Data.Conduit.AttoparsecSpec" $ do
                 parser = Data.Attoparsec.Text.string "bc" <|> (Data.Attoparsec.Text.anyChar >> parser)
                 sink = sinkParser parser
                 sink' = sinkParserEither parser
-            ea <- runExceptionT $ CL.sourceList input $$ sink
+                ea = CL.sourceList input $$ sink
             case ea of
                 Left e ->
                     case fromException e of
@@ -98,7 +98,7 @@ spec = describe "Data.Conduit.AttoparsecSpec" $ do
                 parser = Data.Attoparsec.Text.endOfInput <|> (Data.Attoparsec.Text.notChar 'b' >> parser)
                 sink = sinkParser parser
                 sink' = sinkParserEither parser
-            ea <- runExceptionT $ CL.sourceList input $$ sink
+                ea = CL.sourceList input $$ sink
             case ea of
                 Left e ->
                     case fromException e of
@@ -116,7 +116,7 @@ spec = describe "Data.Conduit.AttoparsecSpec" $ do
                 parser = Data.Attoparsec.ByteString.Char8.endOfInput <|> (Data.Attoparsec.ByteString.Char8.notChar 'b' >> parser)
                 sink = sinkParser parser
                 sink' = sinkParserEither parser
-            ea <- runExceptionT $ CL.sourceList input $$ sink
+                ea = CL.sourceList input $$ sink
             case ea of
                 Left e ->
                     case fromException e of
@@ -134,7 +134,7 @@ spec = describe "Data.Conduit.AttoparsecSpec" $ do
                 parser = Data.Attoparsec.Text.endOfInput <|> (Data.Attoparsec.Text.notChar 'b' >> parser)
                 sink = sinkParser parser
                 sink' = sinkParserEither parser
-            ea <- runExceptionT $ CL.sourceList input $$ sink
+                ea = CL.sourceList input $$ sink
             case ea of
                 Left e ->
                     case fromException e of
@@ -150,7 +150,7 @@ spec = describe "Data.Conduit.AttoparsecSpec" $ do
             let input = ["aaa\n", "aaa\naaa\n", "aaa\n"]
                 parser = Data.Attoparsec.Text.string "aaa" <* Data.Attoparsec.Text.endOfLine
                 sink = conduitParserEither parser =$= CL.consume
-            (Right ea) <- runExceptionT $ CL.sourceList input $$ sink
+                (Right !ea) = CL.sourceList input $$ sink
             let chk a = case a of
                           Left{} -> False
                           Right (_, xs) -> xs == "aaa"

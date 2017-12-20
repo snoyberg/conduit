@@ -1,3 +1,8 @@
+## 1.3.0
+
+* Drop monad-control and exceptions in favor of unliftio
+* Drop mmorph dependency
+
 ## 1.2.12.1
 
 * Fix `pass` in `ConduitM` `MonadWriter` instance
