@@ -7,7 +7,7 @@ consuming that data.
 
 Some of the reasons you'd like to use conduit are:
 
-* Constant memory usage over large data
+* Constant memory usage over large data<sup>[1](#strictness)</sup>
 * Deterministic resource usage (e.g., promptly close file handles)
 * Easily combine different data sources (HTTP, files) with data
   consumers (XML/CSV processors)
@@ -1723,3 +1723,8 @@ Some blogs posts making heavy usage of conduit:
   [part 2](https://www.fpcomplete.com/blog/2016/09/practical-haskell-simple-file-mirror-2)
 
 _If you have other articles to include, please send a PR!_
+
+<a name="strictness">1</a>: If your data is strict. Use
+[NFData](https://www.stackage.org/lts-9.3/package/deepseq-1.4.2.0) and
+[Strictness Annotations](https://wiki.haskell.org/Performance/Data_types) to
+ensure that. In case of folds, make sure your Monoids are strict.
