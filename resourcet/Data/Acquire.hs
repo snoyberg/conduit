@@ -82,7 +82,7 @@ import Control.Monad (liftM, ap)
 -- | Allocate a resource and register an action with the @MonadResource@ to
 -- free the resource.
 --
--- Since 1.1.0
+-- @since 1.1.0
 allocateAcquire :: MonadResource m => Acquire a -> m (ReleaseKey, a)
 allocateAcquire = liftResourceT . allocateAcquireRIO
 
