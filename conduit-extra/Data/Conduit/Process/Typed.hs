@@ -51,8 +51,12 @@ createSourceLogged
   => IORef ([S.ByteString] -> [S.ByteString])
   -> StreamSpec 'STOutput (ConduitM i S.ByteString m ())
 createSourceLogged ref =
-    (\h -> C.addCleanup (\_ -> liftIO $ hClose h)
-      (CB.sourceHandle h .| CL.iterM (\bs -> liftIO $ modifyIORef ref (. (bs:)))))
+    -- We do not add a cleanup action to close the handle, since in
+    -- withLoggedProcess_ we attempt to read from the handle twice
+    (\h ->
+       (  CB.sourceHandle h
+       .| CL.iterM (\bs -> liftIO $ modifyIORef ref (. (bs:))))
+    )
     `fmap` createPipe
 
 -- | Same as 'P.withProcess', but generalized to 'MonadUnliftIO'.
@@ -96,8 +100,9 @@ withLoggedProcess_ pc inner = withUnliftIO $ \u -> do
           $ setStderr (createSourceLogged stderrBuffer) pc
   P.withProcess pc' $ \p -> do
     a <- unliftIO u $ inner p
-    unliftIO u (runConduit (getStdout p .| CL.sinkNull)) `concurrently`
-      unliftIO u (runConduit (getStderr p .| CL.sinkNull))
+    let drain src = unliftIO u (runConduit (src .| CL.sinkNull))
+    ((), ()) <- drain (getStdout p) `concurrently`
+                drain (getStderr p)
     checkExitCode p `catch` \ece -> do
       stdout <- readIORef stdoutBuffer
       stderr <- readIORef stderrBuffer
