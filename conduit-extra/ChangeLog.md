@@ -1,3 +1,7 @@
+## 1.2.3
+
+* Added `withLoggedProcess_`
+
 ## 1.2.2.1
 
 * Add missing `hClose` to `withSinkFileCautious`
