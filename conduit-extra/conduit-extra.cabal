@@ -104,6 +104,7 @@ test-suite test
                      Data.Conduit.LazySpec
                      Data.Conduit.NetworkSpec
                      Data.Conduit.ProcessSpec
+                     Data.Conduit.Process.TypedSpec
                      Data.Conduit.TextSpec
                      Data.Conduit.ZlibSpec
 
