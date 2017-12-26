@@ -24,3 +24,6 @@ spec = do
     (withLoggedProcess_ (proc "cat" ["does not exist"]) $ \p -> do
       runConduit $ getStdout p .| CL.mapM_ (error "shouldn't have data"))
       `shouldThrow` anyException
+  it "failing process throws" $ do
+    (withProcess_ (proc "cat" ["does not exist"]) $ const $ return ())
+      `shouldThrow` anyException

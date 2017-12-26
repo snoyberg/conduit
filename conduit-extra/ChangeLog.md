@@ -1,3 +1,7 @@
+## 1.2.3.1
+
+* Fix typo in implementation of `withProcess_`
+
 ## 1.2.3
 
 * Added `withLoggedProcess_`
