@@ -1,3 +1,8 @@
+## 1.2.3.2
+
+* Avoid quadratic complexity in `lines`
+  [#341](https://github.com/snoyberg/conduit/issues/341)
+
 ## 1.2.3.1
 
 * Fix typo in implementation of `withProcess_`
