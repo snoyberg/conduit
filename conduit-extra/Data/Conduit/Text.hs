@@ -86,19 +86,21 @@ instance Show Codec where
 -- Since 0.4.1
 lines :: Monad m => Conduit T.Text m T.Text
 lines =
-    awaitText T.empty
+    awaitText id
   where
-    awaitText buf = await >>= maybe (finish buf) (process buf)
+    awaitText front = await >>= maybe (finish front) (process front)
 
-    finish buf = unless (T.null buf) (yield buf)
+    finish front =
+      let t = T.concat $ front []
+       in unless (T.null t) (yield t)
 
-    process buf text = yieldLines $ buf `T.append` text
-
-    yieldLines buf =
-      let (line, rest) = T.break (== '\n') buf
+    process front text =
+      let (line, rest) = T.break (== '\n') text
       in  case T.uncons rest of
-            Just (_, rest') -> yield line >> yieldLines rest'
-            _ -> awaitText line
+            Just (_, rest') -> do
+              yield (T.concat $ front [line])
+              process id rest'
+            Nothing -> Exc.assert (line == text) $ awaitText $ front . (line:)
 
 
 
