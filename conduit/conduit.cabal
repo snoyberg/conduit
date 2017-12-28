@@ -28,8 +28,7 @@ Library
   Exposed-modules:     Data.Conduit
                        Data.Conduit.List
                        Data.Conduit.Internal
-                       -- FIXME move to a new package
-                       -- Data.Conduit.Lift
+                       Data.Conduit.Lift
                        Data.Conduit.Internal.Fusion
                        Data.Conduit.Internal.List.Stream
   other-modules:       Data.Conduit.Internal.Pipe
