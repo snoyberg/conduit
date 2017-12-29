@@ -22,7 +22,7 @@ import qualified Control.Monad.Catch as C ()
 
 -- | The way in which a release is called.
 --
--- Since 1.1.2
+-- @since 1.1.2
 data ReleaseType = ReleaseEarly
                  | ReleaseNormal
                  | ReleaseException
@@ -41,7 +41,7 @@ data Allocated a = Allocated !a !(ReleaseType -> IO ())
 -- implementation in this package is slightly different, due to taking a
 -- different approach to async exception safety.
 --
--- Since 1.1.0
+-- @since 1.1.0
 newtype Acquire a = Acquire ((forall b. IO b -> IO b) -> IO (Allocated a))
     deriving Typeable
 
@@ -66,7 +66,7 @@ instance MonadIO Acquire where
 
 -- | Create an @Acquire@ value using the given allocate and free functions.
 --
--- Since 1.1.0
+-- @since 1.1.0
 mkAcquire :: IO a -- ^ acquire the resource
           -> (a -> IO ()) -- ^ free the resource
           -> Acquire a
@@ -78,7 +78,7 @@ mkAcquire create free = Acquire $ \restore -> do
 -- cleanup was initiated. This allows you to distinguish, for example, between
 -- normal and exceptional exits.
 --
--- Since 1.1.2
+-- @since 1.1.2
 mkAcquireType
     :: IO a -- ^ acquire the resource
     -> (a -> ReleaseType -> IO ()) -- ^ free the resource
@@ -92,7 +92,7 @@ mkAcquireType create free = Acquire $ \restore -> do
 -- normally or via an exception. This function is similar in function to
 -- @bracket@.
 --
--- Since 1.1.0
+-- @since 1.1.0
 with :: MonadUnliftIO m
      => Acquire a
      -> (a -> m b)
