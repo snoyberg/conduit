@@ -24,6 +24,7 @@ Library
                      , mtl                      >= 2.0          && < 2.3
                      , exceptions               >= 0.8
                      , unliftio-core
+                     , primitive
   ghc-options:     -Wall
 
 test-suite test

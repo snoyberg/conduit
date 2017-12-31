@@ -50,6 +50,7 @@ import qualified Control.Monad.Trans.State.Strict  as Strict ( StateT )
 import qualified Control.Monad.Trans.Writer.Strict as Strict ( WriterT )
 
 import Control.Monad.IO.Class (MonadIO (..))
+import Control.Monad.Primitive (PrimMonad (..))
 import qualified Control.Exception as E
 
 -- FIXME Do we want to only support MonadThrow?
@@ -135,6 +136,9 @@ instance MonadMask m => MonadMask (ResourceT m) where
       where q u (ResourceT b) = ResourceT (u . b)
 instance MonadIO m => MonadResource (ResourceT m) where
     liftResourceT = transResourceT liftIO
+instance PrimMonad m => PrimMonad (ResourceT m) where
+    type PrimState (ResourceT m) = PrimState m
+    primitive = lift . primitive
 
 -- | Transform the monad a @ResourceT@ lives in. This is most often used to
 -- strip or add new transformers to a stack, e.g. to run a @ReaderT@.

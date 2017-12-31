@@ -1,5 +1,4 @@
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE Safe #-}
 -- | Allow monad transformers to be run\/eval\/exec in a section of conduit
 -- rather then needing to run across the whole conduit.  The circumvents many
 -- of the problems with breaking the monad transformer laws.  For more

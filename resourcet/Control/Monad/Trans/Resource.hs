@@ -6,10 +6,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveDataTypeable #-}
-#if __GLASGOW_HASKELL__ >= 704
 {-# LANGUAGE ConstraintKinds #-}
-#endif
-{-# LANGUAGE Safe #-}
 -- | Allocate resources which are guaranteed to be released.
 --
 -- For more information, see <https://www.fpcomplete.com/user/snoyberg/library-documentation/resourcet>.

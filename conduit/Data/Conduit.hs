@@ -1,7 +1,6 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE Safe #-}
 -- | If this is your first time with conduit, you should probably start with
 -- the tutorial:
 -- <https://github.com/snoyberg/conduit#readme>.
@@ -117,7 +116,7 @@ import Control.Monad.IO.Unlift (MonadUnliftIO)
 -- @runIdentity . runConduit@.
 --
 -- @since 1.2.8
-runConduitPure :: ConduitM () Void Identity r -> r
+runConduitPure :: ConduitT () Void Identity r -> r
 runConduitPure = runIdentity . runConduit
 {-# INLINE runConduitPure #-}
 
@@ -127,7 +126,7 @@ runConduitPure = runIdentity . runConduit
 --
 -- @since 1.2.8
 runConduitRes :: MonadUnliftIO m
-              => ConduitM () Void (ResourceT m) r
+              => ConduitT () Void (ResourceT m) r
               -> m r
 runConduitRes = runResourceT . runConduit
 {-# INLINE runConduitRes #-}
