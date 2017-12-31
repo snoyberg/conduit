@@ -39,6 +39,7 @@ Library
                      , mtl
                      , primitive
                      , unliftio-core
+                     , exceptions
   if !impl(ghc>=7.9)
     build-depends:   void                     >= 0.5.5
   ghc-options:         -Wall

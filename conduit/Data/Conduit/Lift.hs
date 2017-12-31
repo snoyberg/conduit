@@ -12,6 +12,9 @@ module Data.Conduit.Lift (
     runExceptC,
     catchExceptC,
 
+    -- * CatchC
+    runCatchC,
+
     -- * MaybeT
     maybeC,
     runMaybeC,
@@ -75,6 +78,9 @@ import qualified Control.Monad.Trans.State.Lazy as SL
 import qualified Control.Monad.Trans.Writer.Lazy as WL
 import qualified Control.Monad.Trans.RWS.Lazy as RWSL
 
+import Control.Monad.Catch.Pure (CatchT (runCatchT))
+import Control.Exception (SomeException)
+
 -- | Wrap the base monad in 'Ex.ExceptT'
 --
 -- Since 1.2.12
@@ -127,6 +133,26 @@ catchExceptC c0 h =
          in go $ unConduitT c0 Done
   where
 {-# INLINABLE catchExceptC #-}
+
+-- | Run 'CatchT' in the base monad
+--
+-- Since 1.1.0
+runCatchC
+  :: Monad m =>
+     ConduitT i o (CatchT m) r -> ConduitT i o m (Either SomeException r)
+runCatchC c0 =
+    ConduitT $ \rest ->
+        let go (Done r) = rest (Right r)
+            go (PipeM mp) = PipeM $ do
+                eres <- runCatchT mp
+                return $ case eres of
+                    Left e -> rest $ Left e
+                    Right p -> go p
+            go (Leftover p i) = Leftover (go p) i
+            go (HaveOutput p f o) = HaveOutput (go p) (runCatchT f >> return ()) o
+            go (NeedInput x y) = NeedInput (go . x) (go . y)
+         in go $ unConduitT c0 Done
+{-# INLINABLE runCatchC #-}
 
 -- | Wrap the base monad in 'M.MaybeT'
 --
