@@ -1,3 +1,7 @@
+## 1.2.3.2
+
+* Fix withSinkFileBuilder [#344](https://github.com/snoyberg/conduit/pull/344)
+
 ## 1.2.3.1
 
 * Fix typo in implementation of `withProcess_`
