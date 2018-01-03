@@ -7,7 +7,7 @@ module Data.Conduit.Process.Typed
     createSink
   , createSource
     -- * Generalized functions
-  , withProcess
+  , withProcess -- FIXME import from rio instead
   , withProcess_
   , withLoggedProcess_
     -- * Reexports
