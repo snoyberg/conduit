@@ -291,7 +291,7 @@ connectFold (CI.ConduitT src0) f =
     go (src0 CI.Done)
   where
     go (CI.Done ()) b = return b
-    go (CI.HaveOutput src _ a) b = go src Prelude.$! f b a
+    go (CI.HaveOutput src a) b = go src Prelude.$! f b a
     go (CI.NeedInput _ c) b = go (c ()) b
     go (CI.Leftover src ()) b = go src b
     go (CI.PipeM msrc) b = do
@@ -305,7 +305,7 @@ connectFoldM (CI.ConduitT src0) f =
     go (src0 CI.Done)
   where
     go (CI.Done ()) b = return b
-    go (CI.HaveOutput src _ a) b = do
+    go (CI.HaveOutput src a) b = do
         !b' <- f b a
         go src b'
     go (CI.NeedInput _ c) b = go (c ()) b
@@ -354,7 +354,7 @@ srcMapM_ (CI.ConduitT src) f =
     go (CI.Done ()) = return ()
     go (CI.PipeM mp) = mp >>= go
     go (CI.Leftover p ()) = go p
-    go (CI.HaveOutput p _ o) = f o >> go p
+    go (CI.HaveOutput p o) = f o >> go p
     go (CI.NeedInput _ c) = go (c ())
 {-# INLINE srcMapM_ #-}
 {-# RULES "conduit: connect to mapM_" [2] forall f src. runConduit (src .| mapM_ f) = srcMapM_ src f #-}
@@ -783,8 +783,8 @@ filterFuseRight (CI.ConduitT src) f = CI.ConduitT $ \rest -> let
     go (CI.Done ()) = rest ()
     go (CI.PipeM mp) = CI.PipeM (liftM go mp)
     go (CI.Leftover p i) = CI.Leftover (go p) i
-    go (CI.HaveOutput p c o)
-        | f o = CI.HaveOutput (go p) c o
+    go (CI.HaveOutput p o)
+        | f o = CI.HaveOutput (go p) o
         | otherwise = go p
     go (CI.NeedInput p c) = CI.NeedInput (go . p) (go . c)
     in go (src CI.Done)
@@ -812,7 +812,7 @@ srcSinkNull (CI.ConduitT src) =
     go (CI.Done ()) = return ()
     go (CI.PipeM mp) = mp >>= go
     go (CI.Leftover p ()) = go p
-    go (CI.HaveOutput p _ _) = go p
+    go (CI.HaveOutput p _) = go p
     go (CI.NeedInput _ c) = go (c ())
 {-# INLINE srcSinkNull #-}
 {-# RULES "conduit: connect to sinkNull" forall src. runConduit (src .| sinkNull) = srcSinkNull src #-}

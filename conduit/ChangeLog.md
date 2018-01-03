@@ -3,6 +3,11 @@
 * Drop monad-control and exceptions in favor of unliftio
 * Drop mmorph dependency
 * Deprecate old type synonyms and operators
+* Drop finalizers from the library entirely
+    * Much simpler
+    * Less guarantees about prompt finalization
+    * No more `yieldOr`, `addCleanup`
+    * Simplification around the `Resumable` types
 
 ## 1.2.12.1
 

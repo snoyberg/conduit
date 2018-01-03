@@ -9,12 +9,14 @@ import Test.QuickCheck.Monadic (assert, monadicIO, run)
 
 import Data.Conduit (runConduit, (.|), ConduitT, runConduitPure, runConduitRes)
 import qualified Data.Conduit as C
---import qualified Data.Conduit.Lift as C
+import qualified Data.Conduit.Lift as C
 import qualified Data.Conduit.Internal as CI
 import qualified Data.Conduit.List as CL
 import Data.Typeable (Typeable)
 import Control.Exception (throw)
 import Control.Monad.Trans.Resource (runResourceT)
+import Control.Monad.Trans.Maybe (MaybeT (MaybeT))
+import Control.Monad.State.Strict (modify)
 import Data.Maybe   (fromMaybe,catMaybes,fromJust)
 import qualified Data.List as DL
 import qualified Data.List.Split as DLS (chunksOf)
@@ -23,7 +25,7 @@ import Data.Monoid
 import qualified Data.IORef as I
 import Control.Monad.Trans.Resource (allocate, resourceForkIO)
 import Control.Concurrent (threadDelay, killThread)
-import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Writer (execWriter, tell, runWriterT)
 import Control.Monad.Trans.State (evalStateT, get, put)
@@ -501,12 +503,6 @@ main = hspec $ do
             let is = [1..10] ++ undefined
             x <- runConduit $ mapM_ C.yield is .| CL.take 10
             x `shouldBe` [1..10 :: Int]
-        it' "yieldOr finalizer called" $ do
-            iref <- I.newIORef (0 :: Int)
-            let src = mapM_ (\i -> C.yieldOr i $ I.writeIORef iref i) [1..]
-            runConduit $ src .| CL.isolate 10 .| CL.sinkNull
-            x <- I.readIORef iref
-            x `shouldBe` 10
 
     describe "upstream results" $ do
         it' "works" $ do
@@ -588,77 +584,6 @@ main = hspec $ do
         ref' <- I.readIORef ref
         ref' `shouldBe` (if cnt' <= 0 then 0 else cnt)
 
-    describe "unwrapResumable" $ do
-        it' "works" $ do
-            ref <- I.newIORef (0 :: Int)
-            let src0 = do
-                    C.yieldOr () $ I.writeIORef ref 1
-                    C.yieldOr () $ I.writeIORef ref 2
-                    C.yieldOr () $ I.writeIORef ref 3
-            (rsrc0, Just ()) <- src0 C.$$+ CL.head
-
-            x0 <- I.readIORef ref
-            x0 `shouldBe` 0
-
-            (_, final) <- C.unwrapResumable rsrc0
-
-            x1 <- I.readIORef ref
-            x1 `shouldBe` 0
-
-            final
-
-            x2 <- I.readIORef ref
-            x2 `shouldBe` 1
-
-        it' "isn't called twice" $ do
-            ref <- I.newIORef (0 :: Int)
-            let src0 = do
-                    C.yieldOr () $ I.writeIORef ref 1
-                    C.yieldOr () $ I.writeIORef ref 2
-            (rsrc0, Just ()) <- src0 C.$$+ CL.head
-
-            x0 <- I.readIORef ref
-            x0 `shouldBe` 0
-
-            (src1, final) <- C.unwrapResumable rsrc0
-
-            x1 <- I.readIORef ref
-            x1 `shouldBe` 0
-
-            Just () <- runConduit $ src1 .| CL.head
-
-            x2 <- I.readIORef ref
-            x2 `shouldBe` 2
-
-            final
-
-            x3 <- I.readIORef ref
-            x3 `shouldBe` 2
-
-        it' "source isn't used" $ do
-            ref <- I.newIORef (0 :: Int)
-            let src0 = do
-                    C.yieldOr () $ I.writeIORef ref 1
-                    C.yieldOr () $ I.writeIORef ref 2
-            (rsrc0, Just ()) <- src0 C.$$+ CL.head
-
-            x0 <- I.readIORef ref
-            x0 `shouldBe` 0
-
-            (src1, final) <- C.unwrapResumable rsrc0
-
-            x1 <- I.readIORef ref
-            x1 `shouldBe` 0
-
-            () <- runConduit $ src1 .| return ()
-
-            x2 <- I.readIORef ref
-            x2 `shouldBe` 0
-
-            final
-
-            x3 <- I.readIORef ref
-            x3 `shouldBe` 1
     describe "injectLeftovers" $ do
         it "works" $ do
             let src = mapM_ CI.yield [1..10 :: Int]
@@ -668,25 +593,6 @@ main = hspec $ do
                     C.yield i
             res <- runConduit $ CI.ConduitT ((src CI.>+> CI.injectLeftovers conduit) >>=) .| CL.consume
             res `shouldBe` [1..10]
-    describe "up-upstream finalizers" $ do
-        it "pipe" $ do
-            let p1 = CI.await >>= maybe (return ()) CI.yield
-                p2 = idMsg "p2-final"
-                p3 = idMsg "p3-final"
-                idMsg msg = CI.addCleanup (const $ tell [msg]) $ CI.awaitForever CI.yield
-                printer = CI.awaitForever $ lift . tell . return . show
-                src = mapM_ CI.yield [1 :: Int ..]
-            let run' p = execWriter $ CI.runPipe $ printer CI.<+< p CI.<+< src
-            run' (p1 CI.<+< (p2 CI.<+< p3)) `shouldBe` run' ((p1 CI.<+< p2) CI.<+< p3)
-        it "conduit" $ do
-            let p1 = C.await >>= maybe (return ()) C.yield
-                p2 = idMsg "p2-final"
-                p3 = idMsg "p3-final"
-                idMsg msg = C.addCleanup (const $ tell [msg]) $ C.awaitForever C.yield
-                printer = C.awaitForever $ lift . tell . return . show
-                src = CL.sourceList [1 :: Int ..]
-            let run' p = execWriter $ runConduit $ src .| p .| printer
-            run' ((p3 .| p2) .| p1) `shouldBe` run' (p3 .| (p2 .| p1))
     describe "monad transformer laws" $ do
         it "transPipe" $ do
             let source = CL.sourceList $ replicate 10 ()
@@ -756,87 +662,6 @@ main = hspec $ do
             output <- runConduit $ src .| withShortAlphaIndex .| CL.consume
             output `shouldBe` [("A", 1), ("B", 2), ("C", 3)]
 
-        let modFlag ref cur next = do
-                prev <- I.atomicModifyIORef ref $ (,) next
-                prev `shouldBe` cur
-            flagShouldBe ref expect = do
-                cur <- I.readIORef ref
-                cur `shouldBe` expect
-        it "properly run the finalizer - When the main Conduit is fully consumed" $ do
-            called <- I.newIORef ("RawC" :: String)
-            let src :: MonadIO m => ConduitT () String m ()
-                src = CL.sourceList ["A", "B", "C"]
-                withIndex :: MonadIO m => ConduitT String (Integer, String) m ()
-                withIndex = C.addCleanup (\f -> liftIO $ modFlag called "AllocC-3" ("FinalC:" ++ show f)) . CI.mergeSource $ do
-                    liftIO $ modFlag called "RawC" "AllocC-1"
-                    C.yield 1
-                    liftIO $ modFlag called "AllocC-1" "AllocC-2"
-                    C.yield 2
-                    liftIO $ modFlag called "AllocC-2" "AllocC-3"
-                    C.yield 3
-                    liftIO $ modFlag called "AllocC-3" "AllocC-4"
-                    C.yield 4
-            output <- runConduit $ src .| withIndex .| CL.consume
-            output `shouldBe` [(1, "A"), (2, "B"), (3, "C")]
-            called `flagShouldBe` "FinalC:True"
-        it "properly run the finalizer - When the branch Source is fully consumed" $ do
-            called <- I.newIORef ("RawS" :: String)
-            let src :: MonadIO m => ConduitT () Integer m ()
-                src = CL.sourceList [1..]
-                withIndex :: MonadIO m => ConduitT Integer (String, Integer) m ()
-                withIndex = C.addCleanup (\f -> liftIO $ modFlag called "AllocS-C" ("FinalS:" ++ show f)) . CI.mergeSource $ do
-                    liftIO $ modFlag called "RawS" "AllocS-A"
-                    C.yield "A"
-                    liftIO $ modFlag called "AllocS-A" "AllocS-B"
-                    C.yield "B"
-                    liftIO $ modFlag called "AllocS-B" "AllocS-C"
-                    C.yield "C"
-            output <- runConduit $ src .| withIndex .| CL.consume
-            output `shouldBe` [("A", 1), ("B", 2), ("C", 3)]
-            called `flagShouldBe` "FinalS:True"
-        it "properly DO NOT run the finalizer - When nothing consumed" $ do
-            called <- I.newIORef ("Raw0" :: String)
-            let src :: MonadIO m => ConduitT () String m ()
-                src = CL.sourceList ["A", "B", "C"]
-                withIndex :: MonadIO m => ConduitT String (Integer, String) m ()
-                withIndex = C.addCleanup (\f -> liftIO $ modFlag called "WONT CALLED" ("Final0:" ++ show f)) . CI.mergeSource $ do
-                    liftIO $ modFlag called "Raw0" "Alloc0-1"
-                    C.yield 1
-            output <- runConduit $ src .| withIndex .| return ()
-            output `shouldBe` ()
-            called `flagShouldBe` "Raw0"
-        it "properly run the finalizer - When only one item consumed" $ do
-            called <- I.newIORef ("Raw1" :: String)
-            let src :: MonadIO m => ConduitT () Integer m ()
-                src = CL.sourceList [1..]
-                withIndex :: MonadIO m => ConduitT Integer (String, Integer) m ()
-                withIndex = C.addCleanup (\f -> liftIO $ modFlag called "Alloc1-A" ("Final1:" ++ show f)) . CI.mergeSource $ do
-                    liftIO $ modFlag called "Raw1" "Alloc1-A"
-                    C.yield "A"
-                    liftIO $ modFlag called "Alloc1-A" "Alloc1-B"
-                    C.yield "B"
-                    liftIO $ modFlag called "Alloc1-B" "Alloc1-C"
-                    C.yield "C"
-            output <- runConduit $ src .| withIndex .| CL.isolate 1 .| CL.consume
-            output `shouldBe` [("A", 1)]
-            called `flagShouldBe` "Final1:False"
-
-        it "handles finalizers" $ do
-            ref <- I.newIORef (0 :: Int)
-            let src1 = C.addCleanup
-                    (const $ I.modifyIORef ref (+1))
-                    (mapM_ C.yield [1 :: Int ..])
-                src2 = mapM_ C.yield ("hi" :: String)
-            res1 <- runConduit $ src1 .| C.mergeSource src2 .| CL.consume
-            res1 `shouldBe` [('h', 1), ('i', 2)]
-            i1 <- I.readIORef ref
-            i1 `shouldBe` 1
-
-            res2 <- runConduit $ src2 .| C.mergeSource src1 .| CL.consume
-            res2 `shouldBe` [(1, 'h'), (2, 'i')]
-            i2 <- I.readIORef ref
-            i2 `shouldBe` 2
-
     describe "passthroughSink" $ do
         it "works" $ do
             ref <- I.newIORef (-1)
@@ -885,124 +710,24 @@ main = hspec $ do
                     pure ((), (2:))
                 in execWriter (runConduit writer) `shouldBe` [2, 1]
 
-    describe "finalizers" $ do
-        it "promptness" $ do
-            imsgs <- I.newIORef []
-            let add x = liftIO $ do
-                    msgs <- I.readIORef imsgs
-                    I.writeIORef imsgs $ msgs ++ [x]
-                src' = C.bracketP
-                    (add "acquire")
-                    (const $ add "release")
-                    (const $ C.addCleanup (const $ add "inside") (mapM_ C.yield [1..5]))
-                src = do
-                    src' .| CL.isolate 4
-                    add "computation"
-                sink = CL.mapM (\x -> add (show x) >> return x) .| CL.consume
-
-            res <- runConduitRes $ src .| sink
-
-            msgs <- I.readIORef imsgs
-            -- FIXME this would be better msgs `shouldBe` words "acquire 1 2 3 4 inside release computation"
-            msgs `shouldBe` words "acquire 1 2 3 4 release inside computation"
-
-            res `shouldBe` [1..4 :: Int]
-
-        it "left associative" $ do
-            imsgs <- I.newIORef []
-            let add x = liftIO $ do
-                    msgs <- I.readIORef imsgs
-                    I.writeIORef imsgs $ msgs ++ [x]
-                p1 = C.bracketP (add "start1") (const $ add "stop1") (const $ add "inside1" >> C.yield ())
-                p2 = C.bracketP (add "start2") (const $ add "stop2") (const $ add "inside2" >> C.await >>= maybe (return ()) C.yield)
-                p3 = C.bracketP (add "start3") (const $ add "stop3") (const $ add "inside3" >> C.await)
-
-            res <- runConduitRes $ (p1 .| p2) .| p3
-            res `shouldBe` Just ()
-
-            msgs <- I.readIORef imsgs
-            msgs `shouldBe` words "start3 inside3 start2 inside2 start1 inside1 stop3 stop2 stop1"
-
-        it "right associative" $ do
-            imsgs <- I.newIORef []
-            let add x = liftIO $ do
-                    msgs <- I.readIORef imsgs
-                    I.writeIORef imsgs $ msgs ++ [x]
-                p1 = C.bracketP (add "start1") (const $ add "stop1") (const $ add "inside1" >> C.yield ())
-                p2 = C.bracketP (add "start2") (const $ add "stop2") (const $ add "inside2" >> C.await >>= maybe (return ()) C.yield)
-                p3 = C.bracketP (add "start3") (const $ add "stop3") (const $ add "inside3" >> C.await)
-
-            res <- runConduitRes $ p1 .| (p2 .| p3)
-            res `shouldBe` Just ()
-
-            msgs <- I.readIORef imsgs
-            msgs `shouldBe` words "start3 inside3 start2 inside2 start1 inside1 stop3 stop2 stop1"
-
-        describe "dan burton's associative tests" $ do
-            let tellLn = tell . (++ "\n")
-                finallyP fin = CI.addCleanup (const fin)
-                printer = CI.awaitForever $ lift . tellLn . show
-                idMsg msg = finallyP (tellLn msg) CI.idP
-                takeP 0 = return ()
-                takeP n = CI.awaitE >>= \ex -> case ex of
-                  Left _u -> return ()
-                  Right i -> CI.yield i >> takeP (pred n)
-
-                testPipe p = execWriter $ runPipe $ printer <+< p <+< CI.sourceList ([1..] :: [Int])
-
-                p1 = takeP (1 :: Int)
-                p2 = idMsg "foo"
-                p3 = idMsg "bar"
-
-                (<+<) = (CI.<+<)
-                runPipe = CI.runPipe
-
-                test1L = testPipe $ (p1 <+< p2) <+< p3
-                test1R = testPipe $ p1 <+< (p2 <+< p3)
-
-                _test2L = testPipe $ (p2 <+< p1) <+< p3
-                _test2R = testPipe $ p2 <+< (p1 <+< p3)
-
-                test3L = testPipe $ (p2 <+< p3) <+< p1
-                test3R = testPipe $ p2 <+< (p3 <+< p1)
-
-                verify testL testR p1' p2' p3'
-                  | testL == testR = return () :: IO ()
-                  | otherwise = error $ unlines
-                    [ "FAILURE"
-                    , ""
-                    , "(" ++ p1' ++ " <+< " ++ p2' ++ ") <+< " ++ p3'
-                    , "------------------"
-                    , testL
-                    , ""
-                    , p1' ++ " <+< (" ++ p2' ++ " <+< " ++ p3' ++ ")"
-                    , "------------------"
-                    , testR
-                    ]
-
-            it "test1" $ verify test1L test1R "p1" "p2" "p3"
-            -- FIXME this is broken it "test2" $ verify test2L test2R "p2" "p1" "p3"
-            it "test3" $ verify test3L test3R "p2" "p3" "p1"
-
-    {- FIXME move to new package
     describe "Data.Conduit.Lift" $ do
         it "execStateC" $ do
             let sink = C.execStateLC 0 $ CL.mapM_ $ modify . (+)
                 src = mapM_ C.yield [1..10 :: Int]
-            res <- src .| sink
+            res <- runConduit $ src .| sink
             res `shouldBe` sum [1..10]
 
         it "execWriterC" $ do
             let sink = C.execWriterLC $ CL.mapM_ $ tell . return
                 src = mapM_ C.yield [1..10 :: Int]
-            res <- src .| sink
+            res <- runConduit $ src .| sink
             res `shouldBe` [1..10]
 
-        it "runErrorC" $ do
-            let sink = C.runErrorC $ do
-                    x <- C.catchErrorC (lift $ throwError "foo") return
+        it "runExceptC" $ do
+            let sink = C.runExceptC $ do
+                    x <- C.catchExceptC (lift $ throwError "foo") return
                     return $ x ++ "bar"
-            res <- return () .| sink
+            res <- runConduit $ return () .| sink
             res `shouldBe` Right ("foobar" :: String)
 
         it "runMaybeC" $ do
@@ -1011,9 +736,8 @@ main = hspec $ do
                     () <- lift $ MaybeT $ return Nothing
                     C.yield 2
                 sink = CL.consume
-            res <- src .| sink
+            res <- runConduit $ src .| sink
             res `shouldBe` [1 :: Int]
-    -}
 
     describe "sequenceSources" $ do
         it "works" $ do

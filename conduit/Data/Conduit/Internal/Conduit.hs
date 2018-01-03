@@ -30,7 +30,6 @@ module Data.Conduit.Internal.Conduit
     , awaitForever
     , yield
     , yieldM
-    , yieldOr
     , leftover
     , runConduit
     , fuse
@@ -60,7 +59,6 @@ module Data.Conduit.Internal.Conduit
     , toConsumer
       -- ** Cleanup
     , bracketP
-    , addCleanup
       -- ** Exceptions
     , catchC
     , handleC
@@ -151,7 +149,7 @@ instance MonadReader r m => MonadReader r (ConduitT i o m) where
     {-# INLINE ask #-}
 
     local f (ConduitT c0) = ConduitT $ \rest ->
-        let go (HaveOutput p c o) = HaveOutput (go p) c o
+        let go (HaveOutput p o) = HaveOutput (go p) o
             go (NeedInput p c) = NeedInput (\i -> go (p i)) (\u -> go (c u))
             go (Done x) = rest x
             go (PipeM mp) = PipeM (liftM go $ local f mp)
@@ -169,7 +167,7 @@ instance MonadWriter w m => MonadWriter w (ConduitT i o m) where
     tell = lift . tell
 
     listen (ConduitT c0) = ConduitT $ \rest ->
-        let go front (HaveOutput p c o) = HaveOutput (go front p) c o
+        let go front (HaveOutput p o) = HaveOutput (go front p) o
             go front (NeedInput p c) = NeedInput (\i -> go front (p i)) (\u -> go front (c u))
             go front (Done x) = rest (x, front)
             go front (PipeM mp) = PipeM $ do
@@ -179,7 +177,7 @@ instance MonadWriter w m => MonadWriter w (ConduitT i o m) where
          in go mempty (c0 Done)
 
     pass (ConduitT c0) = ConduitT $ \rest ->
-        let go front (HaveOutput p c o) = HaveOutput (go front p) c o
+        let go front (HaveOutput p o) = HaveOutput (go front p) o
             go front (NeedInput p c) = NeedInput (\i -> go front (p i)) (\u -> go front (c u))
             go front (PipeM mp) = PipeM $ do
                 (p,w) <- censor (const mempty) (listen mp)
@@ -202,7 +200,7 @@ instance MonadRWS r w s m => MonadRWS r w s (ConduitT i o m)
 instance MonadError e m => MonadError e (ConduitT i o m) where
     throwError = lift . throwError
     catchError (ConduitT c0) f = ConduitT $ \rest ->
-        let go (HaveOutput p c o) = HaveOutput (go p) c o
+        let go (HaveOutput p o) = HaveOutput (go p) o
             go (NeedInput p c) = NeedInput (\i -> go (p i)) (\u -> go (c u))
             go (Done x) = rest x
             go (PipeM mp) =
@@ -274,7 +272,7 @@ type Conduit i m o = ConduitT i o m ()
 -- to be run to close it.
 --
 -- Since 0.5.0
-data ResumableSource m o = ResumableSource (Pipe () () o () m ()) (m ())
+newtype ResumableSource m o = ResumableSource (Pipe () () o () m ()) -- FIXME maybe not needed anymore
 
 -- | Connect a @Source@ to a @Sink@ until the latter closes. Returns both the
 -- most recent state of the @Source@ and the result of the @Sink@.
@@ -287,32 +285,32 @@ connectResume :: Monad m
               => ResumableSource m o
               -> Sink o m r
               -> m (ResumableSource m o, r)
-connectResume (ResumableSource left0 leftFinal0) (ConduitT right0) =
-    goRight leftFinal0 left0 (right0 Done)
+connectResume (ResumableSource left0) (ConduitT right0) =
+    goRight left0 (right0 Done)
   where
-    goRight leftFinal left right =
+    goRight left right =
         case right of
-            HaveOutput _ _ o -> absurd o
-            NeedInput rp rc  -> goLeft rp rc leftFinal left
-            Done r2          -> return (ResumableSource left leftFinal, r2)
-            PipeM mp         -> mp >>= goRight leftFinal left
-            Leftover p i     -> goRight leftFinal (HaveOutput left leftFinal i) p
+            HaveOutput _ o   -> absurd o
+            NeedInput rp rc  -> goLeft rp rc left
+            Done r2          -> return (ResumableSource left, r2)
+            PipeM mp         -> mp >>= goRight left
+            Leftover p i     -> goRight (HaveOutput left i) p
 
-    goLeft rp rc leftFinal left =
+    goLeft rp rc left =
         case left of
-            HaveOutput left' leftFinal' o -> goRight leftFinal' left' (rp o)
+            HaveOutput left' o            -> goRight left' (rp o)
             NeedInput _ lc                -> recurse (lc ())
-            Done ()                       -> goRight (return ()) (Done ()) (rc ())
+            Done ()                       -> goRight (Done ()) (rc ())
             PipeM mp                      -> mp >>= recurse
             Leftover p ()                 -> recurse p
       where
-        recurse = goLeft rp rc leftFinal
+        recurse = goLeft rp rc
 
 sourceToPipe :: Monad m => Source m o -> Pipe l i o u m ()
 sourceToPipe =
     go . flip unConduitT Done
   where
-    go (HaveOutput p c o) = HaveOutput (go p) c o
+    go (HaveOutput p o) = HaveOutput (go p) o
     go (NeedInput _ c) = go $ c ()
     go (Done ()) = Done ()
     go (PipeM mp) = PipeM (liftM go mp)
@@ -322,7 +320,7 @@ sinkToPipe :: Monad m => Sink i m r -> Pipe l i o u m r
 sinkToPipe =
     go . injectLeftovers . flip unConduitT Done
   where
-    go (HaveOutput _ _ o) = absurd o
+    go (HaveOutput _ o) = absurd o
     go (NeedInput p c) = NeedInput (go . p) (const $ go $ c ())
     go (Done r) = Done r
     go (PipeM mp) = PipeM (liftM go mp)
@@ -332,7 +330,7 @@ conduitToPipe :: Monad m => Conduit i m o -> Pipe l i o u m ()
 conduitToPipe =
     go . injectLeftovers . flip unConduitT Done
   where
-    go (HaveOutput p c o) = HaveOutput (go p) c o
+    go (HaveOutput p o) = HaveOutput (go p) o
     go (NeedInput p c) = NeedInput (go . p) (const $ go $ c ())
     go (Done ()) = Done ()
     go (PipeM mp) = PipeM (liftM go mp)
@@ -354,26 +352,21 @@ conduitToPipe =
 -- invalidated and cannot be used.
 --
 -- Since 0.5.2
-unwrapResumable :: MonadIO m => ResumableSource m o -> m (Source m o, m ())
-unwrapResumable (ResumableSource src final) = do
-    ref <- liftIO $ I.newIORef True
-    let final' = do
-            x <- liftIO $ I.readIORef ref
-            when x final
-    return (liftIO (I.writeIORef ref False) >> (ConduitT (src >>=)), final')
+unwrapResumable :: Monad m => ResumableSource m o -> Source m o
+unwrapResumable (ResumableSource src) = ConduitT (src >>=)
 
 -- | Turn a @Source@ into a @ResumableSource@ with no attached finalizer.
 --
 -- Since 1.1.4
 newResumableSource :: Monad m => Source m o -> ResumableSource m o
-newResumableSource (ConduitT s) = ResumableSource (s Done) (return ())
+newResumableSource (ConduitT s) = ResumableSource (s Done)
 
 -- | Generalize a 'Source' to a 'Producer'.
 --
 -- Since 1.0.0
 toProducer :: Monad m => Source m a -> Producer m a
 toProducer (ConduitT c0) = ConduitT $ \rest -> let
-    go (HaveOutput p c o) = HaveOutput (go p) c o
+    go (HaveOutput p o) = HaveOutput (go p) o
     go (NeedInput _ c) = go (c ())
     go (Done r) = rest r
     go (PipeM mp) = PipeM (liftM go mp)
@@ -385,7 +378,7 @@ toProducer (ConduitT c0) = ConduitT $ \rest -> let
 -- Since 1.0.0
 toConsumer :: Monad m => Sink a m b -> Consumer a m b
 toConsumer (ConduitT c0) = ConduitT $ \rest -> let
-    go (HaveOutput _ _ o) = absurd o
+    go (HaveOutput _ o) = absurd o
     go (NeedInput p c) = NeedInput (go . p) (go . c)
     go (Done r) = rest r
     go (PipeM mp) = PipeM (liftM go mp)
@@ -416,7 +409,7 @@ catchC (ConduitT p0) onErr = ConduitT $ \rest -> let
         (return . flip unConduitT rest . onErr)
     go (Leftover p i) = Leftover (go p) i
     go (NeedInput x y) = NeedInput (go . x) (go . y)
-    go (HaveOutput p c o) = HaveOutput (go p) c o
+    go (HaveOutput p o) = HaveOutput (go p) o
     in go (p0 Done)
 {-# INLINE catchC #-}
 
@@ -450,8 +443,8 @@ zipSinks :: Monad m => Sink i m r -> Sink i m r' -> Sink i m (r, r')
 zipSinks (ConduitT x0) (ConduitT y0) = ConduitT $ \rest -> let
     Leftover _  i    >< _                = absurd i
     _                >< Leftover _  i    = absurd i
-    HaveOutput _ _ o >< _                = absurd o
-    _                >< HaveOutput _ _ o = absurd o
+    HaveOutput _ o   >< _                = absurd o
+    _                >< HaveOutput _ o   = absurd o
 
     PipeM mx         >< y                = PipeM (liftM (>< y) mx)
     x                >< PipeM my         = PipeM (liftM (x ><) my)
@@ -470,14 +463,14 @@ zipSources (ConduitT left0) (ConduitT right0) = ConduitT $ \rest -> let
     go (Leftover left ()) right = go left right
     go left (Leftover right ())  = go left right
     go (Done ()) (Done ()) = rest ()
-    go (Done ()) (HaveOutput _ close _) = PipeM (close >> return (rest ()))
-    go (HaveOutput _ close _) (Done ()) = PipeM (close >> return (rest ()))
+    go (Done ()) (HaveOutput _ _) = rest ()
+    go (HaveOutput _ _) (Done ()) = rest ()
     go (Done ()) (PipeM _) = rest ()
     go (PipeM _) (Done ()) = rest ()
     go (PipeM mx) (PipeM my) = PipeM (liftM2 go mx my)
     go (PipeM mx) y@HaveOutput{} = PipeM (liftM (\x -> go x y) mx)
     go x@HaveOutput{} (PipeM my) = PipeM (liftM (go x) my)
-    go (HaveOutput srcx closex x) (HaveOutput srcy closey y) = HaveOutput (go srcx srcy) (closex >> closey) (x, y)
+    go (HaveOutput srcx x) (HaveOutput srcy y) = HaveOutput (go srcx srcy) (x, y)
     go (NeedInput _ c) right = go (c ()) right
     go left (NeedInput _ c) = go left (c ())
     in go (left0 Done) (right0 Done)
@@ -491,14 +484,14 @@ zipSourcesApp (ConduitT left0) (ConduitT right0) = ConduitT $ \rest -> let
     go (Leftover left ()) right = go left right
     go left (Leftover right ())  = go left right
     go (Done ()) (Done ()) = rest ()
-    go (Done ()) (HaveOutput _ close _) = PipeM (close >> return (rest ()))
-    go (HaveOutput _ close _) (Done ()) = PipeM (close >> return (rest ()))
+    go (Done ()) (HaveOutput _ _) = rest ()
+    go (HaveOutput _ _) (Done ()) = rest ()
     go (Done ()) (PipeM _) = rest ()
     go (PipeM _) (Done ()) = rest ()
     go (PipeM mx) (PipeM my) = PipeM (liftM2 go mx my)
     go (PipeM mx) y@HaveOutput{} = PipeM (liftM (\x -> go x y) mx)
     go x@HaveOutput{} (PipeM my) = PipeM (liftM (go x) my)
-    go (HaveOutput srcx closex x) (HaveOutput srcy closey y) = HaveOutput (go srcx srcy) (closex >> closey) (x y)
+    go (HaveOutput srcx x) (HaveOutput srcy y) = HaveOutput (go srcx srcy) (x y)
     go (NeedInput _ c) right = go (c ()) right
     go left (NeedInput _ c) = go left (c ())
     in go (left0 Done) (right0 Done)
@@ -512,29 +505,23 @@ zipConduitApp
     -> ConduitT i o m x
     -> ConduitT i o m y
 zipConduitApp (ConduitT left0) (ConduitT right0) = ConduitT $ \rest -> let
-    go _ _ (Done f) (Done x) = rest (f x)
-    go finalX finalY (PipeM mx) y = PipeM (flip (go finalX finalY) y `liftM` mx)
-    go finalX finalY x (PipeM my) = PipeM (go finalX finalY x `liftM` my)
-    go _ finalY (HaveOutput x finalX o) y = HaveOutput
-        (go finalX finalY x y)
-        (finalX >> finalY)
-        o
-    go finalX _ x (HaveOutput y finalY o) = HaveOutput
-        (go finalX finalY x y)
-        (finalX >> finalY)
-        o
-    go _ _ (Leftover _ i) _ = absurd i
-    go _ _ _ (Leftover _ i) = absurd i
-    go finalX finalY (NeedInput px cx) (NeedInput py cy) = NeedInput
-        (\i -> go finalX finalY (px i) (py i))
-        (\u -> go finalX finalY (cx u) (cy u))
-    go finalX finalY (NeedInput px cx) (Done y) = NeedInput
-        (\i -> go finalX finalY (px i) (Done y))
-        (\u -> go finalX finalY (cx u) (Done y))
-    go finalX finalY (Done x) (NeedInput py cy) = NeedInput
-        (\i -> go finalX finalY (Done x) (py i))
-        (\u -> go finalX finalY (Done x) (cy u))
-  in go (return ()) (return ()) (injectLeftovers $ left0 Done) (injectLeftovers $ right0 Done)
+    go (Done f) (Done x) = rest (f x)
+    go (PipeM mx) y = PipeM (flip go y `liftM` mx)
+    go x (PipeM my) = PipeM (go x `liftM` my)
+    go (HaveOutput x o) y = HaveOutput (go x y) o
+    go x (HaveOutput y o) = HaveOutput (go x y) o
+    go (Leftover _ i) _ = absurd i
+    go _ (Leftover _ i) = absurd i
+    go (NeedInput px cx) (NeedInput py cy) = NeedInput
+        (\i -> go (px i) (py i))
+        (\u -> go (cx u) (cy u))
+    go (NeedInput px cx) (Done y) = NeedInput
+        (\i -> go (px i) (Done y))
+        (\u -> go (cx u) (Done y))
+    go (Done x) (NeedInput py cy) = NeedInput
+        (\i -> go (Done x) (py i))
+        (\u -> go (Done x) (cy u))
+  in go (injectLeftovers $ left0 Done) (injectLeftovers $ right0 Done)
 
 -- | Same as normal fusion (e.g. @=$=@), except instead of discarding leftovers
 -- from the downstream component, return them.
@@ -545,29 +532,29 @@ fuseReturnLeftovers :: Monad m
                     -> ConduitT b c m r
                     -> ConduitT a c m (r, [b])
 fuseReturnLeftovers (ConduitT left0) (ConduitT right0) = ConduitT $ \rest -> let
-    goRight final bs left right =
+    goRight bs left right =
         case right of
-            HaveOutput p c o -> HaveOutput (recurse p) (c >> final) o
+            HaveOutput p o -> HaveOutput (recurse p) o
             NeedInput rp rc  ->
                 case bs of
-                    [] -> goLeft rp rc final left
-                    b:bs' -> goRight final bs' left (rp b)
-            Done r2          -> PipeM (final >> return (rest (r2, bs)))
+                    [] -> goLeft rp rc left
+                    b:bs' -> goRight bs' left (rp b)
+            Done r2          -> rest (r2, bs)
             PipeM mp         -> PipeM (liftM recurse mp)
-            Leftover p b     -> goRight final (b:bs) left p
+            Leftover p b     -> goRight (b:bs) left p
       where
-        recurse = goRight final bs left
+        recurse = goRight bs left
 
-    goLeft rp rc final left =
+    goLeft rp rc left =
         case left of
-            HaveOutput left' final' o -> goRight final' [] left' (rp o)
+            HaveOutput left' o        -> goRight [] left' (rp o)
             NeedInput left' lc        -> NeedInput (recurse . left') (recurse . lc)
-            Done r1                   -> goRight (return ()) [] (Done r1) (rc r1)
+            Done r1                   -> goRight [] (Done r1) (rc r1)
             PipeM mp                  -> PipeM (liftM recurse mp)
             Leftover left' i          -> Leftover (recurse left') i
       where
-        recurse = goLeft rp rc final
-    in goRight (return ()) [] (left0 Done) (right0 Done)
+        recurse = goLeft rp rc
+    in goRight [] (left0 Done) (right0 Done)
 
 -- | Similar to @fuseReturnLeftovers@, but use the provided function to convert
 -- downstream leftovers to upstream leftovers.
@@ -588,8 +575,7 @@ fuseLeftovers f left right = do
 -- conduit, keeping its state and using it later (or finalizing it).
 --
 -- Since 1.0.17
-data ResumableConduit i m o =
-    ResumableConduit (Pipe i i o () m ()) (m ())
+newtype ResumableConduit i m o = ResumableConduit (Pipe i i o () m ()) -- FIXME maybe drop?
 
 -- | Connect a 'ResumableConduit' to a sink and return the output of the sink
 -- together with a new 'ResumableConduit'.
@@ -600,44 +586,39 @@ connectResumeConduit
     => ResumableConduit i m o
     -> Sink o m r
     -> Sink i m (ResumableConduit i m o, r)
-connectResumeConduit (ResumableConduit left0 leftFinal0) (ConduitT right0) = ConduitT $ \rest -> let
-    goRight leftFinal left right =
+connectResumeConduit (ResumableConduit left0) (ConduitT right0) = ConduitT $ \rest -> let
+    goRight left right =
         case right of
-            HaveOutput _ _ o -> absurd o
-            NeedInput rp rc -> goLeft rp rc leftFinal left
-            Done r2 -> rest (ResumableConduit left leftFinal, r2)
-            PipeM mp -> PipeM (liftM (goRight leftFinal left) mp)
-            Leftover p i -> goRight leftFinal (HaveOutput left leftFinal i) p
+            HaveOutput _ o -> absurd o
+            NeedInput rp rc -> goLeft rp rc left
+            Done r2 -> rest (ResumableConduit left, r2)
+            PipeM mp -> PipeM (liftM (goRight left) mp)
+            Leftover p i -> goRight (HaveOutput left i) p
 
-    goLeft rp rc leftFinal left =
+    goLeft rp rc left =
         case left of
-            HaveOutput left' leftFinal' o -> goRight leftFinal' left' (rp o)
+            HaveOutput left' o -> goRight left' (rp o)
             NeedInput left' lc -> NeedInput (recurse . left') (recurse . lc)
-            Done () -> goRight (return ()) (Done ()) (rc ())
+            Done () -> goRight (Done ()) (rc ())
             PipeM mp -> PipeM (liftM recurse mp)
             Leftover left' i -> Leftover (recurse left') i -- recurse p
       where
-        recurse = goLeft rp rc leftFinal
-    in goRight leftFinal0 left0 (right0 Done)
+        recurse = goLeft rp rc
+    in goRight left0 (right0 Done)
 
--- | Unwraps a @ResumableConduit@ into a @Conduit@ and a finalizer.
+-- | Unwraps a @ResumableConduit@ into a @ConduitT@.
 --
 -- Since 'unwrapResumable' for more information.
 --
 -- Since 1.0.17
-unwrapResumableConduit :: MonadIO m => ResumableConduit i m o -> m (Conduit i m o, m ())
-unwrapResumableConduit (ResumableConduit src final) = do
-    ref <- liftIO $ I.newIORef True
-    let final' = do
-            x <- liftIO $ I.readIORef ref
-            when x final
-    return (ConduitT ((liftIO (I.writeIORef ref False) >> src) >>=), final')
+unwrapResumableConduit :: Monad m => ResumableConduit i m o -> ConduitT i o m ()
+unwrapResumableConduit (ResumableConduit src) = ConduitT (src >>=)
 
 -- | Turn a @Conduit@ into a @ResumableConduit@ with no attached finalizer.
 --
 -- Since 1.1.4
 newResumableConduit :: Monad m => Conduit i m o -> ResumableConduit i m o
-newResumableConduit (ConduitT c) = ResumableConduit (c Done) (return ())
+newResumableConduit (ConduitT c) = ResumableConduit (c Done)
 
 
 -- | Merge a @Source@ into a @Conduit@.
@@ -712,7 +693,7 @@ passthroughSink (ConduitT sink0) final = ConduitT $ \rest -> let
         lift $ final r
         unConduitT (awaitForever yield) rest
     go mbuf is (Leftover sink i) = go mbuf (i:is) sink
-    go _ _ (HaveOutput _ _ o) = absurd o
+    go _ _ (HaveOutput _ o) = absurd o
     go mbuf is (PipeM mx) = do
         x <- lift mx
         go mbuf is x
@@ -741,7 +722,7 @@ sourceToList =
     go . flip unConduitT Done
   where
     go (Done _) = return []
-    go (HaveOutput src _ x) = liftM (x:) (go src)
+    go (HaveOutput src x) = liftM (x:) (go src)
     go (PipeM msrc) = msrc >>= go
     go (NeedInput _ c) = go (c ())
     go (Leftover p _) = go p
@@ -827,26 +808,26 @@ src $$ sink = do
 -- Since 0.4.0
 (=$=) :: Monad m => Conduit a m b -> ConduitT b c m r -> ConduitT a c m r
 ConduitT left0 =$= ConduitT right0 = ConduitT $ \rest ->
-    let goRight final left right =
+    let goRight left right =
             case right of
-                HaveOutput p c o  -> HaveOutput (recurse p) (c >> final) o
-                NeedInput rp rc   -> goLeft rp rc final left
-                Done r2           -> PipeM (final >> return (rest r2))
+                HaveOutput p o    -> HaveOutput (recurse p) o
+                NeedInput rp rc   -> goLeft rp rc left
+                Done r2           -> rest r2
                 PipeM mp          -> PipeM (liftM recurse mp)
-                Leftover right' i -> goRight final (HaveOutput left final i) right'
+                Leftover right' i -> goRight (HaveOutput left i) right'
           where
-            recurse = goRight final left
+            recurse = goRight left
 
-        goLeft rp rc final left =
+        goLeft rp rc left =
             case left of
-                HaveOutput left' final' o -> goRight final' left' (rp o)
+                HaveOutput left' o        -> goRight left' (rp o)
                 NeedInput left' lc        -> NeedInput (recurse . left') (recurse . lc)
-                Done r1                   -> goRight (return ()) (Done r1) (rc r1)
+                Done r1                   -> goRight (Done r1) (rc r1)
                 PipeM mp                  -> PipeM (liftM recurse mp)
                 Leftover left' i          -> Leftover (recurse left') i
           where
-            recurse = goLeft rp rc final
-     in goRight (return ()) (left0 Done) (right0 Done)
+            recurse = goLeft rp rc
+     in goRight (left0 Done) (right0 Done)
   where
 {-# INLINE [1] (=$=) #-}
 {-# DEPRECATED (=$=) "Use .|" #-}
@@ -871,14 +852,13 @@ await' f g = ConduitT $ \rest -> NeedInput
 {-# RULES "conduit: await >>= maybe" forall x y. await >>= maybe x y = await' x y #-}
 
 -- | Send a value downstream to the next component to consume. If the
--- downstream component terminates, this call will never return control. If you
--- would like to register a cleanup function, please use 'yieldOr' instead.
+-- downstream component terminates, this call will never return control.
 --
 -- Since 0.5.0
 yield :: Monad m
       => o -- ^ output value
       -> ConduitT i o m ()
-yield o = yieldOr o (return ())
+yield o = ConduitT $ \rest -> HaveOutput (rest ()) o
 {-# INLINE yield #-}
 
 -- | Send a monadic value downstream for the next component to consume.
@@ -927,47 +907,11 @@ bracketP :: MonadResource m
             -- ^ computation to run in-between
          -> ConduitT i o m r
             -- returns the value from the in-between computation
-bracketP alloc free inside = ConduitT $ \rest -> PipeM $ do
-    (key, seed) <- allocate alloc free
-    return $ unConduitT (addCleanup (const $ release key) (inside seed)) rest
-
--- | Add some code to be run when the given component cleans up.
---
--- The supplied cleanup function will be given a @True@ if the component ran to
--- completion, or @False@ if it terminated early due to a downstream component
--- terminating.
---
--- Note that this function is not exception safe. For that, please use
--- 'bracketP'.
---
--- Since 0.4.1
-addCleanup :: Monad m
-           => (Bool -> m ())
-           -> ConduitT i o m r
-           -> ConduitT i o m r
-addCleanup cleanup (ConduitT c0) = ConduitT $ \rest -> let
-    go (Done r) = PipeM (cleanup True >> return (rest r))
-    go (HaveOutput src close x) = HaveOutput
-        (go src)
-        (cleanup False >> close)
-        x
-    go (PipeM msrc) = PipeM (liftM (go) msrc)
-    go (NeedInput p c) = NeedInput
-        (go . p)
-        (go . c)
-    go (Leftover p i) = Leftover (go p) i
-    in go (c0 Done)
-
--- | Similar to 'yield', but additionally takes a finalizer to be run if the
--- downstream component terminates.
---
--- Since 0.5.0
-yieldOr :: Monad m
-        => o
-        -> m () -- ^ finalizer
-        -> ConduitT i o m ()
-yieldOr o m = ConduitT $ \rest -> HaveOutput (rest ()) m o
-{-# INLINE yieldOr #-}
+bracketP alloc free inside = ConduitT $ \rest -> do
+  (key, seed) <- allocate alloc free
+  unConduitT (inside seed) $ \res -> do
+    release key
+    rest res
 
 -- | Wait for input forever, calling the given inner component for each piece of
 -- new input.
@@ -992,7 +936,7 @@ awaitForever f = ConduitT $ \rest ->
 -- Since 0.4.0
 transPipe :: Monad m => (forall a. m a -> n a) -> ConduitT i o m r -> ConduitT i o n r
 transPipe f (ConduitT c0) = ConduitT $ \rest -> let
-        go (HaveOutput p c o) = HaveOutput (go p) (f c) o
+        go (HaveOutput p o) = HaveOutput (go p) o
         go (NeedInput p c) = NeedInput (go . p) (go . c)
         go (Done r) = rest r
         go (PipeM mp) =
@@ -1021,7 +965,7 @@ transPipe f (ConduitT c0) = ConduitT $ \rest -> let
 -- Since 0.4.1
 mapOutput :: Monad m => (o1 -> o2) -> ConduitT i o1 m r -> ConduitT i o2 m r
 mapOutput f (ConduitT c0) = ConduitT $ \rest -> let
-    go (HaveOutput p c o) = HaveOutput (go p) c (f o)
+    go (HaveOutput p o) = HaveOutput (go p) (f o)
     go (NeedInput p c) = NeedInput (go . p) (go . c)
     go (Done r) = rest r
     go (PipeM mp) = PipeM (liftM (go) mp)
@@ -1033,7 +977,7 @@ mapOutput f (ConduitT c0) = ConduitT $ \rest -> let
 -- Since 0.5.0
 mapOutputMaybe :: Monad m => (o1 -> Maybe o2) -> ConduitT i o1 m r -> ConduitT i o2 m r
 mapOutputMaybe f (ConduitT c0) = ConduitT $ \rest -> let
-    go (HaveOutput p c o) = maybe id (\o' p' -> HaveOutput p' c o') (f o) (go p)
+    go (HaveOutput p o) = maybe id (\o' p' -> HaveOutput p' o') (f o) (go p)
     go (NeedInput p c) = NeedInput (go . p) (go . c)
     go (Done r) = rest r
     go (PipeM mp) = PipeM (liftM (go) mp)
@@ -1049,7 +993,7 @@ mapInput :: Monad m
          -> ConduitT i2 o m r
          -> ConduitT i1 o m r
 mapInput f f' (ConduitT c0) = ConduitT $ \rest -> let
-    go (HaveOutput p c o) = HaveOutput (go p) c o
+    go (HaveOutput p o) = HaveOutput (go p) o
     go (NeedInput p c) = NeedInput (go . p . f) (go . c)
     go (Done r) = rest r
     go (PipeM mp) = PipeM $ liftM go mp
@@ -1065,8 +1009,7 @@ mapInput f f' (ConduitT c0) = ConduitT $ \rest -> let
 --
 -- Since 0.5.0
 ($$+) :: Monad m => Source m a -> Sink a m b -> m (ResumableSource m a, b)
-ConduitT src $$+ sink =
-    connectResume (ResumableSource (src Done) (return ())) sink
+ConduitT src $$+ sink = connectResume (ResumableSource (src Done)) sink
 {-# INLINE ($$+) #-}
 
 -- | Continue processing after usage of @$$+@.
@@ -1083,8 +1026,7 @@ ConduitT src $$+ sink =
 -- Since 0.5.0
 ($$+-) :: Monad m => ResumableSource m a -> Sink a m b -> m b
 rsrc $$+- sink = do
-    (ResumableSource _ final, res) <- connectResume rsrc sink
-    final
+    (ResumableSource _, res) <- connectResume rsrc sink
     return res
 {-# INLINE ($$+-) #-}
 
@@ -1092,8 +1034,7 @@ rsrc $$+- sink = do
 --
 -- Since 1.0.16
 ($=+) :: Monad m => ResumableSource m a -> Conduit a m b -> ResumableSource m b
-ResumableSource src final $=+ ConduitT sink =
-    ResumableSource (src `pipeL` sink Done) final
+ResumableSource src $=+ ConduitT sink = ResumableSource (src `pipeL` sink Done)
 
 -- | Execute the finalizer associated with a @ResumableSource@, rendering the
 -- @ResumableSource@ invalid for further use.
@@ -1193,7 +1134,7 @@ sequenceSinks = getZipSink . sequenceA . fmap ZipSink
 --
 -- Since 1.0.17
 (=$$+) :: Monad m => Conduit a m b -> Sink b m r -> Sink a m (ResumableConduit a m b, r)
-(=$$+) (ConduitT conduit) = connectResumeConduit (ResumableConduit (conduit Done) (return ()))
+(=$$+) (ConduitT conduit) = connectResumeConduit (ResumableConduit (conduit Done))
 {-# INLINE (=$$+) #-}
 
 -- | Continue processing after usage of '=$$+'. Connect a 'ResumableConduit' to
@@ -1213,8 +1154,7 @@ sequenceSinks = getZipSink . sequenceA . fmap ZipSink
 -- Since 1.0.17
 (=$$+-) :: Monad m => ResumableConduit i m o -> Sink o m r -> Sink i m r
 rsrc =$$+- sink = do
-    (ResumableConduit _ final, res) <- connectResumeConduit rsrc sink
-    lift final
+    (ResumableConduit _, res) <- connectResumeConduit rsrc sink
     return res
 {-# INLINE (=$$+-) #-}
 
@@ -1291,7 +1231,7 @@ fuseBothMaybe (ConduitT up) (ConduitT down) =
   where
     go mup (Done r) = Done (mup, r)
     go mup (PipeM mp) = PipeM $ liftM (go mup) mp
-    go mup (HaveOutput p c o) = HaveOutput (go mup p) c o
+    go mup (HaveOutput p o) = HaveOutput (go mup p) o
     go _ (NeedInput p c) = NeedInput
         (\i -> go Nothing (p i))
         (\u -> go (Just u) (c ()))
@@ -1319,13 +1259,11 @@ fuseUpstream up down = fmap fst (fuseBoth up down)
 {-# RULES "conduit: ConduitT: liftBase x >> f" forall m (f :: MonadBase b m => ConduitT i o m r). liftBase m >> f = ConduitT (PipeM (liftM (\_ -> unConduitT f) (liftBase m))) #-}
 
 {-# RULES
-    "yield o >> p" forall o (p :: ConduitT i o m r). yield o >> p = ConduitT (HaveOutput (unConduitT p) (return ()) o)
-  ; "yieldOr o c >> p" forall o c (p :: ConduitT i o m r). yieldOr o c >> p =
-        ConduitT (HaveOutput (unConduitT p) c o)
+    "yield o >> p" forall o (p :: ConduitT i o m r). yield o >> p = ConduitT (HaveOutput (unConduitT p) o)
   ; "when yield next" forall b o p. when b (yield o) >> p =
-        if b then ConduitT (HaveOutput (unConduitT p) (return ()) o) else p
+        if b then ConduitT (HaveOutput (unConduitT p) o) else p
   ; "unless yield next" forall b o p. unless b (yield o) >> p =
-        if b then p else ConduitT (HaveOutput (unConduitT p) (return ()) o)
+        if b then p else ConduitT (HaveOutput (unConduitT p) o)
   ; "lift m >>= yield" forall m. lift m >>= yield = yieldM m
    #-}
 {-# RULES "conduit: leftover l >> p" forall l (p :: ConduitT i o m r). leftover l >> p =

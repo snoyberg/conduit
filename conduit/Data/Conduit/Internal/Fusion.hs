@@ -128,7 +128,7 @@ connectStream1 (ConduitWithStream _ fstream) (ConduitT sink0) =
             let loop _ (Done r) _ = return r
                 loop ls (PipeM mp) s = mp >>= flip (loop ls) s
                 loop ls (Leftover p l) s = loop (l:ls) p s
-                loop _ (HaveOutput _ _ o) _ = absurd o
+                loop _ (HaveOutput _ o) _ = absurd o
                 loop (l:ls) (NeedInput p _) s = loop ls (p l) s
                 loop [] (NeedInput p c) s = do
                     res <- step s
@@ -197,7 +197,7 @@ streamSource str@(Stream step ms0) =
                 res <- step s
                 case res of
                     Stop () -> return $ rest ()
-                    Emit s' o -> return $ HaveOutput (PipeM $ loop s') (return ()) o
+                    Emit s' o -> return $ HaveOutput (PipeM $ loop s') o
                     Skip s' -> loop s'
         loop s0
 {-# INLINE streamSource #-}
@@ -214,7 +214,7 @@ streamSourcePure (Stream step ms0) =
         let loop s =
                 case runIdentity $ step s of
                     Stop () -> rest ()
-                    Emit s' o -> HaveOutput (loop s') (return ()) o
+                    Emit s' o -> HaveOutput (loop s') o
                     Skip s' -> loop s'
          in loop s0
 {-# INLINE streamSourcePure #-}

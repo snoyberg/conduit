@@ -39,8 +39,6 @@ module Data.Conduit
 
       -- ** Finalization
     , bracketP
-    , addCleanup
-    , yieldOr
 
       -- ** Exception handling
     , catchC

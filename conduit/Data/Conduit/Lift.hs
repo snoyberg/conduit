@@ -106,7 +106,7 @@ runExceptC (ConduitT c0) =
                     Left e -> rest $ Left e
                     Right p -> go p
             go (Leftover p i) = Leftover (go p) i
-            go (HaveOutput p f o) = HaveOutput (go p) (Ex.runExceptT f >> return ()) o
+            go (HaveOutput p o) = HaveOutput (go p) o
             go (NeedInput x y) = NeedInput (go . x) (go . y)
          in go (c0 Done)
 {-# INLINABLE runExceptC #-}
@@ -128,7 +128,7 @@ catchExceptC c0 h =
                     Left e -> unConduitT (h e) rest
                     Right p -> go p
             go (Leftover p i) = Leftover (go p) i
-            go (HaveOutput p f o) = HaveOutput (go p) f o
+            go (HaveOutput p o) = HaveOutput (go p) o
             go (NeedInput x y) = NeedInput (go . x) (go . y)
          in go $ unConduitT c0 Done
   where
@@ -149,7 +149,7 @@ runCatchC c0 =
                     Left e -> rest $ Left e
                     Right p -> go p
             go (Leftover p i) = Leftover (go p) i
-            go (HaveOutput p f o) = HaveOutput (go p) (runCatchT f >> return ()) o
+            go (HaveOutput p o) = HaveOutput (go p) o
             go (NeedInput x y) = NeedInput (go . x) (go . y)
          in go $ unConduitT c0 Done
 {-# INLINABLE runCatchC #-}
@@ -180,7 +180,7 @@ runMaybeC (ConduitT c0) =
                     Nothing -> rest Nothing
                     Just p -> go p
             go (Leftover p i) = Leftover (go p) i
-            go (HaveOutput p c o) = HaveOutput (go p) (M.runMaybeT c >> return ()) o
+            go (HaveOutput p o) = HaveOutput (go p) o
             go (NeedInput x y) = NeedInput (go . x) (go . y)
          in go (c0 Done)
 {-# INLINABLE runMaybeC #-}
@@ -233,7 +233,7 @@ thread toRes runM s0 (ConduitT c0) =
                 return $ go s' p
             go s (Leftover p i) = Leftover (go s p) i
             go s (NeedInput x y) = NeedInput (go s . x) (go s . y)
-            go s (HaveOutput p f o) = HaveOutput (go s p) (runM f s >> return ()) o
+            go s (HaveOutput p o) = HaveOutput (go s p) o
          in go s0 (c0 Done)
 {-# INLINABLE thread #-}
 
