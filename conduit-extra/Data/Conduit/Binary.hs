@@ -652,7 +652,7 @@ withSinkFileBuilder
   -> m a
 withSinkFileBuilder fp inner =
   withRunInIO $ \run ->
-  IO.withBinaryFile fp IO.ReadMode $ \h ->
+  IO.withBinaryFile fp IO.WriteMode $ \h ->
   run $ inner $ CL.mapM_ (liftIO . BB.hPutBuilder h)
 
 -- | Like 'sinkFileCautious', but uses the @with@ pattern instead of
