@@ -37,6 +37,7 @@ Library
                      , resourcet                >= 1.1          && < 1.2
                      , exceptions               >= 0.6
                      , lifted-base              >= 0.1
+                     , semigroups               >= 0.18
                      , transformers-base        >= 0.4.1        && < 0.5
                      , transformers             >= 0.2.2
                      , transformers-compat      >= 0.3
@@ -60,6 +61,7 @@ test-suite test
                    , base
                    , hspec >= 1.3
                    , QuickCheck >= 2.7
+                   , semigroups >= 0.18
                    , transformers
                    , mtl
                    , resourcet

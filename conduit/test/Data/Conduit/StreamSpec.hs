@@ -19,6 +19,7 @@ import           Data.Function (on)
 import qualified Data.List
 import qualified Data.Maybe
 import           Data.Monoid (Monoid(..))
+import           Data.Semigroup (Semigroup(..))
 import           Prelude
     ((.), ($), (>>=), (=<<), return, (==), Int, id, Maybe(..), Monad,
      Eq, Show, String, Functor, fst, snd)
@@ -502,9 +503,14 @@ evalStream (Stream step s0) = go =<< s0
 newtype Sum a = Sum a
   deriving (Eq, Show, Arbitrary)
 
+instance Prelude.Num a => Semigroup (Sum a) where
+  Sum x <> Sum y = Sum $ x Prelude.+ y
+
 instance Prelude.Num a => Monoid (Sum a) where
   mempty = Sum 0
-  mappend (Sum x) (Sum y) = Sum $ x Prelude.+ y
+#if !(MIN_VERSION_base(4,11,0))
+  mappend = (<>)
+#endif
 
 preventFusion :: a -> a
 preventFusion = id
