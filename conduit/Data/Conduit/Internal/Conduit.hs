@@ -102,6 +102,7 @@ import Control.Monad.IO.Unlift (MonadIO (liftIO), MonadUnliftIO, withRunInIO)
 import Control.Monad.Primitive (PrimMonad, PrimState, primitive)
 import Data.Void (Void, absurd)
 import Data.Monoid (Monoid (mappend, mempty))
+import Data.Semigroup (Semigroup ((<>)))
 import Control.Monad.Trans.Resource
 import qualified Data.IORef as I
 import Data.Conduit.Internal.Pipe hiding (yield, mapOutput, leftover, yieldM, yieldOr, await, awaitForever, addCleanup, bracketP)
@@ -217,11 +218,17 @@ instance MonadResource m => MonadResource (ConduitT i o m) where
     liftResourceT = lift . liftResourceT
     {-# INLINE liftResourceT #-}
 
+instance Monad m => Semigroup (ConduitT i o m ()) where
+    (<>) = (>>)
+    {-# INLINE (<>) #-}
+
 instance Monad m => Monoid (ConduitT i o m ()) where
     mempty = return ()
     {-# INLINE mempty #-}
-    mappend = (>>)
+#if !(MIN_VERSION_base(4,11,0))
+    mappend = (<>)
     {-# INLINE mappend #-}
+#endif
 
 instance PrimMonad m => PrimMonad (ConduitT i o m) where
   type PrimState (ConduitT i o m) = PrimState m

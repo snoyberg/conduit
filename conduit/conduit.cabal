@@ -42,6 +42,8 @@ Library
                      , exceptions
   if !impl(ghc>=7.9)
     build-depends:   void                     >= 0.5.5
+  if !impl(ghc>=7.11)
+    build-depends:   semigroups               >= 0.16
   ghc-options:         -Wall
   include-dirs:        .
 
@@ -65,6 +67,8 @@ test-suite test
                    , split >= 0.2.0.0
     if !impl(ghc>=7.9)
         build-depends: void
+    if !impl(ghc>=7.11)
+      build-depends:   semigroups               >= 0.16
     ghc-options:     -Wall
 
 --test-suite doctests
