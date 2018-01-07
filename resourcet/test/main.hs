@@ -4,9 +4,9 @@
 import           Control.Concurrent
 import           Control.Concurrent.Lifted    (fork)
 import           Control.Exception            (Exception, MaskingState (MaskedInterruptible),
-                                               getMaskingState, throwIO, try)
+                                               getMaskingState, throwIO, try, fromException)
 import           Control.Exception            (SomeException, handle)
-import           Control.Monad                (unless)
+import           Control.Monad                (unless, void)
 import           Control.Monad.IO.Class       (liftIO)
 import           Control.Monad.Trans.Resource
 import           Data.IORef
@@ -125,7 +125,34 @@ main = hspec $ do
                 let acq = mkAcquireType (return ()) $ \() -> writeIORef ref . Just
                 Left Dummy <- try $ withEx acq $ const $ throwIO Dummy
                 readIORef ref >>= (`shouldBe` Just ReleaseException)
+    describe "runResourceTChecked" $ do
+        it "catches exceptions" $ do
+            eres <- try $ runResourceTChecked $ void $ register $ throwIO Dummy
+            case eres of
+              Right () -> error "Expected an exception"
+              Left (ResourceCleanupException ex []) ->
+                case fromException ex of
+                  Just Dummy -> return ()
+                  Nothing -> error "It wasn't Dummy"
+              Left (ResourceCleanupException _ (_:_)) -> error "Got more than one"
+        it "no exception is fine" $ (runResourceTChecked $ void $ register $ return () :: IO ())
+        it "catches multiple exceptions" $ do
+            eres <- try $ runResourceTChecked $ do
+              void $ register $ throwIO Dummy
+              void $ register $ throwIO Dummy2
+            case eres of
+              Right () -> error "Expected an exception"
+              Left (ResourceCleanupException ex1 [ex2]) ->
+                case (fromException ex1, fromException ex2) of
+                  (Just Dummy, Just Dummy2) -> return ()
+                  _ -> error $ "It wasn't Dummy, Dummy2: " ++ show (ex1, ex2)
+              Left (ResourceCleanupException _ []) -> error "Only got 1"
+              Left (ResourceCleanupException _ (_:_:_)) -> error "Got more than 2"
 
 data Dummy = Dummy
     deriving (Show, Typeable)
 instance Exception Dummy
+
+data Dummy2 = Dummy2
+    deriving (Show, Typeable)
+instance Exception Dummy2

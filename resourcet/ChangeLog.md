@@ -1,3 +1,7 @@
+## 1.1.11
+
+* `runResourceTChecked`
+
 ## 1.1.10
 
 * Added `MonadUnliftIO` instances and `UnliftIO.Resource`

@@ -24,6 +24,9 @@ module Control.Monad.Trans.Resource
     , ReleaseKey
       -- * Unwrap
     , runResourceT
+      -- ** Check cleanup exceptions
+    , runResourceTChecked
+    , ResourceCleanupException (..)
       -- * Special actions
     , resourceForkWith
     , resourceForkIO
@@ -68,7 +71,7 @@ import Control.Monad.Trans.Control
 import qualified Data.IORef as I
 import Control.Monad.Base (MonadBase, liftBase)
 import Control.Applicative (Applicative (..))
-import Control.Monad.IO.Class (MonadIO (..))
+import Control.Monad.IO.Unlift (MonadIO (..), MonadUnliftIO, withRunInIO)
 import Control.Monad (liftM)
 import qualified Control.Exception as E
 import Data.Monoid (Monoid)
@@ -188,6 +191,20 @@ runResourceT (ResourceT r) = control $ \run -> do
         res <- restore (run (r istate)) `E.onException`
             stateCleanup ReleaseException istate
         stateCleanup ReleaseNormal istate
+        return res
+
+-- | Like 'runResourceT', but checks whether the cleanup functions
+-- throw any exceptions. If they do, they are rethrown inside a
+-- 'ResourceCleanupException'.
+--
+-- @since 1.1.11
+runResourceTChecked :: MonadUnliftIO m => ResourceT m a -> m a
+runResourceTChecked (ResourceT r) = withRunInIO $ \run -> do
+    istate <- createInternalState
+    E.mask $ \restore -> do
+        res <- restore (run (r istate)) `E.onException`
+            stateCleanupChecked ReleaseException istate
+        stateCleanupChecked ReleaseNormal istate
         return res
 
 bracket_ :: MonadBaseControl IO m
