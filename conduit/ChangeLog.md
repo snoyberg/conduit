@@ -1,3 +1,7 @@
+## 1.2.13
+
+* Add `Semigroup` instances [#345](https://github.com/snoyberg/conduit/pull/345)
+
 ## 1.2.12.1
 
 * Fix `pass` in `ConduitM` `MonadWriter` instance
