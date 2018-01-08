@@ -130,11 +130,12 @@ main = hspec $ do
             eres <- try $ runResourceTChecked $ void $ register $ throwIO Dummy
             case eres of
               Right () -> error "Expected an exception"
-              Left (ResourceCleanupException ex []) ->
+              Left (ResourceCleanupException Nothing ex []) ->
                 case fromException ex of
                   Just Dummy -> return ()
                   Nothing -> error "It wasn't Dummy"
-              Left (ResourceCleanupException _ (_:_)) -> error "Got more than one"
+              Left (ResourceCleanupException (Just _) _ []) -> error "Got a ResourceT exception"
+              Left (ResourceCleanupException _ _ (_:_)) -> error "Got more than one"
         it "no exception is fine" $ (runResourceTChecked $ void $ register $ return () :: IO ())
         it "catches multiple exceptions" $ do
             eres <- try $ runResourceTChecked $ do
@@ -142,12 +143,13 @@ main = hspec $ do
               void $ register $ throwIO Dummy2
             case eres of
               Right () -> error "Expected an exception"
-              Left (ResourceCleanupException ex1 [ex2]) ->
+              Left (ResourceCleanupException Nothing ex1 [ex2]) ->
                 case (fromException ex1, fromException ex2) of
                   (Just Dummy, Just Dummy2) -> return ()
                   _ -> error $ "It wasn't Dummy, Dummy2: " ++ show (ex1, ex2)
-              Left (ResourceCleanupException _ []) -> error "Only got 1"
-              Left (ResourceCleanupException _ (_:_:_)) -> error "Got more than 2"
+              Left (ResourceCleanupException (Just _) _ [_]) -> error "Got a ResourceT exception"
+              Left (ResourceCleanupException _ _ []) -> error "Only got 1"
+              Left (ResourceCleanupException _ _ (_:_:_)) -> error "Got more than 2"
 
 data Dummy = Dummy
     deriving (Show, Typeable)

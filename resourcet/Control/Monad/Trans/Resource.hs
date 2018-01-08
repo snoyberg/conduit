@@ -202,9 +202,10 @@ runResourceTChecked :: MonadUnliftIO m => ResourceT m a -> m a
 runResourceTChecked (ResourceT r) = withRunInIO $ \run -> do
     istate <- createInternalState
     E.mask $ \restore -> do
-        res <- restore (run (r istate)) `E.onException`
-            stateCleanupChecked ReleaseException istate
-        stateCleanupChecked ReleaseNormal istate
+        res <- restore (run (r istate)) `E.catch` \e -> do
+            stateCleanupChecked (Just e) istate
+            E.throwIO e
+        stateCleanupChecked Nothing istate
         return res
 
 bracket_ :: MonadBaseControl IO m

@@ -373,12 +373,34 @@ registerType istate rel = I.atomicModifyIORef istate $ \rm ->
 -- exception during cleanup.
 --
 -- @since 1.1.11
-data ResourceCleanupException = ResourceCleanupException !SomeException ![SomeException]
+data ResourceCleanupException = ResourceCleanupException
+  { rceOriginalException :: !(Maybe SomeException)
+  -- ^ If the 'ResourceT' block exited due to an exception, this is
+  -- that exception.
+  --
+  -- @since 1.1.11
+  , rceFirstCleanupException :: !SomeException
+  -- ^ The first cleanup exception. We keep this separate from
+  -- 'rceOtherCleanupExceptions' to prove that there's at least one
+  -- (i.e., a non-empty list).
+  --
+  -- @since 1.1.11
+  , rceOtherCleanupExceptions :: ![SomeException]
+  -- ^ All other exceptions in cleanups.
+  --
+  -- @since 1.1.11
+  }
   deriving (Show, Typeable)
 instance Exception ResourceCleanupException
 
-stateCleanupChecked :: ReleaseType -> I.IORef ReleaseMap -> IO ()
-stateCleanupChecked rtype istate = E.mask_ $ do
+-- | Clean up a release map, but throw a 'ResourceCleanupException' if
+-- anything goes wrong in the cleanup handlers.
+--
+-- @since 1.1.11
+stateCleanupChecked
+  :: Maybe SomeException -- ^ exception that killed the 'ResourceT', if present
+  -> I.IORef ReleaseMap -> IO ()
+stateCleanupChecked morig istate = E.mask_ $ do
     mm <- I.atomicModifyIORef istate $ \rm ->
         case rm of
             ReleaseMap nk rf m ->
@@ -392,11 +414,13 @@ stateCleanupChecked rtype istate = E.mask_ $ do
             res <- mapMaybeReverseM (\x -> try (x rtype)) $ IntMap.elems m
             case res of
                 [] -> return () -- nothing went wrong
-                e:es -> E.throwIO $ ResourceCleanupException e es
+                e:es -> E.throwIO $ ResourceCleanupException morig e es
         Nothing -> return ()
   where
     try :: IO () -> IO (Maybe SomeException)
     try io = fmap (either Just (\() -> Nothing)) (E.try io)
+
+    rtype = maybe ReleaseNormal (const ReleaseException) morig
 
 -- Note that this returns values in reverse order, which is what we
 -- want in the specific case of this function.
