@@ -57,7 +57,7 @@ lazyConsume (ConduitT f0) =
     withUnliftIO $ \u ->
       let go :: Pipe () () a () m () -> IO [a]
           go (Done _) = return []
-          go (HaveOutput src _ x) = do
+          go (HaveOutput src x) = do
               xs <- unsafeInterleaveIO $ go src
               return $ x : xs
           go (PipeM msrc) = unsafeInterleaveIO $ do

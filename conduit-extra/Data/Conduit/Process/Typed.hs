@@ -17,11 +17,9 @@ module Data.Conduit.Process.Typed
 import System.Process.Typed hiding (withProcess, withProcess_)
 import qualified System.Process.Typed as P
 import Data.Conduit (ConduitM, (.|), runConduit)
-import qualified Data.Conduit as C
 import qualified Data.Conduit.Binary as CB
 import Control.Monad.IO.Unlift
 import qualified Data.ByteString as S
-import System.IO (hClose)
 import qualified Data.Conduit.List as CL
 import qualified Data.ByteString.Lazy as BL
 import Data.IORef (IORef, newIORef, readIORef, modifyIORef)
@@ -32,17 +30,13 @@ import Control.Concurrent.Async (concurrently)
 --
 -- @since 1.2.1
 createSink :: MonadIO m => StreamSpec 'STInput (ConduitM S.ByteString o m ())
-createSink =
-    (\h -> C.addCleanup (\_ -> liftIO $ hClose h) (CB.sinkHandle h))
-    `fmap` createPipe
+createSink = CB.sinkHandle `fmap` createPipe
 
 -- | Read output from a process by read from a conduit.
 --
 -- @since 1.2.1
 createSource :: MonadIO m => StreamSpec 'STOutput (ConduitM i S.ByteString m ())
-createSource =
-    (\h -> C.addCleanup (\_ -> liftIO $ hClose h) (CB.sourceHandle h))
-    `fmap` createPipe
+createSource = CB.sourceHandle `fmap` createPipe
 
 -- | Internal function: like 'createSource', but stick all chunks into
 -- the 'IORef'.
