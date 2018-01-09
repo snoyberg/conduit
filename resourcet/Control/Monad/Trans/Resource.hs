@@ -183,6 +183,11 @@ release' istate key act = E.mask_ $ do
 -- If multiple threads are sharing the same collection of resources, only the
 -- last call to @runResourceT@ will deallocate the resources.
 --
+-- /NOTE/ Since version 1.1.11, this module has also provided
+-- `runResourceTChecked`, which is a safer version of this
+-- function. In the next major release of this library, it will become
+-- the behavior of this function.
+--
 -- Since 0.3.0
 runResourceT :: MonadBaseControl IO m => ResourceT m a -> m a
 runResourceT (ResourceT r) = control $ \run -> do
