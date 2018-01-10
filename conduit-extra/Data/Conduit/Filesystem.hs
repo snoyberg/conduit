@@ -1,14 +1,16 @@
 {-# LANGUAGE RankNTypes #-}
+-- | /NOTE/ It is recommended to start using "Data.Conduit.Combinators" instead
+-- of this module.
 module Data.Conduit.Filesystem
     ( sourceDirectory
     , sourceDirectoryDeep
     ) where
 
 import Data.Conduit
+import qualified Data.Conduit.Combinators as CC
 import Control.Monad.Trans.Resource (MonadResource)
 import Control.Monad.IO.Class (liftIO)
 import System.FilePath ((</>))
-import qualified Data.Streaming.Filesystem as F
 
 -- | Stream the contents of the given directory, without traversing deeply.
 --
@@ -22,19 +24,7 @@ import qualified Data.Streaming.Filesystem as F
 --
 -- Since 1.1.0
 sourceDirectory :: MonadResource m => FilePath -> ConduitT i FilePath m ()
-sourceDirectory dir =
-    bracketP (F.openDirStream dir) F.closeDirStream go
-  where
-    go ds =
-        loop
-      where
-        loop = do
-            mfp <- liftIO $ F.readDirStream ds
-            case mfp of
-                Nothing -> return ()
-                Just fp -> do
-                    yield $ dir </> fp
-                    loop
+sourceDirectory = CC.sourceDirectory
 
 -- | Deeply stream the contents of the given directory.
 --
@@ -47,20 +37,4 @@ sourceDirectoryDeep :: MonadResource m
                     => Bool -- ^ Follow directory symlinks
                     -> FilePath -- ^ Root directory
                     -> ConduitT i FilePath m ()
-sourceDirectoryDeep followSymlinks =
-    start
-  where
-    start :: MonadResource m => FilePath -> ConduitT i FilePath m ()
-    start dir = sourceDirectory dir .| awaitForever go
-
-    go :: MonadResource m => FilePath -> ConduitT i FilePath m ()
-    go fp = do
-        ft <- liftIO $ F.getFileType fp
-        case ft of
-            F.FTFile -> yield fp
-            F.FTFileSym -> yield fp
-            F.FTDirectory -> start fp
-            F.FTDirectorySym
-                | followSymlinks -> start fp
-                | otherwise -> return ()
-            F.FTOther -> return ()
+sourceDirectoryDeep = CC.sourceDirectoryDeep

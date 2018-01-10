@@ -1,5 +1,7 @@
 {-# LANGUAGE DeriveDataTypeable, RankNTypes #-}
--- |
+-- | /NOTE/ It is recommended to start using "Data.Conduit.Combinators" instead
+-- of this module.
+--
 -- Copyright: 2011 Michael Snoyman, 2010-2011 John Millikin
 -- License: MIT
 --

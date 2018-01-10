@@ -2,7 +2,10 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE Trustworthy #-}
--- | Higher-level functions to interact with the elements of a stream. Most of
+-- | /NOTE/ It is recommended to start using "Data.Conduit.Combinators" instead
+-- of this module.
+--
+-- Higher-level functions to interact with the elements of a stream. Most of
 -- these are based on list functions.
 --
 -- For many purposes, it's recommended to use the conduit-combinators library,

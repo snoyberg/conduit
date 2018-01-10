@@ -1,7 +1,10 @@
 {-# LANGUAGE CPP, RankNTypes #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE ScopedTypeVariables #-}
--- | Functions for interacting with bytes.
+-- | /NOTE/ It is recommended to start using "Data.Conduit.Combinators" instead
+-- of this module.
+--
+-- Functions for interacting with bytes.
 --
 -- For many purposes, it's recommended to use the conduit-combinators library,
 -- which provides a more complete set of functions.
@@ -13,26 +16,26 @@ module Data.Conduit.Binary
       -- order to run such code, you will need to use @runResourceT@.
 
       -- ** Sources
-      sourceFile
-    , sourceHandle
-    , sourceHandleUnsafe
-    , sourceIOHandle
+      CC.sourceFile
+    , CC.sourceHandle
+    , CC.sourceHandleUnsafe
+    , CC.sourceIOHandle
     , sourceFileRange
     , sourceHandleRange
     , sourceHandleRangeWithBuffer
-    , withSourceFile
+    , CC.withSourceFile
       -- ** Sinks
-    , sinkFile
-    , sinkFileCautious
-    , sinkTempFile
-    , sinkSystemTempFile
-    , sinkHandle
-    , sinkIOHandle
-    , sinkHandleBuilder
-    , sinkHandleFlush
-    , withSinkFile
-    , withSinkFileBuilder
-    , withSinkFileCautious
+    , CC.sinkFile
+    , CC.sinkFileCautious
+    , CC.sinkTempFile
+    , CC.sinkSystemTempFile
+    , CC.sinkHandle
+    , CC.sinkIOHandle
+    , CC.sinkHandleBuilder
+    , CC.sinkHandleFlush
+    , CC.withSinkFile
+    , CC.withSinkFileBuilder
+    , CC.withSinkFileCautious
       -- ** Conduits
     , conduitFile
     , conduitHandle
@@ -57,6 +60,7 @@ module Data.Conduit.Binary
     ) where
 
 import qualified Data.ByteString.Builder as BB
+import qualified Data.Conduit.Combinators as CC
 import qualified Data.Streaming.FileRead as FR
 import Prelude hiding (head, take, drop, takeWhile, dropWhile, mapM_)
 import qualified Data.ByteString as S
@@ -96,120 +100,6 @@ import System.FilePath (takeDirectory, takeFileName, (<.>))
 import System.IO (hClose, openBinaryTempFile)
 import Control.Exception (throwIO, catch)
 import System.IO.Error (isDoesNotExistError)
-
--- | Stream the contents of a file as binary data.
---
--- Since 0.3.0
-sourceFile :: MonadResource m
-           => FilePath
-           -> ConduitT i S.ByteString m ()
-sourceFile fp =
-    bracketP
-        (FR.openFile fp)
-         FR.closeFile
-         loop
-  where
-    loop h = do
-        bs <- liftIO $ FR.readChunk h
-        unless (S.null bs) $ do
-            yield bs
-            loop h
-
--- | Stream the contents of a 'IO.Handle' as binary data. Note that this
--- function will /not/ automatically close the @Handle@ when processing
--- completes, since it did not acquire the @Handle@ in the first place.
---
--- Since 0.3.0
-sourceHandle :: MonadIO m
-             => IO.Handle
-             -> ConduitT i S.ByteString m ()
-sourceHandle h =
-    loop
-  where
-    loop = do
-        bs <- liftIO (S.hGetSome h defaultChunkSize)
-        if S.null bs
-            then return ()
-            else yield bs >> loop
-
--- | Same as @sourceHandle@, but instead of allocating a new buffer for each
--- incoming chunk of data, reuses the same buffer. Therefore, the @ByteString@s
--- yielded by this function are not referentially transparent between two
--- different @yield@s.
---
--- This function will be slightly more efficient than @sourceHandle@ by
--- avoiding allocations and reducing garbage collections, but should only be
--- used if you can guarantee that you do not reuse a @ByteString@ (or any slice
--- thereof) between two calls to @await@.
---
--- Since 1.0.12
-sourceHandleUnsafe :: MonadIO m => IO.Handle -> ConduitT i ByteString m ()
-sourceHandleUnsafe handle = do
-    fptr <- liftIO $ mallocPlainForeignPtrBytes defaultChunkSize
-    let ptr = unsafeForeignPtrToPtr fptr
-        loop = do
-            count <- liftIO $ IO.hGetBuf handle ptr defaultChunkSize
-            when (count > 0) $ do
-                yield (PS fptr 0 count)
-                loop
-
-    loop
-
-    liftIO $ touchForeignPtr fptr
-
--- | An alternative to 'sourceHandle'.
--- Instead of taking a pre-opened 'IO.Handle', it takes an action that opens
--- a 'IO.Handle' (in read mode), so that it can open it only when needed
--- and close it as soon as possible.
---
--- Since 0.3.0
-sourceIOHandle :: MonadResource m
-               => IO IO.Handle
-               -> ConduitT i S.ByteString m ()
-sourceIOHandle alloc = bracketP alloc IO.hClose sourceHandle
-
--- | Stream all incoming data to the given 'IO.Handle'. Note that this function
--- does /not/ flush and will /not/ close the @Handle@ when processing completes.
---
--- Since 0.3.0
-sinkHandle :: MonadIO m
-           => IO.Handle
-           -> ConduitT S.ByteString o m ()
-sinkHandle h = awaitForever (liftIO . S.hPut h)
-
--- | Stream incoming builders, executing them directly on the buffer of the
--- given 'IO.Handle'. Note that this function does /not/ automatically close the
--- @Handle@ when processing completes.
--- Pass 'Data.ByteString.Builder.Extra.flush' to flush the buffer.
---
--- @since 1.2.2
-sinkHandleBuilder :: MonadIO m => IO.Handle -> ConduitM BB.Builder o m ()
-sinkHandleBuilder h = awaitForever (liftIO . BB.hPutBuilder h)
-
--- | Stream incoming @Flush@es, executing them on @IO.Handle@
--- Note that this function does /not/ automatically close the @Handle@ when
--- processing completes
---
--- @since 1.2.2
-sinkHandleFlush :: MonadIO m
-                => IO.Handle
-                -> ConduitM (Flush S.ByteString) o m ()
-sinkHandleFlush h =
-  awaitForever $ \mbs -> liftIO $
-  case mbs of
-    Chunk bs -> S.hPut h bs
-    Flush -> IO.hFlush h
-
--- | An alternative to 'sinkHandle'.
--- Instead of taking a pre-opened 'IO.Handle', it takes an action that opens
--- a 'IO.Handle' (in write mode), so that it can open it only when needed
--- and close it as soon as possible.
---
--- Since 0.3.0
-sinkIOHandle :: MonadResource m
-             => IO IO.Handle
-             -> ConduitT S.ByteString o m ()
-sinkIOHandle alloc = bracketP alloc IO.hClose sinkHandle
 
 -- | Stream the contents of a file as binary data, starting from a certain
 -- offset and only consuming up to a certain number of bytes.
@@ -273,72 +163,6 @@ sourceHandleRangeWithBuffer handle offset count buffer = do
                 else do
                     yield bs
                     pullLimited c'
-
--- | Stream all incoming data to the given file.
---
--- Since 0.3.0
-sinkFile :: MonadResource m
-         => FilePath
-         -> ConduitT S.ByteString o m ()
-sinkFile fp = sinkIOHandle (IO.openBinaryFile fp IO.WriteMode)
-
--- | Cautious version of 'sinkFile'. The idea here is to stream the
--- values to a temporary file in the same directory of the destination
--- file, and only on successfully writing the entire file, moves it
--- atomically to the destination path.
---
--- In the event of an exception occurring, the temporary file will be
--- deleted and no move will be made. If the application shuts down
--- without running exception handling (such as machine failure or a
--- SIGKILL), the temporary file will remain and the destination file
--- will be untouched.
---
--- @since 1.1.14
-sinkFileCautious
-  :: MonadResource m
-  => FilePath
-  -> ConduitM S.ByteString o m ()
-sinkFileCautious fp =
-    bracketP (cautiousAcquire fp) cautiousCleanup inner
-  where
-    inner (tmpFP, h) = do
-        sinkHandle h
-        liftIO $ do
-            hClose h
-            renameFile tmpFP fp
-
--- | Stream data into a temporary file in the given directory with the
--- given filename pattern, and return the temporary filename. The
--- temporary file will be automatically deleted when exiting the
--- active 'ResourceT' block, if it still exists.
---
--- @since 1.1.15
-sinkTempFile :: MonadResource m
-             => FilePath -- ^ temp directory
-             -> String -- ^ filename pattern
-             -> ConduitM ByteString o m FilePath
-sinkTempFile tmpdir pattern = do
-    (_releaseKey, (fp, h)) <- allocate
-        (IO.openBinaryTempFile tmpdir pattern)
-        (\(fp, h) -> IO.hClose h `finally` (removeFile fp `Control.Exception.catch` \e ->
-            if isDoesNotExistError e
-                then return ()
-                else throwIO e))
-    sinkHandle h
-    liftIO $ IO.hClose h
-    return fp
-
--- | Same as 'sinkTempFile', but will use the default temp file
--- directory for the system as the first argument.
---
--- @since 1.1.15
-sinkSystemTempFile
-    :: MonadResource m
-    => String -- ^ filename pattern
-    -> ConduitM ByteString o m FilePath
-sinkSystemTempFile pattern = do
-    dir <- liftIO getTemporaryDirectory
-    sinkTempFile dir pattern
 
 -- | Stream the contents of the input to a file, and also send it along the
 -- pipeline. Similar in concept to the Unix command @tee@.
@@ -507,7 +331,7 @@ sinkCacheLength = do
         (\(fp, h) -> IO.hClose h `finally` removeFile fp)
     len <- sinkHandleLen h
     liftIO $ IO.hClose h
-    return (len, sourceFile fp >> release releaseKey)
+    return (len, CC.sourceFile fp >> release releaseKey)
   where
     sinkHandleLen :: MonadResource m => IO.Handle -> ConduitT S.ByteString o m Word64
     sinkHandleLen h =
@@ -613,74 +437,3 @@ sinkStorableHelper wrap failure = do
 data SinkStorableException = SinkStorableInsufficientBytes
     deriving (Show, Typeable)
 instance Exception SinkStorableException
-
--- | Like 'IO.withBinaryFile', but provides a source to read bytes from.
---
--- @since 1.2.1
-withSourceFile
-  :: (MonadUnliftIO m, MonadIO n)
-  => FilePath
-  -> (ConduitM i ByteString n () -> m a)
-  -> m a
-withSourceFile fp inner =
-  withRunInIO $ \run ->
-  IO.withBinaryFile fp IO.ReadMode $
-  run . inner . sourceHandle
-
--- | Like 'IO.withBinaryFile', but provides a sink to write bytes to.
---
--- @since 1.2.1
-withSinkFile
-  :: (MonadUnliftIO m, MonadIO n)
-  => FilePath
-  -> (ConduitM ByteString o n () -> m a)
-  -> m a
-withSinkFile fp inner =
-  withRunInIO $ \run ->
-  IO.withBinaryFile fp IO.ReadMode $
-  run . inner . sinkHandle
-
--- | Same as 'withSinkFile', but lets you use a 'BB.Builder'.
---
--- @since 1.2.1
-withSinkFileBuilder
-  :: (MonadUnliftIO m, MonadIO n)
-  => FilePath
-  -> (ConduitM BB.Builder o n () -> m a)
-  -> m a
-withSinkFileBuilder fp inner =
-  withRunInIO $ \run ->
-  IO.withBinaryFile fp IO.WriteMode $ \h ->
-  run $ inner $ CL.mapM_ (liftIO . BB.hPutBuilder h)
-
--- | Like 'sinkFileCautious', but uses the @with@ pattern instead of
--- @MonadResource@.
---
--- @since 1.2.2
-withSinkFileCautious
-  :: (MonadUnliftIO m, MonadIO n)
-  => FilePath
-  -> (ConduitM S.ByteString o n () -> m a)
-  -> m a
-withSinkFileCautious fp inner =
-  withRunInIO $ \run -> bracket
-    (cautiousAcquire fp)
-    cautiousCleanup
-    (\(tmpFP, h) -> do
-        a <- run $ inner $ sinkHandle h
-        hClose h
-        renameFile tmpFP fp
-        return a)
-
--- | Helper function for Cautious functions above, do not export!
-cautiousAcquire :: FilePath -> IO (FilePath, IO.Handle)
-cautiousAcquire fp = openBinaryTempFile (takeDirectory fp) (takeFileName fp <.> "tmp")
-
--- | Helper function for Cautious functions above, do not export!
-cautiousCleanup :: (FilePath, IO.Handle) -> IO ()
-cautiousCleanup (tmpFP, h) = do
-  hClose h
-  removeFile tmpFP `Control.Exception.catch` \e ->
-    if isDoesNotExistError e
-      then return ()
-      else throwIO e
