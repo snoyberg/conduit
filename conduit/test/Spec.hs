@@ -3,6 +3,8 @@
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# OPTIONS_GHC -fno-warn-type-defaults #-}
+module Spec (spec) where
+
 import Conduit
 import Prelude hiding (FilePath)
 import Data.Maybe (listToMaybe)
@@ -44,8 +46,8 @@ import qualified Data.ByteString.Lazy as L
 import qualified Data.ByteString.Lazy.Char8 as L8
 import qualified StreamSpec
 
-main :: IO ()
-main = hspec $ do
+spec :: Spec
+spec = do
     describe "yieldMany" $ do
         it "list" $
             runIdentity (yieldMany [1..10] $$ sinkList)

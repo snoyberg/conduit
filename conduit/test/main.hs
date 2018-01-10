@@ -40,6 +40,7 @@ import Control.Monad.Except (catchError, throwError)
 import qualified Data.Map as Map
 import qualified Data.Conduit.Extra.ZipConduitSpec as ZipConduit
 import qualified Data.Conduit.StreamSpec as Stream
+import qualified Spec
 
 (@=?) :: (Eq a, Show a) => a -> a -> IO ()
 (@=?) = flip shouldBe
@@ -53,6 +54,7 @@ equivToList f conduit xs =
 
 main :: IO ()
 main = hspec $ do
+    describe "Combinators" Spec.spec
     describe "data loss rules" $ do
         it "consumes the source to quickly" $ do
             x <- runConduitRes $ CL.sourceList [1..10 :: Int] .| do
