@@ -8,6 +8,8 @@
     * Less guarantees about prompt finalization
     * No more `yieldOr`, `addCleanup`
     * Simplification around the `Resumable` types
+* Add the `Conduit` and `Data.Conduit.Combinators` modules, stolen from
+  `conduit-combinators`
 
 ## 1.2.13
 

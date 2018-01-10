@@ -21,7 +21,6 @@ extra-source-files:
 Library
   Exposed-modules:     Data.Conduit.Attoparsec
                        Data.Conduit.Binary
-                       Data.Conduit.Blaze
                        Data.Conduit.ByteString.Builder
                        Data.Conduit.Filesystem
                        Data.Conduit.Foldl
@@ -29,12 +28,11 @@ Library
                        Data.Conduit.Network
                        Data.Conduit.Network.UDP
                        Data.Conduit.Process
+                       Data.Conduit.Process.Typed
                        Data.Conduit.Text
                        Data.Conduit.Zlib
   if !os(windows)
       Exposed-modules: Data.Conduit.Network.Unix
-  if impl(ghc >= 7.8)
-      Exposed-modules: Data.Conduit.Process.Typed
 
   if arch(x86_64) || arch(i386)
       -- These architectures are able to perform unaligned memory accesses
@@ -58,8 +56,7 @@ Library
                      , stm
                      , streaming-commons        >= 0.1.16
                      , unliftio-core
-  if impl(ghc >= 7.8)
-    build-depends:     typed-process            >= 0.2
+                     , typed-process            >= 0.2
 
   ghc-options:     -Wall
 

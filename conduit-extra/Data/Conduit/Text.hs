@@ -34,9 +34,9 @@ module Data.Conduit.Text
     , drop
     , foldLines
     , withLine
-    , Data.Conduit.Text.decodeUtf8
-    , decodeUtf8Lenient
-    , encodeUtf8
+    , CC.decodeUtf8
+    , CC.decodeUtf8Lenient
+    , CC.encodeUtf8
     , detectUtf
     ) where
 
@@ -53,6 +53,7 @@ import           Data.Typeable (Typeable)
 
 import Data.Conduit
 import qualified Data.Conduit.List as CL
+import qualified Data.Conduit.Combinators as CC
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Resource (MonadThrow, throwM)
 import Control.Monad (unless)
@@ -173,23 +174,6 @@ decodeNew onFailure _name =
                             loop consumed' dec'
                      in consumed' `seq` next
                 DecodeResultFailure t rest -> onFailure consumed bs t rest
-
--- | Decode a stream of UTF8 data, and replace invalid bytes with the Unicode
--- replacement character.
---
--- Since 1.1.1
-decodeUtf8Lenient :: Monad m => ConduitT B.ByteString T.Text m ()
-decodeUtf8Lenient =
-    decodeNew onFailure "UTF8-lenient" 0 Data.Streaming.Text.decodeUtf8
-  where
-    onFailure _consumed _bs t rest = do
-        unless (T.null t) (yield t)
-        case B.uncons rest of
-            Nothing -> return ()
-            Just (_, rest') -> do
-                unless (B.null rest') (leftover rest')
-                yield $ T.singleton '\xFFFD'
-        decodeUtf8Lenient
 
 -- | Convert bytes into text, using the provided codec. If the codec is
 -- not capable of decoding an input byte sequence, an exception will be thrown.
@@ -415,52 +399,6 @@ withLine consumer = toConsumer $ do
                 return x
             drop 1
             return $ Just x
-
--- | Decode a stream of UTF8-encoded bytes into a stream of text, throwing an
--- exception on invalid input.
---
--- Since 1.0.15
-decodeUtf8 :: MonadThrow m => ConduitM B.ByteString T.Text m ()
-decodeUtf8 = decode utf8
-    {- no meaningful performance advantage
-    CI.ConduitM (loop 0 decodeUtf8)
-  where
-    loop consumed dec =
-        CI.NeedInput go finish
-      where
-        finish () =
-            case dec B.empty of
-                DecodeResultSuccess _ _ -> return ()
-                DecodeResultFailure t rest -> onFailure B.empty t rest
-        {-# INLINE finish #-}
-
-        go bs | B.null bs = CI.NeedInput go finish
-        go bs =
-            case dec bs of
-                DecodeResultSuccess t dec' -> do
-                    let consumed' = consumed + B.length bs
-                        next' = loop consumed' dec'
-                        next
-                            | T.null t = next'
-                            | otherwise = CI.HaveOutput next' (return ()) t
-                     in consumed' `seq` next
-                DecodeResultFailure t rest -> onFailure bs t rest
-
-        onFailure bs t rest = do
-            unless (T.null t) (CI.yield t)
-            unless (B.null rest) (CI.leftover rest)
-            let consumed' = consumed + B.length bs - B.length rest
-            throwM $ NewDecodeException (T.pack "UTF-8") consumed' (B.take 4 rest)
-        {-# INLINE onFailure #-}
-    -}
-{-# INLINE decodeUtf8 #-}
-
--- | Encode a stream of text into a stream of bytes.
---
--- Since 1.0.15
-encodeUtf8 :: Monad m => ConduitT T.Text B.ByteString m ()
-encodeUtf8 = CL.map TE.encodeUtf8
-{-# INLINE encodeUtf8 #-}
 
 -- | Automatically determine which UTF variant is being used. This function
 -- checks for BOMs, removing them as necessary. It defaults to assuming UTF-8.

@@ -11,7 +11,6 @@ import Control.Monad.Trans.Resource
 import Control.Monad.IO.Class
 import Control.Exception (IOException)
 import qualified Data.ByteString.Lazy as L
-import qualified Blaze.ByteString.Builder.ByteString as Blaze
 import Test.Hspec
 import Test.Hspec.QuickCheck
 import qualified Data.IORef as I
@@ -29,6 +28,8 @@ import Foreign.Ptr (alignPtr, minusPtr)
 import System.Directory (doesFileExist)
 import System.IO.Unsafe (unsafePerformIO)
 import Control.Applicative ((<$>))
+import Conduit
+import qualified Data.ByteString.Builder as BB
 
 spec :: Spec
 spec = describe "Data.Conduit.Binary" $ do
@@ -52,8 +53,9 @@ spec = describe "Data.Conduit.Binary" $ do
 
 
         it "write builder (withSinkFileBuilder)" $ do
-            runResourceT $ CB.withSinkFileBuilder "tmp" $ \sink ->
-                CB.sourceFile "conduit-extra.cabal" C.=$= CL.map Blaze.fromByteString C.$$ sink
+            CB.withSinkFileBuilder "tmp" $ \sink ->
+              CB.withSourceFile "conduit-extra.cabal" $ \src ->
+              runConduit $ src .| CL.map BB.byteString .| sink
             bs1 <- S.readFile "conduit-extra.cabal"
             bs2 <- S.readFile "tmp"
             bs2 `shouldBe` bs1
