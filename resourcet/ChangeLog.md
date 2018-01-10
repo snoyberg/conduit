@@ -1,6 +1,7 @@
 ## 1.2.0
 
 * Drop `monad-control` and `mmorph` dependencies
+* Change behavior of `runResourceT` to match `runResourceTChecked`
 
 ## 1.1.11
 

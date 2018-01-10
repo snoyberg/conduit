@@ -164,28 +164,13 @@ release' istate key act = E.mask_ $ do
 -- If multiple threads are sharing the same collection of resources, only the
 -- last call to @runResourceT@ will deallocate the resources.
 --
--- /NOTE/ Since version 1.1.11, this module has also provided
--- `runResourceTChecked`, which is a safer version of this
--- function. In the next major release of this library, it will become
--- the behavior of this function.
+-- /NOTE/ Since version 1.2.0, this function will throw a
+-- 'ResourceCleanupException' if any of the cleanup functions throw an
+-- exception.
 --
--- Since 0.3.0
+-- @since 0.3.0
 runResourceT :: MonadUnliftIO m => ResourceT m a -> m a
 runResourceT (ResourceT r) = withRunInIO $ \run -> do
-    istate <- createInternalState
-    E.mask $ \restore -> do
-        res <- restore (run (r istate)) `E.onException`
-            stateCleanup ReleaseException istate
-        stateCleanup ReleaseNormal istate
-        return res
-
--- | Like 'runResourceT', but checks whether the cleanup functions
--- throw any exceptions. If they do, they are rethrown inside a
--- 'ResourceCleanupException'.
---
--- @since 1.1.11
-runResourceTChecked :: MonadUnliftIO m => ResourceT m a -> m a
-runResourceTChecked (ResourceT r) = withRunInIO $ \run -> do
     istate <- createInternalState
     E.mask $ \restore -> do
         res <- restore (run (r istate)) `E.catch` \e -> do
@@ -193,6 +178,13 @@ runResourceTChecked (ResourceT r) = withRunInIO $ \run -> do
             E.throwIO e
         stateCleanupChecked Nothing istate
         return res
+
+-- | Backwards compatible alias for 'runResourceT'.
+--
+-- @since 1.1.11
+runResourceTChecked :: MonadUnliftIO m => ResourceT m a -> m a
+runResourceTChecked = runResourceT
+{-# INLINE runResourceTChecked #-}
 
 bracket_ :: MonadUnliftIO m
          => IO () -- ^ allocate
