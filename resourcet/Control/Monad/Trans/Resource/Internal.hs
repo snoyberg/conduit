@@ -20,6 +20,8 @@ module Control.Monad.Trans.Resource.Internal(
   , transResourceT
   , register'
   , registerType
+  , ResourceCleanupException (..)
+  , stateCleanupChecked
 ) where
 
 import Control.Exception (throw,Exception,SomeException)
@@ -306,3 +308,69 @@ registerType istate rel = I.atomicModifyIORef istate $ \rm ->
             , ReleaseKey istate key
             )
         ReleaseMapClosed -> throw $ InvalidAccess "register'"
+
+-- | Thrown when one or more cleanup functions themselves throw an
+-- exception during cleanup.
+--
+-- @since 1.1.11
+data ResourceCleanupException = ResourceCleanupException
+  { rceOriginalException :: !(Maybe SomeException)
+  -- ^ If the 'ResourceT' block exited due to an exception, this is
+  -- that exception.
+  --
+  -- @since 1.1.11
+  , rceFirstCleanupException :: !SomeException
+  -- ^ The first cleanup exception. We keep this separate from
+  -- 'rceOtherCleanupExceptions' to prove that there's at least one
+  -- (i.e., a non-empty list).
+  --
+  -- @since 1.1.11
+  , rceOtherCleanupExceptions :: ![SomeException]
+  -- ^ All other exceptions in cleanups.
+  --
+  -- @since 1.1.11
+  }
+  deriving (Show, Typeable)
+instance Exception ResourceCleanupException
+
+-- | Clean up a release map, but throw a 'ResourceCleanupException' if
+-- anything goes wrong in the cleanup handlers.
+--
+-- @since 1.1.11
+stateCleanupChecked
+  :: Maybe SomeException -- ^ exception that killed the 'ResourceT', if present
+  -> I.IORef ReleaseMap -> IO ()
+stateCleanupChecked morig istate = E.mask_ $ do
+    mm <- I.atomicModifyIORef istate $ \rm ->
+        case rm of
+            ReleaseMap nk rf m ->
+                let rf' = rf - 1
+                 in if rf' == minBound
+                        then (ReleaseMapClosed, Just m)
+                        else (ReleaseMap nk rf' m, Nothing)
+            ReleaseMapClosed -> throw $ InvalidAccess "stateCleanupChecked"
+    case mm of
+        Just m -> do
+            res <- mapMaybeReverseM (\x -> try (x rtype)) $ IntMap.elems m
+            case res of
+                [] -> return () -- nothing went wrong
+                e:es -> E.throwIO $ ResourceCleanupException morig e es
+        Nothing -> return ()
+  where
+    try :: IO () -> IO (Maybe SomeException)
+    try io = fmap (either Just (\() -> Nothing)) (E.try io)
+
+    rtype = maybe ReleaseNormal (const ReleaseException) morig
+
+-- Note that this returns values in reverse order, which is what we
+-- want in the specific case of this function.
+mapMaybeReverseM :: Monad m => (a -> m (Maybe b)) -> [a] -> m [b]
+mapMaybeReverseM f =
+    go []
+  where
+    go bs [] = return bs
+    go bs (a:as) = do
+      mb <- f a
+      case mb of
+        Nothing -> go bs as
+        Just b -> go (b:bs) as

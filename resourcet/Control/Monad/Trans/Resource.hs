@@ -21,6 +21,9 @@ module Control.Monad.Trans.Resource
     , ReleaseKey
       -- * Unwrap
     , runResourceT
+      -- ** Check cleanup exceptions
+    , runResourceTChecked
+    , ResourceCleanupException (..)
       -- * Special actions
     , resourceForkWith
     , resourceForkIO
@@ -161,6 +164,11 @@ release' istate key act = E.mask_ $ do
 -- If multiple threads are sharing the same collection of resources, only the
 -- last call to @runResourceT@ will deallocate the resources.
 --
+-- /NOTE/ Since version 1.1.11, this module has also provided
+-- `runResourceTChecked`, which is a safer version of this
+-- function. In the next major release of this library, it will become
+-- the behavior of this function.
+--
 -- Since 0.3.0
 runResourceT :: MonadUnliftIO m => ResourceT m a -> m a
 runResourceT (ResourceT r) = withRunInIO $ \run -> do
@@ -169,6 +177,21 @@ runResourceT (ResourceT r) = withRunInIO $ \run -> do
         res <- restore (run (r istate)) `E.onException`
             stateCleanup ReleaseException istate
         stateCleanup ReleaseNormal istate
+        return res
+
+-- | Like 'runResourceT', but checks whether the cleanup functions
+-- throw any exceptions. If they do, they are rethrown inside a
+-- 'ResourceCleanupException'.
+--
+-- @since 1.1.11
+runResourceTChecked :: MonadUnliftIO m => ResourceT m a -> m a
+runResourceTChecked (ResourceT r) = withRunInIO $ \run -> do
+    istate <- createInternalState
+    E.mask $ \restore -> do
+        res <- restore (run (r istate)) `E.catch` \e -> do
+            stateCleanupChecked (Just e) istate
+            E.throwIO e
+        stateCleanupChecked Nothing istate
         return res
 
 bracket_ :: MonadUnliftIO m

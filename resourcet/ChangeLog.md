@@ -2,6 +2,14 @@
 
 * Drop `monad-control` and `mmorph` dependencies
 
+## 1.1.11
+
+* `runResourceTChecked`, which checks if any of the cleanup actions
+  threw exceptions and, if so, rethrows them. __NOTE__ This is
+  probably a much better choice of function than `runResourceT`, and
+  in the next major version release, will become the new behavior of
+  `runResourceT`.
+
 ## 1.1.10
 
 * Added `MonadUnliftIO` instances and `UnliftIO.Resource`
