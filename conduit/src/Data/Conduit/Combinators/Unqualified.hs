@@ -29,6 +29,7 @@ module Data.Conduit.Combinators.Unqualified
     , CC.sourceHandleUnsafe
     , CC.sourceIOHandle
     , stdinC
+    , CC.withSourceFile
 
       -- *** Filesystem
     , CC.sourceDirectory
@@ -163,6 +164,16 @@ module Data.Conduit.Combinators.Unqualified
     , unlinesAsciiC
     , linesUnboundedC
     , linesUnboundedAsciiC
+
+      -- ** Builders
+    , CC.builderToByteString
+    , CC.unsafeBuilderToByteString
+    , CC.builderToByteStringWith
+    , CC.builderToByteStringFlush
+    , CC.builderToByteStringWithFlush
+    , CC.BufferAllocStrategy
+    , CC.allNewBuffersStrategy
+    , CC.reuseBufferStrategy
 
       -- ** Special
     , vectorBuilderC
@@ -1203,7 +1214,7 @@ decodeUtf8C = CC.decodeUtf8
 -- the Unicode replacement character.
 --
 -- Since 1.0.0
-decodeUtf8LenientC :: MonadThrow m => Conduit ByteString m Text
+decodeUtf8LenientC :: Monad m => Conduit ByteString m Text
 decodeUtf8LenientC = CC.decodeUtf8Lenient
 {-# INLINE decodeUtf8LenientC #-}
 

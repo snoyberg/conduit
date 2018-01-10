@@ -183,6 +183,16 @@ module Data.Conduit.Combinators
     , linesUnboundedAscii
     , splitOnUnboundedE
 
+      -- ** Builders
+    , builderToByteString
+    , unsafeBuilderToByteString
+    , builderToByteStringWith
+    , builderToByteStringFlush
+    , builderToByteStringWithFlush
+    , BufferAllocStrategy
+    , allNewBuffersStrategy
+    , reuseBufferStrategy
+
       -- * Special
     , vectorBuilder
     , mapAccumS
@@ -193,6 +203,8 @@ module Data.Conduit.Combinators
 -- BEGIN IMPORTS
 
 import           Data.ByteString.Builder     (Builder, toLazyByteString, hPutBuilder)
+import qualified Data.ByteString.Builder.Internal as BB (flush)
+import qualified Data.ByteString.Builder.Extra as BB (runBuilder, BufferWriter, Next(Done, More, Chunk))
 import qualified Data.NonNull as NonNull
 import qualified Data.Traversable
 import qualified Data.ByteString as S
@@ -203,12 +215,13 @@ import           Control.Exception           (catch, throwIO, finally, bracket, 
 import           Control.Category            (Category (..))
 import           Control.Monad               (unless, when, (>=>), liftM, forever)
 import           Control.Monad.IO.Unlift     (MonadIO (..), MonadUnliftIO, withRunInIO)
-import           Control.Monad.Primitive     (PrimMonad, PrimState)
+import           Control.Monad.Primitive     (PrimMonad, PrimState, unsafePrimToPrim)
 import           Control.Monad.Trans.Class   (lift)
 import           Control.Monad.Trans.Resource (MonadResource, MonadThrow, allocate, throwM)
 import           Data.Conduit
 import           Data.Conduit.Internal       (ConduitT (..), Pipe (..))
 import qualified Data.Conduit.List           as CL
+import           Data.IORef
 import           Data.Maybe                  (fromMaybe, isNothing, isJust)
 import           Data.Monoid                 (Monoid (..))
 import           Data.MonoTraversable
@@ -220,7 +233,7 @@ import           Prelude                     (Bool (..), Eq (..), Int,
                                               Maybe (..), Either (..), Monad (..), Num (..),
                                               Ord (..), fromIntegral, maybe, either,
                                               ($), Functor (..), Enum, seq, Show, Char,
-                                              otherwise, Either (..),
+                                              otherwise, Either (..), not,
                                               ($!), succ, FilePath, IO, String)
 import Data.Word (Word8)
 import qualified Prelude
@@ -239,8 +252,9 @@ import           Data.Primitive.MutVar       (MutVar, newMutVar, readMutVar,
 import qualified Data.Streaming.FileRead as FR
 import qualified Data.Streaming.Filesystem as F
 import           GHC.ForeignPtr (mallocPlainForeignPtrBytes, unsafeForeignPtrToPtr)
-import           Foreign.ForeignPtr (touchForeignPtr)
-import           Data.ByteString.Internal (ByteString (PS))
+import           Foreign.ForeignPtr (touchForeignPtr, ForeignPtr)
+import           Foreign.Ptr (Ptr, plusPtr, minusPtr)
+import           Data.ByteString.Internal (ByteString (PS), mallocByteString)
 import           System.FilePath ((</>), (<.>), takeDirectory, takeFileName)
 import           System.Directory (renameFile, getTemporaryDirectory, removeFile)
 
@@ -1956,7 +1970,7 @@ decodeUtf8 =
 -- the Unicode replacement character.
 --
 -- Since 1.0.0
-decodeUtf8Lenient :: MonadThrow m => ConduitT ByteString Text m ()
+decodeUtf8Lenient :: Monad m => ConduitT ByteString Text m ()
 decodeUtf8Lenient =
     loop (TE.streamDecodeUtf8With TEE.lenientDecode)
   where
@@ -2081,6 +2095,286 @@ INLINE_RULE0(linesUnbounded, splitOnUnboundedE (== '\n'))
 linesUnboundedAscii :: (Monad m, Seq.IsSequence seq, Element seq ~ Word8)
                     => ConduitT seq seq m ()
 INLINE_RULE0(linesUnboundedAscii, splitOnUnboundedE (== 10))
+
+-- | Incrementally execute builders and pass on the filled chunks as
+-- bytestrings.
+--
+-- @since 1.3.0
+builderToByteString :: PrimMonad m => ConduitT Builder S.ByteString m ()
+builderToByteString = builderToByteStringWith defaultStrategy
+{-# INLINE builderToByteString #-}
+
+-- | Same as 'builderToByteString', but input and output are wrapped in
+-- 'Flush'.
+--
+-- @since 1.3.0
+builderToByteStringFlush :: PrimMonad m
+                         => ConduitT (Flush Builder) (Flush S.ByteString) m ()
+builderToByteStringFlush = builderToByteStringWithFlush defaultStrategy
+{-# INLINE builderToByteStringFlush #-}
+
+-- | Incrementally execute builders on the given buffer and pass on the filled
+-- chunks as bytestrings. Note that, if the given buffer is too small for the
+-- execution of a build step, a larger one will be allocated.
+--
+-- WARNING: This conduit yields bytestrings that are NOT
+-- referentially transparent. Their content will be overwritten as soon
+-- as control is returned from the inner sink!
+--
+-- @since 1.3.0
+unsafeBuilderToByteString :: PrimMonad m
+                          => ConduitT Builder S.ByteString m ()
+unsafeBuilderToByteString =
+  builderToByteStringWith (reuseBufferStrategy (allocBuffer defaultChunkSize))
+{-# INLINE unsafeBuilderToByteString #-}
+
+
+-- | A conduit that incrementally executes builders and passes on the
+-- filled chunks as bytestrings to an inner sink.
+--
+-- INV: All bytestrings passed to the inner sink are non-empty.
+--
+-- @since 1.3.0
+builderToByteStringWith :: PrimMonad m
+                        => BufferAllocStrategy
+                        -> ConduitT Builder S.ByteString m ()
+builderToByteStringWith =
+    bbhelper (liftM (fmap Chunk) await) yield'
+  where
+    yield' Flush = return ()
+    yield' (Chunk bs) = yield bs
+{-# INLINE builderToByteStringWith #-}
+
+-- |
+--
+-- @since 1.3.0
+builderToByteStringWithFlush
+    :: PrimMonad m
+    => BufferAllocStrategy
+    -> ConduitT (Flush Builder) (Flush S.ByteString) m ()
+builderToByteStringWithFlush = bbhelper await yield
+{-# INLINE builderToByteStringWithFlush #-}
+
+bbhelper
+  :: PrimMonad m
+  => m (Maybe (Flush Builder))
+  -> (Flush S.ByteString -> m ())
+  -> BufferAllocStrategy
+  -> m ()
+bbhelper await' yield' strat = do
+    (recv, finish) <- unsafePrimToPrim $ newByteStringBuilderRecv strat
+    let loop = await' >>= maybe finish' cont
+        finish' = do
+            mbs <- unsafePrimToPrim finish
+            maybe (return ()) (yield' . Chunk) mbs
+        cont fbuilder = do
+            let builder =
+                    case fbuilder of
+                        Flush -> BB.flush
+                        Chunk b -> b
+            popper <- unsafePrimToPrim $ recv builder
+            let cont' = do
+                    bs <- unsafePrimToPrim popper
+                    unless (S.null bs) $ do
+                        yield' (Chunk bs)
+                        cont'
+            cont'
+            case fbuilder of
+                Flush -> yield' Flush
+                Chunk _ -> return ()
+            loop
+    loop
+{-# INLINE bbhelper #-}
+
+-- | Provides a series of @ByteString@s until empty, at which point it provides
+-- an empty @ByteString@.
+--
+-- Since 0.1.10.0
+--
+type BuilderPopper = IO S.ByteString
+
+type BuilderRecv = Builder -> IO BuilderPopper
+
+type BuilderFinish = IO (Maybe S.ByteString)
+
+newByteStringBuilderRecv :: BufferAllocStrategy -> IO (BuilderRecv, BuilderFinish)
+newByteStringBuilderRecv (ioBufInit, nextBuf) = do
+    refBuf <- newIORef ioBufInit
+    return (push refBuf, finish refBuf)
+  where
+    finish refBuf = do
+        ioBuf <- readIORef refBuf
+        buf <- ioBuf
+        return $ unsafeFreezeNonEmptyBuffer buf
+
+    push refBuf builder = do
+        refWri <- newIORef $ Left $ BB.runBuilder builder
+        return $ popper refBuf refWri
+
+    popper refBuf refWri = do
+        ioBuf <- readIORef refBuf
+        ebWri <- readIORef refWri
+        case ebWri of
+            Left bWri -> do
+                !buf@(Buffer _ _ op ope) <- ioBuf
+                (bytes, next) <- bWri op (ope `minusPtr` op)
+                let op' = op `plusPtr` bytes
+                case next of
+                    BB.Done -> do
+                        writeIORef refBuf $ return $ updateEndOfSlice buf op'
+                        return S.empty
+                    BB.More minSize bWri' -> do
+                        let buf' = updateEndOfSlice buf op'
+                            {-# INLINE cont #-}
+                            cont mbs = do
+                                -- sequencing the computation of the next buffer
+                                -- construction here ensures that the reference to the
+                                -- foreign pointer `fp` is lost as soon as possible.
+                                ioBuf' <- nextBuf minSize buf'
+                                writeIORef refBuf ioBuf'
+                                writeIORef refWri $ Left bWri'
+                                case mbs of
+                                    Just bs | not $ S.null bs -> return bs
+                                    _ -> popper refBuf refWri
+                        cont $ unsafeFreezeNonEmptyBuffer buf'
+                    BB.Chunk bs bWri' -> do
+                        let buf' = updateEndOfSlice buf op'
+                        let yieldBS = do
+                                nextBuf 1 buf' >>= writeIORef refBuf
+                                writeIORef refWri $ Left bWri'
+                                if S.null bs
+                                    then popper refBuf refWri
+                                    else return bs
+                        case unsafeFreezeNonEmptyBuffer buf' of
+                            Nothing -> yieldBS
+                            Just bs' -> do
+                                writeIORef refWri $ Right yieldBS
+                                return bs'
+            Right action -> action
+
+-- | A buffer @Buffer fpbuf p0 op ope@ describes a buffer with the underlying
+-- byte array @fpbuf..ope@, the currently written slice @p0..op@ and the free
+-- space @op..ope@.
+--
+-- @since 1.3.0
+data Buffer = Buffer {-# UNPACK #-} !(ForeignPtr Word8) -- underlying pinned array
+                     {-# UNPACK #-} !(Ptr Word8)        -- beginning of slice
+                     {-# UNPACK #-} !(Ptr Word8)        -- next free byte
+                     {-# UNPACK #-} !(Ptr Word8)        -- first byte after buffer
+
+-- | Convert the buffer to a bytestring. This operation is unsafe in the sense
+-- that created bytestring shares the underlying byte array with the buffer.
+-- Hence, depending on the later use of this buffer (e.g., if it gets reset and
+-- filled again) referential transparency may be lost.
+--
+-- Since 0.1.10.0
+--
+{-# INLINE unsafeFreezeBuffer #-}
+unsafeFreezeBuffer :: Buffer -> S.ByteString
+unsafeFreezeBuffer (Buffer fpbuf p0 op _) =
+    PS fpbuf (p0 `minusPtr` unsafeForeignPtrToPtr fpbuf) (op `minusPtr` p0)
+
+-- | Convert a buffer to a non-empty bytestring. See 'unsafeFreezeBuffer' for
+-- the explanation of why this operation may be unsafe.
+--
+-- Since 0.1.10.0
+--
+{-# INLINE unsafeFreezeNonEmptyBuffer #-}
+unsafeFreezeNonEmptyBuffer :: Buffer -> Maybe S.ByteString
+unsafeFreezeNonEmptyBuffer buf
+  | sliceSize buf <= 0 = Nothing
+  | otherwise          = Just $ unsafeFreezeBuffer buf
+
+-- | Update the end of slice pointer.
+--
+-- Since 0.1.10.0
+--
+{-# INLINE updateEndOfSlice #-}
+updateEndOfSlice :: Buffer    -- Old buffer
+                 -> Ptr Word8 -- New end of slice
+                 -> Buffer    -- Updated buffer
+updateEndOfSlice (Buffer fpbuf p0 _ ope) op' = Buffer fpbuf p0 op' ope
+
+-- | The size of the written slice in the buffer.
+--
+-- Since 0.1.10.0
+--
+sliceSize :: Buffer -> Int
+sliceSize (Buffer _ p0 op _) = op `minusPtr` p0
+
+-- | A buffer allocation strategy @(buf0, nextBuf)@ specifies the initial
+-- buffer to use and how to compute a new buffer @nextBuf minSize buf@ with at
+-- least size @minSize@ from a filled buffer @buf@. The double nesting of the
+-- @IO@ monad helps to ensure that the reference to the filled buffer @buf@ is
+-- lost as soon as possible, but the new buffer doesn't have to be allocated
+-- too early.
+--
+-- @since 1.3.0
+type BufferAllocStrategy = (IO Buffer, Int -> Buffer -> IO (IO Buffer))
+
+-- | Safe default: allocate new buffers of default chunk size
+--
+-- @since 1.3.0
+defaultStrategy :: BufferAllocStrategy
+defaultStrategy = allNewBuffersStrategy defaultChunkSize
+
+-- | The simplest buffer allocation strategy: whenever a buffer is requested,
+-- allocate a new one that is big enough for the next build step to execute.
+--
+-- NOTE that this allocation strategy may spill quite some memory upon direct
+-- insertion of a bytestring by the builder. Thats no problem for garbage
+-- collection, but it may lead to unreasonably high memory consumption in
+-- special circumstances.
+--
+-- @since 1.3.0
+allNewBuffersStrategy :: Int                 -- Minimal buffer size.
+                      -> BufferAllocStrategy
+allNewBuffersStrategy bufSize =
+    ( allocBuffer bufSize
+    , \reqSize _ -> return (allocBuffer (max reqSize bufSize)) )
+
+-- | An unsafe, but possibly more efficient buffer allocation strategy:
+-- reuse the buffer, if it is big enough for the next build step to execute.
+--
+-- @since 1.3.0
+reuseBufferStrategy :: IO Buffer
+                    -> BufferAllocStrategy
+reuseBufferStrategy buf0 =
+    (buf0, tryReuseBuffer)
+  where
+    tryReuseBuffer reqSize buf
+      | bufferSize buf >= reqSize = return $ return (reuseBuffer buf)
+      | otherwise                 = return $ allocBuffer reqSize
+
+-- | The size of the whole byte array underlying the buffer.
+--
+-- Since 0.1.10.0
+--
+bufferSize :: Buffer -> Int
+bufferSize (Buffer fpbuf _ _ ope) =
+    ope `minusPtr` unsafeForeignPtrToPtr fpbuf
+
+-- | @allocBuffer size@ allocates a new buffer of size @size@.
+--
+-- Since 0.1.10.0
+--
+{-# INLINE allocBuffer #-}
+allocBuffer :: Int -> IO Buffer
+allocBuffer size = do
+    fpbuf <- mallocByteString size
+    let !pbuf = unsafeForeignPtrToPtr fpbuf
+    return $! Buffer fpbuf pbuf pbuf (pbuf `plusPtr` size)
+
+-- | Resets the beginning of the next slice and the next free byte such that
+-- the whole buffer can be filled again.
+--
+-- Since 0.1.10.0
+--
+{-# INLINE reuseBuffer #-}
+reuseBuffer :: Buffer -> Buffer
+reuseBuffer (Buffer fpbuf _ _ ope) = Buffer fpbuf p0 p0 ope
+  where
+    p0 = unsafeForeignPtrToPtr fpbuf
 
 -- | Generally speaking, yielding values from inside a Conduit requires
 -- some allocation for constructors. This can introduce an overhead,
