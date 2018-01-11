@@ -19,21 +19,18 @@ import           Data.Conduit.Combinators
 import           Data.Conduit.Combinators.Stream
 import           Data.Conduit.Internal.Fusion
 import           Data.Conduit.Internal.List.Stream (takeS, sourceListS, mapS)
-import           Data.Conduit.List (consume, isolate, sourceList)
 import qualified Data.List
 import           Data.MonoTraversable
 import           Data.Monoid (Monoid(..))
 import qualified Data.NonNull as NonNull
 import           Data.Sequence (Seq)
 import qualified Data.Sequences as Seq
-import qualified Data.Text.Lazy as TL
 import           Data.Vector (Vector)
 import qualified Prelude
 import           Prelude
     ((.), ($), (>>=), (=<<), return, id, Maybe(..), Either(..), Monad,
      Bool(..), Int, Eq, Show, String, Functor, fst, snd, either)
 import qualified Safe
-import           System.Directory (removeFile)
 import qualified System.IO as IO
 import           System.IO.Unsafe
 import           Test.Hspec
@@ -46,7 +43,7 @@ spec = do
             \(mono :: Seq Int) ->
                 yieldMany mono `checkProducer`
                 otoList mono
-        qit "yieldManyS" $
+        qit "sourceListS" $
             \(mono :: Seq Int) ->
                 yieldManyS mono `checkStreamProducer`
                 otoList mono
@@ -101,7 +98,7 @@ spec = do
         qit "lastE" $
             \(getBlind -> f) ->
                 let g x = Seq.replicate (Prelude.abs (getSmall (f x))) x :: Seq Int
-                 in (map g =$= lastE) `checkConsumer`
+                 in (map g .| lastE) `checkConsumer`
                     (lastEL . Prelude.map g :: [Int] -> Maybe Int)
         qit "lastES" $
             \(getBlind -> f) ->
@@ -186,25 +183,25 @@ spec = do
         qit "slidingWindowS" $
             \(getSmall -> n) ->
                 slidingWindowS n `checkStreamConduit`
-                (\xs -> runIdentity $
-                    sourceList xs $= preventFusion (slidingWindow n) $$ consume
+                (\xs -> runConduitPure $
+                    yieldMany xs .| preventFusion (slidingWindow n) .| sinkList
                     :: [Seq Int])
         qit "splitOnUnboundedES" $
             \(getBlind -> (f :: Int -> Bool)) ->
                 splitOnUnboundedES f `checkStreamConduit`
-                (\xs -> runIdentity $
-                    sourceList xs $= preventFusion (splitOnUnboundedE f) $$ consume
+                (\xs -> runConduitPure $
+                    yieldMany xs .| preventFusion (splitOnUnboundedE f) .| sinkList
                     :: [Seq Int])
         qit "sinkVectorS" $
             \() -> checkStreamConsumerM'
                 unsafePerformIO
                 (sinkVectorS :: forall o. StreamConduitT Int o IO.IO (Vector Int))
-                (\xs -> sourceList xs $$ preventFusion sinkVector)
+                (\xs -> runConduit $ yieldMany xs .| preventFusion sinkVector)
         qit "sinkVectorNS" $
             \(getSmall . getNonNegative -> n) -> checkStreamConsumerM'
                 unsafePerformIO
                 (sinkVectorNS n :: forall o. StreamConduitT Int o IO.IO (Vector Int))
-                (\xs -> sourceList xs $$ preventFusion (sinkVectorN n))
+                (\xs -> runConduit $ yieldMany xs .| preventFusion (sinkVectorN n))
 
 #if !MIN_VERSION_QuickCheck(2,8,2)
 instance Arbitrary a => Arbitrary (Seq a) where
@@ -275,25 +272,25 @@ qit n f = it n $ property $ forAll arbitrary f
 --------------------------------------------------------------------------------
 -- Quickcheck utilities for pure conduits / streams
 
-checkProducer :: (Show a, Eq a) => Source Identity a -> [a] -> Property
+checkProducer :: (Show a, Eq a) => ConduitT () a Identity () -> [a] -> Property
 checkProducer c l  = checkProducerM' runIdentity c (return l)
 
 checkStreamProducer :: (Show a, Eq a) => StreamSource Identity a -> [a] -> Property
 checkStreamProducer s l = checkStreamProducerM' runIdentity s (return l)
 
-checkInfiniteProducer :: (Show a, Eq a) => Source Identity a -> [a] -> Property
+checkInfiniteProducer :: (Show a, Eq a) => ConduitT () a Identity () -> [a] -> Property
 checkInfiniteProducer c l = checkInfiniteProducerM' runIdentity c (return l)
 
 checkInfiniteStreamProducer :: (Show a, Eq a) => StreamSource Identity a -> [a] -> Property
 checkInfiniteStreamProducer s l = checkInfiniteStreamProducerM' runIdentity s (return l)
 
-checkConsumer :: (Show b, Eq b) => Consumer Int Identity b -> ([Int] -> b) -> Property
+checkConsumer :: (Show b, Eq b) => ConduitT Int Void Identity b -> ([Int] -> b) -> Property
 checkConsumer c l = checkConsumerM' runIdentity c (return . l)
 
-checkStreamConsumer :: (Show b, Eq b) => StreamConsumer Int Identity b -> ([Int] -> b) -> Property
+checkStreamConsumer :: (Show b, Eq b) => StreamConduitT Int o Identity b -> ([Int] -> b) -> Property
 checkStreamConsumer c l = checkStreamConsumerM' runIdentity c (return . l)
 
-checkConduit :: (Show a, Arbitrary a, Show b, Eq b) => Conduit a Identity b -> ([a] -> [b]) -> Property
+checkConduit :: (Show a, Arbitrary a, Show b, Eq b) => ConduitT a b Identity () -> ([a] -> [b]) -> Property
 checkConduit c l = checkConduitT' runIdentity c (return . l)
 
 checkStreamConduit :: (Show a, Arbitrary a, Show b, Eq b) => StreamConduit a Identity b -> ([a] -> [b]) -> Property
@@ -308,28 +305,28 @@ checkStreamConduitResult c l = checkStreamConduitResultM' runIdentity c (return 
 --------------------------------------------------------------------------------
 -- Quickcheck utilities for conduits / streams in the M monad.
 
-checkProducerM :: (Show a, Eq a) => Source M a -> M [a] -> Property
+checkProducerM :: (Show a, Eq a) => ConduitT () a M () -> M [a] -> Property
 checkProducerM = checkProducerM' runM
 
 checkStreamProducerM :: (Show a, Eq a) => StreamSource M a -> M [a] -> Property
 checkStreamProducerM = checkStreamProducerM' runM
 
-checkInfiniteProducerM :: (Show a, Eq a) => Source M a -> M [a] -> Property
+checkInfiniteProducerM :: (Show a, Eq a) => ConduitT () a M () -> M [a] -> Property
 checkInfiniteProducerM = checkInfiniteProducerM' (fst . runM)
 
 checkInfiniteStreamProducerM :: (Show a, Eq a) => StreamSource M a -> M [a] -> Property
 checkInfiniteStreamProducerM = checkInfiniteStreamProducerM' (fst . runM)
 
-checkConsumerM :: (Show b, Eq b) => Consumer Int M b -> ([Int] -> M b) -> Property
+checkConsumerM :: (Show b, Eq b) => ConduitT Int Void M b -> ([Int] -> M b) -> Property
 checkConsumerM  = checkConsumerM' runM
 
-checkStreamConsumerM :: (Show b, Eq b) => StreamConsumer Int M b -> ([Int] -> M b) -> Property
+checkStreamConsumerM :: (Show b, Eq b) => StreamConduitT Int o M b -> ([Int] -> M b) -> Property
 checkStreamConsumerM  = checkStreamConsumerM' runM
 
-checkConduitT :: (Show a, Arbitrary a, Show b, Eq b) => Conduit a M b -> ([a] -> M [b]) -> Property
+checkConduitT :: (Show a, Arbitrary a, Show b, Eq b) => ConduitT a b M () -> ([a] -> M [b]) -> Property
 checkConduitT = checkConduitT' runM
 
-checkStreamConduitT :: (Show a, Arbitrary a, Show b, Eq b) => StreamConduit a M b -> ([a] -> M [b]) -> Property
+checkStreamConduitT :: (Show a, Arbitrary a, Show b, Eq b) => StreamConduitT a b M () -> ([a] -> M [b]) -> Property
 checkStreamConduitT = checkStreamConduitT' runM
 
 -- checkConduitResultM :: (Show a, Arbitrary a, Show b, Eq b, Show r, Eq r) => ConduitT a b M r -> ([a] -> M ([b], r)) -> Property
@@ -344,17 +341,17 @@ checkStreamConduitResultM = checkStreamConduitResultM' runM
 
 checkProducerM' :: (Show a, Monad m, Show b, Eq b)
                 => (m [a] -> b)
-                -> Source m a
+                -> ConduitT () a m ()
                 -> m [a]
                 -> Property
 checkProducerM' f c l =
-    f (preventFusion c $$ consume)
+    f (runConduit $ preventFusion c .| sinkList)
     ===
     f l
 
 checkStreamProducerM' :: (Show a, Monad m, Show b, Eq b)
                       => (m [a] -> b)
-                      -> StreamSource m a
+                      -> StreamConduitT () a m ()
                       -> m [a]
                       -> Property
 checkStreamProducerM' f s l =
@@ -364,17 +361,17 @@ checkStreamProducerM' f s l =
 
 checkInfiniteProducerM' :: (Show a, Monad m, Show b, Eq b)
                         => (m [a] -> b)
-                        -> Source m a
+                        -> ConduitT () a m ()
                         -> m [a]
                         -> Property
 checkInfiniteProducerM' f s l =
     checkProducerM' f
-        (preventFusion s $= isolate 10)
+        (preventFusion s .| take 10)
         (liftM (Prelude.take 10) l)
 
 checkInfiniteStreamProducerM' :: (Show a, Monad m, Show b, Eq b)
                               => (m [a] -> b)
-                              -> StreamSource m a
+                              -> StreamConduitT () a m ()
                               -> m [a]
                               -> Property
 checkInfiniteStreamProducerM' f s l =
@@ -384,17 +381,17 @@ checkInfiniteStreamProducerM' f s l =
 
 checkConsumerM' :: (Show a, Monad m, Show b, Eq b)
                 => (m a -> b)
-                -> Consumer Int m a
+                -> ConduitT Int Void m a
                 -> ([Int] -> m a)
                 -> Property
 checkConsumerM' f c l = forAll arbitrary $ \xs ->
-    f (sourceList xs $$ preventFusion c)
+    f (runConduit $ yieldMany xs .| preventFusion c)
     ===
     f (l xs)
 
 checkStreamConsumerM' :: (Show a, Monad m, Show b, Eq b)
                       => (m a -> b)
-                      -> StreamConsumer Int m a
+                      -> StreamConduitT Int o m a
                       -> ([Int] -> m a)
                       -> Property
 checkStreamConsumerM' f s l = forAll (arbitrary) $ \xs ->
@@ -404,11 +401,11 @@ checkStreamConsumerM' f s l = forAll (arbitrary) $ \xs ->
 
 checkConduitT' :: (Show a, Arbitrary a, Monad m, Show c, Eq c)
                => (m [b] -> c)
-               -> Conduit a m b
+               -> ConduitT a b m ()
                -> ([a] -> m [b])
                -> Property
 checkConduitT' f c l = forAll arbitrary $ \xs ->
-    f (sourceList xs $= preventFusion c $$ consume)
+    f (runConduit $ yieldMany xs .| preventFusion c .| sinkList)
     ===
     f (l xs)
 
@@ -422,7 +419,7 @@ checkStreamConduitT' f s l = forAll arbitrary $ \xs ->
     ===
     f (l xs)
 
--- TODO: Fixing this would allow comparing conduit consumers against
+-- TODO: Fixing this would allow comparing conduit sinkListrs against
 -- their list versions.
 --
 -- checkConduitResultM' :: (Show a, Arbitrary a, Monad m, Show c, Eq c)
@@ -431,7 +428,7 @@ checkStreamConduitT' f s l = forAll arbitrary $ \xs ->
 --                      -> ([a] -> m ([b], r))
 --                      -> Property
 -- checkConduitResultM' f c l = FIXME forAll arbitrary $ \xs ->
---     f (sourceList xs $= preventFusion c $$ consume)
+--     f (runConduit $ yieldMany xs .| preventFusion c .| sinkList)
 --     ===
 --     f (l xs)
 

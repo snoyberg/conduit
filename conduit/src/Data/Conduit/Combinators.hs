@@ -204,7 +204,7 @@ module Data.Conduit.Combinators
 
 import           Data.ByteString.Builder     (Builder, toLazyByteString, hPutBuilder)
 import qualified Data.ByteString.Builder.Internal as BB (flush)
-import qualified Data.ByteString.Builder.Extra as BB (runBuilder, BufferWriter, Next(Done, More, Chunk))
+import qualified Data.ByteString.Builder.Extra as BB (runBuilder, Next(Done, More, Chunk))
 import qualified Data.NonNull as NonNull
 import qualified Data.Traversable
 import qualified Data.ByteString as S

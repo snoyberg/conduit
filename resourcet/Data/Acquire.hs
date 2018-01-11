@@ -60,6 +60,7 @@ module Data.Acquire
 -- > code.hs: divide by zero
 --
     , with
+    , withAcquire
     , mkAcquire
     , mkAcquireType
     , allocateAcquire
@@ -68,7 +69,7 @@ module Data.Acquire
 
 import Control.Monad.Trans.Resource.Internal
 import Data.Acquire.Internal
-import Control.Monad.IO.Class (MonadIO (..))
+import Control.Monad.IO.Unlift (MonadIO (..), MonadUnliftIO)
 import qualified Control.Exception as E
 
 -- | Allocate a resource and register an action with the @MonadResource@ to
@@ -83,3 +84,10 @@ allocateAcquireRIO (Acquire f) = ResourceT $ \istate -> liftIO $ E.mask $ \resto
     Allocated a free <- f restore
     key <- registerType istate free
     return (key, a)
+
+-- | Longer name for 'with', in case @with@ is not obvious enough in context.
+--
+-- @since 1.2.0
+withAcquire :: MonadUnliftIO m => Acquire a -> (a -> m b) -> m b
+withAcquire = with
+{-# INLINE withAcquire #-}

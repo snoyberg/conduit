@@ -47,7 +47,7 @@ Library
                      , primitive
                      , unliftio-core
                      , exceptions
-                     , mono-traversable
+                     , mono-traversable         >= 1.0.7
                      , vector
                      , bytestring
                      , text

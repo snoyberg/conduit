@@ -91,7 +91,7 @@ module Data.Conduit.Internal.Conduit
 import Control.Applicative (Applicative (..))
 import Control.Exception (Exception)
 import qualified Control.Exception as E (catch)
-import Control.Monad (liftM, when, liftM2, ap)
+import Control.Monad (liftM, liftM2, ap)
 import Control.Monad.Error.Class(MonadError(..))
 import Control.Monad.Reader.Class(MonadReader(..))
 import Control.Monad.RWS.Class(MonadRWS())
@@ -104,8 +104,7 @@ import Data.Void (Void, absurd)
 import Data.Monoid (Monoid (mappend, mempty))
 import Data.Semigroup (Semigroup ((<>)))
 import Control.Monad.Trans.Resource
-import qualified Data.IORef as I
-import Data.Conduit.Internal.Pipe hiding (yield, mapOutput, leftover, yieldM, yieldOr, await, awaitForever, addCleanup, bracketP)
+import Data.Conduit.Internal.Pipe hiding (yield, mapOutput, leftover, yieldM, await, awaitForever, bracketP)
 import qualified Data.Conduit.Internal.Pipe as CI
 import Control.Monad (forever)
 import Data.Traversable (Traversable (..))

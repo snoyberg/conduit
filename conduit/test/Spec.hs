@@ -67,13 +67,13 @@ spec = do
             src = iterateC f seed
             seed = 1
             count = 10
-            res = runIdentity $ src $$ takeC count =$ sinkList
+            res = runIdentity $ src $$ takeC count .| sinkList
          in res `shouldBe` take count (iterate f seed)
     it "repeat" $
         let src = repeatC seed
             seed = 1
             count = 10
-            res = runIdentity $ src $$ takeC count =$ sinkList
+            res = runIdentity $ src $$ takeC count .| sinkList
          in res `shouldBe` take count (repeat seed)
     it "replicate" $
         let src = replicateC count seed
@@ -90,7 +90,7 @@ spec = do
         let src = repeatMC (return seed)
             seed = 1
             count = 10
-            res = runIdentity $ src $$ takeC count =$ sinkList
+            res = runIdentity $ src $$ takeC count .| sinkList
          in res `shouldBe` take count (repeat seed)
     it "repeatWhileM" $ do
         ref <- newIORef 0
@@ -132,7 +132,7 @@ spec = do
     let hasExtension' ext fp = takeExtension fp == ext
     it "sourceDirectory" $ do
         res <- runResourceT
-             $ sourceDirectory "test" $$ filterC (not . hasExtension' ".swp") =$ sinkList
+             $ sourceDirectory "test" $$ filterC (not . hasExtension' ".swp") .| sinkList
         sort res `shouldBe`
           [ "test/Data"
           , "test/Spec.hs"
@@ -143,9 +143,9 @@ spec = do
           ]
     it "sourceDirectoryDeep" $ do
         res1 <- runResourceT
-              $ sourceDirectoryDeep False "test" $$ filterC (not . hasExtension' ".swp") =$ sinkList
+              $ sourceDirectoryDeep False "test" $$ filterC (not . hasExtension' ".swp") .| sinkList
         res2 <- runResourceT
-              $ sourceDirectoryDeep True "test" $$ filterC (not . hasExtension' ".swp") =$ sinkList
+              $ sourceDirectoryDeep True "test" $$ filterC (not . hasExtension' ".swp") .| sinkList
         sort res1 `shouldBe`
           [ "test/Data/Conduit/Extra/ZipConduitSpec.hs"
           , "test/Data/Conduit/StreamSpec.hs"
@@ -237,7 +237,7 @@ spec = do
          in lbs `shouldBe` fromChunks inputs
     prop "sinkNull" $ \xs toSkip -> do
         res <- yieldMany xs $$ do
-            takeC toSkip =$ sinkNull
+            takeC toSkip .| sinkNull
             sinkList
         res `shouldBe` drop toSkip (xs :: [Int])
     prop "awaitNonNull" $ \xs ->
@@ -349,43 +349,43 @@ spec = do
 #ifndef WINDOWS
     prop "stdout" $ \ (vals :: [String]) -> do
         let expected = concat vals
-        (actual, ()) <- hCapture [IO.stdout] $ yieldMany (map T.pack vals) $$ encodeUtf8C =$ stdoutC
+        (actual, ()) <- hCapture [IO.stdout] $ yieldMany (map T.pack vals) $$ encodeUtf8C .| stdoutC
         actual `shouldBe` expected
     prop "stderr" $ \ (vals :: [String]) -> do
         let expected = concat vals
-        (actual, ()) <- hCapture [IO.stderr] $ yieldMany (map T.pack vals) $$ encodeUtf8C =$ stderrC
+        (actual, ()) <- hCapture [IO.stderr] $ yieldMany (map T.pack vals) $$ encodeUtf8C .| stderrC
         actual `shouldBe` expected
 #endif
     prop "map" $ \input ->
-        runIdentity (yieldMany input $$ mapC succChar =$ sinkList)
+        runIdentity (yieldMany input $$ mapC succChar .| sinkList)
         `shouldBe` map succChar input
     prop "mapE" $ \(map V.fromList -> inputs) ->
-        runIdentity (yieldMany inputs $$ mapCE succChar =$ foldC)
+        runIdentity (yieldMany inputs $$ mapCE succChar .| foldC)
         `shouldBe` V.map succChar (V.concat inputs)
     prop "omapE" $ \(map T.pack -> inputs) ->
-        runIdentity (yieldMany inputs $$ omapCE succChar =$ foldC)
+        runIdentity (yieldMany inputs $$ omapCE succChar .| foldC)
         `shouldBe` T.map succChar (T.concat inputs)
     prop "concatMap" $ \ (input :: [Int]) ->
-        runIdentity (yieldMany input $$ concatMapC showInt =$ sinkList)
+        runIdentity (yieldMany input $$ concatMapC showInt .| sinkList)
         `shouldBe` concatMap showInt input
     prop "concatMapE" $ \ (input :: [Int]) ->
-        runIdentity (yield input $$ concatMapCE showInt =$ foldC)
+        runIdentity (yield input $$ concatMapCE showInt .| foldC)
         `shouldBe` concatMap showInt input
     prop "take" $ \(T.pack -> input) count ->
-        runIdentity (yieldMany input $$ (takeC count >>= \() -> mempty) =$ sinkList)
+        runIdentity (yieldMany input $$ (takeC count >>= \() -> mempty) .| sinkList)
         `shouldBe` T.unpack (T.take count input)
     prop "takeE" $ \(T.pack -> input) count ->
-        runIdentity (yield input $$ (takeCE count >>= \() -> mempty) =$ foldC)
+        runIdentity (yield input $$ (takeCE count >>= \() -> mempty) .| foldC)
         `shouldBe` T.take count input
     prop "takeWhile" $ \(T.pack -> input) sep ->
         runIdentity (yieldMany input $$ do
-            x <- (takeWhileC (<= sep) >>= \() -> mempty) =$ sinkList
+            x <- (takeWhileC (<= sep) >>= \() -> mempty) .| sinkList
             y <- sinkList
             return (x, y))
         `shouldBe` span (<= sep) (T.unpack input)
     prop "takeWhileE" $ \(T.pack -> input) sep ->
         runIdentity (yield input $$ do
-            x <- (takeWhileCE (<= sep) >>= \() -> mempty) =$ foldC
+            x <- (takeWhileCE (<= sep) >>= \() -> mempty) .| foldC
             y <- foldC
             return (x, y))
         `shouldBe` T.span (<= sep) input
@@ -431,32 +431,32 @@ spec = do
             -- Report upstream when packages are released
          in res `shouldBe` (1, " World" :: TL.Text)
     prop "concat" $ \input ->
-        runIdentity (yield (T.pack input) $$ concatC =$ sinkList)
+        runIdentity (yield (T.pack input) $$ concatC .| sinkList)
         `shouldBe` input
     prop "filter" $ \input ->
-        runIdentity (yieldMany input $$ filterC evenInt =$ sinkList)
+        runIdentity (yieldMany input $$ filterC evenInt .| sinkList)
         `shouldBe` filter evenInt input
     prop "filterE" $ \input ->
-        runIdentity (yield input $$ filterCE evenInt =$ foldC)
+        runIdentity (yield input $$ filterCE evenInt .| foldC)
         `shouldBe` filter evenInt input
     prop "mapWhile" $ \input (min 20 -> highest) ->
         let f i | i < highest = Just (i + 2 :: Int)
                 | otherwise   = Nothing
             res = runIdentity $ yieldMany input $$ do
-                x <- (mapWhileC f >>= \() -> mempty) =$ sinkList
+                x <- (mapWhileC f >>= \() -> mempty) .| sinkList
                 y <- sinkList
                 return (x, y)
             (taken, dropped) = span (< highest) input
          in res `shouldBe` (map (+ 2) taken, dropped)
     prop "conduitVector" $ \(take 200 -> input) size' -> do
         let size = min 30 $ succ $ abs size'
-        res <- yieldMany input $$ conduitVector size =$ sinkList
+        res <- yieldMany input $$ conduitVector size .| sinkList
         res `shouldSatisfy` all (\v -> V.length v <= size)
         drop 1 (reverse res) `shouldSatisfy` all (\v -> V.length v == size)
         V.concat res `shouldBe` V.fromList (input :: [Int])
     prop "scanl" $ \input seed ->
         let f a b = a + b :: Int
-            res = runIdentity $ yieldMany input $$ scanlC f seed =$ sinkList
+            res = runIdentity $ yieldMany input $$ scanlC f seed .| sinkList
          in res `shouldBe` scanl f seed input
     prop "mapAccumWhile" $ \input (min 20 -> highest) ->
         let f i accum | i < highest = Right (i + accum, 2 * i :: Int)
@@ -469,38 +469,38 @@ spec = do
          in res `shouldBe` (sum taken, map (* 2) taken, tailSafe dropped)
     prop "concatMapAccum" $ \(input :: [Int]) ->
         let f a accum = (a + accum, [a, accum])
-            res = runIdentity $ yieldMany input $$ concatMapAccumC f 0 =$ sinkList
+            res = runIdentity $ yieldMany input $$ concatMapAccumC f 0 .| sinkList
             expected = concat $ snd $ mapAccumL (flip f) 0 input
          in res `shouldBe` expected
     prop "intersperse" $ \xs x ->
-        runIdentity (yieldMany xs $$ intersperseC x =$ sinkList)
+        runIdentity (yieldMany xs $$ intersperseC x .| sinkList)
         `shouldBe` intersperse (x :: Int) xs
     prop "mapM" $ \input ->
-        runIdentity (yieldMany input $$ mapMC (return . succChar) =$ sinkList)
+        runIdentity (yieldMany input $$ mapMC (return . succChar) .| sinkList)
         `shouldBe` map succChar input
     prop "mapME" $ \(map V.fromList -> inputs) ->
-        runIdentity (yieldMany inputs $$ mapMCE (return . succChar) =$ foldC)
+        runIdentity (yieldMany inputs $$ mapMCE (return . succChar) .| foldC)
         `shouldBe` V.map succChar (V.concat inputs)
     prop "omapME" $ \(map T.pack -> inputs) ->
-        runIdentity (yieldMany inputs $$ omapMCE (return . succChar) =$ foldC)
+        runIdentity (yieldMany inputs $$ omapMCE (return . succChar) .| foldC)
         `shouldBe` T.map succChar (T.concat inputs)
     prop "concatMapM" $ \ (input :: [Int]) ->
-        runIdentity (yieldMany input $$ concatMapMC (return . showInt) =$ sinkList)
+        runIdentity (yieldMany input $$ concatMapMC (return . showInt) .| sinkList)
         `shouldBe` concatMap showInt input
     prop "filterM" $ \input ->
-        runIdentity (yieldMany input $$ filterMC (return . evenInt) =$ sinkList)
+        runIdentity (yieldMany input $$ filterMC (return . evenInt) .| sinkList)
         `shouldBe` filter evenInt input
     prop "filterME" $ \input ->
-        runIdentity (yield input $$ filterMCE (return . evenInt) =$ foldC)
+        runIdentity (yield input $$ filterMCE (return . evenInt) .| foldC)
         `shouldBe` filter evenInt input
     prop "iterM" $ \input -> do
-        (x, y) <- runWriterT $ yieldMany input $$ iterMC (tell . return) =$ sinkList
+        (x, y) <- runWriterT $ yieldMany input $$ iterMC (tell . return) .| sinkList
         x `shouldBe` (input :: [Int])
         y `shouldBe` input
     prop "scanlM" $ \input seed ->
         let f a b = a + b :: Int
             fm a b = return $ a + b
-            res = runIdentity $ yieldMany input $$ scanlMC fm seed =$ sinkList
+            res = runIdentity $ yieldMany input $$ scanlMC fm seed .| sinkList
          in res `shouldBe` scanl f seed input
     prop "mapAccumWhileM" $ \input (min 20 -> highest) ->
         let f i accum | i < highest = Right (i + accum, 2 * i :: Int)
@@ -513,24 +513,24 @@ spec = do
          in res `shouldBe` (sum taken, map (* 2) taken, tailSafe dropped)
     prop "concatMapAccumM" $ \(input :: [Int]) ->
         let f a accum = (a + accum, [a, accum])
-            res = runIdentity $ yieldMany input $$ concatMapAccumMC ((return.).f) 0 =$ sinkList
+            res = runIdentity $ yieldMany input $$ concatMapAccumMC ((return.).f) 0 .| sinkList
             expected = concat $ snd $ mapAccumL (flip f) 0 input
          in res `shouldBe` expected
     prop "encode UTF8" $ \(map T.pack -> inputs) -> do
         let expected = encodeUtf8 $ fromChunks inputs
         actual <- yieldMany inputs
                $$ encodeUtf8C
-               =$ sinkLazy
+               .| sinkLazy
         actual `shouldBe` expected
     prop "encode/decode UTF8" $ \(map T.pack -> inputs) (min 50 . max 1 . abs -> chunkSize) -> do
         let expected = fromChunks inputs
         actual <- yieldMany inputs
                $$ encodeUtf8C
-               =$ concatC
-               =$ conduitVector chunkSize
-               =$ mapC (S.pack . V.toList)
-               =$ decodeUtf8C
-               =$ sinkLazy
+               .| concatC
+               .| conduitVector chunkSize
+               .| mapC (S.pack . V.toList)
+               .| decodeUtf8C
+               .| sinkLazy
         actual `shouldBe` expected
     it "invalid UTF8 is an exception" $
       case runConduit $ yield "\129" .| decodeUtf8C .| sinkLazy of
@@ -540,16 +540,16 @@ spec = do
         let expected = fromChunks inputs
         actual <- yieldMany inputs
                $$ encodeUtf8C
-               =$ concatC
-               =$ conduitVector chunkSize
-               =$ mapC (S.pack . V.toList)
-               =$ decodeUtf8LenientC
-               =$ sinkLazy
+               .| concatC
+               .| conduitVector chunkSize
+               .| mapC (S.pack . V.toList)
+               .| decodeUtf8LenientC
+               .| sinkLazy
         actual `shouldBe` expected
     prop "line" $ \(map T.pack -> input) size ->
         let src = yieldMany input
             sink = do
-                x <- lineC $ takeCE size =$ foldC
+                x <- lineC $ takeCE size .| foldC
                 y <- foldC
                 return (x, y)
             res = runIdentity $ src $$ sink
@@ -560,7 +560,7 @@ spec = do
     prop "lineAscii" $ \(map S.pack -> input) size ->
         let src = yieldMany input
             sink = do
-                x <- lineAsciiC $ takeCE size =$ foldC
+                x <- lineAsciiC $ takeCE size .| foldC
                 y <- foldC
                 return (x, y)
             res = runIdentity $ src $$ sink
@@ -569,58 +569,58 @@ spec = do
                  in (S.take size x, S.drop 1 y)
          in res `shouldBe` expected
     prop "unlines" $ \(map T.pack -> input) ->
-        runIdentity (yieldMany input $$ unlinesC =$ foldC)
+        runIdentity (yieldMany input $$ unlinesC .| foldC)
         `shouldBe` T.unlines input
     prop "unlinesAscii" $ \(map S.pack -> input) ->
-        runIdentity (yieldMany input $$ unlinesAsciiC =$ foldC)
+        runIdentity (yieldMany input $$ unlinesAsciiC .| foldC)
         `shouldBe` S8.unlines input
     prop "linesUnbounded" $ \(map T.pack -> input) ->
-        runIdentity (yieldMany input $$ (linesUnboundedC >>= \() -> mempty) =$ sinkList)
+        runIdentity (yieldMany input $$ (linesUnboundedC >>= \() -> mempty) .| sinkList)
         `shouldBe` T.lines (T.concat input)
     prop "linesUnboundedAscii" $ \(map S.pack -> input) ->
-        runIdentity (yieldMany input $$ (linesUnboundedAsciiC >>= \() -> mempty) =$ sinkList)
+        runIdentity (yieldMany input $$ (linesUnboundedAsciiC >>= \() -> mempty) .| sinkList)
         `shouldBe` S8.lines (S.concat input)
     it "slidingWindow 0" $
-        let res = runIdentity $ yieldMany [1..5] $= slidingWindow 0 $$ sinkList
+        let res = runIdentity $ yieldMany [1..5] .| slidingWindow 0 $$ sinkList
         in res `shouldBe` [[1],[2],[3],[4],[5]]
     it "slidingWindow 1" $
-        let res = runIdentity $ yieldMany [1..5] $= slidingWindow 1 $$ sinkList
+        let res = runIdentity $ yieldMany [1..5] .| slidingWindow 1 $$ sinkList
         in res `shouldBe` [[1],[2],[3],[4],[5]]
     it "slidingWindow 2" $
-        let res = runIdentity $ yieldMany [1..5] $= slidingWindow 2 $$ sinkList
+        let res = runIdentity $ yieldMany [1..5] .| slidingWindow 2 $$ sinkList
         in res `shouldBe` [[1,2],[2,3],[3,4],[4,5]]
     it "slidingWindow 3" $
-        let res = runIdentity $ yieldMany [1..5] $= slidingWindow 3 $$ sinkList
+        let res = runIdentity $ yieldMany [1..5] .| slidingWindow 3 $$ sinkList
         in res `shouldBe` [[1,2,3],[2,3,4],[3,4,5]]
     it "slidingWindow 4" $
-        let res = runIdentity $ yieldMany [1..5] $= slidingWindow 4 $$ sinkList
+        let res = runIdentity $ yieldMany [1..5] .| slidingWindow 4 $$ sinkList
         in res `shouldBe` [[1,2,3,4],[2,3,4,5]]
     it "slidingWindow 5" $
-        let res = runIdentity $ yieldMany [1..5] $= slidingWindow 5 $$ sinkList
+        let res = runIdentity $ yieldMany [1..5] .| slidingWindow 5 $$ sinkList
         in res `shouldBe` [[1,2,3,4,5]]
     it "slidingWindow 6" $
-        let res = runIdentity $ yieldMany [1..5] $= slidingWindow 6 $$ sinkList
+        let res = runIdentity $ yieldMany [1..5] .| slidingWindow 6 $$ sinkList
         in res `shouldBe` [[1,2,3,4,5]]
     it "chunksOfE 1" $
-        let res = runIdentity $ yieldMany [[1,2], [3,4], [5,6]] $= chunksOfE 3 $$ sinkList
+        let res = runIdentity $ yieldMany [[1,2], [3,4], [5,6]] .| chunksOfE 3 $$ sinkList
         in res `shouldBe` [[1,2,3], [4,5,6]]
     it "chunksOfE 2 (last smaller)" $
-        let res = runIdentity $ yieldMany [[1,2], [3,4], [5,6,7]] $= chunksOfE 3 $$ sinkList
+        let res = runIdentity $ yieldMany [[1,2], [3,4], [5,6,7]] .| chunksOfE 3 $$ sinkList
         in res `shouldBe` [[1,2,3], [4,5,6], [7]]
     it "chunksOfE (ByteString)" $
-        let res = runIdentity $ yieldMany [S8.pack "01234", "56789ab", "cdef", "h"] $= chunksOfE 4 $$ sinkList
+        let res = runIdentity $ yieldMany [S8.pack "01234", "56789ab", "cdef", "h"] .| chunksOfE 4 $$ sinkList
         in res `shouldBe` ["0123", "4567", "89ab", "cdef", "h"]
     it "chunksOfExactlyE 1" $
-        let res = runIdentity $ yieldMany [[1,2], [3,4], [5,6]] $= chunksOfExactlyE 3 $$ sinkList
+        let res = runIdentity $ yieldMany [[1,2], [3,4], [5,6]] .| chunksOfExactlyE 3 $$ sinkList
         in res `shouldBe` [[1,2,3], [4,5,6]]
     it "chunksOfExactlyE 2 (last smaller; thus not yielded)" $
-        let res = runIdentity $ yieldMany [[1,2], [3,4], [5,6,7]] $= chunksOfExactlyE 3 $$ sinkList
+        let res = runIdentity $ yieldMany [[1,2], [3,4], [5,6,7]] .| chunksOfExactlyE 3 $$ sinkList
         in res `shouldBe` [[1,2,3], [4,5,6]]
     prop "vectorBuilder" $ \(values :: [[Int]]) ((+1) . (`mod` 30) . abs -> size) -> do
         let res = runST
                 $ yieldMany values
                $$ vectorBuilderC size mapM_CE
-               =$ sinkList
+               .| sinkList
             expected =
                 loop $ concat values
               where
@@ -632,7 +632,7 @@ spec = do
         res `shouldBe` expected
     prop "mapAccumS" $ \input ->
         let ints  = [1..]
-            f a s = liftM (:s) $ mapC (* a) =$ takeC a =$ sinkList
+            f a s = liftM (:s) $ mapC (* a) .| takeC a .| sinkList
             res   = reverse $ runIdentity $ yieldMany input
                            $$ mapAccumS f [] (yieldMany ints)
             expected = loop input ints
@@ -642,12 +642,12 @@ spec = do
         in  res `shouldBe` expected
     prop "peekForever" $ \(strs' :: [String]) -> do
         let strs = filter (not . null) strs'
-        res1 <- yieldMany strs $$ linesUnboundedC =$ sinkList
-        res2 <- yieldMany strs $$ peekForever (lineC $ foldC >>= yield) =$ sinkList
+        res1 <- yieldMany strs $$ linesUnboundedC .| sinkList
+        res2 <- yieldMany strs $$ peekForever (lineC $ foldC >>= yield) .| sinkList
         res2 `shouldBe` res1
     prop "peekForeverE" $ \(strs :: [String]) -> do
-        res1 <- yieldMany strs $$ linesUnboundedC =$ sinkList
-        res2 <- yieldMany strs $$ peekForeverE (lineC $ foldC >>= yield) =$ sinkList
+        res1 <- yieldMany strs $$ linesUnboundedC .| sinkList
+        res2 <- yieldMany strs $$ peekForeverE (lineC $ foldC >>= yield) .| sinkList
         res2 `shouldBe` res1
     StreamSpec.spec
 

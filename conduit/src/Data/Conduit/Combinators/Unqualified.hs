@@ -187,11 +187,11 @@ module Data.Conduit.Combinators.Unqualified
 import qualified Data.Conduit.Combinators as CC
 -- BEGIN IMPORTS
 
-import qualified Data.NonNull as NonNull
 import qualified Data.Traversable
+import           Control.Applicative         (Alternative)
 import           Control.Monad.IO.Class      (MonadIO (..))
 import           Control.Monad.Primitive     (PrimMonad, PrimState)
-import           Control.Monad.Trans.Resource (MonadResource, MonadThrow)
+import           Control.Monad.Trans.Resource (MonadThrow)
 import           Data.Conduit
 import           Data.Monoid                 (Monoid (..))
 import           Data.MonoTraversable
@@ -200,33 +200,15 @@ import qualified Data.Vector.Generic         as V
 import           Prelude                     (Bool (..), Eq (..), Int,
                                               Maybe (..), Monad (..), Num (..),
                                               Ord (..), Functor (..), Either (..),
-                                              Enum, Show, Char, FilePath)
+                                              Enum, Show, Char)
 import Data.Word (Word8)
-import qualified System.IO                   as SIO
 import Data.ByteString (ByteString)
 import Data.Text (Text)
 
-#if MIN_VERSION_mono_traversable(1,0,0)
 import qualified Data.Sequences as DTE
-import           Data.Sequences (LazySequence (..))
-#else
-import           Data.Sequences.Lazy
-import qualified Data.Textual.Encoding as DTE
-#endif
 
 
 -- END IMPORTS
-
--- | Yield each of the values contained by the given @MonoFoldable@.
---
--- This will work on many data structures, including lists, @ByteString@s, and @Vector@s.
---
--- Since 1.0.0
-yieldMany :: (Monad m, MonoFoldable mono)
-          => mono
-          -> Producer m (Element mono)
-yieldMany = CC.yieldMany
-{-# INLINE yieldMany #-}
 
 -- | Generate a producer from a seed value.
 --
@@ -234,7 +216,7 @@ yieldMany = CC.yieldMany
 unfoldC :: Monad m
        => (b -> Maybe (a, b))
        -> b
-       -> Producer m a
+       -> ConduitT i a m ()
 unfoldC = CC.unfold
 {-# INLINE unfoldC #-}
 
@@ -245,21 +227,21 @@ unfoldC = CC.unfold
 -- structures.
 --
 -- Since 1.0.0
-enumFromToC :: (Monad m, Enum a, Ord a) => a -> a -> Producer m a
+enumFromToC :: (Monad m, Enum a, Ord a) => a -> a -> ConduitT i a m ()
 enumFromToC = CC.enumFromTo
 {-# INLINE enumFromToC #-}
 
 -- | Produces an infinite stream of repeated applications of f to x.
 --
 -- Since 1.0.0
-iterateC :: Monad m => (a -> a) -> a -> Producer m a
+iterateC :: Monad m => (a -> a) -> a -> ConduitT i a m ()
 iterateC = CC.iterate
 {-# INLINE iterateC #-}
 
 -- | Produce an infinite stream consisting entirely of the given value.
 --
 -- Since 1.0.0
-repeatC :: Monad m => a -> Producer m a
+repeatC :: Monad m => a -> ConduitT i a m ()
 repeatC = CC.repeat
 {-# INLINE repeatC #-}
 
@@ -269,27 +251,16 @@ repeatC = CC.repeat
 replicateC :: Monad m
           => Int
           -> a
-          -> Producer m a
+          -> ConduitT i a m ()
 replicateC = CC.replicate
 {-# INLINE replicateC #-}
-
--- | Generate a producer by yielding each of the strict chunks in a @LazySequence@.
---
--- For more information, see 'toChunks'.
---
--- Since 1.0.0
-sourceLazy :: (Monad m, LazySequence lazy strict)
-           => lazy
-           -> Producer m strict
-sourceLazy = CC.sourceLazy
-{-# INLINE sourceLazy #-}
 
 -- | Repeatedly run the given action and yield all values it produces.
 --
 -- Since 1.0.0
 repeatMC :: Monad m
         => m a
-        -> Producer m a
+        -> ConduitT i a m ()
 repeatMC = CC.repeatM
 {-# INLINE repeatMC #-}
 
@@ -300,7 +271,7 @@ repeatMC = CC.repeatM
 repeatWhileMC :: Monad m
              => m a
              -> (a -> Bool)
-             -> Producer m a
+             -> ConduitT i a m ()
 repeatWhileMC = CC.repeatWhileM
 {-# INLINE repeatWhileMC #-}
 
@@ -310,52 +281,23 @@ repeatWhileMC = CC.repeatWhileM
 replicateMC :: Monad m
            => Int
            -> m a
-           -> Producer m a
+           -> ConduitT i a m ()
 replicateMC = CC.replicateM
 {-# INLINE replicateMC #-}
 
 -- | @sourceHandle@ applied to @stdin@.
 --
 -- Since 1.0.0
-stdinC :: MonadIO m => Producer m ByteString
+stdinC :: MonadIO m => ConduitT i ByteString m ()
 stdinC = CC.stdin
 {-# INLINE stdinC #-}
-
--- | Stream the contents of the given directory, without traversing deeply.
---
--- This function will return /all/ of the contents of the directory, whether
--- they be files, directories, etc.
---
--- Note that the generated filepaths will be the complete path, not just the
--- filename. In other words, if you have a directory @foo@ containing files
--- @bar@ and @baz@, and you use @sourceDirectory@ on @foo@, the results will be
--- @foo/bar@ and @foo/baz@.
---
--- Since 1.0.0
-sourceDirectory :: MonadResource m => FilePath -> Producer m FilePath
-sourceDirectory = CC.sourceDirectory
-{-# INLINE sourceDirectory #-}
-
--- | Deeply stream the contents of the given directory.
---
--- This works the same as @sourceDirectory@, but will not return directories at
--- all. This function also takes an extra parameter to indicate whether
--- symlinks will be followed.
---
--- Since 1.0.0
-sourceDirectoryDeep :: MonadResource m
-                    => Bool -- ^ Follow directory symlinks
-                    -> FilePath -- ^ Root directory
-                    -> Producer m FilePath
-sourceDirectoryDeep = CC.sourceDirectoryDeep
-{-# INLINE sourceDirectoryDeep #-}
 
 -- | Ignore a certain number of values in the stream.
 --
 -- Since 1.0.0
 dropC :: Monad m
      => Int
-     -> Consumer a m ()
+     -> ConduitT a o m ()
 dropC = CC.drop
 {-# INLINE dropC #-}
 
@@ -364,7 +306,7 @@ dropC = CC.drop
 -- Since 1.0.0
 dropCE :: (Monad m, Seq.IsSequence seq)
       => Seq.Index seq
-      -> Consumer seq m ()
+      -> ConduitT seq o m ()
 dropCE = CC.dropE
 {-# INLINE dropCE #-}
 
@@ -373,7 +315,7 @@ dropCE = CC.dropE
 -- Since 1.0.0
 dropWhileC :: Monad m
           => (a -> Bool)
-          -> Consumer a m ()
+          -> ConduitT a o m ()
 dropWhileC = CC.dropWhile
 {-# INLINE dropWhileC #-}
 
@@ -382,7 +324,7 @@ dropWhileC = CC.dropWhile
 -- Since 1.0.0
 dropWhileCE :: (Monad m, Seq.IsSequence seq)
            => (Element seq -> Bool)
-           -> Consumer seq m ()
+           -> ConduitT seq o m ()
 dropWhileCE = CC.dropWhileE
 {-# INLINE dropWhileCE #-}
 
@@ -390,7 +332,7 @@ dropWhileCE = CC.dropWhileE
 --
 -- Since 1.0.0
 foldC :: (Monad m, Monoid a)
-     => Consumer a m a
+     => ConduitT a o m a
 foldC = CC.fold
 {-# INLINE foldC #-}
 
@@ -398,14 +340,14 @@ foldC = CC.fold
 --
 -- Since 1.0.0
 foldCE :: (Monad m, MonoFoldable mono, Monoid (Element mono))
-      => Consumer mono m (Element mono)
+      => ConduitT mono o m (Element mono)
 foldCE = CC.foldE
 {-# INLINE foldCE #-}
 
 -- | A strict left fold.
 --
 -- Since 1.0.0
-foldlC :: Monad m => (a -> b -> a) -> a -> Consumer b m a
+foldlC :: Monad m => (a -> b -> a) -> a -> ConduitT b o m a
 foldlC = CC.foldl
 {-# INLINE foldlC #-}
 
@@ -415,7 +357,7 @@ foldlC = CC.foldl
 foldlCE :: (Monad m, MonoFoldable mono)
        => (a -> Element mono -> a)
        -> a
-       -> Consumer mono m a
+       -> ConduitT mono o m a
 foldlCE = CC.foldlE
 {-# INLINE foldlCE #-}
 
@@ -424,7 +366,7 @@ foldlCE = CC.foldlE
 -- Since 1.0.0
 foldMapC :: (Monad m, Monoid b)
         => (a -> b)
-        -> Consumer a m b
+        -> ConduitT a o m b
 foldMapC = CC.foldMap
 {-# INLINE foldMapC #-}
 
@@ -433,7 +375,7 @@ foldMapC = CC.foldMap
 -- Since 1.0.0
 foldMapCE :: (Monad m, MonoFoldable mono, Monoid w)
          => (Element mono -> w)
-         -> Consumer mono m w
+         -> ConduitT mono o m w
 foldMapCE = CC.foldMapE
 {-# INLINE foldMapCE #-}
 
@@ -445,7 +387,7 @@ foldMapCE = CC.foldMapE
 -- Since 1.0.0
 allC :: Monad m
     => (a -> Bool)
-    -> Consumer a m Bool
+    -> ConduitT a o m Bool
 allC = CC.all
 {-# INLINE allC #-}
 
@@ -457,7 +399,7 @@ allC = CC.all
 -- Since 1.0.0
 allCE :: (Monad m, MonoFoldable mono)
      => (Element mono -> Bool)
-     -> Consumer mono m Bool
+     -> ConduitT mono o m Bool
 allCE = CC.allE
 {-# INLINE allCE #-}
 
@@ -469,7 +411,7 @@ allCE = CC.allE
 -- Since 1.0.0
 anyC :: Monad m
     => (a -> Bool)
-    -> Consumer a m Bool
+    -> ConduitT a o m Bool
 anyC = CC.any
 {-# INLINE anyC #-}
 
@@ -481,7 +423,7 @@ anyC = CC.any
 -- Since 1.0.0
 anyCE :: (Monad m, MonoFoldable mono)
      => (Element mono -> Bool)
-     -> Consumer mono m Bool
+     -> ConduitT mono o m Bool
 anyCE = CC.anyE
 {-# INLINE anyCE #-}
 
@@ -490,7 +432,7 @@ anyCE = CC.anyE
 -- Consumption stops once the first False is encountered.
 --
 -- Since 1.0.0
-andC :: Monad m => Consumer Bool m Bool
+andC :: Monad m => ConduitT Bool o m Bool
 andC = CC.and
 {-# INLINE andC #-}
 
@@ -500,7 +442,7 @@ andC = CC.and
 --
 -- Since 1.0.0
 andCE :: (Monad m, MonoFoldable mono, Element mono ~ Bool)
-     => Consumer mono m Bool
+     => ConduitT mono o m Bool
 andCE = CC.andE
 {-# INLINE andCE #-}
 
@@ -509,7 +451,7 @@ andCE = CC.andE
 -- Consumption stops once the first True is encountered.
 --
 -- Since 1.0.0
-orC :: Monad m => Consumer Bool m Bool
+orC :: Monad m => ConduitT Bool o m Bool
 orC = CC.or
 {-# INLINE orC #-}
 
@@ -519,13 +461,14 @@ orC = CC.or
 --
 -- Since 1.0.0
 orCE :: (Monad m, MonoFoldable mono, Element mono ~ Bool)
-    => Consumer mono m Bool
+    => ConduitT mono o m Bool
 orCE = CC.orE
 {-# INLINE orCE #-}
 
 -- | 'Alternative'ly combine all values in the stream.
 --
 -- Since 1.1.1
+asumC :: (Monad m, Alternative f) => ConduitT (f a) o m (f a)
 asumC = CC.asum
 
 -- | Are any values in the stream equal to the given value?
@@ -533,7 +476,7 @@ asumC = CC.asum
 -- Stops consuming as soon as a match is found.
 --
 -- Since 1.0.0
-elemC :: (Monad m, Eq a) => a -> Consumer a m Bool
+elemC :: (Monad m, Eq a) => a -> ConduitT a o m Bool
 elemC = CC.elem
 {-# INLINE elemC #-}
 
@@ -548,7 +491,7 @@ elemCE :: (Monad m, Seq.IsSequence seq, Eq (Element seq))
 elemCE :: (Monad m, Seq.EqSequence seq)
 #endif
       => Element seq
-      -> Consumer seq m Bool
+      -> ConduitT seq o m Bool
 elemCE = CC.elemE
 {-# INLINE elemCE #-}
 
@@ -557,7 +500,7 @@ elemCE = CC.elemE
 -- Stops consuming as soon as a match is found.
 --
 -- Since 1.0.0
-notElemC :: (Monad m, Eq a) => a -> Consumer a m Bool
+notElemC :: (Monad m, Eq a) => a -> ConduitT a o m Bool
 notElemC = CC.notElem
 {-# INLINE notElemC #-}
 
@@ -572,141 +515,81 @@ notElemCE :: (Monad m, Seq.IsSequence seq, Eq (Element seq))
 notElemCE :: (Monad m, Seq.EqSequence seq)
 #endif
          => Element seq
-         -> Consumer seq m Bool
+         -> ConduitT seq o m Bool
 notElemCE = CC.notElemE
 {-# INLINE notElemCE #-}
-
--- | Consume all incoming strict chunks into a lazy sequence.
--- Note that the entirety of the sequence will be resident at memory.
---
--- This can be used to consume a stream of strict ByteStrings into a lazy
--- ByteString, for example.
---
--- Since 1.0.0
-sinkLazy :: (Monad m, LazySequence lazy strict)
-         => Consumer strict m lazy
-sinkLazy = CC.sinkLazy
-{-# INLINE sinkLazy #-}
-
--- | Consume all values from the stream and return as a list. Note that this
--- will pull all values into memory.
---
--- Since 1.0.0
-sinkList :: Monad m => Consumer a m [a]
-sinkList = CC.sinkList
-{-# INLINE sinkList #-}
-
--- | Sink incoming values into a vector, growing the vector as necessary to fit
--- more elements.
---
--- Note that using this function is more memory efficient than @sinkList@ and
--- then converting to a @Vector@, as it avoids intermediate list constructors.
---
--- Since 1.0.0
-sinkVector :: (V.Vector v a, PrimMonad m)
-           => Consumer a m (v a)
-sinkVector = CC.sinkVector
-{-# INLINE sinkVector #-}
-
--- | Sink incoming values into a vector, up until size @maxSize@.  Subsequent
--- values will be left in the stream. If there are less than @maxSize@ values
--- present, returns a @Vector@ of smaller size.
---
--- Note that using this function is more memory efficient than @sinkList@ and
--- then converting to a @Vector@, as it avoids intermediate list constructors.
---
--- Since 1.0.0
-sinkVectorN :: (V.Vector v a, PrimMonad m)
-            => Int -- ^ maximum allowed size
-            -> Consumer a m (v a)
-sinkVectorN = CC.sinkVectorN
-{-# INLINE sinkVectorN #-}
-
--- | Consume and discard all remaining values in the stream.
---
--- Since 1.0.0
-sinkNull :: Monad m => Consumer a m ()
-sinkNull = CC.sinkNull
-{-# INLINE sinkNull #-}
-
--- | Same as @await@, but discards any leading 'onull' values.
---
--- Since 1.0.0
-awaitNonNull :: (Monad m, MonoFoldable a) => Consumer a m (Maybe (NonNull.NonNull a))
-awaitNonNull = CC.awaitNonNull
-{-# INLINE awaitNonNull #-}
 
 -- | Take a single value from the stream, if available.
 --
 -- Since 1.0.5
-headC :: Monad m => Consumer a m (Maybe a)
+headC :: Monad m => ConduitT a o m (Maybe a)
 headC = CC.head
 
 -- | Same as 'headC', but returns a default value if none are available from the stream.
 --
 -- Since 1.0.5
-headDefC :: Monad m => a -> Consumer a m a
+headDefC :: Monad m => a -> ConduitT a o m a
 headDefC = CC.headDef
 
 -- | Get the next element in the chunked stream.
 --
 -- Since 1.0.0
-headCE :: (Monad m, Seq.IsSequence seq) => Consumer seq m (Maybe (Element seq))
+headCE :: (Monad m, Seq.IsSequence seq) => ConduitT seq o m (Maybe (Element seq))
 headCE = CC.headE
 {-# INLINE headCE #-}
 
 -- | View the next value in the stream without consuming it.
 --
 -- Since 1.0.0
-peekC :: Monad m => Consumer a m (Maybe a)
+peekC :: Monad m => ConduitT a o m (Maybe a)
 peekC = CC.peek
 {-# INLINE peekC #-}
 
 -- | View the next element in the chunked stream without consuming it.
 --
 -- Since 1.0.0
-peekCE :: (Monad m, MonoFoldable mono) => Consumer mono m (Maybe (Element mono))
+peekCE :: (Monad m, MonoFoldable mono) => ConduitT mono o m (Maybe (Element mono))
 peekCE = CC.peekE
 {-# INLINE peekCE #-}
 
 -- | Retrieve the last value in the stream, if present.
 --
 -- Since 1.0.0
-lastC :: Monad m => Consumer a m (Maybe a)
+lastC :: Monad m => ConduitT a o m (Maybe a)
 lastC = CC.last
 {-# INLINE lastC #-}
 
 -- | Same as 'lastC', but returns a default value if none are available from the stream.
 --
 -- Since 1.0.5
-lastDefC :: Monad m => a -> Consumer a m a
+lastDefC :: Monad m => a -> ConduitT a o m a
 lastDefC = CC.lastDef
 
 -- | Retrieve the last element in the chunked stream, if present.
 --
 -- Since 1.0.0
-lastCE :: (Monad m, Seq.IsSequence seq) => Consumer seq m (Maybe (Element seq))
+lastCE :: (Monad m, Seq.IsSequence seq) => ConduitT seq o m (Maybe (Element seq))
 lastCE = CC.lastE
 {-# INLINE lastCE #-}
 
 -- | Count how many values are in the stream.
 --
 -- Since 1.0.0
-lengthC :: (Monad m, Num len) => Consumer a m len
+lengthC :: (Monad m, Num len) => ConduitT a o m len
 lengthC = CC.length
 {-# INLINE lengthC #-}
 
 -- | Count how many elements are in the chunked stream.
 --
 -- Since 1.0.0
-lengthCE :: (Monad m, Num len, MonoFoldable mono) => Consumer mono m len
+lengthCE :: (Monad m, Num len, MonoFoldable mono) => ConduitT mono o m len
 lengthCE = CC.lengthE
 {-# INLINE lengthCE #-}
 
 -- | Count how many values in the stream pass the given predicate.
 --
 -- Since 1.0.0
-lengthIfC :: (Monad m, Num len) => (a -> Bool) -> Consumer a m len
+lengthIfC :: (Monad m, Num len) => (a -> Bool) -> ConduitT a o m len
 lengthIfC = CC.lengthIf
 {-# INLINE lengthIfC #-}
 
@@ -714,14 +597,14 @@ lengthIfC = CC.lengthIf
 --
 -- Since 1.0.0
 lengthIfCE :: (Monad m, Num len, MonoFoldable mono)
-          => (Element mono -> Bool) -> Consumer mono m len
+          => (Element mono -> Bool) -> ConduitT mono o m len
 lengthIfCE = CC.lengthIfE
 {-# INLINE lengthIfCE #-}
 
 -- | Get the largest value in the stream, if present.
 --
 -- Since 1.0.0
-maximumC :: (Monad m, Ord a) => Consumer a m (Maybe a)
+maximumC :: (Monad m, Ord a) => ConduitT a o m (Maybe a)
 maximumC = CC.maximum
 {-# INLINE maximumC #-}
 
@@ -729,9 +612,9 @@ maximumC = CC.maximum
 --
 -- Since 1.0.0
 #if MIN_VERSION_mono_traversable(1,0,0)
-maximumCE :: (Monad m, Seq.IsSequence seq, Ord (Element seq)) => Consumer seq m (Maybe (Element seq))
+maximumCE :: (Monad m, Seq.IsSequence seq, Ord (Element seq)) => ConduitT seq o m (Maybe (Element seq))
 #else
-maximumCE :: (Monad m, Seq.OrdSequence seq) => Consumer seq m (Maybe (Element seq))
+maximumCE :: (Monad m, Seq.OrdSequence seq) => ConduitT seq o m (Maybe (Element seq))
 #endif
 maximumCE = CC.maximumE
 {-# INLINE maximumCE #-}
@@ -739,7 +622,7 @@ maximumCE = CC.maximumE
 -- | Get the smallest value in the stream, if present.
 --
 -- Since 1.0.0
-minimumC :: (Monad m, Ord a) => Consumer a m (Maybe a)
+minimumC :: (Monad m, Ord a) => ConduitT a o m (Maybe a)
 minimumC = CC.minimum
 {-# INLINE minimumC #-}
 
@@ -747,9 +630,9 @@ minimumC = CC.minimum
 --
 -- Since 1.0.0
 #if MIN_VERSION_mono_traversable(1,0,0)
-minimumCE :: (Monad m, Seq.IsSequence seq, Ord (Element seq)) => Consumer seq m (Maybe (Element seq))
+minimumCE :: (Monad m, Seq.IsSequence seq, Ord (Element seq)) => ConduitT seq o m (Maybe (Element seq))
 #else
-minimumCE :: (Monad m, Seq.OrdSequence seq) => Consumer seq m (Maybe (Element seq))
+minimumCE :: (Monad m, Seq.OrdSequence seq) => ConduitT seq o m (Maybe (Element seq))
 #endif
 minimumCE = CC.minimumE
 {-# INLINE minimumCE #-}
@@ -759,7 +642,7 @@ minimumCE = CC.minimumE
 -- This function does not modify the stream.
 --
 -- Since 1.0.0
-nullC :: Monad m => Consumer a m Bool
+nullC :: Monad m => ConduitT a o m Bool
 nullC = CC.null
 {-# INLINE nullC #-}
 
@@ -770,63 +653,63 @@ nullC = CC.null
 --
 -- Since 1.0.0
 nullCE :: (Monad m, MonoFoldable mono)
-      => Consumer mono m Bool
+      => ConduitT mono o m Bool
 nullCE = CC.nullE
 {-# INLINE nullCE #-}
 
 -- | Get the sum of all values in the stream.
 --
 -- Since 1.0.0
-sumC :: (Monad m, Num a) => Consumer a m a
+sumC :: (Monad m, Num a) => ConduitT a o m a
 sumC = CC.sum
 {-# INLINE sumC #-}
 
 -- | Get the sum of all elements in the chunked stream.
 --
 -- Since 1.0.0
-sumCE :: (Monad m, MonoFoldable mono, Num (Element mono)) => Consumer mono m (Element mono)
+sumCE :: (Monad m, MonoFoldable mono, Num (Element mono)) => ConduitT mono o m (Element mono)
 sumCE = CC.sumE
 {-# INLINE sumCE #-}
 
 -- | Get the product of all values in the stream.
 --
 -- Since 1.0.0
-productC :: (Monad m, Num a) => Consumer a m a
+productC :: (Monad m, Num a) => ConduitT a o m a
 productC = CC.product
 {-# INLINE productC #-}
 
 -- | Get the product of all elements in the chunked stream.
 --
 -- Since 1.0.0
-productCE :: (Monad m, MonoFoldable mono, Num (Element mono)) => Consumer mono m (Element mono)
+productCE :: (Monad m, MonoFoldable mono, Num (Element mono)) => ConduitT mono o m (Element mono)
 productCE = CC.productE
 {-# INLINE productCE #-}
 
 -- | Find the first matching value.
 --
 -- Since 1.0.0
-findC :: Monad m => (a -> Bool) -> Consumer a m (Maybe a)
+findC :: Monad m => (a -> Bool) -> ConduitT a o m (Maybe a)
 findC = CC.find
 {-# INLINE findC #-}
 
 -- | Apply the action to all values in the stream.
 --
 -- Since 1.0.0
-mapM_C :: Monad m => (a -> m ()) -> Consumer a m ()
+mapM_C :: Monad m => (a -> m ()) -> ConduitT a o m ()
 mapM_C = CC.mapM_
 {-# INLINE mapM_C #-}
 
 -- | Apply the action to all elements in the chunked stream.
 --
 -- Since 1.0.0
-mapM_CE :: (Monad m, MonoFoldable mono) => (Element mono -> m ()) -> Consumer mono m ()
+mapM_CE :: (Monad m, MonoFoldable mono) => (Element mono -> m ()) -> ConduitT mono o m ()
 mapM_CE = CC.mapM_E
 {-# INLINE mapM_CE #-}
 
 -- | A monadic strict left fold.
 --
 -- Since 1.0.0
-foldMC :: Monad m => (a -> b -> m a) -> a -> Consumer b m a
+foldMC :: Monad m => (a -> b -> m a) -> a -> ConduitT b o m a
 foldMC = CC.foldM
 {-# INLINE foldMC #-}
 
@@ -836,14 +719,14 @@ foldMC = CC.foldM
 foldMCE :: (Monad m, MonoFoldable mono)
        => (a -> Element mono -> m a)
        -> a
-       -> Consumer mono m a
+       -> ConduitT mono o m a
 foldMCE = CC.foldME
 {-# INLINE foldMCE #-}
 
 -- | Apply the provided monadic mapping function and monoidal combine all values.
 --
 -- Since 1.0.0
-foldMapMC :: (Monad m, Monoid w) => (a -> m w) -> Consumer a m w
+foldMapMC :: (Monad m, Monoid w) => (a -> m w) -> ConduitT a o m w
 foldMapMC = CC.foldMapM
 {-# INLINE foldMapMC #-}
 
@@ -853,42 +736,42 @@ foldMapMC = CC.foldMapM
 -- Since 1.0.0
 foldMapMCE :: (Monad m, MonoFoldable mono, Monoid w)
           => (Element mono -> m w)
-          -> Consumer mono m w
+          -> ConduitT mono o m w
 foldMapMCE = CC.foldMapME
 {-# INLINE foldMapMCE #-}
 
 -- | Print all incoming values to stdout.
 --
 -- Since 1.0.0
-printC :: (Show a, MonadIO m) => Consumer a m ()
+printC :: (Show a, MonadIO m) => ConduitT a o m ()
 printC = CC.print
 {-# INLINE printC #-}
 
 -- | @sinkHandle@ applied to @stdout@.
 --
 -- Since 1.0.0
-stdoutC :: MonadIO m => Consumer ByteString m ()
+stdoutC :: MonadIO m => ConduitT ByteString o m ()
 stdoutC = CC.stdout
 {-# INLINE stdoutC #-}
 
 -- | @sinkHandle@ applied to @stderr@.
 --
 -- Since 1.0.0
-stderrC :: MonadIO m => Consumer ByteString m ()
+stderrC :: MonadIO m => ConduitT ByteString o m ()
 stderrC = CC.stderr
 {-# INLINE stderrC #-}
 
 -- | Apply a transformation to all values in a stream.
 --
 -- Since 1.0.0
-mapC :: Monad m => (a -> b) -> Conduit a m b
+mapC :: Monad m => (a -> b) -> ConduitT a b m ()
 mapC = CC.map
 {-# INLINE mapC #-}
 
 -- | Apply a transformation to all elements in a chunked stream.
 --
 -- Since 1.0.0
-mapCE :: (Monad m, Functor f) => (a -> b) -> Conduit (f a) m (f b)
+mapCE :: (Monad m, Functor f) => (a -> b) -> ConduitT (f a) (f b) m ()
 mapCE = CC.mapE
 {-# INLINE mapCE #-}
 
@@ -898,7 +781,7 @@ mapCE = CC.mapE
 -- are @MonoFunctor@ but not @Functor@.
 --
 -- Since 1.0.0
-omapCE :: (Monad m, MonoFunctor mono) => (Element mono -> Element mono) -> Conduit mono m mono
+omapCE :: (Monad m, MonoFunctor mono) => (Element mono -> Element mono) -> ConduitT mono mono m ()
 omapCE = CC.omapE
 {-# INLINE omapCE #-}
 
@@ -911,7 +794,7 @@ omapCE = CC.omapE
 -- Since 1.0.0
 concatMapC :: (Monad m, MonoFoldable mono)
           => (a -> mono)
-          -> Conduit a m (Element mono)
+          -> ConduitT a (Element mono) m ()
 concatMapC = CC.concatMap
 {-# INLINE concatMapC #-}
 
@@ -924,7 +807,7 @@ concatMapC = CC.concatMap
 -- Since 1.0.0
 concatMapCE :: (Monad m, MonoFoldable mono, Monoid w)
            => (Element mono -> w)
-           -> Conduit mono m w
+           -> ConduitT mono w m ()
 concatMapCE = CC.concatMapE
 {-# INLINE concatMapCE #-}
 
@@ -935,7 +818,7 @@ concatMapCE = CC.concatMapE
 -- see 'takeExactly'.
 --
 -- Since 1.0.0
-takeC :: Monad m => Int -> Conduit a m a
+takeC :: Monad m => Int -> ConduitT a a m ()
 takeC = CC.take
 {-# INLINE takeC #-}
 
@@ -948,7 +831,7 @@ takeC = CC.take
 -- Since 1.0.0
 takeCE :: (Monad m, Seq.IsSequence seq)
       => Seq.Index seq
-      -> Conduit seq m seq
+      -> ConduitT seq seq m ()
 takeCE = CC.takeE
 {-# INLINE takeCE #-}
 
@@ -959,7 +842,7 @@ takeCE = CC.takeE
 -- Since 1.0.0
 takeWhileC :: Monad m
           => (a -> Bool)
-          -> Conduit a m a
+          -> ConduitT a a m ()
 takeWhileC = CC.takeWhile
 {-# INLINE takeWhileC #-}
 
@@ -970,7 +853,7 @@ takeWhileC = CC.takeWhile
 -- Since 1.0.0
 takeWhileCE :: (Monad m, Seq.IsSequence seq)
            => (Element seq -> Bool)
-           -> Conduit seq m seq
+           -> ConduitT seq seq m ()
 takeWhileCE = CC.takeWhileE
 {-# INLINE takeWhileCE #-}
 
@@ -981,7 +864,7 @@ takeWhileCE = CC.takeWhileE
 -- early. This function will discard any additional values in the stream if
 -- they are unconsumed.
 --
--- Note that this function takes a downstream @ConduitM@ as a parameter, as
+-- Note that this function takes a downstream @ConduitT@ as a parameter, as
 -- opposed to working with normal fusion. For more information, see
 -- <http://www.yesodweb.com/blog/2013/10/core-flaw-pipes-conduit>, the section
 -- titled \"pipes and conduit: isolate\".
@@ -989,8 +872,8 @@ takeWhileCE = CC.takeWhileE
 -- Since 1.0.0
 takeExactlyC :: Monad m
             => Int
-            -> ConduitM a b m r
-            -> ConduitM a b m r
+            -> ConduitT a b m r
+            -> ConduitT a b m r
 takeExactlyC = CC.takeExactly
 {-# INLINE takeExactlyC #-}
 
@@ -999,8 +882,8 @@ takeExactlyC = CC.takeExactly
 -- Since 1.0.0
 takeExactlyCE :: (Monad m, Seq.IsSequence a)
              => Seq.Index a
-             -> ConduitM a b m r
-             -> ConduitM a b m r
+             -> ConduitT a b m r
+             -> ConduitT a b m r
 takeExactlyCE = CC.takeExactlyE
 {-# INLINE takeExactlyCE #-}
 
@@ -1009,28 +892,28 @@ takeExactlyCE = CC.takeExactlyE
 --
 -- Since 1.0.0
 concatC :: (Monad m, MonoFoldable mono)
-       => Conduit mono m (Element mono)
+       => ConduitT mono (Element mono) m ()
 concatC = CC.concat
 {-# INLINE concatC #-}
 
 -- | Keep only values in the stream passing a given predicate.
 --
 -- Since 1.0.0
-filterC :: Monad m => (a -> Bool) -> Conduit a m a
+filterC :: Monad m => (a -> Bool) -> ConduitT a a m ()
 filterC = CC.filter
 {-# INLINE filterC #-}
 
 -- | Keep only elements in the chunked stream passing a given predicate.
 --
 -- Since 1.0.0
-filterCE :: (Seq.IsSequence seq, Monad m) => (Element seq -> Bool) -> Conduit seq m seq
+filterCE :: (Seq.IsSequence seq, Monad m) => (Element seq -> Bool) -> ConduitT seq seq m ()
 filterCE = CC.filterE
 {-# INLINE filterCE #-}
 
 -- | Map values as long as the result is @Just@.
 --
 -- Since 1.0.0
-mapWhileC :: Monad m => (a -> Maybe b) -> Conduit a m b
+mapWhileC :: Monad m => (a -> Maybe b) -> ConduitT a b m ()
 mapWhileC = CC.mapWhile
 {-# INLINE mapWhileC #-}
 
@@ -1041,14 +924,14 @@ mapWhileC = CC.mapWhile
 -- Since 1.0.0
 conduitVector :: (V.Vector v a, PrimMonad m)
               => Int -- ^ maximum allowed size
-              -> Conduit a m (v a)
+              -> ConduitT a (v a) m ()
 conduitVector = CC.conduitVector
 {-# INLINE conduitVector #-}
 
 -- | Analog of 'Prelude.scanl' for lists.
 --
 -- Since 1.0.6
-scanlC :: Monad m => (a -> b -> a) -> a -> Conduit b m a
+scanlC :: Monad m => (a -> b -> a) -> a -> ConduitT b a m ()
 scanlC = CC.scanl
 {-# INLINE scanlC #-}
 
@@ -1057,21 +940,21 @@ scanlC = CC.scanl
 -- producing a leftover, the breaking input determines the resulting
 -- accumulator via @Left@.
 mapAccumWhileC :: Monad m =>
-    (a -> s -> Either s (s, b)) -> s -> ConduitM a b m s
+    (a -> s -> Either s (s, b)) -> s -> ConduitT a b m s
 mapAccumWhileC = CC.mapAccumWhile
 {-# INLINE mapAccumWhileC #-}
 
 -- | 'concatMap' with an accumulator.
 --
 -- Since 1.0.0
-concatMapAccumC :: Monad m => (a -> accum -> (accum, [b])) -> accum -> Conduit a m b
+concatMapAccumC :: Monad m => (a -> accum -> (accum, [b])) -> accum -> ConduitT a b m ()
 concatMapAccumC = CC.concatMapAccum
 {-# INLINE concatMapAccumC #-}
 
 -- | Insert the given value between each two values in the stream.
 --
 -- Since 1.0.0
-intersperseC :: Monad m => a -> Conduit a m a
+intersperseC :: Monad m => a -> ConduitT a a m ()
 intersperseC = CC.intersperse
 {-# INLINE intersperseC #-}
 
@@ -1082,7 +965,7 @@ intersperseC = CC.intersperse
 -- Best used with structures that support O(1) snoc.
 --
 -- Since 1.0.0
-slidingWindowC :: (Monad m, Seq.IsSequence seq, Element seq ~ a) => Int -> Conduit a m seq
+slidingWindowC :: (Monad m, Seq.IsSequence seq, Element seq ~ a) => Int -> ConduitT a seq m ()
 slidingWindowC = CC.slidingWindow
 {-# INLINE slidingWindowC #-}
 
@@ -1093,7 +976,7 @@ slidingWindowC = CC.slidingWindow
 -- 'chunksOfExactlyE' which will not yield this last element)
 --
 -- @since 1.1.2
-chunksOfCE :: (Monad m, Seq.IsSequence seq) => Seq.Index seq -> Conduit seq m seq
+chunksOfCE :: (Monad m, Seq.IsSequence seq) => Seq.Index seq -> ConduitT seq seq m ()
 chunksOfCE = CC.chunksOfE
 {-# INLINE chunksOfCE #-}
 
@@ -1103,7 +986,7 @@ chunksOfCE = CC.chunksOfE
 -- leftover (see also 'chunksOfE')
 --
 -- @since 1.1.2
-chunksOfExactlyCE :: (Monad m, Seq.IsSequence seq) => Seq.Index seq -> Conduit seq m seq
+chunksOfExactlyCE :: (Monad m, Seq.IsSequence seq) => Seq.Index seq -> ConduitT seq seq m ()
 chunksOfExactlyCE = CC.chunksOfExactlyE
 {-# INLINE chunksOfExactlyCE #-}
 
@@ -1113,14 +996,14 @@ chunksOfExactlyCE = CC.chunksOfExactlyE
 -- side-effects of running the action, see 'mapM_'.
 --
 -- Since 1.0.0
-mapMC :: Monad m => (a -> m b) -> Conduit a m b
+mapMC :: Monad m => (a -> m b) -> ConduitT a b m ()
 mapMC = CC.mapM
 {-# INLINE mapMC #-}
 
 -- | Apply a monadic transformation to all elements in a chunked stream.
 --
 -- Since 1.0.0
-mapMCE :: (Monad m, Data.Traversable.Traversable f) => (a -> m b) -> Conduit (f a) m (f b)
+mapMCE :: (Monad m, Data.Traversable.Traversable f) => (a -> m b) -> ConduitT (f a) (f b) m ()
 mapMCE = CC.mapME
 {-# INLINE mapMCE #-}
 
@@ -1132,7 +1015,7 @@ mapMCE = CC.mapME
 -- Since 1.0.0
 omapMCE :: (Monad m, MonoTraversable mono)
        => (Element mono -> m (Element mono))
-       -> Conduit mono m mono
+       -> ConduitT mono mono m ()
 omapMCE = CC.omapME
 {-# INLINE omapMCE #-}
 
@@ -1145,7 +1028,7 @@ omapMCE = CC.omapME
 -- Since 1.0.0
 concatMapMC :: (Monad m, MonoFoldable mono)
            => (a -> m mono)
-           -> Conduit a m (Element mono)
+           -> ConduitT a (Element mono) m ()
 concatMapMC = CC.concatMapM
 {-# INLINE concatMapMC #-}
 
@@ -1154,14 +1037,14 @@ concatMapMC = CC.concatMapM
 -- Since 1.0.0
 filterMC :: Monad m
         => (a -> m Bool)
-        -> Conduit a m a
+        -> ConduitT a a m ()
 filterMC = CC.filterM
 {-# INLINE filterMC #-}
 
 -- | Keep only elements in the chunked stream passing a given monadic predicate.
 --
 -- Since 1.0.0
-filterMCE :: (Monad m, Seq.IsSequence seq) => (Element seq -> m Bool) -> Conduit seq m seq
+filterMCE :: (Monad m, Seq.IsSequence seq) => (Element seq -> m Bool) -> ConduitT seq seq m ()
 filterMCE = CC.filterME
 {-# INLINE filterMCE #-}
 
@@ -1173,40 +1056,40 @@ filterMCE = CC.filterME
 -- > iterM f = mapM (\a -> f a >>= \() -> return a)
 --
 -- Since 1.0.0
-iterMC :: Monad m => (a -> m ()) -> Conduit a m a
+iterMC :: Monad m => (a -> m ()) -> ConduitT a a m ()
 iterMC = CC.iterM
 {-# INLINE iterMC #-}
 
 -- | Analog of 'Prelude.scanl' for lists, monadic.
 --
 -- Since 1.0.6
-scanlMC :: Monad m => (a -> b -> m a) -> a -> Conduit b m a
+scanlMC :: Monad m => (a -> b -> m a) -> a -> ConduitT b a m ()
 scanlMC = CC.scanlM
 {-# INLINE scanlMC #-}
 
 -- | Monadic `mapAccumWhileC`.
-mapAccumWhileMC :: Monad m => (a -> s -> m (Either s (s, b))) -> s -> ConduitM a b m s
+mapAccumWhileMC :: Monad m => (a -> s -> m (Either s (s, b))) -> s -> ConduitT a b m s
 mapAccumWhileMC = CC.mapAccumWhileM
 {-# INLINE mapAccumWhileMC #-}
 
 -- | 'concatMapM' with an accumulator.
 --
 -- Since 1.0.0
-concatMapAccumMC :: Monad m => (a -> accum -> m (accum, [b])) -> accum -> Conduit a m b
+concatMapAccumMC :: Monad m => (a -> accum -> m (accum, [b])) -> accum -> ConduitT a b m ()
 concatMapAccumMC = CC.concatMapAccumM
 {-# INLINE concatMapAccumMC #-}
 
 -- | Encode a stream of text as UTF8.
 --
 -- Since 1.0.0
-encodeUtf8C :: (Monad m, DTE.Utf8 text binary) => Conduit text m binary
+encodeUtf8C :: (Monad m, DTE.Utf8 text binary) => ConduitT text binary m ()
 encodeUtf8C = CC.encodeUtf8
 {-# INLINE encodeUtf8C #-}
 
 -- | Decode a stream of binary data as UTF8.
 --
 -- Since 1.0.0
-decodeUtf8C :: MonadThrow m => Conduit ByteString m Text
+decodeUtf8C :: MonadThrow m => ConduitT ByteString Text m ()
 decodeUtf8C = CC.decodeUtf8
 {-# INLINE decodeUtf8C #-}
 
@@ -1214,7 +1097,7 @@ decodeUtf8C = CC.decodeUtf8
 -- the Unicode replacement character.
 --
 -- Since 1.0.0
-decodeUtf8LenientC :: Monad m => Conduit ByteString m Text
+decodeUtf8LenientC :: Monad m => ConduitT ByteString Text m ()
 decodeUtf8LenientC = CC.decodeUtf8Lenient
 {-# INLINE decodeUtf8LenientC #-}
 
@@ -1225,8 +1108,8 @@ decodeUtf8LenientC = CC.decodeUtf8Lenient
 --
 -- Since 1.0.0
 lineC :: (Monad m, Seq.IsSequence seq, Element seq ~ Char)
-     => ConduitM seq o m r
-     -> ConduitM seq o m r
+     => ConduitT seq o m r
+     -> ConduitT seq o m r
 lineC = CC.line
 {-# INLINE lineC #-}
 
@@ -1234,22 +1117,22 @@ lineC = CC.line
 --
 -- Since 1.0.0
 lineAsciiC :: (Monad m, Seq.IsSequence seq, Element seq ~ Word8)
-          => ConduitM seq o m r
-          -> ConduitM seq o m r
+          => ConduitT seq o m r
+          -> ConduitT seq o m r
 lineAsciiC = CC.lineAscii
 {-# INLINE lineAsciiC #-}
 
 -- | Insert a newline character after each incoming chunk of data.
 --
 -- Since 1.0.0
-unlinesC :: (Monad m, Seq.IsSequence seq, Element seq ~ Char) => Conduit seq m seq
+unlinesC :: (Monad m, Seq.IsSequence seq, Element seq ~ Char) => ConduitT seq seq m ()
 unlinesC = CC.unlines
 {-# INLINE unlinesC #-}
 
 -- | Same as 'unlines', but operates on ASCII/binary data.
 --
 -- Since 1.0.0
-unlinesAsciiC :: (Monad m, Seq.IsSequence seq, Element seq ~ Word8) => Conduit seq m seq
+unlinesAsciiC :: (Monad m, Seq.IsSequence seq, Element seq ~ Word8) => ConduitT seq seq m ()
 unlinesAsciiC = CC.unlinesAscii
 {-# INLINE unlinesAsciiC #-}
 
@@ -1260,7 +1143,7 @@ unlinesAsciiC = CC.unlinesAscii
 --
 -- Since 1.0.0
 linesUnboundedC :: (Monad m, Seq.IsSequence seq, Element seq ~ Char)
-               => Conduit seq m seq
+               => ConduitT seq seq m ()
 linesUnboundedC = CC.linesUnbounded
 {-# INLINE linesUnboundedC #-}
 
@@ -1268,7 +1151,7 @@ linesUnboundedC = CC.linesUnbounded
 --
 -- Since 1.0.0
 linesUnboundedAsciiC :: (Monad m, Seq.IsSequence seq, Element seq ~ Word8)
-                    => Conduit seq m seq
+                    => ConduitT seq seq m ()
 linesUnboundedAsciiC = CC.linesUnboundedAscii
 {-# INLINE linesUnboundedAsciiC #-}
 
@@ -1292,7 +1175,7 @@ linesUnboundedAsciiC = CC.linesUnboundedAscii
 -- Since 1.0.0
 vectorBuilderC :: (PrimMonad m, V.Vector v e, PrimMonad n, PrimState m ~ PrimState n)
               => Int -- ^ size
-              -> ((e -> n ()) -> Sink i m r)
-              -> ConduitM i (v e) m r
+              -> ((e -> n ()) -> ConduitT i Void m r)
+              -> ConduitT i (v e) m r
 vectorBuilderC = CC.vectorBuilder
 {-# INLINE vectorBuilderC #-}
