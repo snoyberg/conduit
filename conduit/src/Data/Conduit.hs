@@ -62,22 +62,18 @@ module Data.Conduit
     , sourceToList
 
       -- * Connect-and-resume
-    , ResumableSource
-    , newResumableSource
+    , SealedConduitT
+    , sealConduitT
+    , unsealConduitT
     , ($$+)
     , ($$++)
     , ($$+-)
     , ($=+)
-    , unwrapResumable
-    , closeResumableSource
 
       -- ** For @Conduit@s
-    , ResumableConduit
-    , newResumableConduit
     , (=$$+)
     , (=$$++)
     , (=$$+-)
-    , unwrapResumableConduit
 
       -- * Fusion with leftovers
     , fuseLeftovers

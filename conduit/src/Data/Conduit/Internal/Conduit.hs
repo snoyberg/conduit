@@ -18,13 +18,15 @@ module Data.Conduit.Internal.Conduit
     , Sink
     , Consumer
     , Conduit
-    , ResumableSource (..)
-    , ResumableConduit (..)
     , Flush (..)
       -- *** Newtype wrappers
     , ZipSource (..)
     , ZipSink (..)
     , ZipConduit (..)
+      -- ** Sealed
+    , SealedConduitT (..)
+    , sealConduitT
+    , unsealConduitT
       -- ** Primitives
     , await
     , awaitForever
@@ -68,11 +70,6 @@ module Data.Conduit.Internal.Conduit
     , Data.Conduit.Internal.Conduit.mapOutput
     , Data.Conduit.Internal.Conduit.mapOutputMaybe
     , Data.Conduit.Internal.Conduit.mapInput
-    , Data.Conduit.Internal.Conduit.closeResumableSource
-    , unwrapResumable
-    , unwrapResumableConduit
-    , newResumableSource
-    , newResumableConduit
     , zipSinks
     , zipSources
     , zipSourcesApp
@@ -120,6 +117,18 @@ newtype ConduitT i o m r = ConduitT
     { unConduitT :: forall b.
                     (r -> Pipe i i o () m b) -> Pipe i i o () m b
     }
+
+-- | In order to provide for efficient monadic composition, the
+-- @ConduitT@ type is implemented internally using a technique known
+-- as the codensity transform. This allows for cheap appending, but
+-- makes one case much more expensive: partially running a @ConduitT@
+-- and that capturing the new state.
+--
+-- This data type is the same as @ConduitT@, but does not use the
+-- codensity transform technique.
+--
+-- @since 1.3.0
+newtype SealedConduitT i o m r = SealedConduitT (Pipe i i o () m r)
 
 -- | Same as 'ConduitT', for backwards compat
 type ConduitM = ConduitT
@@ -272,33 +281,28 @@ type Consumer i m r = forall o. ConduitT i o m r
 type Conduit i m o = ConduitT i o m ()
 {-# DEPRECATED Conduit "Use ConduitT directly" #-}
 
--- | A @Source@ which has been started, but has not yet completed.
---
--- This type contains both the current state of the @Source@, and the finalizer
--- to be run to close it.
---
--- Since 0.5.0
-newtype ResumableSource m o = ResumableSource (Pipe () () o () m ()) -- FIXME maybe not needed anymore
+sealConduitT :: ConduitT i o m r -> SealedConduitT i o m r
+sealConduitT (ConduitT f) = SealedConduitT (f Done)
+
+unsealConduitT :: Monad m => SealedConduitT i o m r -> ConduitT i o m r
+unsealConduitT (SealedConduitT f) = ConduitT (f >>=)
 
 -- | Connect a @Source@ to a @Sink@ until the latter closes. Returns both the
 -- most recent state of the @Source@ and the result of the @Sink@.
 --
--- We use a @ResumableSource@ to keep track of the most recent finalizer
--- provided by the @Source@.
---
 -- Since 0.5.0
 connectResume :: Monad m
-              => ResumableSource m o
-              -> Sink o m r
-              -> m (ResumableSource m o, r)
-connectResume (ResumableSource left0) (ConduitT right0) =
+              => SealedConduitT () a m ()
+              -> ConduitT a Void m r
+              -> m (SealedConduitT () a m (), r)
+connectResume (SealedConduitT left0) (ConduitT right0) =
     goRight left0 (right0 Done)
   where
     goRight left right =
         case right of
             HaveOutput _ o   -> absurd o
             NeedInput rp rc  -> goLeft rp rc left
-            Done r2          -> return (ResumableSource left, r2)
+            Done r2          -> return (SealedConduitT left, r2)
             PipeM mp         -> mp >>= goRight left
             Leftover p i     -> goRight (HaveOutput left i) p
 
@@ -341,31 +345,6 @@ conduitToPipe =
     go (Done ()) = Done ()
     go (PipeM mp) = PipeM (liftM go mp)
     go (Leftover _ l) = absurd l
-
--- | Unwraps a @ResumableSource@ into a @Source@ and a finalizer.
---
--- A @ResumableSource@ represents a @Source@ which has already been run, and
--- therefore has a finalizer registered. As a result, if we want to turn it
--- into a regular @Source@, we need to ensure that the finalizer will be run
--- appropriately. By appropriately, I mean:
---
--- * If a new finalizer is registered, the old one should not be called.
---
--- * If the old one is called, it should not be called again.
---
--- This function returns both a @Source@ and a finalizer which ensures that the
--- above two conditions hold. Once you call that finalizer, the @Source@ is
--- invalidated and cannot be used.
---
--- Since 0.5.2
-unwrapResumable :: Monad m => ResumableSource m o -> Source m o
-unwrapResumable (ResumableSource src) = ConduitT (src >>=)
-
--- | Turn a @Source@ into a @ResumableSource@ with no attached finalizer.
---
--- Since 1.1.4
-newResumableSource :: Monad m => Source m o -> ResumableSource m o
-newResumableSource (ConduitT s) = ResumableSource (s Done)
 
 -- | Generalize a 'Source' to a 'Producer'.
 --
@@ -577,27 +556,21 @@ fuseLeftovers f left right = do
     mapM_ leftover $ reverse $ f bs
     return r
 
--- | A generalization of 'ResumableSource'. Allows to resume an arbitrary
--- conduit, keeping its state and using it later (or finalizing it).
---
--- Since 1.0.17
-newtype ResumableConduit i m o = ResumableConduit (Pipe i i o () m ()) -- FIXME maybe drop?
-
--- | Connect a 'ResumableConduit' to a sink and return the output of the sink
--- together with a new 'ResumableConduit'.
+-- | Connect a 'Conduit' to a sink and return the output of the sink
+-- together with a new 'Conduit'.
 --
 -- Since 1.0.17
 connectResumeConduit
     :: Monad m
-    => ResumableConduit i m o
-    -> Sink o m r
-    -> Sink i m (ResumableConduit i m o, r)
-connectResumeConduit (ResumableConduit left0) (ConduitT right0) = ConduitT $ \rest -> let
+    => SealedConduitT i o m ()
+    -> ConduitT o Void m r
+    -> ConduitT i Void m (SealedConduitT i o m (), r)
+connectResumeConduit (SealedConduitT left0) (ConduitT right0) = ConduitT $ \rest -> let
     goRight left right =
         case right of
             HaveOutput _ o -> absurd o
             NeedInput rp rc -> goLeft rp rc left
-            Done r2 -> rest (ResumableConduit left, r2)
+            Done r2 -> rest (SealedConduitT left, r2)
             PipeM mp -> PipeM (liftM (goRight left) mp)
             Leftover p i -> goRight (HaveOutput left i) p
 
@@ -612,36 +585,21 @@ connectResumeConduit (ResumableConduit left0) (ConduitT right0) = ConduitT $ \re
         recurse = goLeft rp rc
     in goRight left0 (right0 Done)
 
--- | Unwraps a @ResumableConduit@ into a @ConduitT@.
---
--- Since 'unwrapResumable' for more information.
---
--- Since 1.0.17
-unwrapResumableConduit :: Monad m => ResumableConduit i m o -> ConduitT i o m ()
-unwrapResumableConduit (ResumableConduit src) = ConduitT (src >>=)
-
--- | Turn a @Conduit@ into a @ResumableConduit@ with no attached finalizer.
---
--- Since 1.1.4
-newResumableConduit :: Monad m => Conduit i m o -> ResumableConduit i m o
-newResumableConduit (ConduitT c) = ResumableConduit (c Done)
-
-
 -- | Merge a @Source@ into a @Conduit@.
 -- The new conduit will stop processing once either source or upstream have been exhausted.
 mergeSource
   :: Monad m
   => Source m i
   -> Conduit a m (i, a)
-mergeSource = loop . newResumableSource
+mergeSource = loop . sealConduitT
   where
-    loop :: Monad m => ResumableSource m i -> Conduit a m (i, a)
-    loop src0 = await >>= maybe (lift $ closeResumableSource src0) go
+    loop :: Monad m => SealedConduitT () i m () -> Conduit a m (i, a)
+    loop src0 = await >>= maybe (return ()) go
       where
         go a = do
           (src1, mi) <- lift $ src0 $$++ await
           case mi of
-            Nothing -> lift $ closeResumableSource src1
+            Nothing -> return ()
             Just i  -> yield (i, a) >> loop src1
 
 
@@ -1014,42 +972,35 @@ mapInput f f' (ConduitT c0) = ConduitT $ \rest -> let
 -- Mnemonic: connect + do more.
 --
 -- Since 0.5.0
-($$+) :: Monad m => Source m a -> Sink a m b -> m (ResumableSource m a, b)
-ConduitT src $$+ sink = connectResume (ResumableSource (src Done)) sink
+($$+) :: Monad m => Source m a -> Sink a m b -> m (SealedConduitT () a m (), b)
+src $$+ sink = connectResume (sealConduitT src) sink
 {-# INLINE ($$+) #-}
 
 -- | Continue processing after usage of @$$+@.
 --
 -- Since 0.5.0
-($$++) :: Monad m => ResumableSource m a -> Sink a m b -> m (ResumableSource m a, b)
+($$++) :: Monad m => SealedConduitT () a m () -> Sink a m b -> m (SealedConduitT () a m (), b)
 ($$++) = connectResume
 {-# INLINE ($$++) #-}
 
--- | Complete processing of a @ResumableSource@. This will run the finalizer
--- associated with the @ResumableSource@. In order to guarantee process resource
--- finalization, you /must/ use this operator after using @$$+@ and @$$++@.
+-- | Same as @$$++@ and @connectResume@, but doesn't include the
+-- updated @SealedConduitT@.
+--
+-- /NOTE/ In previous versions, this would cause finalizers to
+-- run. Since version 1.3.0, there are no finalizers in conduit.
 --
 -- Since 0.5.0
-($$+-) :: Monad m => ResumableSource m a -> Sink a m b -> m b
+($$+-) :: Monad m => SealedConduitT () a m () -> Sink a m b -> m b
 rsrc $$+- sink = do
-    (ResumableSource _, res) <- connectResume rsrc sink
+    (_, res) <- connectResume rsrc sink
     return res
 {-# INLINE ($$+-) #-}
 
--- | Left fusion for a resumable source.
+-- | Left fusion for a sealed source.
 --
 -- Since 1.0.16
-($=+) :: Monad m => ResumableSource m a -> Conduit a m b -> ResumableSource m b
-ResumableSource src $=+ ConduitT sink = ResumableSource (src `pipeL` sink Done)
-
--- | Execute the finalizer associated with a @ResumableSource@, rendering the
--- @ResumableSource@ invalid for further use.
---
--- This is just a more explicit version of @$$+- return ()@.
---
--- Since 1.1.3
-closeResumableSource :: Monad m => ResumableSource m a -> m ()
-closeResumableSource = ($$+- return ())
+($=+) :: Monad m => SealedConduitT () a m () -> Conduit a m b -> SealedConduitT () b m ()
+SealedConduitT src $=+ ConduitT sink = SealedConduitT (src `pipeL` sink Done)
 
 -- | Provide for a stream of data that can be flushed.
 --
@@ -1139,28 +1090,32 @@ sequenceSinks = getZipSink . sequenceA . fmap ZipSink
 -- Mnemonic: connect + do more.
 --
 -- Since 1.0.17
-(=$$+) :: Monad m => Conduit a m b -> Sink b m r -> Sink a m (ResumableConduit a m b, r)
-(=$$+) (ConduitT conduit) = connectResumeConduit (ResumableConduit (conduit Done))
+(=$$+) :: Monad m
+       => ConduitT a b m ()
+       -> ConduitT b Void m r
+       -> ConduitT a Void m (SealedConduitT a b m (), r)
+(=$$+) conduit = connectResumeConduit (sealConduitT conduit)
 {-# INLINE (=$$+) #-}
 
--- | Continue processing after usage of '=$$+'. Connect a 'ResumableConduit' to
+-- | Continue processing after usage of '=$$+'. Connect a 'SealedConduitT' to
 -- a sink and return the output of the sink together with a new
--- 'ResumableConduit'.
+-- 'SealedConduitT'.
 --
 -- Since 1.0.17
-(=$$++) :: Monad m => ResumableConduit i m o -> Sink o m r -> Sink i m (ResumableConduit i m o, r)
+(=$$++) :: Monad m => SealedConduitT i o m () -> ConduitT o Void m r -> ConduitT i Void m (SealedConduitT i o m (), r)
 (=$$++) = connectResumeConduit
 {-# INLINE (=$$++) #-}
 
--- | Complete processing of a 'ResumableConduit'. This will run the finalizer
--- associated with the @ResumableConduit@. In order to guarantee process
--- resource finalization, you /must/ use this operator after using '=$$+' and
--- '=$$++'.
+-- | Same as @=$$++@, but doesn't include the updated
+-- @SealedConduitT@.
+--
+-- /NOTE/ In previous versions, this would cause finalizers to
+-- run. Since version 1.3.0, there are no finalizers in conduit.
 --
 -- Since 1.0.17
-(=$$+-) :: Monad m => ResumableConduit i m o -> Sink o m r -> Sink i m r
+(=$$+-) :: Monad m => SealedConduitT i o m () -> ConduitT o Void m r -> ConduitT i Void m r
 rsrc =$$+- sink = do
-    (ResumableConduit _, res) <- connectResumeConduit rsrc sink
+    (_, res) <- connectResumeConduit rsrc sink
     return res
 {-# INLINE (=$$+-) #-}
 

@@ -2474,8 +2474,8 @@ mapAccumS
   -> ConduitT () b m ()
   -> ConduitT a Void m s
 mapAccumS f s xs = do
-    (zs, u) <- loop (newResumableSource xs, s)
-    lift (closeResumableSource zs) >> return u
+    (_, u) <- loop (sealConduitT xs, s)
+    return u
     where loop r@(ys, !t) = await >>= maybe (return r) go
               where go a  = lift (ys $$++ f a t) >>= loop
 {-# INLINE mapAccumS #-}

@@ -7,7 +7,7 @@
     * Much simpler
     * Less guarantees about prompt finalization
     * No more `yieldOr`, `addCleanup`
-    * Simplification around the `Resumable` types
+    * Replace the `Resumable` types with `SealedConduitT`
 * Add the `Conduit` and `Data.Conduit.Combinators` modules, stolen from
   `conduit-combinators`
 
