@@ -25,6 +25,7 @@ module Data.Conduit.Text
     , iso8859_1
     , lines
     , linesBounded
+    , split
     , TextException (..)
     , takeWhile
     , dropWhile
@@ -130,6 +131,29 @@ linesBounded maxLineLen =
                    _ ->
                      awaitText len' $ buf `T.append` text
 
+
+split :: Monad m => T.Text -> Conduit T.Text m T.Text
+split splitText = awaitText T.empty
+    where
+      awaitText buf = await >>= maybe (finish buf) (process buf)
+
+      finish buf = unless (T.null buf) (yield buf)
+
+      process buf text = yieldSplits $ buf `T.append` text
+
+      yieldSplits text = do
+        let splits = T.splitOn splitText text
+            lastSplit = lastDef T.empty splits
+        mapM_ yield (initSafe splits)
+        awaitText lastSplit
+
+      lastDef :: a -> [a] -> a
+      lastDef a [] = a
+      lastDef _ xs = last xs
+
+      initSafe :: [a] -> [a]
+      initSafe [] = []
+      initSafe xs = init xs
 
 
 -- | Convert text into bytes, using the provided codec. If the codec is
