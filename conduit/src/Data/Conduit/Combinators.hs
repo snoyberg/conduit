@@ -1,4 +1,3 @@
--- FIXME TODO update all of the Since comments to 1.3.0
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -311,7 +310,7 @@ import           Data.Sequences (LazySequence (..))
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 yieldMany, yieldManyC :: (Monad m, MonoFoldable mono)
                       => mono
                       -> ConduitT i (Element mono) m ()
@@ -323,7 +322,7 @@ STREAMING(yieldMany, yieldManyC, yieldManyS, x)
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 unfold :: Monad m
        => (b -> Maybe (a, b))
        -> b
@@ -338,7 +337,7 @@ INLINE_RULE(unfold, f x, CL.unfold f x)
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 enumFromTo :: (Monad m, Enum a, Ord a) => a -> a -> ConduitT i a m ()
 INLINE_RULE(enumFromTo, f t, CL.enumFromTo f t)
 
@@ -346,7 +345,7 @@ INLINE_RULE(enumFromTo, f t, CL.enumFromTo f t)
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 iterate :: Monad m => (a -> a) -> a -> ConduitT i a m ()
 INLINE_RULE(iterate, f t, CL.iterate f t)
 
@@ -354,7 +353,7 @@ INLINE_RULE(iterate, f t, CL.iterate f t)
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 repeat :: Monad m => a -> ConduitT i a m ()
 INLINE_RULE(repeat, x, iterate id x)
 
@@ -362,7 +361,7 @@ INLINE_RULE(repeat, x, iterate id x)
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 replicate :: Monad m
           => Int
           -> a
@@ -375,7 +374,7 @@ INLINE_RULE(replicate, n x, CL.replicate n x)
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 sourceLazy :: (Monad m, LazySequence lazy strict)
            => lazy
            -> ConduitT i strict m ()
@@ -385,7 +384,7 @@ INLINE_RULE(sourceLazy, x, yieldMany (toChunks x))
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 repeatM, repeatMC :: Monad m
                   => m a
                   -> ConduitT i a m ()
@@ -398,7 +397,7 @@ STREAMING(repeatM, repeatMC, repeatMS, m)
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 repeatWhileM, repeatWhileMC :: Monad m
                             => m a
                             -> (a -> Bool)
@@ -415,7 +414,7 @@ STREAMING(repeatWhileM, repeatWhileMC, repeatWhileMS, m f)
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 replicateM :: Monad m
            => Int
            -> m a
@@ -424,7 +423,7 @@ INLINE_RULE(replicateM, n m, CL.replicateM n m)
 
 -- | Stream the contents of a file as binary data.
 --
--- Since 0.3.0
+-- @since 1.3.0
 sourceFile :: MonadResource m
            => FilePath
            -> ConduitT i S.ByteString m ()
@@ -444,7 +443,7 @@ sourceFile fp =
 -- function will /not/ automatically close the @Handle@ when processing
 -- completes, since it did not acquire the @Handle@ in the first place.
 --
--- Since 0.3.0
+-- @since 1.3.0
 sourceHandle :: MonadIO m
              => IO.Handle
              -> ConduitT i S.ByteString m ()
@@ -467,7 +466,7 @@ sourceHandle h =
 -- used if you can guarantee that you do not reuse a @ByteString@ (or any slice
 -- thereof) between two calls to @await@.
 --
--- Since 1.0.12
+-- @since 1.3.0
 sourceHandleUnsafe :: MonadIO m => IO.Handle -> ConduitT i ByteString m ()
 sourceHandleUnsafe handle = do
     fptr <- liftIO $ mallocPlainForeignPtrBytes defaultChunkSize
@@ -487,7 +486,7 @@ sourceHandleUnsafe handle = do
 -- a 'IO.Handle' (in read mode), so that it can open it only when needed
 -- and close it as soon as possible.
 --
--- Since 0.3.0
+-- @since 1.3.0
 sourceIOHandle :: MonadResource m
                => IO IO.Handle
                -> ConduitT i S.ByteString m ()
@@ -505,13 +504,13 @@ sourceFileBS = sourceFile
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 stdin :: MonadIO m => ConduitT i ByteString m ()
 INLINE_RULE0(stdin, sourceHandle IO.stdin)
 
 -- | Stream all incoming data to the given file.
 --
--- Since 0.3.0
+-- @since 1.3.0
 sinkFile :: MonadResource m
          => FilePath
          -> ConduitT S.ByteString o m ()
@@ -528,7 +527,7 @@ sinkFile fp = sinkIOHandle (IO.openBinaryFile fp IO.WriteMode)
 -- SIGKILL), the temporary file will remain and the destination file
 -- will be untouched.
 --
--- @since 1.1.14
+-- @since 1.3.0
 sinkFileCautious
   :: MonadResource m
   => FilePath
@@ -545,7 +544,7 @@ sinkFileCautious fp =
 -- | Like 'sinkFileCautious', but uses the @with@ pattern instead of
 -- @MonadResource@.
 --
--- @since 1.2.2
+-- @since 1.3.0
 withSinkFileCautious
   :: (MonadUnliftIO m, MonadIO n)
   => FilePath
@@ -579,7 +578,7 @@ cautiousCleanup (tmpFP, h) = do
 -- temporary file will be automatically deleted when exiting the
 -- active 'ResourceT' block, if it still exists.
 --
--- @since 1.1.15
+-- @since 1.3.0
 sinkTempFile :: MonadResource m
              => FilePath -- ^ temp directory
              -> String -- ^ filename pattern
@@ -598,7 +597,7 @@ sinkTempFile tmpdir pattern = do
 -- | Same as 'sinkTempFile', but will use the default temp file
 -- directory for the system as the first argument.
 --
--- @since 1.1.15
+-- @since 1.3.0
 sinkSystemTempFile
     :: MonadResource m
     => String -- ^ filename pattern
@@ -610,7 +609,7 @@ sinkSystemTempFile pattern = do
 -- | Stream all incoming data to the given 'IO.Handle'. Note that this function
 -- does /not/ flush and will /not/ close the @Handle@ when processing completes.
 --
--- Since 0.3.0
+-- @since 1.3.0
 sinkHandle :: MonadIO m
            => IO.Handle
            -> ConduitT S.ByteString o m ()
@@ -621,7 +620,7 @@ sinkHandle h = awaitForever (liftIO . S.hPut h)
 -- @Handle@ when processing completes.
 -- Pass 'Data.ByteString.Builder.Extra.flush' to flush the buffer.
 --
--- @since 1.2.2
+-- @since 1.3.0
 sinkHandleBuilder :: MonadIO m => IO.Handle -> ConduitM Builder o m ()
 sinkHandleBuilder h = awaitForever (liftIO . hPutBuilder h)
 
@@ -629,7 +628,7 @@ sinkHandleBuilder h = awaitForever (liftIO . hPutBuilder h)
 -- Note that this function does /not/ automatically close the @Handle@ when
 -- processing completes
 --
--- @since 1.2.2
+-- @since 1.3.0
 sinkHandleFlush :: MonadIO m
                 => IO.Handle
                 -> ConduitM (Flush S.ByteString) o m ()
@@ -644,7 +643,7 @@ sinkHandleFlush h =
 -- a 'IO.Handle' (in write mode), so that it can open it only when needed
 -- and close it as soon as possible.
 --
--- Since 0.3.0
+-- @since 1.3.0
 sinkIOHandle :: MonadResource m
              => IO IO.Handle
              -> ConduitT S.ByteString o m ()
@@ -652,7 +651,7 @@ sinkIOHandle alloc = bracketP alloc IO.hClose sinkHandle
 
 -- | Like 'IO.withBinaryFile', but provides a source to read bytes from.
 --
--- @since 1.2.1
+-- @since 1.3.0
 withSourceFile
   :: (MonadUnliftIO m, MonadIO n)
   => FilePath
@@ -665,7 +664,7 @@ withSourceFile fp inner =
 
 -- | Like 'IO.withBinaryFile', but provides a sink to write bytes to.
 --
--- @since 1.2.1
+-- @since 1.3.0
 withSinkFile
   :: (MonadUnliftIO m, MonadIO n)
   => FilePath
@@ -678,7 +677,7 @@ withSinkFile fp inner =
 
 -- | Same as 'withSinkFile', but lets you use a 'BB.Builder'.
 --
--- @since 1.2.1
+-- @since 1.3.0
 withSinkFileBuilder
   :: (MonadUnliftIO m, MonadIO n)
   => FilePath
@@ -699,7 +698,7 @@ withSinkFileBuilder fp inner =
 -- @bar@ and @baz@, and you use @sourceDirectory@ on @foo@, the results will be
 -- @foo/bar@ and @foo/baz@.
 --
--- Since 1.0.0
+-- @since 1.3.0
 sourceDirectory :: MonadResource m => FilePath -> ConduitT i FilePath m ()
 sourceDirectory dir =
     bracketP (F.openDirStream dir) F.closeDirStream go
@@ -721,7 +720,7 @@ sourceDirectory dir =
 -- all. This function also takes an extra parameter to indicate whether
 -- symlinks will be followed.
 --
--- Since 1.0.0
+-- @since 1.3.0
 sourceDirectoryDeep :: MonadResource m
                     => Bool -- ^ Follow directory symlinks
                     -> FilePath -- ^ Root directory
@@ -746,7 +745,7 @@ sourceDirectoryDeep followSymlinks =
 
 -- | Ignore a certain number of values in the stream.
 --
--- Since 1.0.0
+-- @since 1.3.0
 drop :: Monad m
      => Int
      -> ConduitT a o m ()
@@ -754,7 +753,7 @@ INLINE_RULE(drop, n, CL.drop n)
 
 -- | Drop a certain number of elements from a chunked stream.
 --
--- Since 1.0.0
+-- @since 1.3.0
 dropE :: (Monad m, Seq.IsSequence seq)
       => Seq.Index seq
       -> ConduitT seq o m ()
@@ -775,7 +774,7 @@ dropE =
 
 -- | Drop all values which match the given predicate.
 --
--- Since 1.0.0
+-- @since 1.3.0
 dropWhile :: Monad m
           => (a -> Bool)
           -> ConduitT a o m ()
@@ -788,7 +787,7 @@ dropWhile f =
 
 -- | Drop all elements in the chunked stream which match the given predicate.
 --
--- Since 1.0.0
+-- @since 1.3.0
 dropWhileE :: (Monad m, Seq.IsSequence seq)
            => (Element seq -> Bool)
            -> ConduitT seq o m ()
@@ -807,7 +806,7 @@ dropWhileE f =
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 fold :: (Monad m, Monoid a)
      => ConduitT a o m a
 INLINE_RULE0(fold, CL.foldMap id)
@@ -816,7 +815,7 @@ INLINE_RULE0(fold, CL.foldMap id)
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 foldE :: (Monad m, MonoFoldable mono, Monoid (Element mono))
       => ConduitT mono o m (Element mono)
 INLINE_RULE0(foldE, CL.fold (\accum mono -> accum `mappend` ofoldMap id mono) mempty)
@@ -825,7 +824,7 @@ INLINE_RULE0(foldE, CL.fold (\accum mono -> accum `mappend` ofoldMap id mono) me
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 foldl :: Monad m => (a -> b -> a) -> a -> ConduitT b o m a
 INLINE_RULE(foldl, f x, CL.fold f x)
 
@@ -833,7 +832,7 @@ INLINE_RULE(foldl, f x, CL.fold f x)
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 foldlE :: (Monad m, MonoFoldable mono)
        => (a -> Element mono -> a)
        -> a
@@ -848,7 +847,7 @@ ofoldlPrime = ofoldl'
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 foldMap :: (Monad m, Monoid b)
         => (a -> b)
         -> ConduitT a o m b
@@ -858,7 +857,7 @@ INLINE_RULE(foldMap, f, CL.foldMap f)
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 foldMapE :: (Monad m, MonoFoldable mono, Monoid w)
          => (Element mono -> w)
          -> ConduitT mono o m w
@@ -880,7 +879,7 @@ STREAMING(foldl1, foldl1C, foldl1S, f)
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 foldl1E :: (Monad m, MonoFoldable mono, a ~ Element mono)
         => (a -> a -> a)
         -> ConduitT mono o m (Maybe a)
@@ -906,7 +905,7 @@ foldMaybeNull f macc mono =
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 all, allC :: Monad m
           => (a -> Bool)
           -> ConduitT a o m Bool
@@ -921,7 +920,7 @@ STREAMING(all, allC, allS, f)
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 allE :: (Monad m, MonoFoldable mono)
      => (Element mono -> Bool)
      -> ConduitT mono o m Bool
@@ -934,7 +933,7 @@ INLINE_RULE(allE, f, all (oall f))
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 any, anyC :: Monad m
           => (a -> Bool)
           -> ConduitT a o m Bool
@@ -949,7 +948,7 @@ STREAMING(any, anyC, anyS, f)
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 anyE :: (Monad m, MonoFoldable mono)
      => (Element mono -> Bool)
      -> ConduitT mono o m Bool
@@ -961,7 +960,7 @@ INLINE_RULE(anyE, f, any (oany f))
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 and :: Monad m => ConduitT Bool o m Bool
 INLINE_RULE0(and, all id)
 
@@ -971,7 +970,7 @@ INLINE_RULE0(and, all id)
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 andE :: (Monad m, MonoFoldable mono, Element mono ~ Bool)
      => ConduitT mono o m Bool
 INLINE_RULE0(andE, allE id)
@@ -982,7 +981,7 @@ INLINE_RULE0(andE, allE id)
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 or :: Monad m => ConduitT Bool o m Bool
 INLINE_RULE0(or, any id)
 
@@ -992,14 +991,14 @@ INLINE_RULE0(or, any id)
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 orE :: (Monad m, MonoFoldable mono, Element mono ~ Bool)
     => ConduitT mono o m Bool
 INLINE_RULE0(orE, anyE id)
 
 -- | 'Alternative'ly combine all values in the stream.
 --
--- Since 1.1.1
+-- @since 1.3.0
 asum :: (Monad m, Alternative f)
      => ConduitT (f a) o m (f a)
 INLINE_RULE0(asum, foldl (<|>) empty)
@@ -1010,7 +1009,7 @@ INLINE_RULE0(asum, foldl (<|>) empty)
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 elem :: (Monad m, Eq a) => a -> ConduitT a o m Bool
 INLINE_RULE(elem, x, any (== x))
 
@@ -1020,7 +1019,7 @@ INLINE_RULE(elem, x, any (== x))
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 elemE :: (Monad m, Seq.IsSequence seq, Eq (Element seq))
       => Element seq
       -> ConduitT seq o m Bool
@@ -1032,7 +1031,7 @@ INLINE_RULE(elemE, f, any (oelem f))
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 notElem :: (Monad m, Eq a) => a -> ConduitT a o m Bool
 INLINE_RULE(notElem, x, all (/= x))
 
@@ -1042,7 +1041,7 @@ INLINE_RULE(notElem, x, all (/= x))
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 notElemE :: (Monad m, Seq.IsSequence seq, Eq (Element seq))
          => Element seq
          -> ConduitT seq o m Bool
@@ -1056,7 +1055,7 @@ INLINE_RULE(notElemE, x, all (onotElem x))
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 sinkLazy, sinkLazyC :: (Monad m, LazySequence lazy strict)
                     => ConduitT strict o m lazy
 sinkLazyC = (fromChunks . ($ [])) <$> CL.fold (\front next -> front . (next:)) id
@@ -1068,7 +1067,7 @@ STREAMING0(sinkLazy, sinkLazyC, sinkLazyS)
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 sinkList :: Monad m => ConduitT a o m [a]
 INLINE_RULE0(sinkList, CL.consume)
 
@@ -1080,7 +1079,7 @@ INLINE_RULE0(sinkList, CL.consume)
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 sinkVector, sinkVectorC :: (V.Vector v a, PrimMonad m)
                         => ConduitT a o m (v a)
 sinkVectorC = do
@@ -1110,7 +1109,7 @@ STREAMING0(sinkVector, sinkVectorC, sinkVectorS)
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 sinkVectorN, sinkVectorNC :: (V.Vector v a, PrimMonad m)
                           => Int -- ^ maximum allowed size
                           -> ConduitT a o m (v a)
@@ -1141,7 +1140,7 @@ STREAMING(sinkVectorN, sinkVectorNC, sinkVectorNS, maxSize)
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 sinkLazyBuilder, sinkLazyBuilderC :: Monad m => ConduitT Builder o m BL.ByteString
 sinkLazyBuilderC = fmap toLazyByteString fold
 {-# INLINE sinkLazyBuilderC #-}
@@ -1151,13 +1150,13 @@ STREAMING0(sinkLazyBuilder, sinkLazyBuilderC, sinkLazyBuilderS)
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 sinkNull :: Monad m => ConduitT a o m ()
 INLINE_RULE0(sinkNull, CL.sinkNull)
 
 -- | Same as @await@, but discards any leading 'onull' values.
 --
--- Since 1.0.0
+-- @since 1.3.0
 awaitNonNull :: (Monad m, MonoFoldable a) => ConduitT a o m (Maybe (NonNull.NonNull a))
 awaitNonNull =
     go
@@ -1169,19 +1168,19 @@ awaitNonNull =
 
 -- | Take a single value from the stream, if available.
 --
--- Since 1.0.5
+-- @since 1.3.0
 head :: Monad m => ConduitT a o m (Maybe a)
 head = CL.head
 
 -- | Same as 'head', but returns a default value if none are available from the stream.
 --
--- Since 1.0.5
+-- @since 1.3.0
 headDef :: Monad m => a -> ConduitT a o m a
 headDef a = fromMaybe a <$> head
 
 -- | Get the next element in the chunked stream.
 --
--- Since 1.0.0
+-- @since 1.3.0
 headE :: (Monad m, Seq.IsSequence seq) => ConduitT seq o m (Maybe (Element seq))
 headE =
     loop
@@ -1197,14 +1196,14 @@ headE =
 
 -- | View the next value in the stream without consuming it.
 --
--- Since 1.0.0
+-- @since 1.3.0
 peek :: Monad m => ConduitT a o m (Maybe a)
 peek = CL.peek
 {-# INLINE peek #-}
 
 -- | View the next element in the chunked stream without consuming it.
 --
--- Since 1.0.0
+-- @since 1.3.0
 peekE :: (Monad m, MonoFoldable mono) => ConduitT mono o m (Maybe (Element mono))
 peekE =
     loop
@@ -1222,7 +1221,7 @@ peekE =
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 last, lastC :: Monad m => ConduitT a o m (Maybe a)
 lastC =
     await >>= maybe (return Nothing) loop
@@ -1232,7 +1231,7 @@ STREAMING0(last, lastC, lastS)
 
 -- | Same as 'last', but returns a default value if none are available from the stream.
 --
--- Since 1.0.5
+-- @since 1.3.0
 lastDef :: Monad m => a -> ConduitT a o m a
 lastDef a = fromMaybe a <$> last
 
@@ -1240,7 +1239,7 @@ lastDef a = fromMaybe a <$> last
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 lastE, lastEC :: (Monad m, Seq.IsSequence seq) => ConduitT seq o m (Maybe (Element seq))
 lastEC =
     awaitNonNull >>= maybe (return Nothing) (loop . NonNull.last)
@@ -1252,7 +1251,7 @@ STREAMING0(lastE, lastEC, lastES)
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 length :: (Monad m, Num len) => ConduitT a o m len
 INLINE_RULE0(length, foldl (\x _ -> x + 1) 0)
 
@@ -1260,7 +1259,7 @@ INLINE_RULE0(length, foldl (\x _ -> x + 1) 0)
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 lengthE :: (Monad m, Num len, MonoFoldable mono) => ConduitT mono o m len
 INLINE_RULE0(lengthE, foldl (\x y -> x + fromIntegral (olength y)) 0)
 
@@ -1268,7 +1267,7 @@ INLINE_RULE0(lengthE, foldl (\x y -> x + fromIntegral (olength y)) 0)
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 lengthIf :: (Monad m, Num len) => (a -> Bool) -> ConduitT a o m len
 INLINE_RULE(lengthIf, f, foldl (\cnt a -> if f a then (cnt + 1) else cnt) 0)
 
@@ -1276,7 +1275,7 @@ INLINE_RULE(lengthIf, f, foldl (\cnt a -> if f a then (cnt + 1) else cnt) 0)
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 lengthIfE :: (Monad m, Num len, MonoFoldable mono)
           => (Element mono -> Bool) -> ConduitT mono o m len
 INLINE_RULE(lengthIfE, f, foldlE (\cnt a -> if f a then (cnt + 1) else cnt) 0)
@@ -1285,7 +1284,7 @@ INLINE_RULE(lengthIfE, f, foldlE (\cnt a -> if f a then (cnt + 1) else cnt) 0)
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 maximum :: (Monad m, Ord a) => ConduitT a o m (Maybe a)
 INLINE_RULE0(maximum, foldl1 max)
 
@@ -1293,7 +1292,7 @@ INLINE_RULE0(maximum, foldl1 max)
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 maximumE :: (Monad m, Seq.IsSequence seq, Ord (Element seq)) => ConduitT seq o m (Maybe (Element seq))
 INLINE_RULE0(maximumE, foldl1E max)
 
@@ -1301,7 +1300,7 @@ INLINE_RULE0(maximumE, foldl1E max)
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 minimum :: (Monad m, Ord a) => ConduitT a o m (Maybe a)
 INLINE_RULE0(minimum, foldl1 min)
 
@@ -1309,7 +1308,7 @@ INLINE_RULE0(minimum, foldl1 min)
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 minimumE :: (Monad m, Seq.IsSequence seq, Ord (Element seq)) => ConduitT seq o m (Maybe (Element seq))
 INLINE_RULE0(minimumE, foldl1E min)
 
@@ -1317,7 +1316,7 @@ INLINE_RULE0(minimumE, foldl1E min)
 --
 -- This function does not modify the stream.
 --
--- Since 1.0.0
+-- @since 1.3.0
 null :: Monad m => ConduitT a o m Bool
 null = (maybe True (\_ -> False)) `fmap` peek
 {-# INLINE null #-}
@@ -1327,7 +1326,7 @@ null = (maybe True (\_ -> False)) `fmap` peek
 -- This function may remove empty leading chunks from the stream, but otherwise
 -- will not modify it.
 --
--- Since 1.0.0
+-- @since 1.3.0
 nullE :: (Monad m, MonoFoldable mono)
       => ConduitT mono o m Bool
 nullE =
@@ -1341,7 +1340,7 @@ nullE =
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 sum :: (Monad m, Num a) => ConduitT a o m a
 INLINE_RULE0(sum, foldl (+) 0)
 
@@ -1349,7 +1348,7 @@ INLINE_RULE0(sum, foldl (+) 0)
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 sumE :: (Monad m, MonoFoldable mono, Num (Element mono)) => ConduitT mono o m (Element mono)
 INLINE_RULE0(sumE, foldlE (+) 0)
 
@@ -1357,7 +1356,7 @@ INLINE_RULE0(sumE, foldlE (+) 0)
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 product :: (Monad m, Num a) => ConduitT a o m a
 INLINE_RULE0(product, foldl (*) 1)
 
@@ -1365,7 +1364,7 @@ INLINE_RULE0(product, foldl (*) 1)
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 productE :: (Monad m, MonoFoldable mono, Num (Element mono)) => ConduitT mono o m (Element mono)
 INLINE_RULE0(productE, foldlE (*) 1)
 
@@ -1373,7 +1372,7 @@ INLINE_RULE0(productE, foldlE (*) 1)
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 find, findC :: Monad m => (a -> Bool) -> ConduitT a o m (Maybe a)
 findC f =
     loop
@@ -1387,7 +1386,7 @@ STREAMING(find, findC, findS, f)
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 mapM_ :: Monad m => (a -> m ()) -> ConduitT a o m ()
 INLINE_RULE(mapM_, f, CL.mapM_ f)
 
@@ -1395,7 +1394,7 @@ INLINE_RULE(mapM_, f, CL.mapM_ f)
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 mapM_E :: (Monad m, MonoFoldable mono) => (Element mono -> m ()) -> ConduitT mono o m ()
 INLINE_RULE(mapM_E, f, CL.mapM_ (omapM_ f))
 
@@ -1403,7 +1402,7 @@ INLINE_RULE(mapM_E, f, CL.mapM_ (omapM_ f))
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 foldM :: Monad m => (a -> b -> m a) -> a -> ConduitT b o m a
 INLINE_RULE(foldM, f x, CL.foldM f x)
 
@@ -1411,7 +1410,7 @@ INLINE_RULE(foldM, f x, CL.foldM f x)
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 foldME :: (Monad m, MonoFoldable mono)
        => (a -> Element mono -> m a)
        -> a
@@ -1422,7 +1421,7 @@ INLINE_RULE(foldME, f x, foldM (ofoldlM f) x)
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 foldMapM :: (Monad m, Monoid w) => (a -> m w) -> ConduitT a o m w
 INLINE_RULE(foldMapM, f, CL.foldMapM f)
 
@@ -1431,7 +1430,7 @@ INLINE_RULE(foldMapM, f, CL.foldMapM f)
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 foldMapME :: (Monad m, MonoFoldable mono, Monoid w)
           => (Element mono -> m w)
           -> ConduitT mono o m w
@@ -1440,7 +1439,7 @@ INLINE_RULE(foldMapME, f, CL.foldM (ofoldlM (\accum e -> mappend accum `liftM` f
 -- | 'sinkFile' specialized to 'ByteString' to help with type
 -- inference.
 --
--- @since 1.0.7
+-- @since 1.3.0
 sinkFileBS :: MonadResource m => FilePath -> ConduitT ByteString o m ()
 sinkFileBS = sinkFile
 {-# INLINE sinkFileBS #-}
@@ -1449,7 +1448,7 @@ sinkFileBS = sinkFile
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 print :: (Show a, MonadIO m) => ConduitT a o m ()
 INLINE_RULE0(print, mapM_ (liftIO . Prelude.print))
 
@@ -1457,7 +1456,7 @@ INLINE_RULE0(print, mapM_ (liftIO . Prelude.print))
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 stdout :: MonadIO m => ConduitT ByteString o m ()
 INLINE_RULE0(stdout, sinkHandle IO.stdout)
 
@@ -1465,7 +1464,7 @@ INLINE_RULE0(stdout, sinkHandle IO.stdout)
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 stderr :: MonadIO m => ConduitT ByteString o m ()
 INLINE_RULE0(stderr, sinkHandle IO.stderr)
 
@@ -1473,7 +1472,7 @@ INLINE_RULE0(stderr, sinkHandle IO.stderr)
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 map :: Monad m => (a -> b) -> ConduitT a b m ()
 INLINE_RULE(map, f, CL.map f)
 
@@ -1481,7 +1480,7 @@ INLINE_RULE(map, f, CL.map f)
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 mapE :: (Monad m, Functor f) => (a -> b) -> ConduitT (f a) (f b) m ()
 INLINE_RULE(mapE, f, CL.map (fmap f))
 
@@ -1492,7 +1491,7 @@ INLINE_RULE(mapE, f, CL.map (fmap f))
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 omapE :: (Monad m, MonoFunctor mono) => (Element mono -> Element mono) -> ConduitT mono mono m ()
 INLINE_RULE(omapE, f, CL.map (omap f))
 
@@ -1504,7 +1503,7 @@ INLINE_RULE(omapE, f, CL.map (omap f))
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 concatMap, concatMapC :: (Monad m, MonoFoldable mono)
                       => (a -> mono)
                       -> ConduitT a (Element mono) m ()
@@ -1520,7 +1519,7 @@ STREAMING(concatMap, concatMapC, concatMapS, f)
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 concatMapE :: (Monad m, MonoFoldable mono, Monoid w)
            => (Element mono -> w)
            -> ConduitT mono w m ()
@@ -1534,7 +1533,7 @@ INLINE_RULE(concatMapE, f, CL.map (ofoldMap f))
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 take :: Monad m => Int -> ConduitT a a m ()
 INLINE_RULE(take, n, CL.isolate n)
 
@@ -1544,7 +1543,7 @@ INLINE_RULE(take, n, CL.isolate n)
 -- If you want to force /exactly/ the given number of values to be consumed,
 -- see 'takeExactlyE'.
 --
--- Since 1.0.0
+-- @since 1.3.0
 takeE :: (Monad m, Seq.IsSequence seq)
       => Seq.Index seq
       -> ConduitT seq seq m ()
@@ -1568,7 +1567,7 @@ takeE =
 --
 -- Same caveats regarding downstream termination apply as with 'take'.
 --
--- Since 1.0.0
+-- @since 1.3.0
 takeWhile :: Monad m
           => (a -> Bool)
           -> ConduitT a a m ()
@@ -1585,7 +1584,7 @@ takeWhile f =
 --
 -- Same caveats regarding downstream termination apply as with 'takeE'.
 --
--- Since 1.0.0
+-- @since 1.3.0
 takeWhileE :: (Monad m, Seq.IsSequence seq)
            => (Element seq -> Bool)
            -> ConduitT seq seq m ()
@@ -1615,7 +1614,7 @@ takeWhileE f =
 -- <http://www.yesodweb.com/blog/2013/10/core-flaw-pipes-conduit>, the section
 -- titled \"pipes and conduit: isolate\".
 --
--- Since 1.0.0
+-- @since 1.3.0
 takeExactly :: Monad m
             => Int
             -> ConduitT a b m r
@@ -1627,7 +1626,7 @@ takeExactly count inner = take count .| do
 
 -- | Same as 'takeExactly', but for chunked streams.
 --
--- Since 1.0.0
+-- @since 1.3.0
 takeExactlyE :: (Monad m, Seq.IsSequence a)
              => Seq.Index a
              -> ConduitT a b m r
@@ -1643,7 +1642,7 @@ takeExactlyE count inner = takeE count .| do
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 concat, concatC :: (Monad m, MonoFoldable mono)
                 => ConduitT mono (Element mono) m ()
 concatC = awaitForever yieldMany
@@ -1653,7 +1652,7 @@ STREAMING0(concat, concatC, concatS)
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 filter :: Monad m => (a -> Bool) -> ConduitT a a m ()
 INLINE_RULE(filter, f, CL.filter f)
 
@@ -1661,13 +1660,13 @@ INLINE_RULE(filter, f, CL.filter f)
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 filterE :: (Seq.IsSequence seq, Monad m) => (Element seq -> Bool) -> ConduitT seq seq m ()
 INLINE_RULE(filterE, f, CL.map (Seq.filter f))
 
 -- | Map values as long as the result is @Just@.
 --
--- Since 1.0.0
+-- @since 1.3.0
 mapWhile :: Monad m => (a -> Maybe b) -> ConduitT a b m ()
 mapWhile f =
     loop
@@ -1683,7 +1682,7 @@ mapWhile f =
 -- be smaller than n if the total number of values is not a strict multiple of
 -- n. No empty vectors will be yielded.
 --
--- Since 1.0.0
+-- @since 1.3.0
 conduitVector :: (V.Vector v a, PrimMonad m)
               => Int -- ^ maximum allowed size
               -> ConduitT a (v a) m ()
@@ -1701,7 +1700,7 @@ conduitVector size =
 --
 -- Subject to fusion
 --
--- Since 1.0.6
+-- @since 1.3.0
 scanl, scanlC :: Monad m => (a -> b -> a) -> a -> ConduitT b a m ()
 scanlC f =
     loop
@@ -1735,7 +1734,7 @@ STREAMING(mapAccumWhile, mapAccumWhileC, mapAccumWhileS, f s)
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 concatMapAccum :: Monad m => (a -> accum -> (accum, [b])) -> accum -> ConduitT a b m ()
 INLINE_RULE0(concatMapAccum, CL.concatMapAccum)
 
@@ -1743,7 +1742,7 @@ INLINE_RULE0(concatMapAccum, CL.concatMapAccum)
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 intersperse, intersperseC :: Monad m => a -> ConduitT a a m ()
 intersperseC x =
     await >>= omapM_ go
@@ -1759,7 +1758,7 @@ STREAMING(intersperse, intersperseC, intersperseS, x)
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 slidingWindow, slidingWindowC :: (Monad m, Seq.IsSequence seq, Element seq ~ a) => Int -> ConduitT a seq m ()
 slidingWindowC sz = go (max 1 sz) mempty
     where goContinue st = await >>=
@@ -1781,7 +1780,7 @@ STREAMING(slidingWindow, slidingWindowC, slidingWindowS, sz)
 -- The last element may be smaller than the 'chunkSize' (see also
 -- 'chunksOfExactlyE' which will not yield this last element)
 --
--- @since 1.1.2
+-- @since 1.3.0
 chunksOfE :: (Monad m, Seq.IsSequence seq) => Seq.Index seq -> ConduitT seq seq m ()
 chunksOfE chunkSize = chunksOfExactlyE chunkSize >> (await >>= maybe (return ()) yield)
 
@@ -1790,7 +1789,7 @@ chunksOfE chunkSize = chunksOfExactlyE chunkSize >> (await >>= maybe (return ())
 -- If the input does not split into chunks exactly, the remainder will be
 -- leftover (see also 'chunksOfE')
 --
--- @since 1.1.2
+-- @since 1.3.0
 chunksOfExactlyE :: (Monad m, Seq.IsSequence seq) => Seq.Index seq -> ConduitT seq seq m ()
 chunksOfExactlyE chunkSize = await >>= maybe (return ()) start
     where
@@ -1817,7 +1816,7 @@ chunksOfExactlyE chunkSize = await >>= maybe (return ()) start
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 mapM :: Monad m => (a -> m b) -> ConduitT a b m ()
 INLINE_RULE(mapM, f, CL.mapM f)
 
@@ -1825,7 +1824,7 @@ INLINE_RULE(mapM, f, CL.mapM f)
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 mapME :: (Monad m, Data.Traversable.Traversable f) => (a -> m b) -> ConduitT (f a) (f b) m ()
 INLINE_RULE(mapME, f, CL.mapM (Data.Traversable.mapM f))
 
@@ -1836,7 +1835,7 @@ INLINE_RULE(mapME, f, CL.mapM (Data.Traversable.mapM f))
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 omapME :: (Monad m, MonoTraversable mono)
        => (Element mono -> m (Element mono))
        -> ConduitT mono mono m ()
@@ -1850,7 +1849,7 @@ INLINE_RULE(omapME, f, CL.mapM (omapM f))
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 concatMapM, concatMapMC :: (Monad m, MonoFoldable mono)
                         => (a -> m mono)
                         -> ConduitT a (Element mono) m ()
@@ -1861,7 +1860,7 @@ STREAMING(concatMapM, concatMapMC, concatMapMS, f)
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 filterM, filterMC :: Monad m
                   => (a -> m Bool)
                   -> ConduitT a a m ()
@@ -1877,7 +1876,7 @@ STREAMING(filterM, filterMC, filterMS, f)
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 filterME :: (Monad m, Seq.IsSequence seq) => (Element seq -> m Bool) -> ConduitT seq seq m ()
 INLINE_RULE(filterME, f, CL.mapM (Seq.filterM f))
 
@@ -1890,7 +1889,7 @@ INLINE_RULE(filterME, f, CL.mapM (Seq.filterM f))
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 iterM :: Monad m => (a -> m ()) -> ConduitT a a m ()
 INLINE_RULE(iterM, f, CL.iterM f)
 
@@ -1898,7 +1897,7 @@ INLINE_RULE(iterM, f, CL.iterM f)
 --
 -- Subject to fusion
 --
--- Since 1.0.6
+-- @since 1.3.0
 scanlM, scanlMC :: Monad m => (a -> b -> m a) -> a -> ConduitT b a m ()
 scanlMC f =
     loop
@@ -1929,7 +1928,7 @@ STREAMING(mapAccumWhileM, mapAccumWhileMC, mapAccumWhileMS, f s)
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 concatMapAccumM :: Monad m => (a -> accum -> m (accum, [b])) -> accum -> ConduitT a b m ()
 INLINE_RULE(concatMapAccumM, f x, CL.concatMapAccumM f x)
 
@@ -1937,13 +1936,13 @@ INLINE_RULE(concatMapAccumM, f x, CL.concatMapAccumM f x)
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 encodeUtf8 :: (Monad m, DTE.Utf8 text binary) => ConduitT text binary m ()
 INLINE_RULE0(encodeUtf8, map DTE.encodeUtf8)
 
 -- | Decode a stream of binary data as UTF8.
 --
--- Since 1.0.0
+-- @since 1.3.0
 decodeUtf8 :: MonadThrow m => ConduitT ByteString Text m ()
 decodeUtf8 =
     loop TE.streamDecodeUtf8
@@ -1969,7 +1968,7 @@ decodeUtf8 =
 -- | Decode a stream of binary data as UTF8, replacing any invalid bytes with
 -- the Unicode replacement character.
 --
--- Since 1.0.0
+-- @since 1.3.0
 decodeUtf8Lenient :: Monad m => ConduitT ByteString Text m ()
 decodeUtf8Lenient =
     loop (TE.streamDecodeUtf8With TEE.lenientDecode)
@@ -1992,7 +1991,7 @@ decodeUtf8Lenient =
 -- Like @takeExactly@, this will consume the entirety of the line regardless of
 -- the behavior of the inner Conduit.
 --
--- Since 1.0.0
+-- @since 1.3.0
 line :: (Monad m, Seq.IsSequence seq, Element seq ~ Char)
      => ConduitT seq o m r
      -> ConduitT seq o m r
@@ -2001,7 +2000,7 @@ line = takeExactlyUntilE (== '\n')
 
 -- | Same as 'line', but operates on ASCII/binary data.
 --
--- Since 1.0.0
+-- @since 1.3.0
 lineAscii :: (Monad m, Seq.IsSequence seq, Element seq ~ Word8)
           => ConduitT seq o m r
           -> ConduitT seq o m r
@@ -2038,7 +2037,7 @@ takeExactlyUntilE f inner =
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 unlines :: (Monad m, Seq.IsSequence seq, Element seq ~ Char) => ConduitT seq seq m ()
 INLINE_RULE0(unlines, concatMap (:[Seq.singleton '\n']))
 
@@ -2046,7 +2045,7 @@ INLINE_RULE0(unlines, concatMap (:[Seq.singleton '\n']))
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 unlinesAscii :: (Monad m, Seq.IsSequence seq, Element seq ~ Word8) => ConduitT seq seq m ()
 INLINE_RULE0(unlinesAscii, concatMap (:[Seq.singleton 10]))
 
@@ -2082,7 +2081,7 @@ STREAMING(splitOnUnboundedE, splitOnUnboundedEC, splitOnUnboundedES, f)
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 linesUnbounded :: (Monad m, Seq.IsSequence seq, Element seq ~ Char)
                => ConduitT seq seq m ()
 INLINE_RULE0(linesUnbounded, splitOnUnboundedE (== '\n'))
@@ -2091,7 +2090,7 @@ INLINE_RULE0(linesUnbounded, splitOnUnboundedE (== '\n'))
 --
 -- Subject to fusion
 --
--- Since 1.0.0
+-- @since 1.3.0
 linesUnboundedAscii :: (Monad m, Seq.IsSequence seq, Element seq ~ Word8)
                     => ConduitT seq seq m ()
 INLINE_RULE0(linesUnboundedAscii, splitOnUnboundedE (== 10))
@@ -2189,7 +2188,7 @@ bbhelper await' yield' strat = do
 -- | Provides a series of @ByteString@s until empty, at which point it provides
 -- an empty @ByteString@.
 --
--- Since 0.1.10.0
+-- @since 1.3.0
 --
 type BuilderPopper = IO S.ByteString
 
@@ -2267,7 +2266,7 @@ data Buffer = Buffer {-# UNPACK #-} !(ForeignPtr Word8) -- underlying pinned arr
 -- Hence, depending on the later use of this buffer (e.g., if it gets reset and
 -- filled again) referential transparency may be lost.
 --
--- Since 0.1.10.0
+-- @since 1.3.0
 --
 {-# INLINE unsafeFreezeBuffer #-}
 unsafeFreezeBuffer :: Buffer -> S.ByteString
@@ -2277,7 +2276,7 @@ unsafeFreezeBuffer (Buffer fpbuf p0 op _) =
 -- | Convert a buffer to a non-empty bytestring. See 'unsafeFreezeBuffer' for
 -- the explanation of why this operation may be unsafe.
 --
--- Since 0.1.10.0
+-- @since 1.3.0
 --
 {-# INLINE unsafeFreezeNonEmptyBuffer #-}
 unsafeFreezeNonEmptyBuffer :: Buffer -> Maybe S.ByteString
@@ -2287,7 +2286,7 @@ unsafeFreezeNonEmptyBuffer buf
 
 -- | Update the end of slice pointer.
 --
--- Since 0.1.10.0
+-- @since 1.3.0
 --
 {-# INLINE updateEndOfSlice #-}
 updateEndOfSlice :: Buffer    -- Old buffer
@@ -2297,7 +2296,7 @@ updateEndOfSlice (Buffer fpbuf p0 _ ope) op' = Buffer fpbuf p0 op' ope
 
 -- | The size of the written slice in the buffer.
 --
--- Since 0.1.10.0
+-- @since 1.3.0
 --
 sliceSize :: Buffer -> Int
 sliceSize (Buffer _ p0 op _) = op `minusPtr` p0
@@ -2348,7 +2347,7 @@ reuseBufferStrategy buf0 =
 
 -- | The size of the whole byte array underlying the buffer.
 --
--- Since 0.1.10.0
+-- @since 1.3.0
 --
 bufferSize :: Buffer -> Int
 bufferSize (Buffer fpbuf _ _ ope) =
@@ -2356,7 +2355,7 @@ bufferSize (Buffer fpbuf _ _ ope) =
 
 -- | @allocBuffer size@ allocates a new buffer of size @size@.
 --
--- Since 0.1.10.0
+-- @since 1.3.0
 --
 {-# INLINE allocBuffer #-}
 allocBuffer :: Int -> IO Buffer
@@ -2368,7 +2367,7 @@ allocBuffer size = do
 -- | Resets the beginning of the next slice and the next free byte such that
 -- the whole buffer can be filled again.
 --
--- Since 0.1.10.0
+-- @since 1.3.0
 --
 {-# INLINE reuseBuffer #-}
 reuseBuffer :: Buffer -> Buffer
@@ -2393,7 +2392,7 @@ reuseBuffer (Buffer fpbuf _ _ ope) = Buffer fpbuf p0 p0 ope
 -- please see:
 -- <https://www.fpcomplete.com/user/snoyberg/library-documentation/vectorbuilder>
 --
--- Since 1.0.0
+-- @since 1.3.0
 vectorBuilder :: (PrimMonad m, PrimMonad n, V.Vector v e, PrimState m ~ PrimState n)
               => Int -- ^ size
               -> ((e -> n ()) -> ConduitT i Void m r)
@@ -2483,7 +2482,7 @@ mapAccumS f s xs = do
 -- | Run a consuming conduit repeatedly, only stopping when there is no more
 -- data available from upstream.
 --
--- Since 1.0.0
+-- @since 1.3.0
 peekForever :: Monad m => ConduitT i o m () -> ConduitT i o m ()
 peekForever inner =
     loop
@@ -2502,7 +2501,7 @@ peekForever inner =
 -- empty @ByteString@, it is still treated as empty, and the consuming
 -- function is not called.
 --
--- @since 1.0.6
+-- @since 1.3.0
 peekForeverE :: (Monad m, MonoFoldable i)
              => ConduitT i o m ()
              -> ConduitT i o m ()
