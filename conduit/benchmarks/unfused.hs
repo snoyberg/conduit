@@ -2,12 +2,10 @@
 -- Compare low-level, fused, unfused, and partially fused
 import Data.Conduit
 import qualified Data.Conduit.List as CL
-import Data.Conduit.Internal (Step (..), Stream (..), unstream, StreamConduit (..))
 import Gauge.Main
-import Data.Functor.Identity (runIdentity)
 
 -- | unfused
-enumFromToC :: (Eq a, Monad m, Enum a) => a -> a -> Producer m a
+enumFromToC :: (Eq a, Monad m, Enum a) => a -> a -> ConduitT i a m ()
 enumFromToC x0 y =
     loop x0
   where
@@ -17,12 +15,12 @@ enumFromToC x0 y =
 {-# INLINE enumFromToC #-}
 
 -- | unfused
-mapC :: Monad m => (a -> b) -> Conduit a m b
+mapC :: Monad m => (a -> b) -> ConduitT a b m ()
 mapC f = awaitForever $ yield . f
 {-# INLINE mapC #-}
 
 -- | unfused
-foldC :: Monad m => (b -> a -> b) -> b -> Consumer a m b
+foldC :: Monad m => (b -> a -> b) -> b -> ConduitT a o m b
 foldC f =
     loop
   where
@@ -37,44 +35,43 @@ main = defaultMain
                 | otherwise = loop (x + 1) (t + ((x * 2) + 1))
          in loop 1 0
     , bench "completely fused" $ flip whnf upper0 $ \upper ->
-        runIdentity
+              runConduitPure
             $ CL.enumFromTo 1 upper
-           $$ CL.map (* 2)
-           =$ CL.map (+ 1)
-           =$ CL.fold (+) 0
+           .| CL.map (* 2)
+           .| CL.map (+ 1)
+           .| CL.fold (+) 0
     , bench "runConduit, completely fused" $ flip whnf upper0 $ \upper ->
-        runIdentity
-            $ runConduit
-            $ CL.enumFromTo 1 upper
-          =$= CL.map (* 2)
-          =$= CL.map (+ 1)
-          =$= CL.fold (+) 0
+             runConduitPure
+           $ CL.enumFromTo 1 upper
+          .| CL.map (* 2)
+          .| CL.map (+ 1)
+          .| CL.fold (+) 0
     , bench "completely unfused" $ flip whnf upper0 $ \upper ->
-        runIdentity
+              runConduitPure
             $ enumFromToC 1 upper
-           $$ mapC (* 2)
-           =$ mapC (+ 1)
-           =$ foldC (+) 0
+           .| mapC (* 2)
+           .| mapC (+ 1)
+           .| foldC (+) 0
     , bench "beginning fusion" $ flip whnf upper0 $ \upper ->
-        runIdentity
-            $ (CL.enumFromTo 1 upper $= CL.map (* 2))
-           $$ mapC (+ 1)
-           =$ foldC (+) 0
+              runConduitPure
+            $ (CL.enumFromTo 1 upper .| CL.map (* 2))
+           .| mapC (+ 1)
+           .| foldC (+) 0
     , bench "middle fusion" $ flip whnf upper0 $ \upper ->
-        runIdentity
+              runConduitPure
             $ enumFromToC 1 upper
-           $$ (CL.map (* 2) =$= CL.map (+ 1))
-           =$ foldC (+) 0
+           .| (CL.map (* 2) .| CL.map (+ 1))
+           .| foldC (+) 0
     , bench "ending fusion" $ flip whnf upper0 $ \upper ->
-        runIdentity
+              runConduitPure
             $ enumFromToC 1 upper
-           $= mapC (* 2)
-           $$ (CL.map (+ 1) =$ CL.fold (+) 0)
+           .| mapC (* 2)
+           .| (CL.map (+ 1) .| CL.fold (+) 0)
     , bench "performance of CL.enumFromTo without fusion" $ flip whnf upper0 $ \upper ->
-        runIdentity
+              runConduitPure
             $ CL.enumFromTo 1 upper
-           $= mapC (* 2)
-           $$ (CL.map (+ 1) =$ CL.fold (+) 0)
+           .| mapC (* 2)
+           .| (CL.map (+ 1) .| CL.fold (+) 0)
     ]
   where
     upper0 = 100000 :: Int

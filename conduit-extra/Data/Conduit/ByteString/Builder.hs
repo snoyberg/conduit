@@ -31,5 +31,4 @@ module Data.Conduit.ByteString.Builder
   , CC.reuseBufferStrategy
     ) where
 
-import Data.Conduit
 import qualified Data.Conduit.Combinators as CC

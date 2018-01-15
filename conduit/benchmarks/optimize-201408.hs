@@ -9,16 +9,12 @@
 import           Control.DeepSeq
 import           Control.Monad               (foldM)
 import           Control.Monad               (when, liftM)
-import           Control.Monad.Codensity     (lowerCodensity)
-import           Control.Monad.IO.Class      (MonadIO, liftIO)
-import           Control.Monad.Trans.Class   (lift)
+import           Control.Monad.IO.Class      (liftIO)
 import           Gauge.Main
 import           Data.Conduit
-import           Data.Conduit.Internal       (ConduitM (..), Pipe (..))
 import qualified Data.Conduit.Internal       as CI
 import qualified Data.Conduit.List           as CL
 import qualified Data.Foldable               as F
-import           Data.Functor.Identity       (runIdentity)
 import           Data.IORef
 import           Data.List                   (foldl')
 import           Data.Monoid                 (mempty)
@@ -96,15 +92,15 @@ sumTB = do
         , TBPure "unboxed vectors" upper0 expected
             $ \upper -> VU.foldl' (+) 0 (VU.enumFromTo 1 upper)
         , TBPure "conduit, pure, fold" upper0 expected
-            $ \upper -> runIdentity $ CL.enumFromTo 1 upper $$ CL.fold (+) 0
+            $ \upper -> runConduitPure $ CL.enumFromTo 1 upper .| CL.fold (+) 0
         , TBPure "conduit, pure, foldM" upper0 expected
-            $ \upper -> runIdentity $ CL.enumFromTo 1 upper $$ CL.foldM plusM 0
+            $ \upper -> runConduitPure $ CL.enumFromTo 1 upper .| CL.foldM plusM 0
         , TBIO "conduit, IO, fold" expected $ do
             upper <- readIORef upperRef
-            CL.enumFromTo 1 upper $$ CL.fold (+) 0
+            runConduit $ CL.enumFromTo 1 upper .| CL.fold (+) 0
         , TBIO "conduit, IO, foldM" expected $ do
             upper <- readIORef upperRef
-            CL.enumFromTo 1 upper $$ CL.foldM plusM 0
+            runConduit $ CL.enumFromTo 1 upper .| CL.foldM plusM 0
         ]
   where
     upper0 = 10000 :: Int
@@ -126,26 +122,11 @@ mapSumTB = return $ TBGroup "map + sum"
                   $ VU.map (+ 1)
                   $ VU.map (* 2)
                   $ VU.enumFromTo 1 upper
-    , TBPure "conduit, connect1" upper0 expected $ \upper -> runIdentity
+    , TBPure "conduit, connect1" upper0 expected $ \upper -> runConduitPure
         $ CL.enumFromTo 1 upper
-       $$ CL.map (* 2)
-      =$= CL.map (+ 1)
-      =$= CL.fold (+) 0
-    , TBPure "conduit, connect2" upper0 expected $ \upper -> runIdentity
-        $ CL.enumFromTo 1 upper
-      =$= CL.map (* 2)
-       $$ CL.map (+ 1)
-      =$= CL.fold (+) 0
-    , TBPure "conduit, connect3" upper0 expected $ \upper -> runIdentity
-        $ CL.enumFromTo 1 upper
-      =$= CL.map (* 2)
-      =$= CL.map (+ 1)
-       $$ CL.fold (+) 0
-    , TBPure "conduit, inner fuse" upper0 expected $ \upper -> runIdentity
-        $ CL.enumFromTo 1 upper
-      =$= (CL.map (* 2)
-      =$= CL.map (+ 1))
-       $$ CL.fold (+) 0
+       .| CL.map (* 2)
+       .| CL.map (+ 1)
+       .| CL.fold (+) 0
     ]
   where
     upper0 = 10000 :: Int
@@ -157,8 +138,9 @@ monteCarloTB :: IO TestBench
 monteCarloTB = return $ TBGroup "monte carlo"
     [ TBIOTest "conduit" closeEnough $ do
         gen <- MWC.createSystemRandom
-        successes <- CL.replicateM count (MWC.uniform gen)
-                  $$ CL.fold (\t (x, y) ->
+        successes <- runConduit
+                   $ CL.replicateM count (MWC.uniform gen)
+                  .| CL.fold (\t (x, y) ->
                                 if (x*x + y*(y :: Double) < 1)
                                     then t + 1
                                     else t)
@@ -290,9 +272,10 @@ swConduitSeq :: Int
 swConduitSeq window upperRef t0 f final = do
     upper <- readIORef upperRef
 
-    t <- CL.enumFromTo 1 upper
-        $= slidingWindowC window
-        $$ CL.fold f t0
+    t <- runConduit
+       $ CL.enumFromTo 1 upper
+      .| slidingWindowC window
+      .| CL.fold f t0
     return $! final t
 
 swConduitVector :: V.Vector v Int
@@ -305,19 +288,20 @@ swConduitVector :: V.Vector v Int
 swConduitVector window upperRef t0 f final = do
     upper <- readIORef upperRef
 
-    t <- CL.enumFromTo 1 upper
-        $= slidingVectorC window
-        $$ CL.fold f t0
+    t <- runConduit
+       $ CL.enumFromTo 1 upper
+      .| slidingVectorC window
+      .| CL.fold f t0
     return $! final t
 
-slidingWindowC :: Monad m => Int -> Conduit a m (Seq.Seq a)
+slidingWindowC :: Monad m => Int -> ConduitT a (Seq.Seq a) m ()
 slidingWindowC = slidingWindowCC
 {-# INLINE [0] slidingWindowC #-}
 {-# RULES "unstream slidingWindowC"
     forall i. slidingWindowC i = CI.unstream (CI.streamConduit (slidingWindowCC i) (slidingWindowS i))
   #-}
 
-slidingWindowCC :: Monad m => Int -> Conduit a m (Seq.Seq a)
+slidingWindowCC :: Monad m => Int -> ConduitT a (Seq.Seq a) m ()
 slidingWindowCC sz =
     go sz mempty
   where
@@ -356,14 +340,14 @@ slidingWindowS sz (CI.Stream step ms0) =
                  in CI.Emit (Right (s', st')) st'
 {-# INLINE slidingWindowS #-}
 
-slidingVectorC :: V.Vector v a => Int -> Conduit a IO (v a)
+slidingVectorC :: V.Vector v a => Int -> ConduitT a (v a) IO ()
 slidingVectorC = slidingVectorCC
 {-# INLINE [0] slidingVectorC #-}
 {-# RULES "unstream slidingVectorC"
     forall i. slidingVectorC i = CI.unstream (CI.streamConduit (slidingVectorCC i) (slidingVectorS i))
   #-}
 
-slidingVectorCC :: V.Vector v a => Int -> Conduit a IO (v a)
+slidingVectorCC :: V.Vector v a => Int -> ConduitT a (v a) IO ()
 slidingVectorCC sz = do
     mv <- newBuf
     mv2 <- newBuf

@@ -59,20 +59,16 @@ module Data.Conduit.Binary
     , Data.Conduit.Binary.lines
     ) where
 
-import qualified Data.ByteString.Builder as BB
 import qualified Data.Conduit.Combinators as CC
-import qualified Data.Streaming.FileRead as FR
 import Prelude hiding (head, take, drop, takeWhile, dropWhile, mapM_)
 import qualified Data.ByteString as S
 import Data.ByteString.Unsafe (unsafeUseAsCString)
 import qualified Data.ByteString.Lazy as L
 import Data.Conduit
 import Data.Conduit.List (sourceList, consume)
-import qualified Data.Conduit.List as CL
-import Control.Exception (assert, finally, bracket)
-import Control.Monad (unless, when)
+import Control.Exception (assert, finally)
+import Control.Monad (unless)
 import Control.Monad.IO.Class (liftIO, MonadIO)
-import Control.Monad.IO.Unlift
 import Control.Monad.Trans.Resource (allocate, release, MonadThrow (..))
 import Control.Monad.Trans.Class (lift)
 import qualified System.IO as IO
@@ -87,7 +83,6 @@ import Foreign.ForeignPtr.Unsafe (unsafeForeignPtrToPtr)
 import Foreign.ForeignPtr (touchForeignPtr)
 import Foreign.Ptr (plusPtr, castPtr)
 import Foreign.Storable (Storable, peek, sizeOf)
-import GHC.ForeignPtr           (mallocPlainForeignPtrBytes)
 import Control.Monad.Trans.Resource (MonadResource)
 import Control.Exception (Exception)
 import Data.Typeable (Typeable)
@@ -95,11 +90,6 @@ import Foreign.Ptr (Ptr)
 #ifndef ALLOW_UNALIGNED_ACCESS
 import Foreign.Marshal (alloca, copyBytes)
 #endif
-import System.Directory (renameFile)
-import System.FilePath (takeDirectory, takeFileName, (<.>))
-import System.IO (hClose, openBinaryTempFile)
-import Control.Exception (throwIO, catch)
-import System.IO.Error (isDoesNotExistError)
 
 -- | Stream the contents of a file as binary data, starting from a certain
 -- offset and only consuming up to a certain number of bytes.

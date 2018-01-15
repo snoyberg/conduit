@@ -28,7 +28,6 @@ import Foreign.Ptr (alignPtr, minusPtr)
 import System.Directory (doesFileExist)
 import System.IO.Unsafe (unsafePerformIO)
 import Control.Applicative ((<$>))
-import Conduit
 import qualified Data.ByteString.Builder as BB
 
 spec :: Spec
