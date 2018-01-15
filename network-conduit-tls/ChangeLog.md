@@ -1,3 +1,7 @@
+## 1.3.0
+
+* Upgrade to conduit 1.3.0
+
 ## 1.2.2
 
 * Make runTLS{Client,Server}StartTLS general [#264](https://github.com/snoyberg/conduit/pull/264)
