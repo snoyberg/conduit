@@ -123,7 +123,7 @@ benchmark optimize-201408
                   , transformers
                   , hspec
                   , mwc-random
-                  , criterion
+                  , gauge
                   , kan-extensions
     main-is:        optimize-201408.hs
     ghc-options:    -Wall -O2 -rtsopts
@@ -133,7 +133,7 @@ benchmark unfused
     hs-source-dirs: benchmarks
     build-depends:  base
                   , conduit
-                  , criterion
+                  , gauge
                   , transformers
     main-is:        unfused.hs
     ghc-options:    -Wall -O2 -rtsopts

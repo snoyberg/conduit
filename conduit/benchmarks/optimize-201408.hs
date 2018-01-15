@@ -12,7 +12,7 @@ import           Control.Monad               (when, liftM)
 import           Control.Monad.Codensity     (lowerCodensity)
 import           Control.Monad.IO.Class      (MonadIO, liftIO)
 import           Control.Monad.Trans.Class   (lift)
-import           Criterion.Main
+import           Gauge.Main
 import           Data.Conduit
 import           Data.Conduit.Internal       (ConduitM (..), Pipe (..))
 import qualified Data.Conduit.Internal       as CI

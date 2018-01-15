@@ -3,7 +3,7 @@
 import Data.Conduit
 import qualified Data.Conduit.List as CL
 import Data.Conduit.Internal (Step (..), Stream (..), unstream, StreamConduit (..))
-import Criterion.Main
+import Gauge.Main
 import Data.Functor.Identity (runIdentity)
 
 -- | unfused

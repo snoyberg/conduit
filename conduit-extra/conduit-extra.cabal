@@ -106,7 +106,7 @@ benchmark blaze
     build-depends:  base
                   , conduit
                   , conduit-extra
-                  , criterion
+                  , gauge
                   , bytestring
                   , bytestring-builder
                   , transformers

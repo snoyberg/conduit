@@ -2,7 +2,7 @@
 import Data.Conduit
 import qualified Data.Conduit.List as CL
 import Data.Conduit.ByteString.Builder
-import Criterion.Main
+import Gauge.Main
 import Data.Monoid
 import Data.ByteString.Builder
 import Data.Functor.Identity (runIdentity)
