@@ -5,6 +5,8 @@ import Data.Conduit ((.|), runConduit, runConduitPure)
 import Control.Exception (SomeException)
 import qualified Data.Conduit.Text as CT
 import qualified Data.Conduit as C
+import Data.Conduit.Lift (runCatchC, catchCatchC)
+import Data.Functor.Identity (runIdentity)
 import qualified Data.Conduit.List as CL
 import Test.Hspec
 import Test.Hspec.QuickCheck
@@ -16,6 +18,7 @@ import Control.Arrow
 import qualified Data.ByteString as S
 import qualified Data.Text.Lazy as TL
 import qualified Data.ByteString.Lazy as L
+import Control.Monad.Catch.Pure (runCatchT)
 
 spec :: Spec
 spec = describe "Data.Conduit.Text" $ do
@@ -93,17 +96,16 @@ spec = describe "Data.Conduit.Text" $ do
                   ]
                 , ["\128\128\0that was bad"]
                 )
-        {- FIXME uncomment
         it "catch UTF8 exceptions, pure" $ do
             let badBS = "this is good\128\128\0that was bad"
 
                 grabExceptions inner = do
-                    res <- C.runCatchC $ inner .|= CL.map Right
+                    res <- runCatchC $ inner .| CL.map Right
                     case res of
                         Left e -> C.yield $ Left e
                         Right () -> return ()
 
-            let res = runIdentity $ C.yield badBS C.$$ (,)
+            let res = runConduitPure $ C.yield badBS .| (,)
                         <$> (grabExceptions (CT.decode CT.utf8) .| CL.consume)
                         <*> CL.consume
 
@@ -116,11 +118,11 @@ spec = describe "Data.Conduit.Text" $ do
         it "catch UTF8 exceptions, catchExceptionC" $ do
             let badBS = "this is good\128\128\0that was bad"
 
-                grabExceptions inner = C.catchCatchC
-                    (inner .|= CL.map Right)
+                grabExceptions inner = catchCatchC
+                    (inner .| CL.map Right)
                     (\e -> C.yield $ Left e)
 
-            let res = runException_ $ C.yield badBS C.$$ (,)
+            let Right res = runIdentity $ runCatchT $ runConduit $ C.yield badBS .| (,)
                         <$> (grabExceptions (CT.decode CT.utf8) .| CL.consume)
                         <*> CL.consume
 
@@ -133,11 +135,11 @@ spec = describe "Data.Conduit.Text" $ do
         it "catch UTF8 exceptions, catchExceptionC, decodeUtf8" $ do
             let badBS = "this is good\128\128\0that was bad"
 
-                grabExceptions inner = C.catchCatchC
-                    (inner .|= CL.map Right)
+                grabExceptions inner = catchCatchC
+                    (inner .| CL.map Right)
                     (\e -> C.yield $ Left e)
 
-            let res = runException_ $ C.yield badBS C.$$ (,)
+            let Right res = runIdentity $ runCatchT $ runConduit $ C.yield badBS .| (,)
                         <$> (grabExceptions CT.decodeUtf8 .| CL.consume)
                         <*> CL.consume
 
@@ -147,7 +149,6 @@ spec = describe "Data.Conduit.Text" $ do
                   ]
                 , ["\128\128\0that was bad"]
                 )
-        -}
         prop "lenient UTF8 decoding" $ \good1 good2 -> do
             let bss = [TE.encodeUtf8 $ T.pack good1, "\128\129\130", TE.encodeUtf8 $ T.pack good2]
                 bs = S.concat bss

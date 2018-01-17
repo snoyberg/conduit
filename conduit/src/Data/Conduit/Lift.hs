@@ -14,6 +14,7 @@ module Data.Conduit.Lift (
 
     -- * CatchC
     runCatchC,
+    catchCatchC,
 
     -- * MaybeT
     maybeC,
@@ -153,6 +154,28 @@ runCatchC c0 =
             go (NeedInput x y) = NeedInput (go . x) (go . y)
          in go $ unConduitT c0 Done
 {-# INLINABLE runCatchC #-}
+
+-- | Catch an exception in the base monad
+--
+-- Since 1.1.0
+catchCatchC
+  :: Monad m
+  => ConduitT i o (CatchT m) r
+  -> (SomeException -> ConduitT i o (CatchT m) r)
+  -> ConduitT i o (CatchT m) r
+catchCatchC (ConduitT c0) h =
+    ConduitT $ \rest ->
+        let go (Done r) = rest r
+            go (PipeM mp) = PipeM $ do
+                eres <- lift $ runCatchT mp
+                return $ case eres of
+                    Left e -> unConduitT (h e) rest
+                    Right p -> go p
+            go (Leftover p i) = Leftover (go p) i
+            go (HaveOutput p o) = HaveOutput (go p) o
+            go (NeedInput x y) = NeedInput (go . x) (go . y)
+         in go (c0 Done)
+{-# INLINABLE catchCatchC #-}
 
 -- | Wrap the base monad in 'M.MaybeT'
 --
