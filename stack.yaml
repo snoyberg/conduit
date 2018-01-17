@@ -9,3 +9,4 @@ extra-deps:
 - streaming-commons-0.1.17
 - typed-process-0.2.0.0
 - unliftio-core-0.1.0.0
+- mono-traversable-1.0.8.1
