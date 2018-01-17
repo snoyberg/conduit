@@ -133,19 +133,20 @@ spec = describe "Data.Conduit.Text" $ do
                 , ["\128\128\0that was bad"]
                 )
         it "catch UTF8 exceptions, catchExceptionC, decodeUtf8" $ do
-            let badBS = "this is good\128\128\0that was bad"
+            let badBS = ["this is good", "\128\128\0that was bad"]
 
                 grabExceptions inner = catchCatchC
                     (inner .| CL.map Right)
                     (\e -> C.yield $ Left e)
 
-            let Right res = runIdentity $ runCatchT $ runConduit $ C.yield badBS .| (,)
+            let Right res = runIdentity $ runCatchT $ runConduit $
+                  mapM_ C.yield badBS .| (,)
                         <$> (grabExceptions CT.decodeUtf8 .| CL.consume)
                         <*> CL.consume
 
-            first (map (either (Left . show) Right)) res `shouldBe`
+            first (map (either (Left . const ()) Right)) res `shouldBe`
                 ( [ Right "this is good"
-                  , Left $ show $ CT.NewDecodeException "UTF-8" 12 "\128\128\0t"
+                  , Left ()
                   ]
                 , ["\128\128\0that was bad"]
                 )

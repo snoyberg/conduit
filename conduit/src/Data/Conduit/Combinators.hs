@@ -1960,7 +1960,9 @@ decodeUtf8 =
 
         go bs = do
           case parse' bs of
-            Left e -> throwM (e :: TEE.UnicodeException)
+            Left e -> do
+              leftover bs
+              throwM (e :: TEE.UnicodeException)
             Right (TE.Some t _ next) -> do
               unless (T.null t) (yield t)
               loop next
