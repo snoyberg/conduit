@@ -20,6 +20,8 @@ Build-type:          Simple
 Cabal-version:       >=1.8
 Homepage:            http://github.com/snoyberg/conduit
 extra-source-files:  test/main.hs
+                   , test/doctests.hs
+                   , test/subdir/dummyfile.txt
                    , README.md
                    , ChangeLog.md
                    , fusion-macros.h
