@@ -1,3 +1,16 @@
+## 1.3.0
+
+* Drop monad-control and exceptions in favor of unliftio
+* Drop mmorph dependency
+* Deprecate old type synonyms and operators
+* Drop finalizers from the library entirely
+    * Much simpler
+    * Less guarantees about prompt finalization
+    * No more `yieldOr`, `addCleanup`
+    * Replace the `Resumable` types with `SealedConduitT`
+* Add the `Conduit` and `Data.Conduit.Combinators` modules, stolen from
+  `conduit-combinators`
+
 ## 1.2.13
 
 * Add `Semigroup` instances [#345](https://github.com/snoyberg/conduit/pull/345)

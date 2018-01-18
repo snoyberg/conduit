@@ -46,18 +46,18 @@ import Data.ByteString (ByteString)
 import qualified GHC.Conc as Conc (yield)
 import qualified Data.ByteString as S
 import Control.Monad.IO.Class (MonadIO (liftIO))
-import Control.Monad (unless, void)
-import Control.Monad.Trans.Control (MonadBaseControl, control, liftBaseWith)
+import Control.Monad (unless)
 import Control.Monad.Trans.Class (lift)
 import Control.Concurrent (forkIO, newEmptyMVar, putMVar, takeMVar, MVar, ThreadId)
 import qualified Data.Streaming.Network as SN
+import Control.Monad.IO.Unlift (MonadUnliftIO, withRunInIO)
 
 -- | Stream data from the socket.
 --
 -- This function does /not/ automatically close the socket.
 --
 -- Since 0.0.0
-sourceSocket :: MonadIO m => Socket -> Producer m ByteString
+sourceSocket :: MonadIO m => Socket -> ConduitT i ByteString m ()
 sourceSocket socket =
     loop
   where
@@ -72,7 +72,7 @@ sourceSocket socket =
 -- This function does /not/ automatically close the socket.
 --
 -- Since 0.0.0
-sinkSocket :: MonadIO m => Socket -> Consumer ByteString m ()
+sinkSocket :: MonadIO m => Socket -> ConduitT ByteString o m ()
 sinkSocket socket =
     loop
   where
@@ -84,7 +84,7 @@ serverSettings = SN.serverSettingsTCP
 clientSettings :: Int -> ByteString -> SN.ClientSettings
 clientSettings = SN.clientSettingsTCP
 
-appSource :: (SN.HasReadWrite ad, MonadIO m) => ad -> Producer m ByteString
+appSource :: (SN.HasReadWrite ad, MonadIO m) => ad -> ConduitT i ByteString m ()
 appSource ad =
     loop
   where
@@ -95,7 +95,7 @@ appSource ad =
             yield bs
             loop
 
-appSink :: (SN.HasReadWrite ad, MonadIO m) => ad -> Consumer ByteString m ()
+appSink :: (SN.HasReadWrite ad, MonadIO m) => ad -> ConduitT ByteString o m ()
 appSink ad = awaitForever $ \d -> liftIO $ SN.appWrite ad d >> Conc.yield
 
 addBoundSignal::MVar ()-> SN.ServerSettings -> SN.ServerSettings
@@ -112,15 +112,16 @@ addBoundSignal isBound set = SN.setAfterBind ( \socket -> originalAfterBind sock
 -- connections. Will return the thread id of the server
 --
 -- Since 1.1.4
-forkTCPServer :: MonadBaseControl IO m
-                    => SN.ServerSettings
-                    -> (SN.AppData -> m ())
-                    -> m ThreadId
+forkTCPServer
+  :: MonadUnliftIO m
+  => SN.ServerSettings
+  -> (SN.AppData -> m ())
+  -> m ThreadId
 forkTCPServer set f =
-       liftBaseWith $ \run -> do
+       withRunInIO $ \run -> do
          isBound <- newEmptyMVar
          let setWithWaitForBind = addBoundSignal isBound set
-         threadId <- forkIO . void . run $ runGeneralTCPServer setWithWaitForBind f
+         threadId <- forkIO . run $ runGeneralTCPServer setWithWaitForBind f
          takeMVar isBound
          return threadId
 
@@ -129,7 +130,7 @@ forkTCPServer set f =
 -- | Run a general TCP server
 --
 -- Same as 'SN.runTCPServer', except monad can be any instance of
--- 'MonadBaseControl' 'IO'.
+-- 'MonadUnliftIO'.
 --
 -- Note that any changes to the monadic state performed by individual
 -- client handlers will be discarded. If you have mutable state you want
@@ -137,21 +138,23 @@ forkTCPServer set f =
 -- variables.
 --
 -- Since 1.1.3
-runGeneralTCPServer :: MonadBaseControl IO m
-                    => SN.ServerSettings
-                    -> (SN.AppData -> m ())
-                    -> m a
-runGeneralTCPServer set f = liftBaseWith $ \run ->
-    SN.runTCPServer set $ void . run . f
+runGeneralTCPServer
+  :: MonadUnliftIO m
+  => SN.ServerSettings
+  -> (SN.AppData -> m ())
+  -> m a
+runGeneralTCPServer set f = withRunInIO $ \run ->
+    SN.runTCPServer set $ run . f
 
 -- | Run a general TCP client
 --
--- Same as 'SN.runTCPClient', except monad can be any instance of 'MonadBaseControl' 'IO'.
+-- Same as 'SN.runTCPClient', except monad can be any instance of 'MonadUnliftIO'.
 --
 -- Since 1.1.3
-runGeneralTCPClient :: MonadBaseControl IO m
-                    => SN.ClientSettings
-                    -> (SN.AppData -> m a)
-                    -> m a
-runGeneralTCPClient set f = control $ \run ->
+runGeneralTCPClient
+  :: MonadUnliftIO m
+  => SN.ClientSettings
+  -> (SN.AppData -> m a)
+  -> m a
+runGeneralTCPClient set f = withRunInIO $ \run ->
     SN.runTCPClient set $ run . f

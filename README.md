@@ -51,6 +51,13 @@ defines the core datatypes and primitive functions, and
 [conduit-extra](https://www.stackage.org/package/conduit-extra), which
 adds support for many common low-level operations
 
+__NOTE__ Version 1.3.0 of conduit moves things around in these
+libraries quite a bit. In particular, most functionality mentioned
+above now lives in the conduit package itself. Once this version is
+used in an LTS Haskell release, this tutorial will be updated to
+reflect this new setup. Until then, we will continue referring to the
+older versions.
+
 Generally, you should use conduit-combinators unless you're an open
 source library author looking to reduce your transitive dependency
 footprint.

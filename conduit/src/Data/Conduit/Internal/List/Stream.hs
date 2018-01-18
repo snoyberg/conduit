@@ -26,7 +26,7 @@ unfoldS f s0 _ =
 unfoldEitherS :: Monad m
               => (b -> Either r (a, b))
               -> b
-              -> StreamConduitM i a m r
+              -> StreamConduitT i a m r
 unfoldEitherS f s0 _ =
     Stream step (return s0)
   where
@@ -53,7 +53,7 @@ unfoldMS f s0 _ =
 unfoldEitherMS :: Monad m
          => (b -> m (Either r (a, b)))
          -> b
-         -> StreamConduitM i a m r
+         -> StreamConduitT i a m r
 unfoldEitherMS f s0 _ =
     Stream step (return s0)
   where
@@ -342,7 +342,7 @@ concatMapAccumS f  initial (Stream step ms0) =
     step' (accum, (x:xs), s) = return (Emit (accum, xs, s) x)
 {-# INLINE concatMapAccumS #-}
 
-mapAccumS :: Monad m => (a -> s -> (s, b)) -> s -> StreamConduitM a b m s
+mapAccumS :: Monad m => (a -> s -> (s, b)) -> s -> StreamConduitT a b m s
 mapAccumS f initial (Stream step ms0) =
     Stream step' (liftM (initial, ) ms0)
   where
@@ -356,7 +356,7 @@ mapAccumS f initial (Stream step ms0) =
                 in Emit (accum', s') r
 {-# INLINE mapAccumS #-}
 
-mapAccumMS :: Monad m => (a -> s -> m (s, b)) -> s -> StreamConduitM a b m s
+mapAccumMS :: Monad m => (a -> s -> m (s, b)) -> s -> StreamConduitT a b m s
 mapAccumMS f initial (Stream step ms0) =
     Stream step' (liftM (initial, ) ms0)
   where

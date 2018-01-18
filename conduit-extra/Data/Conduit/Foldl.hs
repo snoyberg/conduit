@@ -13,7 +13,7 @@ import qualified Data.Conduit.List as CL
 -- <https://hackage.haskell.org/package/foldl foldl> package.
 --
 -- @since 1.1.16
-sinkFold :: Monad m => (x -> a -> x) -> x -> (x -> b) -> Consumer a m b
+sinkFold :: Monad m => (x -> a -> x) -> x -> (x -> b) -> ConduitT a o m b
 sinkFold combine seed extract = fmap extract (CL.fold combine seed)
 
 -- | Convert a monadic left fold into a 'Consumer'. This function is
@@ -21,6 +21,6 @@ sinkFold combine seed extract = fmap extract (CL.fold combine seed)
 -- <https://hackage.haskell.org/package/foldl foldl> package.
 --
 -- @since 1.1.16
-sinkFoldM :: Monad m => (x -> a -> m x) -> m x -> (x -> m b) -> Consumer a m b
+sinkFoldM :: Monad m => (x -> a -> m x) -> m x -> (x -> m b) -> ConduitT a o m b
 sinkFoldM combine seed extract =
   lift . extract =<< CL.foldM combine =<< lift seed

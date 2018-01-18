@@ -41,18 +41,18 @@ matrix:
   #- env: BUILD=cabal GHCVER=7.2.2 CABALVER=1.16 HAPPYVER=1.19.5 ALEXVER=3.1.7
   #  compiler: ": #GHC 7.2.2"
   #  addons: {apt: {packages: [cabal-install-1.16,ghc-7.2.2,happy-1.19.5,alex-3.1.7], sources: [hvr-ghc]}}
-  - env: BUILD=cabal GHCVER=7.4.2 CABALVER=1.16 HAPPYVER=1.19.5 ALEXVER=3.1.7
-    compiler: ": #GHC 7.4.2"
-    addons: {apt: {packages: [cabal-install-1.16,ghc-7.4.2,happy-1.19.5,alex-3.1.7], sources: [hvr-ghc]}}
-  - env: BUILD=cabal GHCVER=7.6.3 CABALVER=1.16 HAPPYVER=1.19.5 ALEXVER=3.1.7
-    compiler: ": #GHC 7.6.3"
-    addons: {apt: {packages: [cabal-install-1.16,ghc-7.6.3,happy-1.19.5,alex-3.1.7], sources: [hvr-ghc]}}
-  - env: BUILD=cabal GHCVER=7.8.4 CABALVER=1.18 HAPPYVER=1.19.5 ALEXVER=3.1.7
-    compiler: ": #GHC 7.8.4"
-    addons: {apt: {packages: [cabal-install-1.18,ghc-7.8.4,happy-1.19.5,alex-3.1.7], sources: [hvr-ghc]}}
-  - env: BUILD=cabal GHCVER=7.10.3 CABALVER=1.22 HAPPYVER=1.19.5 ALEXVER=3.1.7
-    compiler: ": #GHC 7.10.3"
-    addons: {apt: {packages: [cabal-install-1.22,ghc-7.10.3,happy-1.19.5,alex-3.1.7], sources: [hvr-ghc]}}
+  #- env: BUILD=cabal GHCVER=7.4.2 CABALVER=1.16 HAPPYVER=1.19.5 ALEXVER=3.1.7
+  #  compiler: ": #GHC 7.4.2"
+  #  addons: {apt: {packages: [cabal-install-1.16,ghc-7.4.2,happy-1.19.5,alex-3.1.7], sources: [hvr-ghc]}}
+  #- env: BUILD=cabal GHCVER=7.6.3 CABALVER=1.16 HAPPYVER=1.19.5 ALEXVER=3.1.7
+  #  compiler: ": #GHC 7.6.3"
+  #  addons: {apt: {packages: [cabal-install-1.16,ghc-7.6.3,happy-1.19.5,alex-3.1.7], sources: [hvr-ghc]}}
+  #- env: BUILD=cabal GHCVER=7.8.4 CABALVER=1.18 HAPPYVER=1.19.5 ALEXVER=3.1.7
+  #  compiler: ": #GHC 7.8.4"
+  #  addons: {apt: {packages: [cabal-install-1.18,ghc-7.8.4,happy-1.19.5,alex-3.1.7], sources: [hvr-ghc]}}
+  #- env: BUILD=cabal GHCVER=7.10.3 CABALVER=1.22 HAPPYVER=1.19.5 ALEXVER=3.1.7
+  #  compiler: ": #GHC 7.10.3"
+  #  addons: {apt: {packages: [cabal-install-1.22,ghc-7.10.3,happy-1.19.5,alex-3.1.7], sources: [hvr-ghc]}}
   - env: BUILD=cabal GHCVER=8.0.2 CABALVER=1.24 HAPPYVER=1.19.5 ALEXVER=3.1.7
     compiler: ": #GHC 8.0.2"
     addons: {apt: {packages: [cabal-install-1.24,ghc-8.0.2,happy-1.19.5,alex-3.1.7], sources: [hvr-ghc]}}
@@ -72,17 +72,17 @@ matrix:
     compiler: ": #stack default"
     addons: {apt: {packages: [libgmp-dev]}}
 
-  - env: BUILD=stack ARGS="--resolver lts-2"
-    compiler: ": #stack 7.8.4"
-    addons: {apt: {packages: [libgmp-dev]}}
+  #- env: BUILD=stack ARGS="--resolver lts-2"
+  #  compiler: ": #stack 7.8.4"
+  #  addons: {apt: {packages: [libgmp-dev]}}
 
-  - env: BUILD=stack ARGS="--resolver lts-3"
-    compiler: ": #stack 7.10.2"
-    addons: {apt: {packages: [libgmp-dev]}}
+  #- env: BUILD=stack ARGS="--resolver lts-3"
+  #  compiler: ": #stack 7.10.2"
+  #  addons: {apt: {packages: [libgmp-dev]}}
 
-  - env: BUILD=stack ARGS="--resolver lts-6"
-    compiler: ": #stack 7.10.3"
-    addons: {apt: {packages: [libgmp-dev]}}
+  #- env: BUILD=stack ARGS="--resolver lts-6"
+  #  compiler: ": #stack 7.10.3"
+  #  addons: {apt: {packages: [libgmp-dev]}}
 
   - env: BUILD=stack ARGS="--resolver lts-7"
     compiler: ": #stack 8.0.1"
@@ -90,6 +90,10 @@ matrix:
 
   - env: BUILD=stack ARGS="--resolver lts-9"
     compiler: ": #stack 8.0.2"
+    addons: {apt: {packages: [libgmp-dev]}}
+
+  - env: BUILD=stack ARGS="--resolver lts-10"
+    compiler: ": #stack 8.2.2"
     addons: {apt: {packages: [libgmp-dev]}}
 
   # Nightly builds are allowed to fail
@@ -107,13 +111,13 @@ matrix:
   #  compiler: ": #stack 7.8.4 osx"
   #  os: osx
 
-  - env: BUILD=stack ARGS="--resolver lts-3"
-    compiler: ": #stack 7.10.2 osx"
-    os: osx
+  #- env: BUILD=stack ARGS="--resolver lts-3"
+  #  compiler: ": #stack 7.10.2 osx"
+  #  os: osx
 
-  - env: BUILD=stack ARGS="--resolver lts-6"
-    compiler: ": #stack 7.10.3 osx"
-    os: osx
+  #- env: BUILD=stack ARGS="--resolver lts-6"
+  #  compiler: ": #stack 7.10.3 osx"
+  #  os: osx
 
   - env: BUILD=stack ARGS="--resolver lts-7"
     compiler: ": #stack 8.0.1 osx"
@@ -123,6 +127,10 @@ matrix:
     compiler: ": #stack 8.0.2 osx"
     os: osx
 
+  - env: BUILD=stack ARGS="--resolver lts-10"
+    compiler: ": #stack 8.2.2 osx"
+    os: osx
+
   - env: BUILD=stack ARGS="--resolver nightly"
     compiler: ": #stack nightly osx"
     os: osx
@@ -130,10 +138,6 @@ matrix:
   allow_failures:
   - env: BUILD=cabal GHCVER=head  CABALVER=head HAPPYVER=1.19.5 ALEXVER=3.1.7
   - env: BUILD=stack ARGS="--resolver nightly"
-
-  # See https://github.com/haskell/cabal/issues/4938
-  - env: BUILD=cabal GHCVER=7.4.2 CABALVER=1.16 HAPPYVER=1.19.5 ALEXVER=3.1.7
-  - env: BUILD=cabal GHCVER=7.6.3 CABALVER=1.16 HAPPYVER=1.19.5 ALEXVER=3.1.7
 
 before_install:
 # Using compiler above sets CC to an invalid value, so unset it
@@ -171,11 +175,6 @@ install:
   set -ex
   case "$BUILD" in
     stack)
-      # Add in extra-deps for older snapshots, as necessary
-      stack --no-terminal --install-ghc $ARGS test --bench --dry-run || ( \
-        stack --no-terminal --resolver nightly install cabal-install && \
-        stack --no-terminal $ARGS solver --update-config)
-
       # Build the dependencies
       stack --no-terminal --install-ghc $ARGS test --bench --only-dependencies
       ;;
@@ -214,7 +213,7 @@ script:
         cd dist
         tar zxfv "$SRC_TGZ"
         cd "$PKGVER"
-        cabal configure --enable-tests
+        cabal configure --enable-tests --ghc-options -O0
         cabal build
         cabal test
         cd $ORIGDIR

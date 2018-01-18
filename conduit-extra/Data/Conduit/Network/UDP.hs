@@ -27,7 +27,7 @@ import qualified Data.Streaming.Network as SN
 -- contains the message payload and the origin address.
 --
 -- This function does /not/ automatically close the socket.
-sourceSocket :: MonadIO m => Socket -> Int -> Producer m SN.Message
+sourceSocket :: MonadIO m => Socket -> Int -> ConduitT i SN.Message m ()
 sourceSocket socket len = loop
   where
     loop = do
@@ -39,7 +39,7 @@ sourceSocket socket len = loop
 -- The payload is sent using @send@, so some of it might be lost.
 --
 -- This function does /not/ automatically close the socket.
-sinkSocket :: MonadIO m => Socket -> Consumer ByteString m ()
+sinkSocket :: MonadIO m => Socket -> ConduitT ByteString o m ()
 sinkSocket = sinkSocketHelper (\sock bs -> void $ send sock bs)
 
 -- | Stream messages to the connected socket.
@@ -47,7 +47,7 @@ sinkSocket = sinkSocketHelper (\sock bs -> void $ send sock bs)
 -- The payload is sent using @sendAll@, so it might end up in multiple packets.
 --
 -- This function does /not/ automatically close the socket.
-sinkAllSocket :: MonadIO m => Socket -> Consumer ByteString m ()
+sinkAllSocket :: MonadIO m => Socket -> ConduitT ByteString o m ()
 sinkAllSocket = sinkSocketHelper sendAll
 
 -- | Stream messages to the socket.
@@ -57,7 +57,7 @@ sinkAllSocket = sinkSocketHelper sendAll
 -- lost.
 --
 -- This function does /not/ automatically close the socket.
-sinkToSocket :: MonadIO m => Socket -> Consumer SN.Message m ()
+sinkToSocket :: MonadIO m => Socket -> ConduitT SN.Message o m ()
 sinkToSocket = sinkSocketHelper (\sock (SN.Message bs addr) -> void $ sendTo sock bs addr)
 
 -- | Stream messages to the socket.
@@ -67,13 +67,13 @@ sinkToSocket = sinkSocketHelper (\sock (SN.Message bs addr) -> void $ sendTo soc
 -- multiple packets.
 --
 -- This function does /not/ automatically close the socket.
-sinkAllToSocket :: MonadIO m => Socket -> Consumer SN.Message m ()
+sinkAllToSocket :: MonadIO m => Socket -> ConduitT SN.Message o m ()
 sinkAllToSocket = sinkSocketHelper (\sock (SN.Message bs addr) -> sendAllTo sock bs addr)
 
 -- Internal
 sinkSocketHelper :: MonadIO m => (Socket -> a -> IO ())
                               -> Socket
-                              -> Consumer a m ()
+                              -> ConduitT a o m ()
 sinkSocketHelper act socket = loop
   where
     loop = await >>= maybe

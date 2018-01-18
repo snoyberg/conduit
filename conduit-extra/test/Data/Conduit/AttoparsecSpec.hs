@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns      #-}
 {-# LANGUAGE CPP               #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TupleSections     #-}
@@ -8,7 +9,6 @@ import           Test.Hspec
 
 import           Control.Applicative              ((<*), (<|>))
 import           Control.Monad
-import           Control.Monad.Trans.Resource (runExceptionT)
 import qualified Data.Attoparsec.ByteString.Char8
 import qualified Data.Attoparsec.Text
 import           Data.Conduit
@@ -26,13 +26,13 @@ spec = describe "Data.Conduit.AttoparsecSpec" $ do
                 parser = Data.Attoparsec.Text.endOfInput <|> (Data.Attoparsec.Text.notChar 'b' >> parser)
                 sink = sinkParser parser
                 sink' = sinkParserEither parser
-            ea <- runExceptionT $ CL.sourceList input $$ sink
+                ea = runConduit $ CL.sourceList input .| sink
             case ea of
                 Left e ->
                     case fromException e of
                         Just pe -> do
                             errorPosition pe `shouldBe` Position badLine badCol badOff
-            ea' <- CL.sourceList input $$ sink'
+            ea' <- runConduit $ CL.sourceList input .| sink'
             case ea' of
                 Left pe ->
                     errorPosition pe `shouldBe` Position badLine badCol badOff
@@ -44,13 +44,13 @@ spec = describe "Data.Conduit.AttoparsecSpec" $ do
                 parser = Data.Attoparsec.ByteString.Char8.endOfInput <|> (Data.Attoparsec.ByteString.Char8.notChar 'b' >> parser)
                 sink = sinkParser parser
                 sink' = sinkParserEither parser
-            ea <- runExceptionT $ CL.sourceList input $$ sink
+                ea = runConduit $ CL.sourceList input .| sink
             case ea of
                 Left e ->
                     case fromException e of
                         Just pe -> do
                             errorPosition pe `shouldBe` Position badLine badCol badOff
-            ea' <- CL.sourceList input $$ sink'
+            ea' <- runConduit $ CL.sourceList input .| sink'
             case ea' of
                 Left pe ->
                     errorPosition pe `shouldBe` Position badLine badCol badOff
@@ -62,13 +62,13 @@ spec = describe "Data.Conduit.AttoparsecSpec" $ do
                 parser = Data.Attoparsec.Text.char 'c' <|> (Data.Attoparsec.Text.anyChar >> parser)
                 sink = sinkParser parser
                 sink' = sinkParserEither parser
-            ea <- runExceptionT $ CL.sourceList input $$ sink
+                ea = runConduit $ CL.sourceList input .| sink
             case ea of
                 Left e ->
                     case fromException e of
                         Just pe -> do
                             errorPosition pe `shouldBe` Position badLine badCol badOff
-            ea' <- CL.sourceList input $$ sink'
+            ea' <- runConduit $ CL.sourceList input .| sink'
             case ea' of
                 Left pe ->
                     errorPosition pe `shouldBe` Position badLine badCol badOff
@@ -80,13 +80,13 @@ spec = describe "Data.Conduit.AttoparsecSpec" $ do
                 parser = Data.Attoparsec.Text.string "bc" <|> (Data.Attoparsec.Text.anyChar >> parser)
                 sink = sinkParser parser
                 sink' = sinkParserEither parser
-            ea <- runExceptionT $ CL.sourceList input $$ sink
+                ea = runConduit $ CL.sourceList input .| sink
             case ea of
                 Left e ->
                     case fromException e of
                         Just pe -> do
                             errorPosition pe `shouldBe` Position badLine badCol badOff
-            ea' <- CL.sourceList input $$ sink'
+            ea' <- runConduit $ CL.sourceList input .| sink'
             case ea' of
                 Left pe ->
                     errorPosition pe `shouldBe` Position badLine badCol badOff
@@ -98,13 +98,13 @@ spec = describe "Data.Conduit.AttoparsecSpec" $ do
                 parser = Data.Attoparsec.Text.endOfInput <|> (Data.Attoparsec.Text.notChar 'b' >> parser)
                 sink = sinkParser parser
                 sink' = sinkParserEither parser
-            ea <- runExceptionT $ CL.sourceList input $$ sink
+                ea = runConduit $ CL.sourceList input .| sink
             case ea of
                 Left e ->
                     case fromException e of
                         Just pe -> do
                             errorPosition pe `shouldBe` Position badLine badCol badOff
-            ea' <- CL.sourceList input $$ sink'
+            ea' <- runConduit $ CL.sourceList input .| sink'
             case ea' of
                 Left pe ->
                     errorPosition pe `shouldBe` Position badLine badCol badOff
@@ -116,13 +116,13 @@ spec = describe "Data.Conduit.AttoparsecSpec" $ do
                 parser = Data.Attoparsec.ByteString.Char8.endOfInput <|> (Data.Attoparsec.ByteString.Char8.notChar 'b' >> parser)
                 sink = sinkParser parser
                 sink' = sinkParserEither parser
-            ea <- runExceptionT $ CL.sourceList input $$ sink
+                ea = runConduit $ CL.sourceList input .| sink
             case ea of
                 Left e ->
                     case fromException e of
                         Just pe -> do
                             errorPosition pe `shouldBe` Position badLine badCol badOff
-            ea' <- CL.sourceList input $$ sink'
+            ea' <- runConduit $ CL.sourceList input .| sink'
             case ea' of
                 Left pe ->
                     errorPosition pe `shouldBe` Position badLine badCol badOff
@@ -134,13 +134,13 @@ spec = describe "Data.Conduit.AttoparsecSpec" $ do
                 parser = Data.Attoparsec.Text.endOfInput <|> (Data.Attoparsec.Text.notChar 'b' >> parser)
                 sink = sinkParser parser
                 sink' = sinkParserEither parser
-            ea <- runExceptionT $ CL.sourceList input $$ sink
+                ea = runConduit $ CL.sourceList input .| sink
             case ea of
                 Left e ->
                     case fromException e of
                         Just pe -> do
                             errorPosition pe `shouldBe` Position badLine badCol badOff
-            ea' <- CL.sourceList input $$ sink'
+            ea' <- runConduit $ CL.sourceList input .| sink'
             case ea' of
                 Left pe ->
                     errorPosition pe `shouldBe` Position badLine badCol badOff
@@ -149,8 +149,8 @@ spec = describe "Data.Conduit.AttoparsecSpec" $ do
         it "parses a repeated stream" $ do
             let input = ["aaa\n", "aaa\naaa\n", "aaa\n"]
                 parser = Data.Attoparsec.Text.string "aaa" <* Data.Attoparsec.Text.endOfLine
-                sink = conduitParserEither parser =$= CL.consume
-            (Right ea) <- runExceptionT $ CL.sourceList input $$ sink
+                sink = conduitParserEither parser .| CL.consume
+                (Right !ea) = runConduit $ CL.sourceList input .| sink
             let chk a = case a of
                           Left{} -> False
                           Right (_, xs) -> xs == "aaa"
@@ -160,10 +160,10 @@ spec = describe "Data.Conduit.AttoparsecSpec" $ do
             length ea `shouldBe` 4
 
         it "positions on first line" $ do
-            results <- yield "hihihi\nhihi"
-                $$ conduitParser (Data.Attoparsec.Text.string "\n" <|> Data.Attoparsec.Text.string "hi")
-                =$ CL.consume
-            let f (a, b, c, d, e, f, g) = (PositionRange (Position a b c) (Position d e f), g)
+            results <- runConduit $ yield "hihihi\nhihi"
+                .| conduitParser (Data.Attoparsec.Text.string "\n" <|> Data.Attoparsec.Text.string "hi")
+                .| CL.consume
+            let f (a, b, c, d, e, f', g) = (PositionRange (Position a b c) (Position d e f'), g)
             results `shouldBe` map f
                 [ (1, 1, 0, 1, 3, 2, "hi")
                 , (1, 3, 2, 1, 5, 4, "hi")

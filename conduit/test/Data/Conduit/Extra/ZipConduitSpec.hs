@@ -12,7 +12,7 @@ spec = describe "Data.Conduit.Extra.ZipConduit" $ do
             conduit2 = CL.concatMap (replicate 2)
             conduit = getZipConduit $ ZipConduit conduit1 <* ZipConduit conduit2
             sink = CL.consume
-        res <- src $$ conduit =$ sink
+        res <- runConduit $ src .| conduit .| sink
         res `shouldBe` [2, 1, 1, 3, 2, 2, 4, 3, 3]
     it "sequenceConduits" $ do
         let src = mapM_ yield [1..3 :: Int]
@@ -22,7 +22,7 @@ spec = describe "Data.Conduit.Extra.ZipConduit" $ do
                 x <- sequenceConduits [conduit1, conduit2]
                 yield $ length x + 10
             sink = CL.consume
-        res <- src $$ conduit =$ sink
+        res <- runConduit $ src .| conduit .| sink
         res `shouldBe` [2, 1, 1, 3, 2, 2, 4, 3, 3, 12]
     it "ZipConduitMonad" $ do
         let src = mapM_ yield [1..3 :: Int]
@@ -30,5 +30,5 @@ spec = describe "Data.Conduit.Extra.ZipConduit" $ do
             conduit2 = CL.map id
             conduit = getZipConduit $ ZipConduit conduit1 <* ZipConduit conduit2
             sink = CL.consume
-        res <- src $$ conduit =$ sink
+        res <- runConduit $ src .| conduit .| sink
         res `shouldBe` [2, 1, 3, 2, 4, 3]

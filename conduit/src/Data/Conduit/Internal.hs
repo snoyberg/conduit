@@ -9,10 +9,10 @@ module Data.Conduit.Internal
     , module Data.Conduit.Internal.Fusion
     ) where
 
-import           Data.Conduit.Internal.Conduit hiding (addCleanup, await,
+import           Data.Conduit.Internal.Conduit hiding (await,
                                                 awaitForever, bracketP,
                                                 leftover, mapInput, mapOutput,
                                                 mapOutputMaybe, transPipe,
-                                                yield, yieldM, yieldOr)
+                                                yield, yieldM)
 import           Data.Conduit.Internal.Pipe
 import           Data.Conduit.Internal.Fusion

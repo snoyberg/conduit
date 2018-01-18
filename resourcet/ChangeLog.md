@@ -1,3 +1,8 @@
+## 1.2.0
+
+* Drop `monad-control` and `mmorph` dependencies
+* Change behavior of `runResourceT` to match `runResourceTChecked`
+
 ## 1.1.11
 
 * `runResourceTChecked`, which checks if any of the cleanup actions

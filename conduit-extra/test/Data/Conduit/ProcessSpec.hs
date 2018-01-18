@@ -25,16 +25,16 @@ spec = describe "Data.Conduit.Process" $ do
         ((sink, closeStdin), source, Inherited, cph) <- streamingProcess (shell "cat")
         ((), bss) <- concurrently
             (do
-                mapM_ yield (L.toChunks lbs) $$ sink
+                runConduit $ mapM_ yield (L.toChunks lbs) .| sink
                 closeStdin)
-            (source $$ CL.consume)
+            (runConduit $ source .| CL.consume)
         L.fromChunks bss `shouldBe` lbs
         ec <- waitForStreamingProcess cph
         ec `shouldBe` ExitSuccess
 
     it "closed stream" $ do
         (ClosedStream, source, Inherited, cph) <- streamingProcess (shell "cat")
-        bss <- source $$ CL.consume
+        bss <- runConduit $ source .| CL.consume
         bss `shouldBe` []
 
         ec <- waitForStreamingProcess cph

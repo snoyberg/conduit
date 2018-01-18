@@ -34,33 +34,30 @@ module Data.Conduit.Network.TLS
     , tlsClientTLSSettings
     , tlsClientSockSettings
     , tlsClientConnectionContext
+      -- * Misc
+    , sourceConnection
+    , sinkConnection
     ) where
 
 import Control.Applicative ((<$>), (<*>))
-import Control.Monad (forever, void)
 import qualified Data.ByteString.Lazy as L
 import qualified Network.TLS as TLS
-import Data.Conduit.Network (sinkSocket, runTCPServerWithHandle, serverSettings, sourceSocket)
+import Data.Conduit.Network (runTCPServerWithHandle, serverSettings)
 import Data.Streaming.Network.Internal (AppData (..), HostPreference)
-import Data.Streaming.Network (ConnectionHandle, safeRecv)
+import Data.Streaming.Network (safeRecv)
 import Data.Conduit.Network.TLS.Internal
-import Data.Conduit (yield, awaitForever, Producer, Consumer)
-import qualified Data.Conduit.List as CL
-import Network.Socket (SockAddr (SockAddrInet), sClose)
+import Data.Conduit (yield, awaitForever, ConduitT)
+import Network.Socket (SockAddr (SockAddrInet))
+import qualified Network.Socket as NS
 import Network.Socket.ByteString (sendAll)
 import Control.Exception (bracket)
-import Control.Monad.Trans.Class (lift)
-import Control.Monad.IO.Class (liftIO, MonadIO)
-import Control.Monad.Base (liftBase)
+import Control.Monad.IO.Unlift (liftIO, MonadIO, MonadUnliftIO, withRunInIO, withUnliftIO, unliftIO)
 import qualified Network.TLS.Extra as TLSExtra
 import Network.Socket (Socket)
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Char8 as S8
-import qualified Crypto.Random.AESCtr
 import qualified Network.Connection as NC
-import Control.Monad.Trans.Control
-import Data.Default
-
+import Data.Default.Class (def)
 
 makeCertDataPath :: FilePath -> [FilePath] -> FilePath -> TlsCertData
 makeCertDataPath certPath chainCertPaths keyPath =
@@ -84,7 +81,7 @@ tlsConfig a b c d = tlsConfigChain a b c [] d
 
 -- | allow to build a server config directly from raw bytestring data (exact same
 -- string as if the certificates were read from the filesystem).
--- this enables to plug another backend to fetch certifcates (other than FS) 
+-- this enables to plug another backend to fetch certifcates (other than FS)
 tlsConfigBS :: HostPreference
             -> Int          -- ^ port
             -> S.ByteString -- ^ Certificate raw data
@@ -117,10 +114,6 @@ tlsConfigChainBS a b c d e = TLSConfig a b (makeCertDataBS c d e) False
 
 serverHandshake :: Socket -> TLS.Credentials -> IO (TLS.Context)
 serverHandshake socket creds = do
-#if !MIN_VERSION_tls(1,3,0)
-    gen <- Crypto.Random.AESCtr.makeSystem
-#endif
-
     ctx <- TLS.contextNew
            TLS.Backend
                     { TLS.backendFlush = return ()
@@ -129,9 +122,6 @@ serverHandshake socket creds = do
                     , TLS.backendRecv = recvExact socket
                     }
             params
-#if !MIN_VERSION_tls(1,3,0)
-            gen
-#endif
 
     TLS.handshake ctx
     return ctx
@@ -172,7 +162,7 @@ type GeneralApplicationStartTLS m a = (AppData, (AppData -> m ()) -> m ()) -> m 
 
 type ApplicationStartTLS = GeneralApplicationStartTLS IO ()
 
--- | Like 'runTCPServerTLS', but monad can be any instance of 'MonadBaseControl' 'IO'.
+-- | Like 'runTCPServerTLS', but monad can be any instance of 'MonadUnliftIO'.
 --
 -- Note that any changes to the monadic state performed by individual
 -- client handlers will be discarded. If you have mutable state you want
@@ -180,9 +170,9 @@ type ApplicationStartTLS = GeneralApplicationStartTLS IO ()
 -- variables.
 --
 -- Since 1.1.2
-runGeneralTCPServerTLS :: MonadBaseControl IO m => TLSConfig -> (AppData -> m ()) -> m ()
-runGeneralTCPServerTLS config app = liftBaseWith $ \run ->
-  runTCPServerTLS config $ void . run . app
+runGeneralTCPServerTLS :: MonadUnliftIO m => TLSConfig -> (AppData -> m ()) -> m ()
+runGeneralTCPServerTLS config app = withRunInIO $ \run ->
+  runTCPServerTLS config $ run . app
 
 -- | run a server un-crypted but also pass a call-back to trigger a StartTLS handshake
 -- on the underlying connection
@@ -194,11 +184,11 @@ runGeneralTCPServerTLS config app = liftBaseWith $ \run ->
 --    unless (abortTLS) $ startTls $ appDataTls -> do
 --      doSomethingSSL appDataTls
 --  @
-runTCPServerStartTLS :: MonadBaseControl IO m => TLSConfig -> GeneralApplicationStartTLS m () -> m ()
-runTCPServerStartTLS TLSConfig{..} app = do
-    creds <- liftBase $ readCreds tlsCertData
+runTCPServerStartTLS :: MonadUnliftIO m => TLSConfig -> GeneralApplicationStartTLS m () -> m ()
+runTCPServerStartTLS TLSConfig{..} app = withRunInIO $ \run -> do
+    creds <- readCreds tlsCertData
 
-    liftBaseWith $ \run -> runTCPServerWithHandle settings (wrapApp creds run)
+    runTCPServerWithHandle settings (wrapApp creds run)
 
     where
       -- convert tls settings to regular conduit network ones
@@ -212,20 +202,16 @@ runTCPServerStartTLS TLSConfig{..} app = do
                   , appWrite' = sendAll socket
                   , appSockAddr' = addr
                   , appLocalAddr' = mlocal
-#if MIN_VERSION_streaming_commons(0,1,6)
-                  , appCloseConnection' = sClose socket
-#endif
-#if MIN_VERSION_streaming_commons(0,1,12)
+                  , appCloseConnection' = NS.close socket
                   , appRawSocket' = Just socket
-#endif
                   }
                 -- wrap up the current connection with TLS
-                startTls = \app' -> do
-                  ctx <- liftBase $ serverHandshake socket creds
-                  app' (tlsAppData ctx addr mlocal)
-                  liftBase $ TLS.bye ctx
+                startTls = \app' -> liftIO $ do
+                  ctx <- serverHandshake socket creds
+                  () <- run $ app' (tlsAppData ctx addr mlocal)
+                  TLS.bye ctx
                 in
-                 void $ run $ app (clearData, startTls)
+                 run $ app (clearData, startTls)
 
 -- | Create an @AppData@ from an existing tls @Context@ value. This is a lower level function, allowing you to create a connection in any way you want.
 --
@@ -250,12 +236,8 @@ tlsAppData ctx addr mlocal = AppData
     , appWrite' = TLS.sendData ctx . L.fromChunks . return
     , appSockAddr' = addr
     , appLocalAddr' = mlocal
-#if MIN_VERSION_streaming_commons(0,1,6)
     , appCloseConnection' = TLS.contextClose ctx
-#endif
-#if MIN_VERSION_streaming_commons(0,1,12)
     , appRawSocket' = Nothing
-#endif
     }
 
 -- taken from stunnel example in tls-extra
@@ -338,12 +320,12 @@ tlsClientConfig port host = TLSClientConfig
 -- | Run an application with the given configuration.
 --
 -- Since 1.0.2
-runTLSClient :: (MonadBaseControl IO m)
+runTLSClient :: MonadUnliftIO m
              => TLSClientConfig
              -> (AppData -> m a)
              -> m a
-runTLSClient TLSClientConfig {..} app = do
-    context <- maybe (liftBase NC.initConnectionContext) return tlsClientConnectionContext
+runTLSClient TLSClientConfig {..} app = withRunInIO $ \run -> do
+    context <- maybe NC.initConnectionContext return tlsClientConnectionContext
     let params = NC.ConnectionParams
             { NC.connectionHostname = S8.unpack tlsClientHost
             , NC.connectionPort = fromIntegral tlsClientPort
@@ -353,7 +335,7 @@ runTLSClient TLSClientConfig {..} app = do
                     else Nothing
             , NC.connectionUseSocks = tlsClientSockSettings
             }
-    control $ \run -> bracket
+    bracket
         (NC.connectTo context params)
         NC.connectionClose
         (\conn -> run $ app AppData
@@ -361,12 +343,8 @@ runTLSClient TLSClientConfig {..} app = do
             , appWrite' = NC.connectionPut conn
             , appSockAddr' = SockAddrInet (fromIntegral tlsClientPort) 0 -- FIXME
             , appLocalAddr' = Nothing
-#if MIN_VERSION_streaming_commons(0,1,6)
             , appCloseConnection' = NC.connectionClose conn
-#endif
-#if MIN_VERSION_streaming_commons(0,1,12)
             , appRawSocket' = Nothing
-#endif
             })
 
 
@@ -374,45 +352,37 @@ runTLSClient TLSClientConfig {..} app = do
 --   but provide also a call back to trigger a StartTLS handshake on the connection
 --
 -- Since 1.0.2
-runTLSClientStartTLS :: (MonadBaseControl IO m)
+runTLSClientStartTLS :: MonadUnliftIO m
                      => TLSClientConfig
                      -> GeneralApplicationStartTLS m a
                      -> m a
-runTLSClientStartTLS TLSClientConfig {..} app = do
-    context <- maybe (liftBase NC.initConnectionContext) return tlsClientConnectionContext
+runTLSClientStartTLS TLSClientConfig {..} app = withUnliftIO $ \u -> do
+    context <- maybe NC.initConnectionContext return tlsClientConnectionContext
     let params = NC.ConnectionParams
             { NC.connectionHostname = S8.unpack tlsClientHost
             , NC.connectionPort = fromIntegral tlsClientPort
             , NC.connectionUseSecure = Nothing
             , NC.connectionUseSocks = tlsClientSockSettings
             }
-    liftBaseOp (bracket (NC.connectTo context params) NC.connectionClose)
-        (\conn -> app (
+    bracket (NC.connectTo context params) NC.connectionClose
+        (\conn -> unliftIO u $ app (
             AppData
             { appRead' = NC.connectionGetChunk conn
             , appWrite' = NC.connectionPut conn
             , appSockAddr' = SockAddrInet (fromIntegral tlsClientPort) 0 -- FIXME
             , appLocalAddr' = Nothing
-#if MIN_VERSION_streaming_commons(0,1,6)
             , appCloseConnection' = NC.connectionClose conn
-#endif
-#if MIN_VERSION_streaming_commons(0,1,12)
             , appRawSocket' = Nothing
-#endif
             }
-            , \app' -> do
-                 liftBase $ NC.connectionSetSecure context conn tlsClientTLSSettings
-                 app' AppData
+            , \app' -> liftIO $ do
+                 NC.connectionSetSecure context conn tlsClientTLSSettings
+                 unliftIO u $ app' AppData
                    { appRead' = NC.connectionGetChunk conn
                    , appWrite' = NC.connectionPut conn
                    , appSockAddr' = SockAddrInet (fromIntegral tlsClientPort) 0 -- FIXME
                    , appLocalAddr' = Nothing
-#if MIN_VERSION_streaming_commons(0,1,6)
                    , appCloseConnection' = NC.connectionClose conn
-#endif
-#if MIN_VERSION_streaming_commons(0,1,12)
                     , appRawSocket' = Nothing
-#endif
                    }
             )
             )
@@ -420,8 +390,8 @@ runTLSClientStartTLS TLSClientConfig {..} app = do
 
 -- | Read from a 'NC.Connection'.
 --
--- Since 1.0.2
-sourceConnection :: MonadIO m => NC.Connection -> Producer m S.ByteString
+-- @since 1.3.0
+sourceConnection :: MonadIO m => NC.Connection -> ConduitT i S.ByteString m ()
 sourceConnection conn =
     loop
   where
@@ -433,6 +403,6 @@ sourceConnection conn =
 
 -- | Write to a 'NC.Connection'.
 --
--- Since 1.0.2
-sinkConnection :: MonadIO m => NC.Connection -> Consumer S.ByteString m ()
+-- @since 1.3.0
+sinkConnection :: MonadIO m => NC.Connection -> ConduitT S.ByteString o m ()
 sinkConnection conn = awaitForever (liftIO . NC.connectionPut conn)

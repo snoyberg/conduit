@@ -146,19 +146,19 @@ spec = describe "Comparing list function to" $ do
             Prelude.map f
     qit "mapM" $
         \(getBlind -> (f :: Int -> M Int)) ->
-            mapM f `checkConduitM`
+            mapM f `checkConduitT`
             Prelude.mapM f
     qit "mapMS" $
         \(getBlind -> (f :: Int -> M Int)) ->
-            mapMS f `checkStreamConduitM`
+            mapMS f `checkStreamConduitT`
             Prelude.mapM f
     qit "iterM" $
         \(getBlind -> (f :: Int -> M ())) ->
-            iterM f `checkConduitM`
+            iterM f `checkConduitT`
             iterML f
     qit "iterMS" $
         \(getBlind -> (f :: Int -> M ())) ->
-            iterMS f `checkStreamConduitM`
+            iterMS f `checkStreamConduitT`
             iterML f
     qit "mapMaybe" $
         \(getBlind -> (f :: Int -> Maybe Int)) ->
@@ -170,11 +170,11 @@ spec = describe "Comparing list function to" $ do
             Data.Maybe.mapMaybe f
     qit "mapMaybeM" $
         \(getBlind -> (f :: Int -> M (Maybe Int))) ->
-            mapMaybeM f `checkConduitM`
+            mapMaybeM f `checkConduitT`
             mapMaybeML f
     qit "mapMaybeMS" $
         \(getBlind -> (f :: Int -> M (Maybe Int))) ->
-            mapMaybeMS f `checkStreamConduitM`
+            mapMaybeMS f `checkStreamConduitT`
             mapMaybeML f
     qit "catMaybes" $
         \() ->
@@ -202,11 +202,11 @@ spec = describe "Comparing list function to" $ do
             (Prelude.concatMap f :: [Int] -> [Int])
     qit "concatMapM" $
         \(getBlind -> (f :: Int -> M [Int])) ->
-            concatMapM f `checkConduitM`
+            concatMapM f `checkConduitT`
             concatMapML f
     qit "concatMapMS" $
         \(getBlind -> (f :: Int -> M [Int])) ->
-            concatMapMS f `checkStreamConduitM`
+            concatMapMS f `checkStreamConduitT`
             concatMapML f
     qit "concatMapAccum" $
         \(getBlind -> (f :: Int -> Int -> (Int, [Int])), initial :: Int) ->
@@ -250,11 +250,11 @@ spec = describe "Comparing list function to" $ do
             mapFoldableL f
     qit "mapFoldableM" $
         \(getBlind -> (f :: Int -> M [Int])) ->
-            mapFoldableM f `checkConduitM`
+            mapFoldableM f `checkConduitT`
             mapFoldableML f
     qit "mapFoldableMS" $
         \(getBlind -> (f :: Int -> M [Int])) ->
-            mapFoldableMS f `checkStreamConduitM`
+            mapFoldableMS f `checkStreamConduitT`
             mapFoldableML f
     qit "consume" $
         \() ->
@@ -312,67 +312,67 @@ qit n f = it n $ property $ forAll arbitrary f
 --------------------------------------------------------------------------------
 -- Quickcheck utilities for pure conduits / streams
 
-checkProducer :: (Show a, Eq a) => Source Identity a -> [a] -> Property
+checkProducer :: (Show a, Eq a) => ConduitT () a Identity () -> [a] -> Property
 checkProducer c l  = checkProducerM' runIdentity c (return l)
 
-checkStreamProducer :: (Show a, Eq a) => StreamSource Identity a -> [a] -> Property
+checkStreamProducer :: (Show a, Eq a) => StreamConduitT () a Identity () -> [a] -> Property
 checkStreamProducer s l = checkStreamProducerM' runIdentity s (return l)
 
-checkInfiniteProducer :: (Show a, Eq a) => Source Identity a -> [a] -> Property
+checkInfiniteProducer :: (Show a, Eq a) => ConduitT () a Identity () -> [a] -> Property
 checkInfiniteProducer c l = checkInfiniteProducerM' runIdentity c (return l)
 
-checkInfiniteStreamProducer :: (Show a, Eq a) => StreamSource Identity a -> [a] -> Property
+checkInfiniteStreamProducer :: (Show a, Eq a) => StreamConduitT () a Identity () -> [a] -> Property
 checkInfiniteStreamProducer s l = checkInfiniteStreamProducerM' runIdentity s (return l)
 
-checkConsumer :: (Show b, Eq b) => Consumer Int Identity b -> ([Int] -> b) -> Property
+checkConsumer :: (Show b, Eq b) => ConduitT Int Void Identity b -> ([Int] -> b) -> Property
 checkConsumer c l = checkConsumerM' runIdentity c (return . l)
 
 checkStreamConsumer :: (Show b, Eq b) => StreamConsumer Int Identity b -> ([Int] -> b) -> Property
 checkStreamConsumer c l = checkStreamConsumerM' runIdentity c (return . l)
 
-checkConduit :: (Show a, Arbitrary a, Show b, Eq b) => Conduit a Identity b -> ([a] -> [b]) -> Property
-checkConduit c l = checkConduitM' runIdentity c (return . l)
+checkConduit :: (Show a, Arbitrary a, Show b, Eq b) => ConduitT a b Identity () -> ([a] -> [b]) -> Property
+checkConduit c l = checkConduitT' runIdentity c (return . l)
 
-checkStreamConduit :: (Show a, Arbitrary a, Show b, Eq b) => StreamConduit a Identity b -> ([a] -> [b]) -> Property
-checkStreamConduit c l = checkStreamConduitM' runIdentity c (return . l)
+checkStreamConduit :: (Show a, Arbitrary a, Show b, Eq b) => StreamConduitT a b Identity () -> ([a] -> [b]) -> Property
+checkStreamConduit c l = checkStreamConduitT' runIdentity c (return . l)
 
--- checkConduitResult :: (Show a, Arbitrary a, Show b, Eq b, Show r, Eq r) => ConduitM a b Identity r -> ([a] -> ([b], r)) -> Property
+-- checkConduitResult :: (Show a, Arbitrary a, Show b, Eq b, Show r, Eq r) => ConduitT a b Identity r -> ([a] -> ([b], r)) -> Property
 -- checkConduitResult c l = checkConduitResultM' runIdentity c (return . l)
 
-checkStreamConduitResult :: (Show a, Arbitrary a, Show b, Eq b, Show r, Eq r) => StreamConduitM a b Identity r -> ([a] -> ([b], r)) -> Property
+checkStreamConduitResult :: (Show a, Arbitrary a, Show b, Eq b, Show r, Eq r) => StreamConduitT a b Identity r -> ([a] -> ([b], r)) -> Property
 checkStreamConduitResult c l = checkStreamConduitResultM' runIdentity c (return . l)
 
 --------------------------------------------------------------------------------
 -- Quickcheck utilities for conduits / streams in the M monad.
 
-checkProducerM :: (Show a, Eq a) => Source M a -> M [a] -> Property
+checkProducerM :: (Show a, Eq a) => ConduitT () a M () -> M [a] -> Property
 checkProducerM = checkProducerM' runM
 
 checkStreamProducerM :: (Show a, Eq a) => StreamSource M a -> M [a] -> Property
 checkStreamProducerM = checkStreamProducerM' runM
 
-checkInfiniteProducerM :: (Show a, Eq a) => Source M a -> M [a] -> Property
+checkInfiniteProducerM :: (Show a, Eq a) => ConduitT () a M () -> M [a] -> Property
 checkInfiniteProducerM = checkInfiniteProducerM' (fst . runM)
 
 checkInfiniteStreamProducerM :: (Show a, Eq a) => StreamSource M a -> M [a] -> Property
 checkInfiniteStreamProducerM = checkInfiniteStreamProducerM' (fst . runM)
 
-checkConsumerM :: (Show b, Eq b) => Consumer Int M b -> ([Int] -> M b) -> Property
+checkConsumerM :: (Show b, Eq b) => ConduitT Int Void M b -> ([Int] -> M b) -> Property
 checkConsumerM  = checkConsumerM' runM
 
 checkStreamConsumerM :: (Show b, Eq b) => StreamConsumer Int M b -> ([Int] -> M b) -> Property
 checkStreamConsumerM  = checkStreamConsumerM' runM
 
-checkConduitM :: (Show a, Arbitrary a, Show b, Eq b) => Conduit a M b -> ([a] -> M [b]) -> Property
-checkConduitM = checkConduitM' runM
+checkConduitT :: (Show a, Arbitrary a, Show b, Eq b) => ConduitT a b M () -> ([a] -> M [b]) -> Property
+checkConduitT = checkConduitT' runM
 
-checkStreamConduitM :: (Show a, Arbitrary a, Show b, Eq b) => StreamConduit a M b -> ([a] -> M [b]) -> Property
-checkStreamConduitM = checkStreamConduitM' runM
+checkStreamConduitT :: (Show a, Arbitrary a, Show b, Eq b) => StreamConduit a M b -> ([a] -> M [b]) -> Property
+checkStreamConduitT = checkStreamConduitT' runM
 
--- checkConduitResultM :: (Show a, Arbitrary a, Show b, Eq b, Show r, Eq r) => ConduitM a b M r -> ([a] -> M ([b], r)) -> Property
+-- checkConduitResultM :: (Show a, Arbitrary a, Show b, Eq b, Show r, Eq r) => ConduitT a b M r -> ([a] -> M ([b], r)) -> Property
 -- checkConduitResultM = checkConduitResultM' runM
 
-checkStreamConduitResultM :: (Show a, Arbitrary a, Show b, Eq b, Show r, Eq r) => StreamConduitM a b M r -> ([a] -> M ([b], r)) -> Property
+checkStreamConduitResultM :: (Show a, Arbitrary a, Show b, Eq b, Show r, Eq r) => StreamConduitT a b M r -> ([a] -> M ([b], r)) -> Property
 checkStreamConduitResultM = checkStreamConduitResultM' runM
 
 --------------------------------------------------------------------------------
@@ -381,11 +381,11 @@ checkStreamConduitResultM = checkStreamConduitResultM' runM
 
 checkProducerM' :: (Show a, Monad m, Show b, Eq b)
                 => (m [a] -> b)
-                -> Source m a
+                -> ConduitT () a m ()
                 -> m [a]
                 -> Property
 checkProducerM' f c l =
-    f (preventFusion c $$ consume)
+    f (runConduit (preventFusion c .| consume))
     ===
     f l
 
@@ -401,12 +401,12 @@ checkStreamProducerM' f s l =
 
 checkInfiniteProducerM' :: (Show a, Monad m, Show b, Eq b)
                         => (m [a] -> b)
-                        -> Source m a
+                        -> ConduitT () a m ()
                         -> m [a]
                         -> Property
 checkInfiniteProducerM' f s l =
     checkProducerM' f
-        (preventFusion s $= isolate 10)
+        (preventFusion s .| isolate 10)
         (liftM (Prelude.take 10) l)
 
 checkInfiniteStreamProducerM' :: (Show a, Monad m, Show b, Eq b)
@@ -421,11 +421,11 @@ checkInfiniteStreamProducerM' f s l =
 
 checkConsumerM' :: (Show a, Monad m, Show b, Eq b)
                 => (m a -> b)
-                -> Consumer Int m a
+                -> ConduitT Int Void m a
                 -> ([Int] -> m a)
                 -> Property
 checkConsumerM' f c l = forAll arbitrary $ \xs ->
-    f (sourceList xs $$ preventFusion c)
+    f (runConduit (sourceList xs .| preventFusion c))
     ===
     f (l xs)
 
@@ -439,22 +439,22 @@ checkStreamConsumerM' f s l = forAll arbitrary $ \xs ->
     ===
     f (l xs)
 
-checkConduitM' :: (Show a, Arbitrary a, Monad m, Show c, Eq c)
+checkConduitT' :: (Show a, Arbitrary a, Monad m, Show c, Eq c)
                => (m [b] -> c)
-               -> Conduit a m b
+               -> ConduitT a b m ()
                -> ([a] -> m [b])
                -> Property
-checkConduitM' f c l = forAll arbitrary $ \xs ->
-    f (sourceList xs $= preventFusion c $$ consume)
+checkConduitT' f c l = forAll arbitrary $ \xs ->
+    f (runConduit (sourceList xs .| preventFusion c .| consume))
     ===
     f (l xs)
 
-checkStreamConduitM' :: (Show a, Arbitrary a, Monad m, Show c, Eq c)
+checkStreamConduitT' :: (Show a, Arbitrary a, Monad m, Show c, Eq c)
                      =>  (m [b] -> c)
                      -> StreamConduit a m b
                      -> ([a] -> m [b])
                      -> Property
-checkStreamConduitM' f s l = forAll arbitrary $ \xs ->
+checkStreamConduitT' f s l = forAll arbitrary $ \xs ->
     f (liftM fst $ evalStream $ s $ sourceListS xs emptyStream)
     ===
     f (l xs)
@@ -464,17 +464,17 @@ checkStreamConduitM' f s l = forAll arbitrary $ \xs ->
 --
 -- checkConduitResultM' :: (Show a, Arbitrary a, Monad m, Show c, Eq c)
 --                      => (m ([b], r) -> c)
---                      -> ConduitM a b m r
+--                      -> ConduitT a b m r
 --                      -> ([a] -> m ([b], r))
 --                      -> Property
 -- checkConduitResultM' f c l = FIXME forAll arbitrary $ \xs ->
---     f (sourceList xs $= preventFusion c $$ consume)
+--     f (sourceList xs .| preventFusion c $$ consume)
 --     ===
 --     f (l xs)
 
 checkStreamConduitResultM' :: (Show a, Arbitrary a, Monad m, Show c, Eq c)
                            =>  (m ([b], r) -> c)
-                           -> StreamConduitM a b m r
+                           -> StreamConduitT a b m r
                            -> ([a] -> m ([b], r))
                            -> Property
 checkStreamConduitResultM' f s l = forAll arbitrary $ \xs ->

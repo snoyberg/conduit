@@ -6,7 +6,6 @@ import Control.Monad.IO.Class
 import qualified Data.Conduit as C
 import qualified Data.Conduit.Binary as CB
 import Control.Monad.Trans.Resource
-import Data.Monoid
 import qualified Data.IORef as I
 import Control.Monad (forever)
 

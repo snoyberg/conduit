@@ -1,5 +1,5 @@
 Name:                conduit-extra
-Version:             1.2.3.2
+Version:             1.3.0
 Synopsis:            Batteries included conduit: adapters for common libraries.
 Description:
     The conduit package itself maintains relative small dependencies. The purpose of this package is to collect commonly used utility functions wrapping other library dependencies, without depending on heavier-weight dependencies. The basic idea is that this package should only depend on haskell-platform packages and conduit.
@@ -21,7 +21,6 @@ extra-source-files:
 Library
   Exposed-modules:     Data.Conduit.Attoparsec
                        Data.Conduit.Binary
-                       Data.Conduit.Blaze
                        Data.Conduit.ByteString.Builder
                        Data.Conduit.Filesystem
                        Data.Conduit.Foldl
@@ -29,30 +28,25 @@ Library
                        Data.Conduit.Network
                        Data.Conduit.Network.UDP
                        Data.Conduit.Process
+                       Data.Conduit.Process.Typed
                        Data.Conduit.Text
                        Data.Conduit.Zlib
   if !os(windows)
       Exposed-modules: Data.Conduit.Network.Unix
-  if impl(ghc >= 7.8)
-      Exposed-modules: Data.Conduit.Process.Typed
 
   if arch(x86_64) || arch(i386)
       -- These architectures are able to perform unaligned memory accesses
       cpp-options: -DALLOW_UNALIGNED_ACCESS
 
-  Build-depends:       base                     >= 4.5          && < 5
-                     , conduit                  >= 1.2.8        && < 1.3
+  Build-depends:       base                     >= 4.9          && < 5
+                     , conduit                  >= 1.3          && < 1.4
 
                      , bytestring               >= 0.10.2
-                     , exceptions
-                     , monad-control
                      , text
                      , transformers
-                     , transformers-base
 
                      , async
                      , attoparsec               >= 0.10
-                     , blaze-builder            >= 0.3
                      , directory
                      , filepath
                      , network                  >= 2.3
@@ -62,8 +56,7 @@ Library
                      , stm
                      , streaming-commons        >= 0.1.16
                      , unliftio-core
-  if impl(ghc >= 7.8)
-    build-depends:     typed-process            >= 0.2
+                     , typed-process            >= 0.2
 
   ghc-options:     -Wall
 
@@ -80,7 +73,6 @@ test-suite test
 
                    , async
                    , attoparsec
-                   , blaze-builder
                    , bytestring-builder
                    , bytestring
                    , exceptions
@@ -112,10 +104,9 @@ benchmark blaze
     type:           exitcode-stdio-1.0
     hs-source-dirs: bench
     build-depends:  base
-                  , blaze-builder
                   , conduit
                   , conduit-extra
-                  , criterion
+                  , gauge
                   , bytestring
                   , bytestring-builder
                   , transformers

@@ -1,6 +1,7 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE Trustworthy #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 {-# OPTIONS_GHC -fno-warn-deprecations #-} -- Suppress warnings around Control.Monad.Trans.Error
 -- | Use lazy I\/O for consuming the contents of a source. Warning: All normal
@@ -13,12 +14,11 @@ module Data.Conduit.Lazy
     ) where
 
 import Data.Conduit
-import Data.Conduit.Internal (Pipe (..), unConduitM)
+import Data.Conduit.Internal (Pipe (..), ConduitT (..))
 import System.IO.Unsafe (unsafeInterleaveIO)
 
-import Control.Monad.Trans.Control (MonadBaseControl, liftBaseOp_)
 import Control.Monad.Trans.Class (lift)
-import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.IO.Unlift (MonadIO, liftIO, MonadUnliftIO, withUnliftIO, unliftIO)
 
 import Control.Monad.Trans.Identity ( IdentityT)
 import Control.Monad.Trans.List     ( ListT    )
@@ -48,25 +48,26 @@ import qualified Data.IORef as I
 -- state has been closed.
 --
 -- Since 0.3.0
-lazyConsume :: (MonadBaseControl IO m, MonadActive m) => Source m a -> m [a]
-lazyConsume =
-#if MIN_VERSION_conduit(1, 2, 0)
-    go . flip unConduitM Done
-#else
-    go . unConduitM
-#endif
-  where
-    go (Done _) = return []
-    go (HaveOutput src _ x) = do
-        xs <- liftBaseOp_ unsafeInterleaveIO $ go src
-        return $ x : xs
-    go (PipeM msrc) = liftBaseOp_ unsafeInterleaveIO $ do
-        a <- monadActive
-        if a
-            then msrc >>= go
-            else return []
-    go (NeedInput _ c) = go (c ())
-    go (Leftover p _) = go p
+lazyConsume
+  :: forall m a.
+     (MonadUnliftIO m, MonadActive m)
+  => Source m a
+  -> m [a]
+lazyConsume (ConduitT f0) =
+    withUnliftIO $ \u ->
+      let go :: Pipe () () a () m () -> IO [a]
+          go (Done _) = return []
+          go (HaveOutput src x) = do
+              xs <- unsafeInterleaveIO $ go src
+              return $ x : xs
+          go (PipeM msrc) = unsafeInterleaveIO $ do
+              a <- unliftIO u monadActive
+              if a
+                  then unliftIO u msrc >>= go
+                  else return []
+          go (NeedInput _ c) = go (c ())
+          go (Leftover p _) = go p
+      in go (f0 Done)
 
 -- | Determine if some monad is still active. This is intended to prevent usage
 -- of a monadic state after it has been closed.  This is necessary for such
@@ -114,5 +115,5 @@ GOX(Monoid w, Strict.WriterT w)
 
 instance MonadActive m => MonadActive (Pipe l i o u m) where
     monadActive = lift monadActive
-instance MonadActive m => MonadActive (ConduitM i o m) where
+instance MonadActive m => MonadActive (ConduitT i o m) where
     monadActive = lift monadActive

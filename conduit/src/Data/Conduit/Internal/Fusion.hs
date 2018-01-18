@@ -8,7 +8,7 @@ module Data.Conduit.Internal.Fusion
       Step (..)
     , Stream (..)
     , ConduitWithStream
-    , StreamConduitM
+    , StreamConduitT
     , StreamConduit
     , StreamSource
     , StreamProducer
@@ -39,22 +39,22 @@ data Stream m o r = forall s. Stream
     (m s)
 
 data ConduitWithStream i o m r = ConduitWithStream
-    (ConduitM i o m r)
-    (StreamConduitM i o m r)
+    (ConduitT i o m r)
+    (StreamConduitT i o m r)
 
-type StreamConduitM i o m r = Stream m i () -> Stream m o r
+type StreamConduitT i o m r = Stream m i () -> Stream m o r
 
-type StreamConduit i m o = StreamConduitM i o m ()
+type StreamConduit i m o = StreamConduitT i o m ()
 
-type StreamSource m o = StreamConduitM () o m ()
+type StreamSource m o = StreamConduitT () o m ()
 
-type StreamProducer m o = forall i. StreamConduitM i o m ()
+type StreamProducer m o = forall i. StreamConduitT i o m ()
 
-type StreamSink i m r = StreamConduitM i Void m r
+type StreamSink i m r = StreamConduitT i Void m r
 
-type StreamConsumer i m r = forall o. StreamConduitM i o m r
+type StreamConsumer i m r = forall o. StreamConduitT i o m r
 
-unstream :: ConduitWithStream i o m r -> ConduitM i o m r
+unstream :: ConduitWithStream i o m r -> ConduitT i o m r
 unstream (ConduitWithStream c _) = c
 {-# INLINE [0] unstream #-}
 
@@ -62,11 +62,12 @@ fuseStream :: Monad m
            => ConduitWithStream a b m ()
            -> ConduitWithStream b c m r
            -> ConduitWithStream a c m r
-fuseStream (ConduitWithStream a x) (ConduitWithStream b y) = ConduitWithStream (a =$= b) (y . x)
+fuseStream (ConduitWithStream a x) (ConduitWithStream b y) =
+  ConduitWithStream (a .| b) (y . x)
 {-# INLINE fuseStream #-}
 
 {-# RULES "conduit: fuseStream" forall left right.
-        unstream left =$= unstream right = unstream (fuseStream left right)
+        unstream left .| unstream right = unstream (fuseStream left right)
   #-}
 
 runStream :: Monad m
@@ -91,6 +92,7 @@ runStream (ConduitWithStream _ f) =
         runConduit (unstream stream) = runStream stream
   #-}
 
+{-
 connectStream :: Monad m
               => ConduitWithStream () i    m ()
               -> ConduitWithStream i  Void m r
@@ -109,22 +111,24 @@ connectStream (ConduitWithStream _ stream) (ConduitWithStream _ f) =
                 Skip s' -> loop s'
                 Emit _ o -> absurd o
 {-# INLINE connectStream #-}
+-}
 
+{- Deprecated
 {-# RULES "conduit: connectStream" forall left right.
         unstream left $$ unstream right = connectStream left right
   #-}
 
 connectStream1 :: Monad m
                => ConduitWithStream () i    m ()
-               -> ConduitM          i  Void m r
+               -> ConduitT          i  Void m r
                -> m r
-connectStream1 (ConduitWithStream _ fstream) (ConduitM sink0) =
+connectStream1 (ConduitWithStream _ fstream) (ConduitT sink0) =
     case fstream $ Stream (const $ return $ Stop ()) (return ()) of
         Stream step ms0 ->
             let loop _ (Done r) _ = return r
                 loop ls (PipeM mp) s = mp >>= flip (loop ls) s
                 loop ls (Leftover p l) s = loop (l:ls) p s
-                loop _ (HaveOutput _ _ o) _ = absurd o
+                loop _ (HaveOutput _ o) _ = absurd o
                 loop (l:ls) (NeedInput p _) s = loop ls (p l) s
                 loop [] (NeedInput p c) s = do
                     res <- step s
@@ -134,10 +138,13 @@ connectStream1 (ConduitWithStream _ fstream) (ConduitM sink0) =
                         Emit s' i -> loop [] (p i) s'
              in ms0 >>= loop [] (sink0 Done)
 {-# INLINE connectStream1 #-}
+-}
 
+{- Deprecated
 {-# RULES "conduit: connectStream1" forall left right.
         unstream left $$ right = connectStream1 left right
   #-}
+-}
 
 {-
 
@@ -146,10 +153,10 @@ behavior unless implemented very carefully. Odds are that the careful
 implementation won't be any faster, so leaving this commented out for now.
 
 connectStream2 :: Monad m
-               => ConduitM      () i    m ()
+               => ConduitT      () i    m ()
                -> ConduitWithStream i  Void m r
                -> m r
-connectStream2 (ConduitM src0) (ConduitWithStream _ fstream) =
+connectStream2 (ConduitT src0) (ConduitWithStream _ fstream) =
     run $ fstream $ Stream step' $ return (return (), src0 Done)
   where
     step' (_, Done ()) = return $ Stop ()
@@ -171,7 +178,7 @@ connectStream2 (ConduitM src0) (ConduitWithStream _ fstream) =
   #-}
 -}
 
-streamConduit :: ConduitM i o m r
+streamConduit :: ConduitT i o m r
               -> (Stream m i () -> Stream m o r)
               -> ConduitWithStream i o m r
 streamConduit = ConduitWithStream
@@ -184,13 +191,13 @@ streamSource
 streamSource str@(Stream step ms0) =
     ConduitWithStream con (const str)
   where
-    con = ConduitM $ \rest -> PipeM $ do
+    con = ConduitT $ \rest -> PipeM $ do
         s0 <- ms0
         let loop s = do
                 res <- step s
                 case res of
                     Stop () -> return $ rest ()
-                    Emit s' o -> return $ HaveOutput (PipeM $ loop s') (return ()) o
+                    Emit s' o -> return $ HaveOutput (PipeM $ loop s') o
                     Skip s' -> loop s'
         loop s0
 {-# INLINE streamSource #-}
@@ -203,11 +210,11 @@ streamSourcePure (Stream step ms0) =
     ConduitWithStream con (const $ Stream (return . runIdentity . step) (return s0))
   where
     s0 = runIdentity ms0
-    con = ConduitM $ \rest ->
+    con = ConduitT $ \rest ->
         let loop s =
                 case runIdentity $ step s of
                     Stop () -> rest ()
-                    Emit s' o -> HaveOutput (loop s') (return ()) o
+                    Emit s' o -> HaveOutput (loop s') o
                     Skip s' -> loop s'
          in loop s0
 {-# INLINE streamSourcePure #-}
