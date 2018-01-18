@@ -92,6 +92,10 @@ matrix:
     compiler: ": #stack 8.0.2"
     addons: {apt: {packages: [libgmp-dev]}}
 
+  - env: BUILD=stack ARGS="--resolver lts-10"
+    compiler: ": #stack 8.2.2"
+    addons: {apt: {packages: [libgmp-dev]}}
+
   # Nightly builds are allowed to fail
   - env: BUILD=stack ARGS="--resolver nightly"
     compiler: ": #stack nightly"
@@ -123,6 +127,10 @@ matrix:
     compiler: ": #stack 8.0.2 osx"
     os: osx
 
+  - env: BUILD=stack ARGS="--resolver lts-10"
+    compiler: ": #stack 8.2.2 osx"
+    os: osx
+
   - env: BUILD=stack ARGS="--resolver nightly"
     compiler: ": #stack nightly osx"
     os: osx
@@ -130,10 +138,6 @@ matrix:
   allow_failures:
   - env: BUILD=cabal GHCVER=head  CABALVER=head HAPPYVER=1.19.5 ALEXVER=3.1.7
   - env: BUILD=stack ARGS="--resolver nightly"
-
-  # See https://github.com/haskell/cabal/issues/4938
-  - env: BUILD=cabal GHCVER=7.4.2 CABALVER=1.16 HAPPYVER=1.19.5 ALEXVER=3.1.7
-  - env: BUILD=cabal GHCVER=7.6.3 CABALVER=1.16 HAPPYVER=1.19.5 ALEXVER=3.1.7
 
 before_install:
 # Using compiler above sets CC to an invalid value, so unset it
@@ -171,11 +175,6 @@ install:
   set -ex
   case "$BUILD" in
     stack)
-      # Add in extra-deps for older snapshots, as necessary
-      stack --no-terminal --install-ghc $ARGS test --bench --dry-run || ( \
-        stack --no-terminal --resolver nightly install cabal-install && \
-        stack --no-terminal $ARGS solver --update-config)
-
       # Build the dependencies
       stack --no-terminal --install-ghc $ARGS test --bench --only-dependencies
       ;;
