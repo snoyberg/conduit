@@ -11,3 +11,5 @@ extra-deps:
 - unliftio-core-0.1.0.0
 - mono-traversable-1.0.8.1
 - gauge-0.2.1
+- basement-0.0.5
+- foundation-0.0.18
