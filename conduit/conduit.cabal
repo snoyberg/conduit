@@ -94,6 +94,7 @@ test-suite conduit-test
                    , bytestring
                    , silently
                    , filepath
+                   , unliftio >= 0.2.4.0
     ghc-options:     -Wall
 
 --test-suite doctests

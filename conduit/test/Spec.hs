@@ -43,6 +43,7 @@ import Data.ByteString.Builder (byteString, toLazyByteString)
 import qualified Data.ByteString.Char8 as S8
 import qualified Data.ByteString.Lazy.Char8 as L8
 import qualified StreamSpec
+import UnliftIO.Exception (pureTry)
 
 spec :: Spec
 spec = do
@@ -666,7 +667,10 @@ addM :: Monad m => Int -> Int -> m Int
 addM x y = return (x + y)
 
 succChar :: Char -> Char
-succChar = succ
+succChar c =
+  case pureTry (succ c) of
+    Left _ -> 'X' -- QuickCheck may generate characters out of range
+    Right x -> x
 
 showInt :: Int -> String
 showInt = Prelude.show
