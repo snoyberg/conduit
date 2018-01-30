@@ -745,6 +745,14 @@ sourceDirectoryDeep followSymlinks =
 
 -- | Ignore a certain number of values in the stream.
 --
+-- Note: since this function doesn't produce anything, you probably want to
+-- use it with ('>>') instead of directly plugging it into a pipeline:
+--
+-- >>> runConduit $ yieldMany [1..5] .| drop 2 .| sinkList
+-- []
+-- >>> runConduit $ yieldMany [1..5] .| (drop 2 >> sinkList)
+-- [3,4,5]
+--
 -- @since 1.3.0
 drop :: Monad m
      => Int
@@ -752,6 +760,9 @@ drop :: Monad m
 INLINE_RULE(drop, n, CL.drop n)
 
 -- | Drop a certain number of elements from a chunked stream.
+--
+-- Note: you likely want to use it with monadic composition. See the docs
+-- for 'drop'.
 --
 -- @since 1.3.0
 dropE :: (Monad m, Seq.IsSequence seq)
@@ -774,6 +785,9 @@ dropE =
 
 -- | Drop all values which match the given predicate.
 --
+-- Note: you likely want to use it with monadic composition. See the docs
+-- for 'drop'.
+--
 -- @since 1.3.0
 dropWhile :: Monad m
           => (a -> Bool)
@@ -786,6 +800,9 @@ dropWhile f =
 {-# INLINE dropWhile #-}
 
 -- | Drop all elements in the chunked stream which match the given predicate.
+--
+-- Note: you likely want to use it with monadic composition. See the docs
+-- for 'drop'.
 --
 -- @since 1.3.0
 dropWhileE :: (Monad m, Seq.IsSequence seq)
@@ -1384,6 +1401,9 @@ STREAMING(find, findC, findS, f)
 
 -- | Apply the action to all values in the stream.
 --
+-- Note: if you want to /pass/ the values instead of /consuming/ them, use
+-- 'iterM' instead.
+--
 -- Subject to fusion
 --
 -- @since 1.3.0
@@ -1391,6 +1411,11 @@ mapM_ :: Monad m => (a -> m ()) -> ConduitT a o m ()
 INLINE_RULE(mapM_, f, CL.mapM_ f)
 
 -- | Apply the action to all elements in the chunked stream.
+--
+-- Note: the same caveat as with 'mapM_' applies. If you don't want to
+-- consume the values, you can use 'iterM':
+--
+-- > iterM (omapM_ f)
 --
 -- Subject to fusion
 --
