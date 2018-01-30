@@ -294,6 +294,14 @@ stdinC = CC.stdin
 
 -- | Ignore a certain number of values in the stream.
 --
+-- Note: since this function doesn't produce anything, you probably want to
+-- use it with ('>>') instead of directly plugging it into a pipeline:
+--
+-- >>> runConduit $ yieldMany [1..5] .| dropC 2 .| sinkList
+-- []
+-- >>> runConduit $ yieldMany [1..5] .| (dropC 2 >> sinkList)
+-- [3,4,5]
+--
 -- @since 1.3.0
 dropC :: Monad m
      => Int
@@ -302,6 +310,9 @@ dropC = CC.drop
 {-# INLINE dropC #-}
 
 -- | Drop a certain number of elements from a chunked stream.
+--
+-- Note: you likely want to use it with monadic composition. See the docs
+-- for 'dropC'.
 --
 -- @since 1.3.0
 dropCE :: (Monad m, Seq.IsSequence seq)
@@ -312,6 +323,9 @@ dropCE = CC.dropE
 
 -- | Drop all values which match the given predicate.
 --
+-- Note: you likely want to use it with monadic composition. See the docs
+-- for 'dropC'.
+--
 -- @since 1.3.0
 dropWhileC :: Monad m
           => (a -> Bool)
@@ -320,6 +334,9 @@ dropWhileC = CC.dropWhile
 {-# INLINE dropWhileC #-}
 
 -- | Drop all elements in the chunked stream which match the given predicate.
+--
+-- Note: you likely want to use it with monadic composition. See the docs
+-- for 'dropC'.
 --
 -- @since 1.3.0
 dropWhileCE :: (Monad m, Seq.IsSequence seq)
@@ -694,12 +711,20 @@ findC = CC.find
 
 -- | Apply the action to all values in the stream.
 --
+-- Note: if you want to /pass/ the values instead of /consuming/ them, use
+-- 'iterM' instead.
+--
 -- @since 1.3.0
 mapM_C :: Monad m => (a -> m ()) -> ConduitT a o m ()
 mapM_C = CC.mapM_
 {-# INLINE mapM_C #-}
 
 -- | Apply the action to all elements in the chunked stream.
+--
+-- Note: the same caveat as with 'mapM_C' applies. If you don't want to
+-- consume the values, you can use 'iterM':
+--
+-- > iterM (omapM_ f)
 --
 -- @since 1.3.0
 mapM_CE :: (Monad m, MonoFoldable mono) => (Element mono -> m ()) -> ConduitT mono o m ()
