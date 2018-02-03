@@ -112,7 +112,7 @@ import Data.Traversable (Traversable (..))
 -- result @r@. The type synonyms provided here are simply wrappers around this
 -- type.
 --
--- Since 1.0.0
+-- Since 1.3.0
 newtype ConduitT i o m r = ConduitT
     { unConduitT :: forall b.
                     (r -> Pipe i i o () m b) -> Pipe i i o () m b
