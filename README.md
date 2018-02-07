@@ -13,7 +13,8 @@ Some of the reasons you'd like to use conduit are:
   consumers (XML/CSV processors)
 
 Want more motivation on why to use conduit? Check out
-[this presentation on conduit](https://docs.google.com/presentation/d/1RBefOCZ7AKOo4f1yiF4mtKPAT3l5vY9ky2SR02O4Vvg/edit?usp=sharing).
+[this presentation on conduit](https://www.snoyman.com/reveal/conduit-yesod#/).
+Feel free to ignore the `yesod` section.
 
 ## Synopsis
 
