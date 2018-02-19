@@ -32,7 +32,7 @@ data Allocated a = Allocated !a !(ReleaseType -> IO ())
 
 -- | A method for acquiring a scarce resource, providing the means of freeing
 -- it when no longer needed. This data type provides
--- @Functor@/@Applicative@/@Monad@ instances for composing different resources
+-- @Functor@\/@Applicative@\/@Monad@ instances for composing different resources
 -- together. You can allocate these resources using either the @bracket@
 -- pattern (via @with@) or using @ResourceT@ (via @allocateAcquire@).
 --
