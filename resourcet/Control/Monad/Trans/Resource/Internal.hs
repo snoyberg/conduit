@@ -7,13 +7,6 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE RankNTypes #-}
--- Can only mark as Safe when using a newer GHC, otherwise we get build
--- failures due to the manual Typeable instance below.
-#if __GLASGOW_HASKELL__ >= 707
-{-# LANGUAGE Safe #-}
-#else
-{-# LANGUAGE Trustworthy #-}
-#endif
 
 module Control.Monad.Trans.Resource.Internal(
     InvalidAccess(..)

@@ -1,7 +1,6 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE Safe #-}
 -- | If this is your first time with conduit, you should probably start with
 -- the tutorial:
 -- <https://github.com/snoyberg/conduit#readme>.

@@ -1,3 +1,7 @@
+## 1.2.13.1
+
+* Remove the `Safe` language pragma [#353](https://github.com/snoyberg/conduit/issues/353)
+
 ## 1.2.13
 
 * Add `Semigroup` instances [#345](https://github.com/snoyberg/conduit/pull/345)
