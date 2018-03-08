@@ -713,6 +713,9 @@ connect = ($$)
 
 -- | Named function synonym for '.|'.
 --
+-- Equivalent to '.|' and '=$='. However, the latter is
+-- deprecated and will be removed in a future version.
+--
 -- Since 1.2.3
 fuse :: Monad m => Conduit a m b -> ConduitM b c m r -> ConduitM a c m r
 fuse = (=$=)
@@ -721,8 +724,11 @@ fuse = (=$=)
 --
 -- Output from the upstream (left) conduit will be fed into the
 -- downstream (right) conduit. Processing will terminate when
--- downstream (right) returns. Leftover data returned from the right
--- @Conduit@ will be discarded.
+-- downstream (right) returns.
+-- Leftover data returned from the right @Conduit@ will be discarded.
+--
+-- Equivalent to 'fuse' and '=$=', however the latter is deprecated and will
+-- be removed in a future version.
 --
 -- @since 1.2.8
 (.|) :: Monad m
@@ -763,11 +769,7 @@ src $$ sink = do
 {-# RULES "conduit: =$ is =$=" (=$) = (=$=) #-}
 {-# DEPRECATED (=$) "Use .|" #-}
 
--- | Fusion operator, combining two @Conduit@s together into a new @Conduit@.
---
--- Both @Conduit@s will be closed when the newly-created @Conduit@ is closed.
---
--- Leftover data returned from the right @Conduit@ will be discarded.
+-- | Deprecated fusion operator.
 --
 -- Since 0.4.0
 (=$=) :: Monad m => Conduit a m b -> ConduitT b c m r -> ConduitT a c m r
@@ -792,7 +794,6 @@ ConduitT left0 =$= ConduitT right0 = ConduitT $ \rest ->
           where
             recurse = goLeft rp rc
      in goRight (left0 Done) (right0 Done)
-  where
 {-# INLINE [1] (=$=) #-}
 {-# DEPRECATED (=$=) "Use .|" #-}
 
