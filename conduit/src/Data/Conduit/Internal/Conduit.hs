@@ -724,7 +724,7 @@ fuse = (=$=)
 --
 -- Output from the upstream (left) conduit will be fed into the
 -- downstream (right) conduit. Processing will terminate when
--- downstream (right) returns, and both @Conduit@s will be closed.
+-- downstream (right) returns.
 -- Leftover data returned from the right @Conduit@ will be discarded.
 --
 -- Equivalent to 'fuse' and '=$=', however the latter is deprecated and will
@@ -769,14 +769,7 @@ src $$ sink = do
 {-# RULES "conduit: =$ is =$=" (=$) = (=$=) #-}
 {-# DEPRECATED (=$) "Use .|" #-}
 
--- | Combine two @Conduit@s together into a new @Conduit@ (aka 'fuse').
---
--- Output from the upstream (left) conduit will be fed into the
--- downstream (right) conduit. Processing will terminate when
--- downstream (right) returns, and both @Conduit@s will be closed.
--- Leftover data returned from the right @Conduit@ will be discarded.
---
--- Equivalent to 'fuse' and '.|'.
+-- | Deprecated fusion operator.
 --
 -- Since 0.4.0
 (=$=) :: Monad m => Conduit a m b -> ConduitT b c m r -> ConduitT a c m r
