@@ -35,6 +35,7 @@ import qualified System.IO as IO
 import           System.IO.Unsafe
 import           Test.Hspec
 import           Test.QuickCheck
+import           Data.Semigroup (Semigroup (..))
 
 spec :: Spec
 spec = do
@@ -463,6 +464,8 @@ evalStream (Stream step s0) = go =<< s0
 newtype Sum a = Sum a
   deriving (Eq, Show, Arbitrary)
 
+instance Prelude.Num a => Semigroup (Sum a) where
+  Sum x <> Sum y = Sum $ x Prelude.+ y
 instance Prelude.Num a => Monoid (Sum a) where
   mempty = Sum 0
   mappend (Sum x) (Sum y) = Sum $ x Prelude.+ y

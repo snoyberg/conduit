@@ -1,3 +1,7 @@
+## 1.3.0.1
+
+* Test suite compatibility with GHC 8.4.1 [#358](https://github.com/snoyberg/conduit/issues/358)
+
 ## 1.3.0
 
 * Drop monad-control and exceptions in favor of unliftio
