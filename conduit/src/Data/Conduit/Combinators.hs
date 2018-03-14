@@ -1599,10 +1599,7 @@ takeWhile :: Monad m
 takeWhile f =
     loop
   where
-    loop = await >>= maybe (return ()) go
-    go x = if f x
-        then yield x >> loop
-        else leftover x
+    loop = await >>= maybe (return ()) (\x -> if f x then yield x >> loop else leftover x)
 {-# INLINE takeWhile #-}
 
 -- | Stream all elements downstream that match the given predicate in a chunked stream.
@@ -1616,15 +1613,12 @@ takeWhileE :: (Monad m, Seq.IsSequence seq)
 takeWhileE f =
     loop
   where
-    loop = await >>= maybe (return ()) go
-
-    go sq = do
-        unless (onull x) $ yield x
-        if onull y
-            then loop
-            else leftover y
-      where
-        (x, y) = Seq.span f sq
+    loop = await >>= maybe (return ()) (\sq -> do
+                                            let (x, y) = Seq.span f sq
+                                            unless (onull x) $ yield x
+                                            if onull y
+                                                then loop
+                                                else leftover y)
 {-# INLINE takeWhileE #-}
 
 -- | Consume precisely the given number of values and feed them downstream.
