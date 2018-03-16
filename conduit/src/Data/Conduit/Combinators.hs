@@ -492,8 +492,7 @@ sourceIOHandle :: MonadResource m
                -> ConduitT i S.ByteString m ()
 sourceIOHandle alloc = bracketP alloc IO.hClose sourceHandle
 
--- | 'sourceFile' specialized to 'ByteString' to help with type
--- inference.
+-- | Same as sourceFile.
 --
 -- @since 1.3.0
 sourceFileBS :: MonadResource m => FilePath -> ConduitT i ByteString m ()
