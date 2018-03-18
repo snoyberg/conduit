@@ -672,7 +672,7 @@ withSinkFile
   -> m a
 withSinkFile fp inner =
   withRunInIO $ \run ->
-  IO.withBinaryFile fp IO.ReadMode $
+  IO.withBinaryFile fp IO.WriteMode $
   run . inner . sinkHandle
 
 -- | Same as 'withSinkFile', but lets you use a 'BB.Builder'.
