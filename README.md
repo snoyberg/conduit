@@ -16,13 +16,19 @@ Want more motivation on why to use conduit? Check out
 [this presentation on conduit](https://www.snoyman.com/reveal/conduit-yesod#/).
 Feel free to ignore the `yesod` section.
 
+__NOTE__ As of March 2018, this document has been updated to be
+compatible with version 1.3 of conduit. This is available in Long Term
+Support (LTS) Haskell version 11 and up. For more information on
+changes between versions 1.2 and 1.3,
+[see the changelog](https://github.com/snoyberg/conduit/blob/master/conduit/ChangeLog.md#130).
+
 ## Synopsis
 
 Basic examples of conduit usage, much more to follow!
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-8.12 --package conduit-combinators
+-- stack script --resolver lts-11.0
 import Conduit
 
 main = do
@@ -44,27 +50,14 @@ There are a large number of packages relevant to conduit, just search
 for conduit on
 [the LTS Haskell package list page](https://www.stackage.org/lts).  In
 this tutorial, we're going to rely mainly on the
-[conduit-combinators](https://www.stackage.org/package/conduit-combinators)
-library, which provides a large number of common functions
-built-in. If you're looking for something lighter-weight, you can use
-the [conduit](https://www.stackage.org/package/conduit) library, which
-defines the core datatypes and primitive functions, and
-[conduit-extra](https://www.stackage.org/package/conduit-extra), which
-adds support for many common low-level operations
+[conduit](https://www.stackage.org/package/conduit) library itself,
+which provides a large number of common functions built-in. There is
+also the
+[conduit-extra](https://www.stackage.org/package/conduit-extra)
+library, which adds in some common extra support, like GZIP
+(de)compression.
 
-__NOTE__ Version 1.3.0 of conduit moves things around in these
-libraries quite a bit. In particular, most functionality mentioned
-above now lives in the conduit package itself. Once this version is
-used in an LTS Haskell release, this tutorial will be updated to
-reflect this new setup. Until then, we will continue referring to the
-older versions.
-
-Generally, you should use conduit-combinators unless you're an open
-source library author looking to reduce your transitive dependency
-footprint.
-
-This tutorial relies on conduit-combinators version 1.0.8 or
-later. The examples are
+You can run the examples in this tutorial as
 [Stack scripts](https://haskell-lang.org/tutorial/stack-script).
 
 ## Conduit as a bad list
@@ -75,7 +68,7 @@ with.
 
 ``` haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-8.12 --package conduit-combinators
+-- stack script --resolver lts-11.0
 {-# LANGUAGE ExtendedDefaultRules #-}
 import Conduit
 
@@ -88,7 +81,7 @@ main = do
     print $ runConduitPure $ yieldMany [1..] .| takeC 10 .| sinkList
 ```
 
-Our list function is pretty straightforward: creating an infinite list
+Our list function is pretty straightforward: create an infinite list
 from 1 and ascending, take the first 10 elements, and then print the
 list. The conduit version does the exact same thing, but:
 
@@ -102,7 +95,7 @@ list. The conduit version does the exact same thing, but:
   many functions matching common list functions, but appends a `C` to
   disambiguate the names. (If you'd prefer to use a qualified import,
   check out
-  [Data.Conduit.Combinators](https://www.stackage.org/haddock/lts-6.19/conduit-combinators-1.0.8/Data-Conduit-Combinators.html)).
+  [Data.Conduit.Combinators](https://www.stackage.org/haddock/lts-11.0/conduit-1.3.0/Data-Conduit-Combinators.html)).
 * To consume all of our results back into a list, we use `sinkList`
 * We need to explicitly run our conduit pipeline to get a result from
   it. Since we're running a pure pipeline (no monadic effects), we can
@@ -121,7 +114,7 @@ yet. Let's build up a slightly more complex pipeline:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-8.12 --package conduit-combinators
+-- stack script --resolver lts-11.0
 {-# LANGUAGE ExtendedDefaultRules #-}
 import Conduit
 
@@ -147,7 +140,7 @@ value individually.
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-8.12 --package conduit-combinators
+-- stack script --resolver lts-11.0
 {-# LANGUAGE ExtendedDefaultRules #-}
 import Conduit
 
@@ -192,7 +185,7 @@ before. Let's see how the list and conduit versions adapt:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-8.12 --package conduit-combinators
+-- stack script --resolver lts-11.0
 {-# LANGUAGE ExtendedDefaultRules #-}
 import Conduit
 
@@ -303,10 +296,7 @@ here's one way to get the same behavior as was achieved with conduit:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-8.12 --package conduit-combinators
-{-# LANGUAGE ExtendedDefaultRules #-}
-import Conduit
-
+-- stack script --resolver lts-11.0
 magic :: Int -> IO Int
 magic x = do
     putStrLn $ "I'm doing magic with " ++ show x
@@ -343,10 +333,10 @@ _produce_ data to send _downstream_. For example:
 runConduit $ yieldMany [1..10] .| mapC show .| mapM_C print
 ```
 
-In this snippet, `yieldMany [1..10]`, `mapC show`, and `mapM_C print` are
-each components. We use the `.|` operator - a synonym for the
-[`fuse` function](https://www.stackage.org/haddock/lts-6.19/conduit-1.2.8/Data-Conduit.html#v:fuse) -
-to compose these components into a pipeline. Then we run that pipeline
+In this snippet, `yieldMany [1..10]`, `mapC show`, and `mapM_C print`
+are each components. We use the `.|` operator&mdash;a synonym for the
+[`fuse` function](https://www.stackage.org/haddock/lts-11.0/conduit-1.3.0/Data-Conduit.html#v:fuse)&mdash;to
+compose these components into a pipeline. Then we run that pipeline
 with `runConduit`.
 
 From the perspective of `mapC show`, `yieldMany [1..10]` is its
@@ -366,11 +356,11 @@ involved:
 To add some type signatures into this:
 
 ```haskell
-yieldMany [1..10] :: ConduitM ()  Int    IO ()
-mapC show         :: ConduitM Int String IO ()
+yieldMany [1..10] :: ConduitT ()  Int    IO ()
+mapC show         :: ConduitT Int String IO ()
 ```
 
-There are four type parameters to `ConduitM`
+There are four type parameters to `ConduitT`:
 
 * The first indicates the upstream value, or input. For `yieldMany`,
   we're using `()`, though really it could be any type since we never
@@ -380,7 +370,7 @@ There are four type parameters to `ConduitM`
   `mapC`, which is what lets us combine these two. The output of
   `mapC` is `String`.
 * The third indicates the base monad, which tells us what kinds of
-  effects we can perform. A `ConduitM` is a monad transformer, so you
+  effects we can perform. A `ConduitT` is a monad transformer, so you
   can use `lift` to perform effects. (We'll learn more about conduit's
   monadic nature later.) We're using `IO` in our example.
 * The final indicates the result type of the component. This is
@@ -391,9 +381,9 @@ Let's also look at the type of our `.|` operator:
 
 ```haskell
 (.|) :: Monad m
-     => ConduitM a b m ()
-     -> ConduitM b c m r
-     -> ConduitM a c m r
+     => ConduitT a b m ()
+     -> ConduitT b c m r
+     -> ConduitT a c m r
 ```
 
 This shows us that:
@@ -412,7 +402,7 @@ to the mix above.
 Finally, let's look at the type of the `runConduit` function:
 
 ```haskell
-runConduit :: Monad m => ConduitM () Void m r -> m r
+runConduit :: Monad m => ConduitT () Void m r -> m r
 ```
 
 This gives us a better idea of what a pipeline is: just a self
@@ -432,7 +422,7 @@ Finally, we talked about pure pipelines before. Those are just
 pipelines with `Identity` as the base monad:
 
 ```haskell
-runConduitPure :: ConduitM () Void Identity r -> r
+runConduitPure :: ConduitT () Void Identity r -> r
 ```
 
 ## Folds
@@ -445,8 +435,7 @@ just be a collection of examples.
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-8.12 --package conduit-combinators
-{-# LANGUAGE ExtendedDefaultRules #-}
+-- stack script --resolver lts-11.0
 import Conduit
 
 main :: IO ()
@@ -458,8 +447,7 @@ Summing is straightforward, and can be done if desired with the
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-8.12 --package conduit-combinators
-{-# LANGUAGE ExtendedDefaultRules #-}
+-- stack script --resolver lts-11.0
 import Conduit
 
 main :: IO ()
@@ -470,8 +458,7 @@ You can use `foldMapC` to fold monoids together:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-8.12 --package conduit-combinators
-{-# LANGUAGE ExtendedDefaultRules #-}
+-- stack script --resolver lts-11.0
 import Conduit
 import Data.Monoid (Sum (..))
 
@@ -483,8 +470,7 @@ Or you can use `foldC` as a shortened form of `foldMapC id`:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-8.12 --package conduit-combinators
-{-# LANGUAGE ExtendedDefaultRules #-}
+-- stack script --resolver lts-11.0
 import Conduit
 
 main :: IO ()
@@ -498,8 +484,7 @@ Though if you want to make that easier you can use `unlinesC`:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-8.12 --package conduit-combinators
-{-# LANGUAGE ExtendedDefaultRules #-}
+-- stack script --resolver lts-11.0
 import Conduit
 
 main :: IO ()
@@ -514,8 +499,7 @@ You can also do monadic folds:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-8.12 --package conduit-combinators
-{-# LANGUAGE ExtendedDefaultRules #-}
+-- stack script --resolver lts-11.0
 import Conduit
 import Data.Monoid (Product (..))
 
@@ -534,8 +518,7 @@ Or with `foldMC`:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-8.12 --package conduit-combinators
-{-# LANGUAGE ExtendedDefaultRules #-}
+-- stack script --resolver lts-11.0
 import Conduit
 import Data.Monoid (Product (..))
 
@@ -566,8 +549,7 @@ examples, so we'll just blast through some examples.
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-8.12 --package conduit-combinators
-{-# LANGUAGE ExtendedDefaultRules #-}
+-- stack script --resolver lts-11.0
 import Conduit
 
 main :: IO ()
@@ -578,8 +560,7 @@ We can also filter out values:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-8.12 --package conduit-combinators
-{-# LANGUAGE ExtendedDefaultRules #-}
+-- stack script --resolver lts-11.0
 import Conduit
 
 main :: IO ()
@@ -590,8 +571,7 @@ Or if desired we can add some values between each value in the list:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-8.12 --package conduit-combinators
-{-# LANGUAGE ExtendedDefaultRules #-}
+-- stack script --resolver lts-11.0
 import Conduit
 
 main :: IO ()
@@ -603,8 +583,7 @@ of chunks (like a list of vector) of data into the individual values.
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-8.12 --package conduit-combinators
-{-# LANGUAGE ExtendedDefaultRules #-}
+-- stack script --resolver lts-11.0
 import Conduit
 
 main :: IO ()
@@ -619,38 +598,12 @@ is actually a very important and common use case, especially around
 `ByteString`s and `Text`s. We'll cover it in much more detail in its
 own section later.
 
-There are even some built-in functions for doing some more advanced
-operations, like base-64 encoding data.
-
-```haskell
-#!/usr/bin/env stack
--- stack script --resolver lts-8.12 --package conduit-combinators --package text
-{-# LANGUAGE ExtendedDefaultRules #-}
-{-# LANGUAGE OverloadedStrings #-}
-import Conduit
-import Data.Text (Text)
-
-message :: Text
-message = "This is my message. Try to decode it with the base64 command.\n"
-
-main :: IO ()
-main = runConduit
-     $ yield message
-    .| encodeUtf8C
-    .| encodeBase64C
-    .| stdoutC
-```
-
-__EXERCISE__ Pipe the output of this snippet to `base64 -D` on the
-command line.
-
 You can also perform monadic actions while transforming. We've seen
 `mapMC` being used already, but other such functions exist:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-8.12 --package conduit-combinators
-{-# LANGUAGE ExtendedDefaultRules #-}
+-- stack script --resolver lts-11.0
 {-# LANGUAGE OverloadedStrings #-}
 import Conduit
 
@@ -672,8 +625,8 @@ on the upstream values without modifying them:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-8.12 --package conduit-combinators
-{-# LANGUAGE ExtendedDefaultRules #-}
+-- stack script --resolver lts-11.0
+
 import Conduit
 
 main :: IO ()
@@ -696,11 +649,11 @@ beginning with a data producer:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-8.12 --package conduit-combinators
-{-# LANGUAGE ExtendedDefaultRules #-}
+-- stack script --resolver lts-11.0
+
 import Conduit
 
-source :: Monad m => ConduitM i Int m ()
+source :: Monad m => ConduitT i Int m ()
 source = do
     yieldMany [1..10]
     yieldMany [11..20]
@@ -722,11 +675,11 @@ program will do before you read the explanation following it.
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-8.12 --package conduit-combinators
-{-# LANGUAGE ExtendedDefaultRules #-}
+-- stack script --resolver lts-11.0
+
 import Conduit
 
-sink :: Monad m => ConduitM Int o m (String, Int)
+sink :: Monad m => ConduitT Int o m (String, Int)
 sink = do
     x <- takeC 5 .| mapC show .| foldC
     y <- sumC
@@ -756,11 +709,11 @@ concepts together, and create a transformer using monadic composition.
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-8.12 --package conduit-combinators
-{-# LANGUAGE ExtendedDefaultRules #-}
+-- stack script --resolver lts-11.0
+
 import Conduit
 
-trans :: Monad m => ConduitM Int Int m ()
+trans :: Monad m => ConduitT Int Int m ()
 trans = do
     takeC 5 .| mapC (+ 1)
     mapC (* 2)
@@ -793,8 +746,8 @@ instead of a collection of them.
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-8.12 --package conduit-combinators
-{-# LANGUAGE ExtendedDefaultRules #-}
+-- stack script --resolver lts-11.0
+
 import Conduit
 
 main :: IO ()
@@ -805,8 +758,8 @@ Of course, we're not limited to using just a single call to `yield`:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-8.12 --package conduit-combinators
-{-# LANGUAGE ExtendedDefaultRules #-}
+-- stack script --resolver lts-11.0
+
 import Conduit
 
 main :: IO ()
@@ -822,7 +775,7 @@ function to get an input value from upstream. For that, we'll use
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-8.12 --package conduit-combinators
+-- stack script --resolver lts-11.0
 {-# LANGUAGE ExtendedDefaultRules #-}
 import Conduit
 
@@ -852,11 +805,10 @@ Of course, things get much more interesting when we combine both
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-8.12 --package conduit-combinators
-{-# LANGUAGE ExtendedDefaultRules #-}
+-- stack script --resolver lts-11.0
 import Conduit
 
-myMapC :: Monad m => (i -> o) -> ConduitM i o m ()
+myMapC :: Monad m => (i -> o) -> ConduitT i o m ()
 myMapC f =
     loop
   where
@@ -880,8 +832,7 @@ simple example of using the `takeWhileC` function:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-8.12 --package conduit-combinators
-{-# LANGUAGE ExtendedDefaultRules #-}
+-- stack script --resolver lts-11.0
 import Conduit
 
 main :: IO ()
@@ -897,11 +848,10 @@ implement our own `takeWhileC` with just `await` and `yield`.
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-8.12 --package conduit-combinators
-{-# LANGUAGE ExtendedDefaultRules #-}
+-- stack script --resolver lts-11.0
 import Conduit
 
-myTakeWhileC :: Monad m => (i -> Bool) -> ConduitM i i m ()
+myTakeWhileC :: Monad m => (i -> Bool) -> ConduitT i i m ()
 myTakeWhileC f =
     loop
   where
@@ -947,11 +897,10 @@ our `myTakeWhileC`:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-8.12 --package conduit-combinators
-{-# LANGUAGE ExtendedDefaultRules #-}
+-- stack script --resolver lts-11.0
 import Conduit
 
-myGoodTakeWhileC :: Monad m => (i -> Bool) -> ConduitM i i m ()
+myGoodTakeWhileC :: Monad m => (i -> Bool) -> ConduitT i i m ()
 myGoodTakeWhileC f =
     loop
   where
@@ -984,8 +933,7 @@ use case. Just to prove it's possible though:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-8.12 --package conduit-combinators
-{-# LANGUAGE ExtendedDefaultRules #-}
+-- stack script --resolver lts-11.0
 import Conduit
 
 main :: IO ()
@@ -1021,8 +969,7 @@ downstream_. To see what I mean, consider this example:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-8.12 --package conduit-combinators
-{-# LANGUAGE ExtendedDefaultRules #-}
+-- stack script --resolver lts-11.0
 import Conduit
 
 main :: IO ()
@@ -1038,8 +985,7 @@ discard them, you could use `sinkNull`:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-8.12 --package conduit-combinators
-{-# LANGUAGE ExtendedDefaultRules #-}
+-- stack script --resolver lts-11.0
 import Conduit
 
 main :: IO ()
@@ -1050,8 +996,7 @@ Now try and guess what the following program outputs:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-8.12 --package conduit-combinators
-{-# LANGUAGE ExtendedDefaultRules #-}
+-- stack script --resolver lts-11.0
 import Conduit
 
 main :: IO ()
@@ -1066,8 +1011,7 @@ Alright, let's tweak this slightly: what will this one output:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-8.12 --package conduit-combinators
-{-# LANGUAGE ExtendedDefaultRules #-}
+-- stack script --resolver lts-11.0
 import Conduit
 
 main :: IO ()
@@ -1089,75 +1033,20 @@ There's really not too much to understanding conduit evaluation. It
 mostly works the way you'd expect, as long as you remember that
 _downstream drives_.
 
-## Type synonyms
-
-If you've been reading the API docs at all, you may have been confused
-by type signatures stating `Source`, `Sink`, `Producer`, `Consumer`,
-or `Conduit`. These are all type synonyms provided by the conduit
-library to make working with it easier (though, to be honest, it's not
-clear that they actually help at all). Here are the simple definitions
-of these types:
-
-* A `Source` produces values but does not consume any
-* A `Sink` consumes values and provides a return value, but
-  produces none as an output stream
-* A `Conduit` consumes and produces values
-* A `Producer` is something that produces values, and may or may not
-  consume
-* A `Consumer` is something that consumes values and provides a return
-  value, but may or may not produce
-
-But it might be easier to understand all of this if you just look at
-the actual definitions:
-
-```haskell
-type Source     m o   =           ConduitM () o    m ()
-type Sink     i m   r =           ConduitM i  Void m r
-type Conduit  i m o   =           ConduitM i  o    m ()
-type Producer   m o   = forall i. ConduitM i  o    m ()
-type Consumer i m   r = forall o. ConduitM i  o    m r
-```
-
-We can see that a `Source` produces a stream of `o` values in the `m`
-base monad. We've set its upstream value to `()` to indicate it
-consumes nothing, and set its return value to `()` to indicate that it
-produces no (meaningful) return value. By constrast, a `Sink` consumes
-`i` values and returns an `r` result in the `m` base monad, but
-produces no output (`Void`).
-
-`Producer` and `Consumer` are both generalized versions of `Source`
-and `Sink`, which instead of specifying the input or output types to
-be `()` or `Void`, simply says they can be anything. These are the
-types that end up getting used more often in the conduit libraries,
-since it generalizes to working in more contexts. However, due to
-weaknesses in the `ImpredicativeTypes` language extension, these types
-can't always be used.
-
-You lose nothing by just sticking with the `ConduitM` data type
-directly and bypassing the type synonyms completely. In 20/20
-hindsight, that's probably the better direction for the conduit
-library to have been designed with in the first place. It's entirely
-possible that in future releases of the library, type signatures will
-bypass those synonyms completely. (If you want to weigh in on this,
-please
-[see the relevant Github issue](https://github.com/snoyberg/conduit/issues/283).)
-
 ## Resource allocation
 
 Let's copy a file with conduit:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-8.12 --package conduit-combinators --package conduit-extra
-{-# LANGUAGE ExtendedDefaultRules #-}
+-- stack script --resolver lts-11.0
 import Conduit
 import qualified System.IO as IO
-import qualified Data.Conduit.Binary as CB
 
 main :: IO ()
 main = IO.withBinaryFile "input.txt" IO.ReadMode $ \inH ->
        IO.withBinaryFile "output.txt" IO.WriteMode $ \outH ->
-       runConduit $ CB.sourceHandle inH .| CB.sinkHandle outH
+       runConduit $ sourceHandle inH .| sinkHandle outH
 ```
 
 This works nicely, and follows the typical bracket pattern we
@@ -1174,8 +1063,24 @@ typically expect in Haskell. However, it's got some downsides:
   write a function to traverse a directory tree, you can't open up all
   of the directory handles before you enter your conduit pipeline.
 
-To solve these problems (and some others), conduit provides built in
-support for a related package
+One slight improvement we can make is to switch over to the
+`withSourceFile` and `withSinkFile` helper functions, which handle the
+calls to `withBinaryFile` for you:
+
+```haskell
+#!/usr/bin/env stack
+-- stack script --resolver lts-11.0
+import Conduit
+
+main :: IO ()
+main = withSourceFile "input.txt" $ \source ->
+       withSinkFile "output.txt" $ \sink ->
+       runConduit $ source .| sink
+```
+
+However, this only slightly improves ergonomics; the most of the
+problems above remain. To solve those (and some others), conduit
+provides built in support for a related package
 ([resourcet](https://www.stackage.org/package/resourcet)), which
 allows you to allocate resources and be guaranteed that they will be
 cleaned up. The basic idea is that you'll have a block like:
@@ -1199,17 +1104,16 @@ our example as:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-8.12 --package conduit-combinators --package bytestring
-{-# LANGUAGE ExtendedDefaultRules #-}
+-- stack script --resolver lts-11.0
 import Conduit
 import qualified System.IO as IO
 import Data.ByteString (ByteString)
 
-sourceFile' :: MonadResource m => FilePath -> ConduitM i ByteString m ()
+sourceFile' :: MonadResource m => FilePath -> ConduitT i ByteString m ()
 sourceFile' fp =
     bracketP (IO.openBinaryFile fp IO.ReadMode) IO.hClose sourceHandle
 
-sinkFile' :: MonadResource m => FilePath -> ConduitM ByteString o m ()
+sinkFile' :: MonadResource m => FilePath -> ConduitT ByteString o m ()
 sinkFile' fp =
     bracketP (IO.openBinaryFile fp IO.WriteMode) IO.hClose sinkHandle
 
@@ -1221,20 +1125,17 @@ main = runResourceT
 ```
 
 But that's certainly too tedious. Fortunately, conduit provides the
-`sourceFile` and `sinkFile` functions built in (as well as
-`sourceFileBS` and `sinkFileBS`, which are specialized to `ByteString`
-to avoid type inference issues), and defines a helper `runConduitRes`
-which is just `runResourceT . runConduit`. Putting all of that
-together, copying a file becomes absolutely trivial:
+`sourceFile` and `sinkFile` functions built in, and defines a helper
+`runConduitRes` which is just `runResourceT . runConduit`. Putting all
+of that together, copying a file becomes absolutely trivial:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-8.12 --package conduit-combinators
-{-# LANGUAGE ExtendedDefaultRules #-}
+-- stack script --resolver lts-11.0
 import Conduit
 
 main :: IO ()
-main = runConduitRes $ sourceFileBS "input.txt" .| sinkFileBS "output.txt"
+main = runConduitRes $ sourceFile "input.txt" .| sinkFile "output.txt"
 ```
 
 Let's get a bit more inventive though. Let's traverse an entire
@@ -1243,8 +1144,7 @@ extension into the file "all-haskell-files".
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-8.12 --package conduit-combinators --package filepath
-{-# LANGUAGE ExtendedDefaultRules #-}
+-- stack script --resolver lts-11.0
 import Conduit
 import System.FilePath (takeExtension)
 
@@ -1252,8 +1152,8 @@ main :: IO ()
 main = runConduitRes
      $ sourceDirectoryDeep True "."
     .| filterC (\fp -> takeExtension fp == ".hs")
-    .| awaitForever sourceFileBS
-    .| sinkFileBS "all-haskell-files"
+    .| awaitForever sourceFile
+    .| sinkFile "all-haskell-files"
 ```
 
 What's great about this example is:
@@ -1273,8 +1173,7 @@ straightforward:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-8.12 --package conduit-combinators --package text
-{-# LANGUAGE ExtendedDefaultRules #-}
+-- stack script --resolver lts-11.0
 import Conduit
 import qualified Data.Text as T
 import Data.Char (toUpper)
@@ -1305,10 +1204,8 @@ straightforward to use. To see it in action:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-8.12 --package conduit-combinators --package text
-{-# LANGUAGE ExtendedDefaultRules #-}
+-- stack script --resolver lts-11.0
 import Conduit
-import qualified Data.Text as T
 import Data.Char (toUpper)
 
 main :: IO ()
@@ -1328,10 +1225,8 @@ first line of content:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-8.12 --package conduit-combinators --package text
-{-# LANGUAGE ExtendedDefaultRules #-}
+-- stack script --resolver lts-11.0
 import Conduit
-import qualified Data.Text as T
 import Data.Char (toUpper)
 
 main :: IO ()
@@ -1347,8 +1242,7 @@ Or just the first 5 bytes:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-8.12 --package conduit-combinators
-{-# LANGUAGE ExtendedDefaultRules #-}
+-- stack script --resolver lts-11.0
 import Conduit
 
 main :: IO ()
@@ -1378,7 +1272,7 @@ example, let's consider taking the average of a stream of
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-8.12 --package base
+-- stack script --resolver lts-11.0
 doubles :: [Double]
 doubles = [1, 2, 3, 4, 5, 6]
 
@@ -1399,15 +1293,13 @@ folding.)
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-8.12 --package conduit-combinators
-{-# LANGUAGE ExtendedDefaultRules #-}
+-- stack script --resolver lts-11.0
 import Conduit
-import Data.Void (Void)
 
 doubles :: [Double]
 doubles = [1, 2, 3, 4, 5, 6]
 
-average :: Monad m => ConduitM Double Void m Double
+average :: Monad m => ConduitT Double Void m Double
 average =
     getZipSink (go <$> ZipSink sumC <*> ZipSink lengthC)
   where
@@ -1418,7 +1310,7 @@ main = print $ runConduitPure $ yieldMany doubles .| average
 ```
 
 `ZipSink` is a newtype wrapper which provides an different
-`Applicative` instance than the standard one for `ConduitM`. Instead
+`Applicative` instance than the standard one for `ConduitT`. Instead
 of sequencing the consumption of a stream, it allows two components to
 consume _in parallel_. Now, our `sumC` and `lengthC` are getting
 values at the same time, and then those values can be immediately
@@ -1430,17 +1322,14 @@ divide-by-zero error. You'd probably in practice want to make
 
 Another real world example of `ZipSink` is when you want to both
 consume a file and calculate its cryptographic hash. Working with the
-cryponite package:
+`cryponite` and `cryptonite-conduit` libraries:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-8.12 --package conduit-combinators --package cryptonite --package cryptonite-conduit
-{-# LANGUAGE ExtendedDefaultRules #-}
-{-# LANGUAGE PackageImports #-}
+-- stack script --resolver lts-11.0
 import Conduit
-import "cryptonite-conduit" Crypto.Hash.Conduit (sinkHash)
-import "cryptonite" Crypto.Hash (Digest, SHA256)
-import Data.Void (Void)
+import Crypto.Hash.Conduit (sinkHash)
+import Crypto.Hash (Digest, SHA256)
 
 main :: IO ()
 main = do
@@ -1454,18 +1343,11 @@ Or we can get slightly more inventive, and read from an HTTP connection instead 
 
 ```haskell
 #!/usr/bin/env stack
-{- stack script --resolver lts-8.12
-    --package conduit-combinators
-    --package cryptonite
-    --package cryptonite-conduit
-    --package http-conduit
--}
-{-# LANGUAGE PackageImports #-}
+-- stack script --resolver lts-11.0
 {-# LANGUAGE OverloadedStrings #-}
 import Conduit
-import "cryptonite-conduit" Crypto.Hash.Conduit (sinkHash)
-import "cryptonite" Crypto.Hash (Digest, SHA256)
-import Data.Void (Void)
+import Crypto.Hash.Conduit (sinkHash)
+import Crypto.Hash (Digest, SHA256)
 import Network.HTTP.Simple (httpSink)
 
 main :: IO ()
@@ -1489,13 +1371,13 @@ index in the sequence:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-8.12 --package conduit-combinators
+-- stack script --resolver lts-11.0
 import Conduit
 
 fibs :: [Int]
 fibs = 0 : 1 : zipWith (+) fibs (drop 1 fibs)
 
-indexedFibs :: Source IO (Int, Int)
+indexedFibs :: ConduitT () (Int, Int) IO ()
 indexedFibs = getZipSource
     $ (,)
   <$> ZipSource (yieldMany [1..])
@@ -1526,13 +1408,13 @@ whole stream:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-8.12 --package conduit-combinators
+-- stack script --resolver lts-11.0
 import Conduit
 
-tagger :: Monad m => ConduitM Int (Either Int Int) m ()
+tagger :: Monad m => ConduitT Int (Either Int Int) m ()
 tagger = mapC $ \i -> if even i then Left i else Right i
 
-evens, odds :: Monad m => ConduitM Int String m ()
+evens, odds :: Monad m => ConduitT Int String m ()
 evens  = mapC $ \i -> "Even number: " ++ show i
 odds   = mapC $ \i -> "Odd  number: " ++ show i
 
@@ -1542,7 +1424,7 @@ left = either Just (const Nothing)
 right :: Either l r -> Maybe r
 right = either (const Nothing) Just
 
-inside :: Monad m => ConduitM (Either Int Int) String m ()
+inside :: Monad m => ConduitT (Either Int Int) String m ()
 inside = getZipConduit
     $ ZipConduit (concatMapC left  .| evens)
    *> ZipConduit (concatMapC right .| odds)
@@ -1563,12 +1445,12 @@ amount of data is consumed. Consider:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-8.12 --package conduit-combinators
+-- stack script --resolver lts-11.0
 import Conduit
 
 withFiveSum :: Monad m
-            => ConduitM Int o m r
-            -> ConduitM Int o m (r, Int)
+            => ConduitT Int o m r
+            -> ConduitT Int o m (r, Int)
 withFiveSum inner = do
     r <- takeC 5 .| inner
     s <- sumC
@@ -1591,12 +1473,12 @@ e.g.:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-8.12 --package conduit-combinators
+-- stack script --resolver lts-11.0
 import Conduit
 
 withFiveSum :: Monad m
-            => ConduitM Int o m r
-            -> ConduitM Int o m (r, Int)
+            => ConduitT Int o m r
+            -> ConduitT Int o m (r, Int)
 withFiveSum inner = do
     r <- takeC 5 .| do
         r <- inner
@@ -1614,12 +1496,12 @@ pattern: `takeExactlyC`:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-8.12 --package conduit-combinators
+-- stack script --resolver lts-11.0
 import Conduit
 
 withFiveSum :: Monad m
-            => ConduitM Int o m r
-            -> ConduitM Int o m (r, Int)
+            => ConduitT Int o m r
+            -> ConduitT Int o m (r, Int)
 withFiveSum inner = do
     r <- takeExactlyC 5 inner
     s <- sumC
@@ -1646,7 +1528,7 @@ length. Instead, we can just do:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-8.12 --package conduit-combinators
+-- stack script --resolver lts-11.0
 import Conduit
 
 main :: IO ()
@@ -1663,7 +1545,7 @@ line:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-8.12 --package conduit-combinators
+-- stack script --resolver lts-11.0
 import Conduit
 
 main :: IO ()
@@ -1676,16 +1558,13 @@ main = runConduitRes $ sourceFile "input.txt" .| decodeUtf8C .| peekForeverE (do
 
 * _How do you deal with an upstream conduit that has a return value?_
   The special fusion functions for it, see
-  [the haddocks](https://www.stackage.org/haddock/lts-6.19/conduit-1.2.8/Data-Conduit.html#g:4).
+  [the haddocks](https://www.stackage.org/haddock/lts-11.0/conduit-1.3.0/Data-Conduit.html#g:6).
 * _How do you capture unconsumed leftover values?_ Again, the special
   fusion functions for it, see
-  [the haddocks](https://www.stackage.org/haddock/lts-6.19/conduit-1.2.8/Data-Conduit.html#g:12).
-* _How do I generalize from a `Source` to `Producer` or `Sink` to
-  `Consumer`?_ See
-  [the haddocks](https://www.stackage.org/haddock/lts-6.19/conduit-1.2.8/Data-Conduit.html#g:12).
-* _How do I run a `Source`, take some of its output, and then run the
+  [the haddocks](https://www.stackage.org/haddock/lts-11.0/conduit-1.3.0/Data-Conduit.html#g:14).
+* _How do I run a source, take some of its output, and then run the
   rest of it later?_
-  [Connect and resume](https://www.stackage.org/haddock/lts-6.19/conduit-1.2.8/Data-Conduit.html#g:10)
+  [Connect and resume](https://www.stackage.org/haddock/lts-11.0/conduit-1.3.0/Data-Conduit.html#g:12)
 
 ## More exercises
 
@@ -1719,6 +1598,21 @@ x $$  y = runConduit (x .| y)
 
 If the old operators seem needlessly confusing/redundant... well, that's why we
 have new operators :).
+
+Prior to the 1.3.0 release in February 2018, there were different data
+types and type synonyms available. In particular, instead of
+`ConduitT`, we had `ConduitM`, and we also had the following synonyms:
+
+```haskell
+type Source     m o   =           ConduitM () o    m ()
+type Sink     i m   r =           ConduitM i  Void m r
+type Conduit  i m o   =           ConduitM i  o    m ()
+type Producer   m o   = forall i. ConduitM i  o    m ()
+type Consumer i m   r = forall o. ConduitM i  o    m r
+```
+
+These older names are all still available, but they've been deprecated
+to simplify the package.
 
 ## Further reading
 
