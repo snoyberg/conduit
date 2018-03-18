@@ -492,7 +492,8 @@ sourceIOHandle :: MonadResource m
                -> ConduitT i S.ByteString m ()
 sourceIOHandle alloc = bracketP alloc IO.hClose sourceHandle
 
--- | Same as sourceFile.
+-- | Same as 'sourceFile'. The alternate name is a holdover from an older
+-- version, when 'sourceFile' was more polymorphic than it is today.
 --
 -- @since 1.3.0
 sourceFileBS :: MonadResource m => FilePath -> ConduitT i ByteString m ()
