@@ -955,12 +955,6 @@ There are two semi-advanced concepts to get across in this example:
    `return () .|` says "we're connecting you to an empty upstream
    component" so satisfy the type system.
 
-The other primitives have to do with resource finalization. These
-primitives are not commonly used, instead relying on the more reliable
-`bracketP` function, which we'll cover below. If you want to learn
-more about these lower level functions, please see the API docs for
-`addCleanup` and `yieldOr`.
-
 ## Evaluation strategy
 
 Let's talk about the evaluation strategy of a conduit pipeline. The
