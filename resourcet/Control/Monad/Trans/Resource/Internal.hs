@@ -136,6 +136,14 @@ instance MonadMask m => MonadMask (ResourceT m) where
   uninterruptibleMask a =
     ResourceT $ \e -> uninterruptibleMask $ \u -> unResourceT (a $ q u) e
       where q u (ResourceT b) = ResourceT (u . b)
+  generalBracket acquire release use =
+    ResourceT $ \r ->
+        generalBracket
+            ( unResourceT acquire r )
+            ( \resource exitCase ->
+                  unResourceT ( release resource exitCase ) r
+            )
+            ( \resource -> unResourceT ( use resource ) r )
 instance MonadIO m => MonadResource (ResourceT m) where
     liftResourceT = transResourceT liftIO
 instance PrimMonad m => PrimMonad (ResourceT m) where

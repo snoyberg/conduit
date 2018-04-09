@@ -22,7 +22,7 @@ Library
                      , containers
                      , transformers             >= 0.4
                      , mtl                      >= 2.0          && < 2.3
-                     , exceptions               >= 0.8
+                     , exceptions               >= 0.10
                      , unliftio-core
                      , primitive
   ghc-options:     -Wall

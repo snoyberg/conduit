@@ -1,3 +1,7 @@
+## 1.2.1
+
+* Support `exceptions-0.10`.
+
 ## 1.2.0
 
 * Drop `monad-control` and `mmorph` dependencies
