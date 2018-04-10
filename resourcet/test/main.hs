@@ -6,6 +6,7 @@ import           Control.Exception            (Exception, MaskingState (MaskedIn
                                                getMaskingState, throwIO, try, fromException)
 import           Control.Exception            (SomeException, handle)
 import           Control.Monad                (unless, void)
+import qualified Control.Monad.Catch
 import           Control.Monad.IO.Class       (liftIO)
 import           Control.Monad.Trans.Resource
 import           Data.IORef
@@ -138,6 +139,8 @@ main = hspec $ do
               Left (ResourceCleanupException (Just _) _ [_]) -> error "Got a ResourceT exception"
               Left (ResourceCleanupException _ _ []) -> error "Only got 1"
               Left (ResourceCleanupException _ _ (_:_:_)) -> error "Got more than 2"
+    describe "MonadMask" $
+        it "works" (runResourceT $ Control.Monad.Catch.bracket (return ()) (const (return ())) (const (return ())) :: IO ())
 
 data Dummy = Dummy
     deriving (Show, Typeable)
