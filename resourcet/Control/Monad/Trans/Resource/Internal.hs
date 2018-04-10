@@ -136,6 +136,7 @@ instance MonadMask m => MonadMask (ResourceT m) where
   uninterruptibleMask a =
     ResourceT $ \e -> uninterruptibleMask $ \u -> unResourceT (a $ q u) e
       where q u (ResourceT b) = ResourceT (u . b)
+#if MIN_VERSION_exceptions(0, 10, 0)
   generalBracket acquire release use =
     ResourceT $ \r ->
         generalBracket
@@ -144,6 +145,9 @@ instance MonadMask m => MonadMask (ResourceT m) where
                   unResourceT ( release resource exitCase ) r
             )
             ( \resource -> unResourceT ( use resource ) r )
+#elif MIN_VERSION_exceptions(0, 9, 0)
+#error exceptions 0.9.0 is not supported
+#endif
 instance MonadIO m => MonadResource (ResourceT m) where
     liftResourceT = transResourceT liftIO
 instance PrimMonad m => PrimMonad (ResourceT m) where
