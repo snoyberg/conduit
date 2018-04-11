@@ -34,6 +34,8 @@ module Data.Conduit.Internal.Conduit
     , yieldM
     , leftover
     , runConduit
+    , runConduitPure
+    , runConduitRes
     , fuse
     , connect
       -- ** Composition
@@ -97,6 +99,7 @@ import Control.Monad.State.Class(MonadState(..))
 import Control.Monad.Trans.Class (MonadTrans (lift))
 import Control.Monad.IO.Unlift (MonadIO (liftIO), MonadUnliftIO, withRunInIO)
 import Control.Monad.Primitive (PrimMonad, PrimState, primitive)
+import Data.Functor.Identity (Identity, runIdentity)
 import Data.Void (Void, absurd)
 import Data.Monoid (Monoid (mappend, mempty))
 import Data.Semigroup (Semigroup ((<>)))
@@ -1231,3 +1234,23 @@ fuseUpstream up down = fmap fst (fuseBoth up down)
 {-# RULES "conduit: leftover l >> p" forall l (p :: ConduitT i o m r). leftover l >> p =
     ConduitT (Leftover (unConduitT p) l) #-}
     -}
+
+-- | Run a pure pipeline until processing completes, i.e. a pipeline
+-- with @Identity@ as the base monad. This is equivalient to
+-- @runIdentity . runConduit@.
+--
+-- @since 1.2.8
+runConduitPure :: ConduitT () Void Identity r -> r
+runConduitPure = runIdentity . runConduit
+{-# INLINE runConduitPure #-}
+
+-- | Run a pipeline which acquires resources with @ResourceT@, and
+-- then run the @ResourceT@ transformer. This is equivalent to
+-- @runResourceT . runConduit@.
+--
+-- @since 1.2.8
+runConduitRes :: MonadUnliftIO m
+              => ConduitT () Void (ResourceT m) r
+              -> m r
+runConduitRes = runResourceT . runConduit
+{-# INLINE runConduitRes #-}

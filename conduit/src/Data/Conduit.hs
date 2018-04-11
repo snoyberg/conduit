@@ -104,23 +104,3 @@ import Data.Void (Void)
 import Data.Functor.Identity (Identity, runIdentity)
 import Control.Monad.Trans.Resource (ResourceT, runResourceT)
 import Control.Monad.IO.Unlift (MonadUnliftIO)
-
--- | Run a pure pipeline until processing completes, i.e. a pipeline
--- with @Identity@ as the base monad. This is equivalient to
--- @runIdentity . runConduit@.
---
--- @since 1.2.8
-runConduitPure :: ConduitT () Void Identity r -> r
-runConduitPure = runIdentity . runConduit
-{-# INLINE runConduitPure #-}
-
--- | Run a pipeline which acquires resources with @ResourceT@, and
--- then run the @ResourceT@ transformer. This is equivalent to
--- @runResourceT . runConduit@.
---
--- @since 1.2.8
-runConduitRes :: MonadUnliftIO m
-              => ConduitT () Void (ResourceT m) r
-              -> m r
-runConduitRes = runResourceT . runConduit
-{-# INLINE runConduitRes #-}
