@@ -1,3 +1,7 @@
+## 1.3.0.3
+
+* Improve fusion framework rewrite rules
+
 ## 1.3.0.2
 
 * Replace `ReadMode` with `WriteMode` in `withSinkFile`
