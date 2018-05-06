@@ -1,4 +1,5 @@
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE Trustworthy #-}
 -- | This was previously known as the Resource monad. However, that term is
 -- confusing next to the ResourceT transformer, so it has been renamed.
 
