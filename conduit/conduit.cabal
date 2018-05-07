@@ -58,7 +58,6 @@ Library
 
   if os(windows)
     build-depends:     Win32
-                     , filepath
     other-modules:     System.Win32File
     cpp-options:       -DWINDOWS
   else
@@ -96,6 +95,9 @@ test-suite conduit-test
                    , filepath
                    , unliftio >= 0.2.4.0
     ghc-options:     -Wall
+
+  if os(windows)
+    cpp-options:     -DWINDOWS
 
 --test-suite doctests
 --    hs-source-dirs: test
