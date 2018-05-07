@@ -85,6 +85,7 @@ test-suite test
                    , transformers
                    , transformers-base
                    , directory
+                   , filepath
     ghc-options:     -Wall
     if os(windows)
         cpp-options: -DWINDOWS
