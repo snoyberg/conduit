@@ -11,7 +11,7 @@ import Data.Maybe (listToMaybe)
 import Data.Conduit.Combinators (slidingWindow, chunksOfE, chunksOfExactlyE)
 import Data.List (intersperse, sort, find, mapAccumL)
 import Safe (tailSafe)
-import System.FilePath (takeExtension)
+import System.FilePath (takeExtension, (</>))
 import Test.Hspec
 import Test.Hspec.QuickCheck
 import qualified Data.Text as T
@@ -134,12 +134,12 @@ spec = do
         res <- runConduitRes
              $ sourceDirectory "test" .| filterC (not . hasExtension' ".swp") .| sinkList
         sort res `shouldBe`
-          [ "test/Data"
-          , "test/Spec.hs"
-          , "test/StreamSpec.hs"
-          , "test/doctests.hs"
-          , "test/main.hs"
-          , "test/subdir"
+          [ "test" </> "Data"
+          , "test" </> "Spec.hs"
+          , "test" </> "StreamSpec.hs"
+          , "test" </> "doctests.hs"
+          , "test" </> "main.hs"
+          , "test" </> "subdir"
           ]
     it "sourceDirectoryDeep" $ do
         res1 <- runConduitRes
@@ -147,13 +147,13 @@ spec = do
         res2 <- runConduitRes
               $ sourceDirectoryDeep True "test" .| filterC (not . hasExtension' ".swp") .| sinkList
         sort res1 `shouldBe`
-          [ "test/Data/Conduit/Extra/ZipConduitSpec.hs"
-          , "test/Data/Conduit/StreamSpec.hs"
-          , "test/Spec.hs"
-          , "test/StreamSpec.hs"
-          , "test/doctests.hs"
-          , "test/main.hs"
-          , "test/subdir/dummyfile.txt"
+          [ "test" </> "Data" </> "Conduit" </> "Extra" </> "ZipConduitSpec.hs"
+          , "test" </> "Data" </> "Conduit" </> "StreamSpec.hs"
+          , "test" </> "Spec.hs"
+          , "test" </> "StreamSpec.hs"
+          , "test" </> "doctests.hs"
+          , "test" </> "main.hs"
+          , "test" </> "subdir" </> "dummyfile.txt"
           ]
         sort res1 `shouldBe` sort res2
     prop "drop" $ \(T.pack -> input) count ->
