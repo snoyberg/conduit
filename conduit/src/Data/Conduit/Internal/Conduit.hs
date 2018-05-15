@@ -733,6 +733,22 @@ fuse = (=$=)
 -- Equivalent to 'fuse' and '=$=', however the latter is deprecated and will
 -- be removed in a future version.
 --
+-- Note that, while this operator looks like categorical composition
+-- (from "Control.Category"), there are a few reasons it's different:
+--
+-- * The position of the type parameters to 'ConduitT' do not
+--   match. We would need to change @ConduitT i o m r@ to @ConduitT r
+--   m i o@, which would preclude a 'Monad' or 'MonadTrans' instance.
+--
+-- * The result value from upstream and downstream are allowed to
+--   differ between upstream and downstream. In other words, we would
+--   need the type signature here to look like @ConduitT a b m r ->
+--   ConduitT b c m r -> ConduitT a c m r@.
+--
+-- * Due to leftovers, we do not have a left identity in Conduit. This
+--   can be achieved with the underlying @Pipe@ datatype, but this is
+--   not generally recommended. See <https://stackoverflow.com/a/15263700>.
+--
 -- @since 1.2.8
 (.|) :: Monad m
      => ConduitM a b m () -- ^ upstream
