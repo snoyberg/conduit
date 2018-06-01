@@ -95,7 +95,7 @@ list. The conduit version does the exact same thing, but:
   many functions matching common list functions, but appends a `C` to
   disambiguate the names. (If you'd prefer to use a qualified import,
   check out
-  [Data.Conduit.Combinators](https://www.stackage.org/haddock/lts-11.7/conduit-1.3.0/Data-Conduit-Combinators.html)).
+  [Data.Conduit.Combinators](https://www.stackage.org/haddock/lts-11.7/conduit-1.3.0.2/Data-Conduit-Combinators.html)).
 * To consume all of our results back into a list, we use `sinkList`
 * We need to explicitly run our conduit pipeline to get a result from
   it. Since we're running a pure pipeline (no monadic effects), we can
@@ -335,7 +335,7 @@ runConduit $ yieldMany [1..10] .| mapC show .| mapM_C print
 
 In this snippet, `yieldMany [1..10]`, `mapC show`, and `mapM_C print`
 are each components. We use the `.|` operator&mdash;a synonym for the
-[`fuse` function](https://www.stackage.org/haddock/lts-11.7/conduit-1.3.0/Data-Conduit.html#v:fuse)&mdash;to
+[`fuse` function](https://www.stackage.org/haddock/lts-11.7/conduit-1.3.0.2/Data-Conduit.html#v:fuse)&mdash;to
 compose these components into a pipeline. Then we run that pipeline
 with `runConduit`.
 
@@ -1552,13 +1552,13 @@ main = runConduitRes $ sourceFile "input.txt" .| decodeUtf8C .| peekForeverE (do
 
 * _How do you deal with an upstream conduit that has a return value?_
   The special fusion functions for it, see
-  [the haddocks](https://www.stackage.org/haddock/lts-11.7/conduit-1.3.0/Data-Conduit.html#g:6).
+  [the haddocks](https://www.stackage.org/haddock/lts-11.7/conduit-1.3.0.2/Data-Conduit.html#g:6).
 * _How do you capture unconsumed leftover values?_ Again, the special
   fusion functions for it, see
-  [the haddocks](https://www.stackage.org/haddock/lts-11.7/conduit-1.3.0/Data-Conduit.html#g:14).
+  [the haddocks](https://www.stackage.org/haddock/lts-11.7/conduit-1.3.0.2/Data-Conduit.html#g:14).
 * _How do I run a source, take some of its output, and then run the
   rest of it later?_
-  [Connect and resume](https://www.stackage.org/haddock/lts-11.7/conduit-1.3.0/Data-Conduit.html#g:12)
+  [Connect and resume](https://www.stackage.org/haddock/lts-11.7/conduit-1.3.0.2/Data-Conduit.html#g:12)
 
 ## More exercises
 
