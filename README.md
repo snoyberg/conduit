@@ -1567,6 +1567,9 @@ Write a conduit that consumes a stream of `Int`s. It takes the first
 that number and sends them back downstream. You should use the `mapC`
 function for this.
 
+Take a file and, for each line, print out the number of bytes in the
+line (try using bytestring directly and then conduit).
+
 _Further exercises wanted, please feel free to send PRs!_
 
 ## Legacy syntax
