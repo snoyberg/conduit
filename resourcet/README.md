@@ -319,4 +319,4 @@ Likewise, resourcet can be freely used for more flexible resource management wit
 
 ## Conclusion
 
-ResourceT provides you with a flexible means of allocating resources in an exception safe manner. Its main advantage over the simpler bracket pattern is that it allows interleaving of allocations, allowing for more complicated programs to be created efficiently. If your needs are simple, stick with bracket. If you have need of something more complex, resourcet may be your answer. For understanding how it works under the hook, refer [here](https://www.fpcomplete.com/blog/2017/06/understanding-resourcet).
+ResourceT provides you with a flexible means of allocating resources in an exception safe manner. Its main advantage over the simpler bracket pattern is that it allows interleaving of allocations, allowing for more complicated programs to be created efficiently. If your needs are simple, stick with bracket. If you have need of something more complex, resourcet may be your answer. For understanding how it works under the hood, refer [here](https://www.fpcomplete.com/blog/2017/06/understanding-resourcet).
