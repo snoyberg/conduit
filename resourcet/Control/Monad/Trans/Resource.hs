@@ -86,7 +86,7 @@ release (ReleaseKey istate rk) = liftIO $ release' istate rk
 
 -- | Unprotect resource from cleanup actions; this allows you to send
 -- resource into another resourcet process and reregister it there.
--- It returns an release action that should be run in order to clean
+-- It returns a release action that should be run in order to clean
 -- resource or Nothing in case if resource is already freed.
 --
 -- Since 0.4.5
