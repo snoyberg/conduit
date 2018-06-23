@@ -130,7 +130,7 @@ serverHandshake socket creds = do
     params = def
         { TLS.serverWantClientCert = False
         , TLS.serverSupported = def
-            { TLS.supportedCiphers = ciphers
+            { TLS.supportedCiphers = TLSExtra.ciphersuite_default
             , TLS.supportedVersions = [TLS.SSL3,TLS.TLS10,TLS.TLS11,TLS.TLS12]
             }
         , TLS.serverShared = def
@@ -239,15 +239,6 @@ tlsAppData ctx addr mlocal = AppData
     , appCloseConnection' = TLS.contextClose ctx
     , appRawSocket' = Nothing
     }
-
--- taken from stunnel example in tls-extra
-ciphers :: [TLS.Cipher]
-ciphers =
-    [ TLSExtra.cipher_AES128_SHA1
-    , TLSExtra.cipher_AES256_SHA1
-    , TLSExtra.cipher_RC4_128_MD5
-    , TLSExtra.cipher_RC4_128_SHA1
-    ]
 
 readCreds :: TlsCertData -> IO TLS.Credentials
 readCreds (TlsCertData iocert iochains iokey) =
