@@ -131,7 +131,6 @@ serverHandshake socket creds = do
         { TLS.serverWantClientCert = False
         , TLS.serverSupported = def
             { TLS.supportedCiphers = TLSExtra.ciphersuite_default
-            , TLS.supportedVersions = [TLS.SSL3,TLS.TLS10,TLS.TLS11,TLS.TLS12]
             }
         , TLS.serverShared = def
             { TLS.sharedCredentials = creds

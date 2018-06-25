@@ -1,3 +1,7 @@
+## 1.3.2
+
+* Use the recommended SSL versions from TLS
+
 ## 1.3.1
 
 * Use the default ciphersuite from TLS
