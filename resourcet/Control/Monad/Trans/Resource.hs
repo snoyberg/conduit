@@ -7,6 +7,7 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE Trustworthy #-}
 -- | Allocate resources which are guaranteed to be released.
 --
 -- For more information, see <https://www.fpcomplete.com/user/snoyberg/library-documentation/resourcet>.

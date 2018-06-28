@@ -1,3 +1,4 @@
+{-# LANGUAGE Trustworthy #-}
 -- | Unlifted "Control.Monad.Trans.Resource".
 --
 -- @since 1.1.10

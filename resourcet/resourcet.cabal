@@ -25,7 +25,7 @@ Library
                      , exceptions               (== 0.8.* || == 0.10.*)
                      , unliftio-core
                      , primitive
-  ghc-options:     -Wall
+  ghc-options:     -Wall -fno-warn-trustworthy-safe
 
 test-suite test
     hs-source-dirs: test
