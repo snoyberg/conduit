@@ -21,6 +21,7 @@ Library
   Build-depends:       base                     >= 4.9          && < 5
                      , containers
                      , transformers             >= 0.4
+                     , transformers-base        >= 0.4.4
                      , mtl                      >= 2.0          && < 2.3
                      , exceptions               (== 0.8.* || == 0.10.*)
                      , unliftio-core
