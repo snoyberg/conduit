@@ -54,6 +54,7 @@ import qualified Control.Monad.Trans.Writer.Strict as Strict ( WriterT )
 import Control.Monad.IO.Class (MonadIO (..))
 import Control.Monad.Primitive (PrimMonad (..))
 import qualified Control.Exception as E
+import qualified Control.Monad.Base as B
 
 -- FIXME Do we want to only support MonadThrow?
 import Control.Monad.Catch (MonadThrow (..), MonadCatch (..), MonadMask (..))
@@ -252,6 +253,9 @@ instance MonadUnliftIO m => MonadUnliftIO (ResourceT m) where
   askUnliftIO = ResourceT $ \r ->
                 withUnliftIO $ \u ->
                 return (UnliftIO (unliftIO u . flip unResourceT r))
+
+instance (B.MonadBase b m) => B.MonadBase b (ResourceT m) where
+    liftBase = lift . B.liftBase
 
 #define GO(T) instance (MonadResource m) => MonadResource (T m) where liftResourceT = lift . liftResourceT
 #define GOX(X, T) instance (X, MonadResource m) => MonadResource (T m) where liftResourceT = lift . liftResourceT
