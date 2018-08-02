@@ -7,21 +7,18 @@
 {-# LANGUAGE NoImplicitPrelude         #-}
 {-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE BangPatterns #-}
--- | This module is meant as a replacement for Data.Conduit.List.
+
+-- | This module is meant as a replacement for 'Data.Conduit.List'.
 -- That module follows a naming scheme which was originally inspired
 -- by its enumerator roots. This module is meant to introduce a naming
 -- scheme which encourages conduit best practices.
 --
--- There are two versions of functions in this module. Those with a trailing
--- E work in the individual elements of a chunk of data, e.g., the bytes of
--- a ByteString, the Chars of a Text, or the Ints of a Vector Int. Those
--- without a trailing E work on unchunked streams.
---
--- FIXME: discuss overall naming, usage of mono-traversable, etc
---
 -- Mention take (Conduit) vs drop (Consumer)
 module Data.Conduit.Combinators
-    ( -- * Producers
+    ( -- * Naming Scheme
+      -- $naming_scheme
+
+      -- * Producers
       -- ** Pure
       yieldMany
     , unfold
@@ -304,6 +301,21 @@ import           Data.Sequences (LazySequence (..))
 --   so there's no way for the conduit to guarantee a certain amount
 --   of demand from the upstream.
 
+-- $naming_scheme
+--
+-- [@Functions ending with C@]: This postfix indicates a function returns a
+--   'ConduitM'
+--
+-- [@Functions starting with o@]: This comes from \"mono-traversable\". The o
+--   choice is a bit strange, but it makes sense when you realize that the
+--   letter m is already used for a lot of things in Haskell.
+--
+-- [@Functions ending with E@]: Used when we want to apply our function to the
+--   elements of the stream, not the chunks themselves. For example, if you have
+--   a stream of 'Text', you want to apply the function to the 'Char' elements
+--   inside the 'Text', not the Text itself.
+--
+
 -- | Yield each of the values contained by the given @MonoFoldable@.
 --
 -- This will work on many data structures, including lists, @ByteString@s, and @Vector@s.
@@ -384,6 +396,8 @@ INLINE_RULE(sourceLazy, x, yieldMany (toChunks x))
 --
 -- Subject to fusion
 --
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
+--
 -- @since 1.3.0
 repeatM, repeatMC :: Monad m
                   => m a
@@ -396,6 +410,8 @@ STREAMING(repeatM, repeatMC, repeatMS, m)
 -- the provided predicate returns @False@.
 --
 -- Subject to fusion
+--
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
 --
 -- @since 1.3.0
 repeatWhileM, repeatWhileMC :: Monad m
@@ -764,6 +780,8 @@ INLINE_RULE(drop, n, CL.drop n)
 -- Note: you likely want to use it with monadic composition. See the docs
 -- for 'drop'.
 --
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
+--
 -- @since 1.3.0
 dropE :: (Monad m, Seq.IsSequence seq)
       => Seq.Index seq
@@ -804,6 +822,8 @@ dropWhile f =
 -- Note: you likely want to use it with monadic composition. See the docs
 -- for 'drop'.
 --
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
+--
 -- @since 1.3.0
 dropWhileE :: (Monad m, Seq.IsSequence seq)
            => (Element seq -> Bool)
@@ -832,6 +852,8 @@ INLINE_RULE0(fold, CL.foldMap id)
 --
 -- Subject to fusion
 --
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
+--
 -- @since 1.3.0
 foldE :: (Monad m, MonoFoldable mono, Monoid (Element mono))
       => ConduitT mono o m (Element mono)
@@ -857,6 +879,9 @@ foldlE :: (Monad m, MonoFoldable mono)
 INLINE_RULE(foldlE, f x, CL.fold (ofoldlPrime f) x)
 
 -- Work around CPP not supporting identifiers with primes...
+--
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
+--
 ofoldlPrime :: MonoFoldable mono => (a -> Element mono -> a) -> a -> mono -> a
 ofoldlPrime = ofoldl'
 
@@ -874,6 +899,8 @@ INLINE_RULE(foldMap, f, CL.foldMap f)
 --
 -- Subject to fusion
 --
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
+--
 -- @since 1.3.0
 foldMapE :: (Monad m, MonoFoldable mono, Monoid w)
          => (Element mono -> w)
@@ -884,6 +911,9 @@ INLINE_RULE(foldMapE, f, CL.foldMap (ofoldMap f))
 -- when the stream is empty.
 --
 -- Subject to fusion
+--
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
+--
 foldl1, foldl1C :: Monad m => (a -> a -> a) -> ConduitT a o m (Maybe a)
 foldl1C f =
     await >>= maybe (return Nothing) loop
@@ -895,6 +925,8 @@ STREAMING(foldl1, foldl1C, foldl1S, f)
 -- Returns 'Nothing' when the stream is empty.
 --
 -- Subject to fusion
+--
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
 --
 -- @since 1.3.0
 foldl1E :: (Monad m, MonoFoldable mono, a ~ Element mono)
@@ -922,6 +954,8 @@ foldMaybeNull f macc mono =
 --
 -- Subject to fusion
 --
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
+--
 -- @since 1.3.0
 all, allC :: Monad m
           => (a -> Bool)
@@ -937,6 +971,8 @@ STREAMING(all, allC, allS, f)
 --
 -- Subject to fusion
 --
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
+--
 -- @since 1.3.0
 allE :: (Monad m, MonoFoldable mono)
      => (Element mono -> Bool)
@@ -949,6 +985,8 @@ INLINE_RULE(allE, f, all (oall f))
 -- will stop.
 --
 -- Subject to fusion
+--
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
 --
 -- @since 1.3.0
 any, anyC :: Monad m
@@ -964,6 +1002,8 @@ STREAMING(any, anyC, anyS, f)
 -- will stop.
 --
 -- Subject to fusion
+--
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
 --
 -- @since 1.3.0
 anyE :: (Monad m, MonoFoldable mono)
@@ -987,6 +1027,8 @@ INLINE_RULE0(and, all id)
 --
 -- Subject to fusion
 --
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
+--
 -- @since 1.3.0
 andE :: (Monad m, MonoFoldable mono, Element mono ~ Bool)
      => ConduitT mono o m Bool
@@ -1007,6 +1049,8 @@ INLINE_RULE0(or, any id)
 -- Consumption stops once the first True is encountered.
 --
 -- Subject to fusion
+--
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
 --
 -- @since 1.3.0
 orE :: (Monad m, MonoFoldable mono, Element mono ~ Bool)
@@ -1036,7 +1080,9 @@ INLINE_RULE(elem, x, any (== x))
 --
 -- Subject to fusion
 --
--- @since 1.3.0
+--  Check the [naming scheme](#g:1) to understand prefixes/postfixes. @since
+--
+-- 1.3.0
 elemE :: (Monad m, Seq.IsSequence seq, Eq (Element seq))
       => Element seq
       -> ConduitT seq o m Bool
@@ -1058,6 +1104,8 @@ INLINE_RULE(notElem, x, all (/= x))
 --
 -- Subject to fusion
 --
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
+--
 -- @since 1.3.0
 notElemE :: (Monad m, Seq.IsSequence seq, Eq (Element seq))
          => Element seq
@@ -1071,6 +1119,8 @@ INLINE_RULE(notElemE, x, all (onotElem x))
 -- ByteString, for example.
 --
 -- Subject to fusion
+--
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
 --
 -- @since 1.3.0
 sinkLazy, sinkLazyC :: (Monad m, LazySequence lazy strict)
@@ -1095,6 +1145,8 @@ INLINE_RULE0(sinkList, CL.consume)
 -- then converting to a @Vector@, as it avoids intermediate list constructors.
 --
 -- Subject to fusion
+--
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
 --
 -- @since 1.3.0
 sinkVector, sinkVectorC :: (V.Vector v a, PrimMonad m)
@@ -1126,6 +1178,8 @@ STREAMING0(sinkVector, sinkVectorC, sinkVectorS)
 --
 -- Subject to fusion
 --
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
+--
 -- @since 1.3.0
 sinkVectorN, sinkVectorNC :: (V.Vector v a, PrimMonad m)
                           => Int -- ^ maximum allowed size
@@ -1156,6 +1210,8 @@ STREAMING(sinkVectorN, sinkVectorNC, sinkVectorNS, maxSize)
 -- * Some buffer copying may occur in this version.
 --
 -- Subject to fusion
+--
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
 --
 -- @since 1.3.0
 sinkLazyBuilder, sinkLazyBuilderC :: Monad m => ConduitT Builder o m BL.ByteString
@@ -1197,6 +1253,8 @@ headDef a = fromMaybe a <$> head
 
 -- | Get the next element in the chunked stream.
 --
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
+--
 -- @since 1.3.0
 headE :: (Monad m, Seq.IsSequence seq) => ConduitT seq o m (Maybe (Element seq))
 headE =
@@ -1220,6 +1278,8 @@ peek = CL.peek
 
 -- | View the next element in the chunked stream without consuming it.
 --
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
+--
 -- @since 1.3.0
 peekE :: (Monad m, MonoFoldable mono) => ConduitT mono o m (Maybe (Element mono))
 peekE =
@@ -1238,6 +1298,8 @@ peekE =
 --
 -- Subject to fusion
 --
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
+--
 -- @since 1.3.0
 last, lastC :: Monad m => ConduitT a o m (Maybe a)
 lastC =
@@ -1255,6 +1317,8 @@ lastDef a = fromMaybe a <$> last
 -- | Retrieve the last element in the chunked stream, if present.
 --
 -- Subject to fusion
+--
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
 --
 -- @since 1.3.0
 lastE, lastEC :: (Monad m, Seq.IsSequence seq) => ConduitT seq o m (Maybe (Element seq))
@@ -1276,6 +1340,8 @@ INLINE_RULE0(length, foldl (\x _ -> x + 1) 0)
 --
 -- Subject to fusion
 --
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
+--
 -- @since 1.3.0
 lengthE :: (Monad m, Num len, MonoFoldable mono) => ConduitT mono o m len
 INLINE_RULE0(lengthE, foldl (\x y -> x + fromIntegral (olength y)) 0)
@@ -1291,6 +1357,8 @@ INLINE_RULE(lengthIf, f, foldl (\cnt a -> if f a then (cnt + 1) else cnt) 0)
 -- | Count how many elements in the chunked stream pass the given predicate.
 --
 -- Subject to fusion
+--
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
 --
 -- @since 1.3.0
 lengthIfE :: (Monad m, Num len, MonoFoldable mono)
@@ -1309,6 +1377,8 @@ INLINE_RULE0(maximum, foldl1 max)
 --
 -- Subject to fusion
 --
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
+--
 -- @since 1.3.0
 maximumE :: (Monad m, Seq.IsSequence seq, Ord (Element seq)) => ConduitT seq o m (Maybe (Element seq))
 INLINE_RULE0(maximumE, foldl1E max)
@@ -1324,6 +1394,8 @@ INLINE_RULE0(minimum, foldl1 min)
 -- | Get the smallest element in the chunked stream, if present.
 --
 -- Subject to fusion
+--
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
 --
 -- @since 1.3.0
 minimumE :: (Monad m, Seq.IsSequence seq, Ord (Element seq)) => ConduitT seq o m (Maybe (Element seq))
@@ -1342,6 +1414,8 @@ null = (maybe True (\_ -> False)) `fmap` peek
 --
 -- This function may remove empty leading chunks from the stream, but otherwise
 -- will not modify it.
+--
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
 --
 -- @since 1.3.0
 nullE :: (Monad m, MonoFoldable mono)
@@ -1365,6 +1439,8 @@ INLINE_RULE0(sum, foldl (+) 0)
 --
 -- Subject to fusion
 --
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
+--
 -- @since 1.3.0
 sumE :: (Monad m, MonoFoldable mono, Num (Element mono)) => ConduitT mono o m (Element mono)
 INLINE_RULE0(sumE, foldlE (+) 0)
@@ -1381,6 +1457,8 @@ INLINE_RULE0(product, foldl (*) 1)
 --
 -- Subject to fusion
 --
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
+--
 -- @since 1.3.0
 productE :: (Monad m, MonoFoldable mono, Num (Element mono)) => ConduitT mono o m (Element mono)
 INLINE_RULE0(productE, foldlE (*) 1)
@@ -1388,6 +1466,8 @@ INLINE_RULE0(productE, foldlE (*) 1)
 -- | Find the first matching value.
 --
 -- Subject to fusion
+--
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
 --
 -- @since 1.3.0
 find, findC :: Monad m => (a -> Bool) -> ConduitT a o m (Maybe a)
@@ -1410,7 +1490,8 @@ STREAMING(find, findC, findS, f)
 mapM_ :: Monad m => (a -> m ()) -> ConduitT a o m ()
 INLINE_RULE(mapM_, f, CL.mapM_ f)
 
--- | Apply the action to all elements in the chunked stream.
+-- | Apply the action to all elements in the chunked stream. Check the [naming
+-- scheme](#g:1) to understand prefixes/postfixes.
 --
 -- Note: the same caveat as with 'mapM_' applies. If you don't want to
 -- consume the values, you can use 'iterM':
@@ -1418,6 +1499,8 @@ INLINE_RULE(mapM_, f, CL.mapM_ f)
 -- > iterM (omapM_ f)
 --
 -- Subject to fusion
+--
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
 --
 -- @since 1.3.0
 mapM_E :: (Monad m, MonoFoldable mono) => (Element mono -> m ()) -> ConduitT mono o m ()
@@ -1431,9 +1514,12 @@ INLINE_RULE(mapM_E, f, CL.mapM_ (omapM_ f))
 foldM :: Monad m => (a -> b -> m a) -> a -> ConduitT b o m a
 INLINE_RULE(foldM, f x, CL.foldM f x)
 
--- | A monadic strict left fold on a chunked stream.
+-- | A monadic strict left fold on a chunked stream. Check the [naming
+-- scheme](#g:1) to understand prefixes/postfixes.
 --
 -- Subject to fusion
+--
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
 --
 -- @since 1.3.0
 foldME :: (Monad m, MonoFoldable mono)
@@ -1454,6 +1540,8 @@ INLINE_RULE(foldMapM, f, CL.foldMapM f)
 -- elements in the chunked stream.
 --
 -- Subject to fusion
+--
+--  Check the [naming scheme](#g:1) to understand prefixes/postfixes. @since
 --
 -- @since 1.3.0
 foldMapME :: (Monad m, MonoFoldable mono, Monoid w)
@@ -1503,7 +1591,9 @@ INLINE_RULE(map, f, CL.map f)
 
 -- | Apply a transformation to all elements in a chunked stream.
 --
--- Subject to fusion
+-- Subject to fusion.
+--
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
 --
 -- @since 1.3.0
 mapE :: (Monad m, Functor f) => (a -> b) -> ConduitT (f a) (f b) m ()
@@ -1511,10 +1601,12 @@ INLINE_RULE(mapE, f, CL.map (fmap f))
 
 -- | Apply a monomorphic transformation to all elements in a chunked stream.
 --
--- Unlike @mapE@, this will work on types like @ByteString@ and @Text@ which
--- are @MonoFunctor@ but not @Functor@.
+-- Unlike @mapE@, this will work on types like @ByteString@ and @Text@ which are
+-- @MonoFunctor@ but not @Functor@.
 --
 -- Subject to fusion
+--
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
 --
 -- @since 1.3.0
 omapE :: (Monad m, MonoFunctor mono) => (Element mono -> Element mono) -> ConduitT mono mono m ()
@@ -1528,6 +1620,8 @@ INLINE_RULE(omapE, f, CL.map (omap f))
 --
 -- Subject to fusion
 --
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
+--
 -- @since 1.3.0
 concatMap, concatMapC :: (Monad m, MonoFoldable mono)
                       => (a -> mono)
@@ -1538,11 +1632,14 @@ STREAMING(concatMap, concatMapC, concatMapS, f)
 
 -- | Apply the function to each element in the chunked stream, resulting in a
 -- foldable value (e.g., a list). Then yield each of the individual values in
--- that foldable value separately.
+-- that foldable value separately. Check the [naming scheme](#g:1) to understand
+-- prefixes/postfixes.
 --
 -- Generalizes concatMap, mapMaybe, and mapFoldable.
 --
 -- Subject to fusion
+--
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
 --
 -- @since 1.3.0
 concatMapE :: (Monad m, MonoFoldable mono, Monoid w)
@@ -1567,6 +1664,8 @@ INLINE_RULE(take, n, CL.isolate n)
 -- Note that, if downstream terminates early, not all values will be consumed.
 -- If you want to force /exactly/ the given number of values to be consumed,
 -- see 'takeExactlyE'.
+--
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
 --
 -- @since 1.3.0
 takeE :: (Monad m, Seq.IsSequence seq)
@@ -1608,6 +1707,8 @@ takeWhile f =
 -- | Stream all elements downstream that match the given predicate in a chunked stream.
 --
 -- Same caveats regarding downstream termination apply as with 'takeE'.
+--
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
 --
 -- @since 1.3.0
 takeWhileE :: (Monad m, Seq.IsSequence seq)
@@ -1651,6 +1752,8 @@ takeExactly count inner = take count .| do
 
 -- | Same as 'takeExactly', but for chunked streams.
 --
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
+--
 -- @since 1.3.0
 takeExactlyE :: (Monad m, Seq.IsSequence a)
              => Seq.Index a
@@ -1666,6 +1769,8 @@ takeExactlyE count inner = takeE count .| do
 -- @MonoFoldable@ as individually yielded values.
 --
 -- Subject to fusion
+--
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
 --
 -- @since 1.3.0
 concat, concatC :: (Monad m, MonoFoldable mono)
@@ -1684,6 +1789,8 @@ INLINE_RULE(filter, f, CL.filter f)
 -- | Keep only elements in the chunked stream passing a given predicate.
 --
 -- Subject to fusion
+--
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
 --
 -- @since 1.3.0
 filterE :: (Seq.IsSequence seq, Monad m) => (Element seq -> Bool) -> ConduitT seq seq m ()
@@ -1725,6 +1832,8 @@ conduitVector size =
 --
 -- Subject to fusion
 --
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
+--
 -- @since 1.3.0
 scanl, scanlC :: Monad m => (a -> b -> a) -> a -> ConduitT b a m ()
 scanlC f =
@@ -1745,6 +1854,9 @@ STREAMING(scanl, scanlC, scanlS, f x)
 -- accumulator via @Left@.
 --
 -- Subject to fusion
+--
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
+--
 mapAccumWhile, mapAccumWhileC :: Monad m => (a -> s -> Either s (s, b)) -> s -> ConduitT a b m s
 mapAccumWhileC f =
     loop
@@ -1767,6 +1879,8 @@ INLINE_RULE0(concatMapAccum, CL.concatMapAccum)
 --
 -- Subject to fusion
 --
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
+--
 -- @since 1.3.0
 intersperse, intersperseC :: Monad m => a -> ConduitT a a m ()
 intersperseC x =
@@ -1782,6 +1896,8 @@ STREAMING(intersperse, intersperseC, intersperseS, x)
 -- Best used with structures that support O(1) snoc.
 --
 -- Subject to fusion
+--
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
 --
 -- @since 1.3.0
 slidingWindow, slidingWindowC :: (Monad m, Seq.IsSequence seq, Element seq ~ a) => Int -> ConduitT a seq m ()
@@ -1805,6 +1921,8 @@ STREAMING(slidingWindow, slidingWindowC, slidingWindowS, sz)
 -- The last element may be smaller than the 'chunkSize' (see also
 -- 'chunksOfExactlyE' which will not yield this last element)
 --
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
+--
 -- @since 1.3.0
 chunksOfE :: (Monad m, Seq.IsSequence seq) => Seq.Index seq -> ConduitT seq seq m ()
 chunksOfE chunkSize = chunksOfExactlyE chunkSize >> (await >>= maybe (return ()) yield)
@@ -1813,6 +1931,8 @@ chunksOfE chunkSize = chunksOfExactlyE chunkSize >> (await >>= maybe (return ())
 --
 -- If the input does not split into chunks exactly, the remainder will be
 -- leftover (see also 'chunksOfE')
+--
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
 --
 -- @since 1.3.0
 chunksOfExactlyE :: (Monad m, Seq.IsSequence seq) => Seq.Index seq -> ConduitT seq seq m ()
@@ -1849,6 +1969,8 @@ INLINE_RULE(mapM, f, CL.mapM f)
 --
 -- Subject to fusion
 --
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
+--
 -- @since 1.3.0
 mapME :: (Monad m, Data.Traversable.Traversable f) => (a -> m b) -> ConduitT (f a) (f b) m ()
 INLINE_RULE(mapME, f, CL.mapM (Data.Traversable.mapM f))
@@ -1859,6 +1981,8 @@ INLINE_RULE(mapME, f, CL.mapM (Data.Traversable.mapM f))
 -- are @MonoFunctor@ but not @Functor@.
 --
 -- Subject to fusion
+--
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
 --
 -- @since 1.3.0
 omapME :: (Monad m, MonoTraversable mono)
@@ -1874,6 +1998,8 @@ INLINE_RULE(omapME, f, CL.mapM (omapM f))
 --
 -- Subject to fusion
 --
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
+--
 -- @since 1.3.0
 concatMapM, concatMapMC :: (Monad m, MonoFoldable mono)
                         => (a -> m mono)
@@ -1884,6 +2010,8 @@ STREAMING(concatMapM, concatMapMC, concatMapMS, f)
 -- | Keep only values in the stream passing a given monadic predicate.
 --
 -- Subject to fusion
+--
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
 --
 -- @since 1.3.0
 filterM, filterMC :: Monad m
@@ -1900,6 +2028,8 @@ STREAMING(filterM, filterMC, filterMS, f)
 -- | Keep only elements in the chunked stream passing a given monadic predicate.
 --
 -- Subject to fusion
+--
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
 --
 -- @since 1.3.0
 filterME :: (Monad m, Seq.IsSequence seq) => (Element seq -> m Bool) -> ConduitT seq seq m ()
@@ -1922,6 +2052,8 @@ INLINE_RULE(iterM, f, CL.iterM f)
 --
 -- Subject to fusion
 --
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
+--
 -- @since 1.3.0
 scanlM, scanlMC :: Monad m => (a -> b -> m a) -> a -> ConduitT b a m ()
 scanlMC f =
@@ -1939,6 +2071,9 @@ STREAMING(scanlM, scanlMC, scanlMS, f x)
 -- | Monadic `mapAccumWhile`.
 --
 -- Subject to fusion
+--
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
+--
 mapAccumWhileM, mapAccumWhileMC :: Monad m => (a -> s -> m (Either s (s, b))) -> s -> ConduitT a b m s
 mapAccumWhileMC f =
     loop
@@ -2038,6 +2173,9 @@ lineAscii = takeExactlyUntilE (== 10)
 --
 -- Like @takeExactly@, this will consume the entirety of the prefix
 -- regardless of the behavior of the inner Conduit.
+--
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
+--
 takeExactlyUntilE :: (Monad m, Seq.IsSequence seq)
                   => (Element seq -> Bool)
                   -> ConduitT seq o m r
@@ -2082,6 +2220,9 @@ INLINE_RULE0(unlinesAscii, concatMap (:[Seq.singleton 10]))
 -- that, if you have unknown or untrusted input, this function is
 -- /unsafe/, since it would allow an attacker to form chunks of
 -- massive length and exhaust memory.
+--
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
+--
 splitOnUnboundedE, splitOnUnboundedEC :: (Monad m, Seq.IsSequence seq) => (Element seq -> Bool) -> ConduitT seq seq m ()
 splitOnUnboundedEC f =
     start
@@ -2529,6 +2670,9 @@ peekForever inner =
 -- function is not called.
 --
 -- @since 1.3.0
+--
+-- Check the [naming scheme](#g:1) to better understand prefixes/postfixes.
+--
 peekForeverE :: (Monad m, MonoFoldable i)
              => ConduitT i o m ()
              -> ConduitT i o m ()
