@@ -92,6 +92,7 @@ import Control.Exception (Exception)
 import qualified Control.Exception as E (catch)
 import Control.Monad (liftM, liftM2, ap)
 import Control.Monad.Error.Class(MonadError(..))
+import Control.Monad.Catch (MonadCatch (..), MonadThrow (..), try)
 import Control.Monad.Reader.Class(MonadReader(..))
 import Control.Monad.RWS.Class(MonadRWS())
 import Control.Monad.Writer.Class(MonadWriter(..), censor)
@@ -151,6 +152,16 @@ instance Monad (ConduitT i o m) where
 
 instance MonadThrow m => MonadThrow (ConduitT i o m) where
     throwM = lift . throwM
+
+instance MonadCatch m => MonadCatch (ConduitT i o m) where
+    catch (ConduitT inner) withException =
+        ConduitT $ \next -> do
+            -- We can't pass 'next' to 'inner', yet.
+            -- It may be the source of an exception.
+            potentialException <- try (inner Done)
+            case potentialException of
+                Left e  -> unConduitT (withException e) next
+                Right x -> next x
 
 instance MonadIO m => MonadIO (ConduitT i o m) where
     liftIO = lift . liftIO

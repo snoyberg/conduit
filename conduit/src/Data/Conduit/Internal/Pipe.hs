@@ -46,6 +46,7 @@ module Data.Conduit.Internal.Pipe
 import Control.Applicative (Applicative (..))
 import Control.Monad ((>=>), liftM, ap)
 import Control.Monad.Error.Class(MonadError(..))
+import Control.Monad.Catch (MonadCatch (..), MonadThrow (..))
 import Control.Monad.Reader.Class(MonadReader(..))
 import Control.Monad.RWS.Class(MonadRWS())
 import Control.Monad.Writer.Class(MonadWriter(..))
@@ -131,6 +132,24 @@ instance MonadThrow m => MonadThrow (Pipe l i o u m) where
     throwM = lift . throwM
     {-# INLINE throwM #-}
 
+instance MonadCatch m => MonadCatch (Pipe l i o u m) where
+    catch root withException =
+        go root
+        where
+            go inner = case inner of
+                HaveOutput next x ->
+                    HaveOutput (go next) x
+
+                NeedInput nextInput nextUpstream ->
+                    NeedInput (go . nextInput) (go . nextUpstream)
+
+                PipeM next ->
+                    PipeM (catch (go <$> next) (pure . withException))
+
+                Leftover next x ->
+                    Leftover (go next) x
+
+                x -> x
 
 instance Monad m => Semigroup (Pipe l i o u m ()) where
     (<>) = (>>)
