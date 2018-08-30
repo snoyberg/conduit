@@ -714,7 +714,7 @@ connect :: Monad m
         -> m r
 connect = ($$)
 
--- | Named function synonym for '.|'.
+-- | Named function synonym for '.|'
 --
 -- Equivalent to '.|' and '=$='. However, the latter is
 -- deprecated and will be removed in a future version.
