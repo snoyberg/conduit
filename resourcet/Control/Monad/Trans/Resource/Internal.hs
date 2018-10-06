@@ -27,6 +27,7 @@ module Control.Monad.Trans.Resource.Internal(
 import Control.Exception (throw,Exception,SomeException)
 import Control.Applicative (Applicative (..), Alternative(..))
 import Control.Monad (MonadPlus(..))
+import Control.Monad.Fail (MonadFail(..))
 import Control.Monad.Fix (MonadFix(..))
 import Control.Monad.IO.Unlift
 import Control.Monad.Trans.Class    (MonadTrans (..))
@@ -236,6 +237,10 @@ instance Monad m => Monad (ResourceT m) where
         a <- ma r
         let ResourceT f' = f a
         f' r
+
+-- | @since 1.2.2
+instance MonadFail m => MonadFail (ResourceT m) where
+    fail = lift . Control.Monad.Fail.fail
 
 -- | @since 1.1.8
 instance MonadFix m => MonadFix (ResourceT m) where

@@ -91,6 +91,7 @@ import Control.Applicative (Applicative (..))
 import Control.Exception (Exception)
 import qualified Control.Exception as E (catch)
 import Control.Monad (liftM, liftM2, ap)
+import Control.Monad.Fail(MonadFail(..))
 import Control.Monad.Error.Class(MonadError(..))
 import Control.Monad.Reader.Class(MonadReader(..))
 import Control.Monad.RWS.Class(MonadRWS())
@@ -148,6 +149,10 @@ instance Applicative (ConduitT i o m) where
 instance Monad (ConduitT i o m) where
     return = pure
     ConduitT f >>= g = ConduitT $ \h -> f $ \a -> unConduitT (g a) h
+
+-- | @since 1.3.1
+instance MonadFail m => MonadFail (ConduitT i o m) where
+    fail = lift . Control.Monad.Fail.fail
 
 instance MonadThrow m => MonadThrow (ConduitT i o m) where
     throwM = lift . throwM
