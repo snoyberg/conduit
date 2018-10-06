@@ -1,3 +1,7 @@
+## 1.2.2
+
+* Add `MonadFail` instance for `ResourceT`.
+
 ## 1.2.1
 
 * Support `exceptions-0.10`.

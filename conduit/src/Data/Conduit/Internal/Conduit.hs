@@ -150,6 +150,7 @@ instance Monad (ConduitT i o m) where
     return = pure
     ConduitT f >>= g = ConduitT $ \h -> f $ \a -> unConduitT (g a) h
 
+-- | @since 1.3.1
 instance MonadFail m => MonadFail (ConduitT i o m) where
     fail = lift . Control.Monad.Fail.fail
 

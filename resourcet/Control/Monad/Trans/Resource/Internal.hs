@@ -238,6 +238,7 @@ instance Monad m => Monad (ResourceT m) where
         let ResourceT f' = f a
         f' r
 
+-- | @since 1.2.2
 instance MonadFail m => MonadFail (ResourceT m) where
     fail = lift . Control.Monad.Fail.fail
 
