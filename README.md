@@ -22,6 +22,28 @@ Support (LTS) Haskell version 11 and up. For more information on
 changes between versions 1.2 and 1.3,
 [see the changelog](https://github.com/snoyberg/conduit/blob/master/conduit/ChangeLog.md#130).
 
+## Table of Contents ##
+1. [Synopsis](#synopsis)
+2. [Libraries](#libraries)
+3. [Conduit as a bad list](#conduit-as-a-bad-list)
+4. [Interleaved effects](#interleaved-effects)
+5. [Terminology and concepts](#terminology-and-concepts)
+6. [Folds](#folds)
+7. [Transformations](#transformations)
+8. [Monadic composition](#monadic-composition)
+9. [Primitives](#primitives)
+10. [Evaluation strategy](#evaluation-strategy)
+11. [Resource allocation](#resource-allocation)
+12. [Chunked data](#chunked-data)
+13. [ZipSink](#zipsink)
+14. [ZipSource](#zipsource)
+15. [ZipConduit](#zipconduit)
+16. [Forced consumption](#forced-consumption)
+17. [FAQs](#faqs)
+18. [More exercises](#more-exercises)
+19. [Legacy syntax](#legacy-syntax)
+20. [Further reading](#further-reading)
+
 ## Synopsis
 
 Basic examples of conduit usage, much more to follow!
