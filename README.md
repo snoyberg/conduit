@@ -1443,7 +1443,7 @@ right = either (const Nothing) Just
 inside :: Monad m => ConduitT (Either Int Int) String m ()
 inside = getZipConduit
     $ ZipConduit (concatMapC left  .| evens)
-   *> ZipConduit (concatMapC right .| odds)
+   <* ZipConduit (concatMapC right .| odds)
 
 main :: IO ()
 main = runConduit $ enumFromToC 1 10 .| tagger .| inside .| mapM_C putStrLn
