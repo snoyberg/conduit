@@ -26,7 +26,7 @@ import Data.Function (fix)
 
 -- | Gzip compression with default parameters.
 gzip :: (MonadThrow m, PrimMonad m) => ConduitT ByteString ByteString m ()
-gzip = compress 1 (WindowBits 31)
+gzip = compress (-1) (WindowBits 31)
 
 -- | Gzip decompression with default parameters.
 ungzip :: (PrimMonad m, MonadThrow m) => ConduitT ByteString ByteString m ()

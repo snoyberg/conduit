@@ -1,3 +1,7 @@
+## 1.3.1
+
+* Switched `gzip` to use zlib's default compression level.
+
 ## 1.3.0
 
 * Switch over to unliftio
