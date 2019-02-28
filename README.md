@@ -50,7 +50,7 @@ Basic examples of conduit usage, much more to follow!
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-11.7
+-- stack script --resolver lts-12.21
 import Conduit
 
 main = do
@@ -90,7 +90,7 @@ with.
 
 ``` haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-11.7
+-- stack script --resolver lts-12.21
 {-# LANGUAGE ExtendedDefaultRules #-}
 import Conduit
 
@@ -117,7 +117,7 @@ list. The conduit version does the exact same thing, but:
   many functions matching common list functions, but appends a `C` to
   disambiguate the names. (If you'd prefer to use a qualified import,
   check out
-  [Data.Conduit.Combinators](https://www.stackage.org/haddock/lts-11.7/conduit-1.3.0.2/Data-Conduit-Combinators.html)).
+  [Data.Conduit.Combinators](https://www.stackage.org/haddock/lts/conduit/Data-Conduit-Combinators.html)).
 * To consume all of our results back into a list, we use `sinkList`
 * We need to explicitly run our conduit pipeline to get a result from
   it. Since we're running a pure pipeline (no monadic effects), we can
@@ -136,7 +136,7 @@ yet. Let's build up a slightly more complex pipeline:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-11.7
+-- stack script --resolver lts-12.21
 {-# LANGUAGE ExtendedDefaultRules #-}
 import Conduit
 
@@ -162,7 +162,7 @@ value individually.
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-11.7
+-- stack script --resolver lts-12.21
 {-# LANGUAGE ExtendedDefaultRules #-}
 import Conduit
 
@@ -207,7 +207,7 @@ before. Let's see how the list and conduit versions adapt:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-11.7
+-- stack script --resolver lts-12.21
 {-# LANGUAGE ExtendedDefaultRules #-}
 import Conduit
 
@@ -318,7 +318,7 @@ here's one way to get the same behavior as was achieved with conduit:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-11.7
+-- stack script --resolver lts-12.21
 magic :: Int -> IO Int
 magic x = do
     putStrLn $ "I'm doing magic with " ++ show x
@@ -357,7 +357,7 @@ runConduit $ yieldMany [1..10] .| mapC show .| mapM_C print
 
 In this snippet, `yieldMany [1..10]`, `mapC show`, and `mapM_C print`
 are each components. We use the `.|` operator&mdash;a synonym for the
-[`fuse` function](https://www.stackage.org/haddock/lts-11.7/conduit-1.3.0.2/Data-Conduit.html#v:fuse)&mdash;to
+[`fuse` function](https://www.stackage.org/haddock/lts/conduit/Data-Conduit.html#v:fuse)&mdash;to
 compose these components into a pipeline. Then we run that pipeline
 with `runConduit`.
 
@@ -457,7 +457,7 @@ just be a collection of examples.
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-11.7
+-- stack script --resolver lts-12.21
 import Conduit
 
 main :: IO ()
@@ -469,7 +469,7 @@ Summing is straightforward, and can be done if desired with the
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-11.7
+-- stack script --resolver lts-12.21
 import Conduit
 
 main :: IO ()
@@ -480,7 +480,7 @@ You can use `foldMapC` to fold monoids together:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-11.7
+-- stack script --resolver lts-12.21
 import Conduit
 import Data.Monoid (Sum (..))
 
@@ -492,7 +492,7 @@ Or you can use `foldC` as a shortened form of `foldMapC id`:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-11.7
+-- stack script --resolver lts-12.21
 import Conduit
 
 main :: IO ()
@@ -506,7 +506,7 @@ Though if you want to make that easier you can use `unlinesC`:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-11.7
+-- stack script --resolver lts-12.21
 import Conduit
 
 main :: IO ()
@@ -521,7 +521,7 @@ You can also do monadic folds:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-11.7
+-- stack script --resolver lts-12.21
 import Conduit
 import Data.Monoid (Product (..))
 
@@ -540,7 +540,7 @@ Or with `foldMC`:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-11.7
+-- stack script --resolver lts-12.21
 import Conduit
 import Data.Monoid (Product (..))
 
@@ -571,7 +571,7 @@ examples, so we'll just blast through some examples.
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-11.7
+-- stack script --resolver lts-12.21
 import Conduit
 
 main :: IO ()
@@ -582,7 +582,7 @@ We can also filter out values:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-11.7
+-- stack script --resolver lts-12.21
 import Conduit
 
 main :: IO ()
@@ -593,7 +593,7 @@ Or if desired we can add some values between each value in the list:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-11.7
+-- stack script --resolver lts-12.21
 import Conduit
 
 main :: IO ()
@@ -605,7 +605,7 @@ of chunks (like a list of vector) of data into the individual values.
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-11.7
+-- stack script --resolver lts-12.21
 import Conduit
 
 main :: IO ()
@@ -625,7 +625,7 @@ You can also perform monadic actions while transforming. We've seen
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-11.7
+-- stack script --resolver lts-12.21
 {-# LANGUAGE OverloadedStrings #-}
 import Conduit
 
@@ -647,7 +647,7 @@ on the upstream values without modifying them:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-11.7
+-- stack script --resolver lts-12.21
 
 import Conduit
 
@@ -671,7 +671,7 @@ beginning with a data producer:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-11.7
+-- stack script --resolver lts-12.21
 
 import Conduit
 
@@ -697,7 +697,7 @@ program will do before you read the explanation following it.
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-11.7
+-- stack script --resolver lts-12.21
 
 import Conduit
 
@@ -731,7 +731,7 @@ concepts together, and create a transformer using monadic composition.
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-11.7
+-- stack script --resolver lts-12.21
 
 import Conduit
 
@@ -768,7 +768,7 @@ instead of a collection of them.
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-11.7
+-- stack script --resolver lts-12.21
 
 import Conduit
 
@@ -780,7 +780,7 @@ Of course, we're not limited to using just a single call to `yield`:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-11.7
+-- stack script --resolver lts-12.21
 
 import Conduit
 
@@ -797,7 +797,7 @@ function to get an input value from upstream. For that, we'll use
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-11.7
+-- stack script --resolver lts-12.21
 {-# LANGUAGE ExtendedDefaultRules #-}
 import Conduit
 
@@ -827,7 +827,7 @@ Of course, things get much more interesting when we combine both
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-11.7
+-- stack script --resolver lts-12.21
 import Conduit
 
 myMapC :: Monad m => (i -> o) -> ConduitT i o m ()
@@ -854,7 +854,7 @@ simple example of using the `takeWhileC` function:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-11.7
+-- stack script --resolver lts-12.21
 import Conduit
 
 main :: IO ()
@@ -870,7 +870,7 @@ implement our own `takeWhileC` with just `await` and `yield`.
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-11.7
+-- stack script --resolver lts-12.21
 import Conduit
 
 myTakeWhileC :: Monad m => (i -> Bool) -> ConduitT i i m ()
@@ -919,7 +919,7 @@ our `myTakeWhileC`:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-11.7
+-- stack script --resolver lts-12.21
 import Conduit
 
 myGoodTakeWhileC :: Monad m => (i -> Bool) -> ConduitT i i m ()
@@ -955,7 +955,7 @@ use case. Just to prove it's possible though:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-11.7
+-- stack script --resolver lts-12.21
 import Conduit
 
 main :: IO ()
@@ -985,7 +985,7 @@ downstream_. To see what I mean, consider this example:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-11.7
+-- stack script --resolver lts-12.21
 import Conduit
 
 main :: IO ()
@@ -1001,7 +1001,7 @@ discard them, you could use `sinkNull`:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-11.7
+-- stack script --resolver lts-12.21
 import Conduit
 
 main :: IO ()
@@ -1012,7 +1012,7 @@ Now try and guess what the following program outputs:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-11.7
+-- stack script --resolver lts-12.21
 import Conduit
 
 main :: IO ()
@@ -1027,7 +1027,7 @@ Alright, let's tweak this slightly: what will this one output:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-11.7
+-- stack script --resolver lts-12.21
 import Conduit
 
 main :: IO ()
@@ -1055,7 +1055,7 @@ Let's copy a file with conduit:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-11.7
+-- stack script --resolver lts-12.21
 import Conduit
 import qualified System.IO as IO
 
@@ -1085,7 +1085,7 @@ calls to `withBinaryFile` for you:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-11.7
+-- stack script --resolver lts-12.21
 import Conduit
 
 main :: IO ()
@@ -1120,7 +1120,7 @@ our example as:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-11.7
+-- stack script --resolver lts-12.21
 import Conduit
 import qualified System.IO as IO
 import Data.ByteString (ByteString)
@@ -1147,7 +1147,7 @@ of that together, copying a file becomes absolutely trivial:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-11.7
+-- stack script --resolver lts-12.21
 import Conduit
 
 main :: IO ()
@@ -1160,7 +1160,7 @@ extension into the file "all-haskell-files".
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-11.7
+-- stack script --resolver lts-12.21
 import Conduit
 import System.FilePath (takeExtension)
 
@@ -1189,7 +1189,7 @@ straightforward:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-11.7
+-- stack script --resolver lts-12.21
 import Conduit
 import qualified Data.Text as T
 import Data.Char (toUpper)
@@ -1220,7 +1220,7 @@ straightforward to use. To see it in action:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-11.7
+-- stack script --resolver lts-12.21
 import Conduit
 import Data.Char (toUpper)
 
@@ -1241,7 +1241,7 @@ first line of content:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-11.7
+-- stack script --resolver lts-12.21
 import Conduit
 import Data.Char (toUpper)
 
@@ -1258,7 +1258,7 @@ Or just the first 5 bytes:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-11.7
+-- stack script --resolver lts-12.21
 import Conduit
 
 main :: IO ()
@@ -1288,7 +1288,7 @@ example, let's consider taking the average of a stream of
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-11.7
+-- stack script --resolver lts-12.21
 doubles :: [Double]
 doubles = [1, 2, 3, 4, 5, 6]
 
@@ -1309,7 +1309,7 @@ folding.)
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-11.7
+-- stack script --resolver lts-12.21
 import Conduit
 
 doubles :: [Double]
@@ -1342,7 +1342,7 @@ consume a file and calculate its cryptographic hash. Working with the
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-11.7
+-- stack script --resolver lts-12.21
 import Conduit
 import Crypto.Hash.Conduit (sinkHash)
 import Crypto.Hash (Digest, SHA256)
@@ -1359,7 +1359,7 @@ Or we can get slightly more inventive, and read from an HTTP connection instead 
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-11.7
+-- stack script --resolver lts-12.21
 {-# LANGUAGE OverloadedStrings #-}
 import Conduit
 import Crypto.Hash.Conduit (sinkHash)
@@ -1387,7 +1387,7 @@ index in the sequence:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-11.7
+-- stack script --resolver lts-12.21
 import Conduit
 
 fibs :: [Int]
@@ -1424,7 +1424,7 @@ whole stream:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-11.7
+-- stack script --resolver lts-12.21
 import Conduit
 
 tagger :: Monad m => ConduitT Int (Either Int Int) m ()
@@ -1461,7 +1461,7 @@ amount of data is consumed. Consider:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-11.7
+-- stack script --resolver lts-12.21
 import Conduit
 
 withFiveSum :: Monad m
@@ -1489,7 +1489,7 @@ e.g.:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-11.7
+-- stack script --resolver lts-12.21
 import Conduit
 
 withFiveSum :: Monad m
@@ -1512,7 +1512,7 @@ pattern: `takeExactlyC`:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-11.7
+-- stack script --resolver lts-12.21
 import Conduit
 
 withFiveSum :: Monad m
@@ -1544,7 +1544,7 @@ length. Instead, we can just do:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-11.7
+-- stack script --resolver lts-12.21
 import Conduit
 
 main :: IO ()
@@ -1561,7 +1561,7 @@ line:
 
 ```haskell
 #!/usr/bin/env stack
--- stack script --resolver lts-11.7
+-- stack script --resolver lts-12.21
 import Conduit
 
 main :: IO ()
@@ -1574,13 +1574,13 @@ main = runConduitRes $ sourceFile "input.txt" .| decodeUtf8C .| peekForeverE (do
 
 * _How do you deal with an upstream conduit that has a return value?_
   The special fusion functions for it, see
-  [the haddocks](https://www.stackage.org/haddock/lts-11.7/conduit-1.3.0.2/Data-Conduit.html#g:6).
+  [the haddocks](https://www.stackage.org/haddock/lts/conduit/Data-Conduit.html#g:6).
 * _How do you capture unconsumed leftover values?_ Again, the special
   fusion functions for it, see
-  [the haddocks](https://www.stackage.org/haddock/lts-11.7/conduit-1.3.0.2/Data-Conduit.html#g:14).
+  [the haddocks](https://www.stackage.org/haddock/lts/conduit/Data-Conduit.html#g:14).
 * _How do I run a source, take some of its output, and then run the
   rest of it later?_
-  [Connect and resume](https://www.stackage.org/haddock/lts-11.7/conduit-1.3.0.2/Data-Conduit.html#g:12)
+  [Connect and resume](https://www.stackage.org/haddock/lts/conduit/Data-Conduit.html#g:12)
 
 ## More exercises
 
