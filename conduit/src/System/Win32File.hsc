@@ -31,8 +31,8 @@ import Data.ByteString.Lazy.Internal (defaultChunkSize)
 
 
 #include <fcntl.h>
-#include <Share.h>
-#include <SYS/Stat.h>
+#include <share.h>
+#include <sys/stat.h>
 #include <errno.h>
 
 newtype OFlag = OFlag CInt
