@@ -5,3 +5,5 @@ packages:
 - conduit-extra
 - network-conduit-tls
 - resourcet
+nix:
+  packages: [zlib]
