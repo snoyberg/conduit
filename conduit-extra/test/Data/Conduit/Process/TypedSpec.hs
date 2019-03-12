@@ -12,13 +12,15 @@ spec = do
     let fp = "ChangeLog.md"
         pc = setStdout createSource $ proc "cat" [fp]
     bs <- B.readFile fp
-    bss <- withProcess_ pc $ \p -> runConduit $ getStdout p .| CL.consume
+    bss <- withProcess_ pc $ \p ->
+      runConduit (getStdout p .| CL.consume) <* waitExitCode p
     B.concat bss `shouldBe` bs
   it "cat works with withLoggedProcess_" $ do
     let fp = "ChangeLog.md"
         pc = proc "cat" [fp]
     bs <- B.readFile fp
-    bss <- withLoggedProcess_ pc $ \p -> runConduit $ getStdout p .| CL.consume
+    bss <- withLoggedProcess_ pc $ \p ->
+      runConduit (getStdout p .| CL.consume) <* waitExitCode p
     B.concat bss `shouldBe` bs
   it "failing process throws" $ do
     (withLoggedProcess_ (proc "cat" ["does not exist"]) $ \p -> do
