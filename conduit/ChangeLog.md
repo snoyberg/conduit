@@ -1,3 +1,9 @@
+# ChangeLog for conduit
+
+## 1.3.1.1
+
+* Use lower-case imports (better for cross-compilation) [#408](https://github.com/snoyberg/conduit/pull/408)
+
 ## 1.3.1
 
 * Add `MonadFail` instance for `ConduitT`.
