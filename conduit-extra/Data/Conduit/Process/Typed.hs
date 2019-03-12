@@ -25,18 +25,23 @@ import qualified Data.ByteString.Lazy as BL
 import Data.IORef (IORef, newIORef, readIORef, modifyIORef)
 import Control.Exception (throwIO, catch)
 import Control.Concurrent.Async (concurrently)
+import System.IO (hSetBuffering, BufferMode (NoBuffering))
 
 -- | Provide input to a process by writing to a conduit.
 --
 -- @since 1.2.1
 createSink :: MonadIO m => StreamSpec 'STInput (ConduitM S.ByteString o m ())
-createSink = CB.sinkHandle `fmap` createPipe
+createSink =
+  (\h -> liftIO (hSetBuffering h NoBuffering) >> CB.sinkHandle h)
+  `fmap` createPipe
 
 -- | Read output from a process by read from a conduit.
 --
 -- @since 1.2.1
 createSource :: MonadIO m => StreamSpec 'STOutput (ConduitM i S.ByteString m ())
-createSource = CB.sourceHandle `fmap` createPipe
+createSource =
+  (\h -> liftIO (hSetBuffering h NoBuffering) >> CB.sourceHandle h)
+  `fmap` createPipe
 
 -- | Internal function: like 'createSource', but stick all chunks into
 -- the 'IORef'.

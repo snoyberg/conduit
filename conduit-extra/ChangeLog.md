@@ -1,5 +1,9 @@
 # ChangeLog for conduit-extra
 
+## 1.3.2
+
+* Disable buffering in process modules [#402](https://github.com/snoyberg/conduit/issues/402)
+
 ## 1.3.1.1
 
 * Attempt to fix a test suite failure [#385](https://github.com/snoyberg/conduit/issues/385)
