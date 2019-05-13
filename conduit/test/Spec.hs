@@ -329,6 +329,18 @@ spec = do
         runConduitRes $ yield contents .| sinkFile fp
         res <- S.readFile fp
         res `shouldBe` contents
+    it "sinkFileCautious" $ do
+        let contents = mconcat $ replicate 1000 $ "this is some content\n"
+            fp = "tmp"
+        runConduitRes $ yield contents .| sinkFileCautious fp
+        res <- S.readFile fp
+        res `shouldBe` contents
+    it "withSinkFileCautious" $ do
+        let contents = mconcat $ replicate 1000 $ "this is some content\n"
+            fp = "tmp"
+        withSinkFileCautious fp $ \sink -> runConduit $ yield contents .| sink
+        res <- S.readFile fp
+        res `shouldBe` contents
     it "sinkHandle" $ do
         let contents = mconcat $ replicate 1000 $ "this is some content\n"
             fp = "tmp"
