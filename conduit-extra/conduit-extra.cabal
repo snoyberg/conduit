@@ -20,6 +20,7 @@ extra-source-files:
 
 Library
   Exposed-modules:     Data.Conduit.Attoparsec
+                       Data.Conduit.Async
                        Data.Conduit.Binary
                        Data.Conduit.ByteString.Builder
                        Data.Conduit.Filesystem
@@ -90,6 +91,7 @@ test-suite test
     if os(windows)
         cpp-options: -DWINDOWS
     other-modules:   Data.Conduit.AttoparsecSpec
+                     Data.Conduit.AsyncSpec
                      Data.Conduit.BinarySpec
                      Data.Conduit.ByteString.BuilderSpec
                      Data.Conduit.ExtraSpec
