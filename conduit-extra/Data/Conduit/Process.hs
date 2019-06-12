@@ -18,6 +18,9 @@ module Data.Conduit.Process
     , sourceCmdWithStreams
     , sourceProcessWithStreams
     , withCheckedProcessCleanup
+      -- * InputSource types
+    , FlushInput(..)
+    , BuilderInput(..)
       -- * Reexport
     , module Data.Streaming.Process
     ) where
@@ -46,13 +49,13 @@ instance (r ~ (), r' ~ (), MonadIO m, MonadIO n, i ~ ByteString) => InputSource 
 -- You can pass 'Data.ByteString.Builder.Extra.flush' to flush the input. Note
 -- that the pipe will /not/ automatically close when the processing completes.
 --
--- @since 1.2.2
+-- @since 1.3.2
 newtype BuilderInput o m r = BuilderInput (ConduitM Builder o m r)
 
 -- | Wrapper for input source  which accepts @Flush@es. Note that the pipe
 -- will /not/ automatically close then processing completes.
 --
--- @since 1.2.2
+-- @since 1.3.2
 newtype FlushInput o m r = FlushInput (ConduitM (Flush ByteString) o m r)
 
 instance (MonadIO m, r ~ ()) => InputSource (BuilderInput o m r) where
