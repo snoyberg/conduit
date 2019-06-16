@@ -12,16 +12,11 @@ import qualified Data.Conduit.Text as CT
 import Control.Concurrent
 
 spec :: Spec
-spec = describe "Data.Conduit.Async" $ do
-    it "prints" $ do
-        let source = CL.sourceList ["anna", "banana", "cuckoo"]
-            printAndPassthrough s = do
-                putStrLn $ "Starting " ++ s
-                threadDelay 10000000
-                putStrLn $ "Done " ++ s
-                return s
-        res <- runConduit $ source .| mapAsync 2 printAndPassthrough .| CL.consume
-        res `shouldBe` ["anna", "banana", "cuckoo"]
+spec = describe "Data.Conduit.Async" $
+    it "maintains order on mapAsync" $ do
+        let source = CL.sourceList "abcdefg"
+        res <- runConduit $ source .| mapAsync 3 return .| CL.consume
+        res `shouldBe` "abcdefg"
 
 main :: IO ()
 main = hspec spec
