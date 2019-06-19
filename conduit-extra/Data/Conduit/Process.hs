@@ -29,8 +29,9 @@ import Data.Streaming.Process
 import Data.Streaming.Process.Internal
 import System.Exit (ExitCode (..))
 import Control.Monad.IO.Unlift (MonadIO, liftIO, MonadUnliftIO, withRunInIO, withUnliftIO, unliftIO)
-import System.IO (hClose)
+import System.IO (hClose, BufferMode (NoBuffering), hSetBuffering)
 import Data.Conduit
+import Data.Functor (($>))
 import Data.Conduit.Binary (sourceHandle, sinkHandle, sinkHandleBuilder, sinkHandleFlush)
 import Data.ByteString (ByteString)
 import Data.ByteString.Builder (Builder)
@@ -41,9 +42,9 @@ import Control.Applicative ((<$>), (<*>))
 #endif
 
 instance (r ~ (), MonadIO m, i ~ ByteString) => InputSource (ConduitM i o m r) where
-    isStdStream = (\(Just h) -> return $ sinkHandle h, Just CreatePipe)
+    isStdStream = (\(Just h) -> hSetBuffering h NoBuffering $> sinkHandle h, Just CreatePipe)
 instance (r ~ (), r' ~ (), MonadIO m, MonadIO n, i ~ ByteString) => InputSource (ConduitM i o m r, n r') where
-    isStdStream = (\(Just h) -> return (sinkHandle h, liftIO $ hClose h), Just CreatePipe)
+    isStdStream = (\(Just h) -> hSetBuffering h NoBuffering $> (sinkHandle h, liftIO $ hClose h), Just CreatePipe)
 
 -- | Wrapper for input source which accepts 'Data.ByteString.Builder.Builder's.
 -- You can pass 'Data.ByteString.Builder.Extra.flush' to flush the input. Note
@@ -68,9 +69,9 @@ instance (MonadIO m, MonadIO n, r ~ (), r' ~ ()) => InputSource (FlushInput o m 
   isStdStream = (\(Just h) -> return (FlushInput $ sinkHandleFlush h, liftIO $ hClose h), Just CreatePipe)
 
 instance (r ~ (), MonadIO m, o ~ ByteString) => OutputSink (ConduitM i o m r) where
-    osStdStream = (\(Just h) -> return $ sourceHandle h, Just CreatePipe)
+    osStdStream = (\(Just h) -> hSetBuffering h NoBuffering $> sourceHandle h, Just CreatePipe)
 instance (r ~ (), r' ~ (), MonadIO m, MonadIO n, o ~ ByteString) => OutputSink (ConduitM i o m r, n r') where
-    osStdStream = (\(Just h) -> return (sourceHandle h, liftIO $ hClose h), Just CreatePipe)
+    osStdStream = (\(Just h) -> hSetBuffering h NoBuffering $> (sourceHandle h, liftIO $ hClose h), Just CreatePipe)
 
 -- | Given a @CreateProcess@, run the process, with its output being used as a
 -- @Source@ to feed the provided @Consumer@. Once the process has completed,
