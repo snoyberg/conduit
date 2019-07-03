@@ -1,5 +1,9 @@
 # ChangeLog for conduit-extra
 
+## 1.3.4
+
+* Use `MonadUnliftIO`-generalized versions of `withProcess`-style functions now provided by `typed-process`
+
 ## 1.3.3
 
 * Disable buffering in process modules [#402](https://github.com/snoyberg/conduit/issues/402)

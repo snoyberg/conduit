@@ -5,5 +5,7 @@ packages:
 - conduit-extra
 - network-conduit-tls
 - resourcet
+extra-deps:
+- typed-process-0.2.6.0
 nix:
   packages: [zlib]

@@ -6,15 +6,13 @@ module Data.Conduit.Process.Typed
   ( -- * Conduit specific stuff
     createSink
   , createSource
-    -- * Generalized functions
-  , withProcess -- FIXME import from rio instead
-  , withProcess_
+    -- * Running a process with logging
   , withLoggedProcess_
     -- * Reexports
   , module System.Process.Typed
   ) where
 
-import System.Process.Typed hiding (withProcess, withProcess_)
+import System.Process.Typed
 import qualified System.Process.Typed as P
 import Data.Conduit (ConduitM, (.|), runConduit)
 import qualified Data.Conduit.Binary as CB
@@ -97,7 +95,10 @@ withLoggedProcess_ pc inner = withUnliftIO $ \u -> do
   stderrBuffer <- newIORef id
   let pc' = setStdout (createSourceLogged stdoutBuffer)
           $ setStderr (createSourceLogged stderrBuffer) pc
-  P.withProcess pc' $ \p -> do
+  -- withProcessWait vs Term doesn't actually matter here, since we
+  -- call checkExitCode inside regardless. But still, Wait is the
+  -- safer function to use in general.
+  P.withProcessWait pc' $ \p -> do
     a <- unliftIO u $ inner p
     let drain src = unliftIO u (runConduit (src .| CL.sinkNull))
     ((), ()) <- drain (getStdout p) `concurrently`
