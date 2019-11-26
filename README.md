@@ -1111,7 +1111,7 @@ runResourceT $ do
 Any resources that `foo`, `bar`, or `baz` allocate have a cleanup
 function registered in a mutable map. When the `runResourceT` call
 exits, all of those cleanup functions are called, regardless of
-whether the exiting occured normally or via an exception.
+whether the exiting occurred normally or via an exception.
 
 In order to do this in a conduit, we have the built-in function
 `bracketP`, which takes an allocation function and a cleanup function,
@@ -1299,7 +1299,7 @@ main :: IO ()
 main = print $ average doubles
 ```
 
-However, performance afficionados will quickly point out that this has
+However, performance aficionados will quickly point out that this has
 a space leak: the list will be traversed once for the `sum`, kept in
 memory, and then traversed a second time for the `length`. We could
 work around that by using lower-level functions, but we lose
