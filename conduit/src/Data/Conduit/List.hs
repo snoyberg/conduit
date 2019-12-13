@@ -88,6 +88,9 @@ import Prelude
     , maybe
     , (<=)
     , (>)
+    , error
+    , (++)
+    , show
     )
 import Data.Monoid (Monoid, mempty, mappend)
 import qualified Data.Foldable as F
