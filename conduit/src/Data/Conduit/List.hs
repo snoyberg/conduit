@@ -684,17 +684,14 @@ STREAMING0(consume, consumeC, consumeS)
 --
 -- Since 1.2.9
 chunksOf :: Monad m => Int -> ConduitT a [a] m ()
-chunksOf n =
-    start
+chunksOf n = if n > 0 then loop n id else error $ "chunksOf size must be positive (given " ++ show n ++ ")"
   where
-    start = await >>= maybe (return ()) (\x -> loop n (x:))
-
-    loop !count rest =
-        await >>= maybe (yield (rest [])) go
-      where
-        go y
-            | count > 1 = loop (count - 1) (rest . (y:))
-            | otherwise = yield (rest []) >> loop n (y:)
+    loop 0 rest = yield (rest []) >> loop n id
+    loop count rest = await >>= \ma -> case ma of
+      Nothing -> case rest [] of
+        [] -> return ()
+        nonempty -> yield nonempty
+      Just a -> loop (count - 1) (rest . (a :))
 
 -- | Grouping input according to an equality function.
 --
