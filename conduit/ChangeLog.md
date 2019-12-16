@@ -1,5 +1,9 @@
 # ChangeLog for conduit
 
+## 1.3.1.2
+
+* More eagerly emit groups in `chunksOf` [#427](https://github.com/snoyberg/conduit/pull/427)
+
 ## 1.3.1.1
 
 * Use lower-case imports (better for cross-compilation) [#408](https://github.com/snoyberg/conduit/pull/408)

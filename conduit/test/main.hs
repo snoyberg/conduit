@@ -5,6 +5,7 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 import Test.Hspec
 import Test.Hspec.QuickCheck (prop)
+import Test.QuickCheck (getPositive)
 import Test.QuickCheck.Monadic (assert, monadicIO, run)
 
 import Data.Conduit (runConduit, (.|), ConduitT, runConduitPure, runConduitRes)
@@ -13,7 +14,7 @@ import qualified Data.Conduit.Lift as C
 import qualified Data.Conduit.Internal as CI
 import qualified Data.Conduit.List as CL
 import Data.Typeable (Typeable)
-import Control.Exception (throw)
+import Control.Exception (throw, evaluate)
 import Control.Monad.Trans.Resource (runResourceT)
 import Control.Monad.Trans.Maybe (MaybeT (MaybeT))
 import Control.Monad.State.Strict (modify)
@@ -241,11 +242,18 @@ main = hspec $ do
                     .| CL.fold (+) 0
             x `shouldBe` 2 * sum [1..10 :: Int]
 
-        prop "chunksOf" $ equivToList
-            (DLS.chunksOf 5 :: [Int]->[[Int]]) (CL.chunksOf 5)
+        prop "chunksOf" $ \(positive, xs) ->
+            let p = getPositive positive
+                conduit = CL.sourceList xs .| CL.chunksOf p .| CL.consume
+            in DLS.chunksOf p (xs :: [Int]) == runConduitPure conduit
 
-        prop "chunksOf (negative)" $ equivToList
-            (map (:[]) :: [Int]->[[Int]]) (CL.chunksOf (-5))
+        it "chunksOf (zero)" $
+            let conduit = return () .| CL.chunksOf 0 .| CL.consume
+            in evaluate (runConduitPure conduit) `shouldThrow` anyException
+
+        it "chunksOf (negative)" $
+            let conduit = return () .| CL.chunksOf (-5) .| CL.consume
+            in evaluate (runConduitPure conduit) `shouldThrow` anyException
 
         it "groupBy" $ do
             let input = [1::Int, 1, 2, 3, 3, 3, 4, 5, 5]
