@@ -62,6 +62,7 @@ module Data.Conduit.Internal.Conduit
     , toProducer
     , toConsumer
       -- ** Cleanup
+    , bracketAcquireP
     , bracketP
       -- ** Exceptions
     , catchC
@@ -877,6 +878,20 @@ runConduit :: Monad m => ConduitT () Void m r -> m r
 runConduit (ConduitT p) = runPipe $ injectLeftovers $ p Done
 {-# INLINE [0] runConduit #-}
 
+-- | Version of 'bracketP' for working with libraries that only expose an
+-- 'Acauire' based API.
+--
+-- @since 1.3.2
+bracketAcquireP :: MonadResource m
+                => Acquire a
+                -> (a -> ConduitT i o m r)
+                -> ConduitT i o m r
+bracketAcquireP acquire inside = ConduitT $ \rest -> do
+  (key, seed) <- allocateAcquire acquire
+  unConduitT (inside seed) $ \res -> do
+    release key
+    rest res
+
 -- | Bracket a conduit computation between allocation and release of a
 -- resource. Two guarantees are given about resource finalization:
 --
@@ -896,11 +911,7 @@ bracketP :: MonadResource m
             -- ^ computation to run in-between
          -> ConduitT i o m r
             -- returns the value from the in-between computation
-bracketP alloc free inside = ConduitT $ \rest -> do
-  (key, seed) <- allocate alloc free
-  unConduitT (inside seed) $ \res -> do
-    release key
-    rest res
+bracketP alloc free = bracketAcquireP (mkAcquire alloc free)
 
 -- | Wait for input forever, calling the given inner component for each piece of
 -- new input.
