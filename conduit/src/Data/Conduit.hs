@@ -39,6 +39,7 @@ module Data.Conduit
 
       -- ** Finalization
     , bracketP
+    , bracketAcquireP
 
       -- ** Exception handling
     , catchC

@@ -62,8 +62,8 @@ module Data.Conduit.Internal.Conduit
     , toProducer
     , toConsumer
       -- ** Cleanup
-    , bracketAcquireP
     , bracketP
+    , bracketAcquireP
       -- ** Exceptions
     , catchC
     , handleC
@@ -101,6 +101,7 @@ import Control.Monad.State.Class(MonadState(..))
 import Control.Monad.Trans.Class (MonadTrans (lift))
 import Control.Monad.IO.Unlift (MonadIO (liftIO), MonadUnliftIO, withRunInIO)
 import Control.Monad.Primitive (PrimMonad, PrimState, primitive)
+import Data.Acquire (Acquire, allocateAcquire, mkAcquire)
 import Data.Functor.Identity (Identity, runIdentity)
 import Data.Void (Void, absurd)
 import Data.Monoid (Monoid (mappend, mempty))
