@@ -254,9 +254,11 @@ instance MonadIO m => MonadIO (ResourceT m) where
 
 -- | @since 1.1.10
 instance MonadUnliftIO m => MonadUnliftIO (ResourceT m) where
-  askUnliftIO = ResourceT $ \r ->
-                withUnliftIO $ \u ->
-                return (UnliftIO (unliftIO u . flip unResourceT r))
+  {-# INLINE withRunInIO #-}
+  withRunInIO inner =
+    ResourceT $ \r ->
+    withRunInIO $ \run ->
+    inner (run . flip unResourceT r)
 
 #define GO(T) instance (MonadResource m) => MonadResource (T m) where liftResourceT = lift . liftResourceT
 #define GOX(X, T) instance (X, MonadResource m) => MonadResource (T m) where liftResourceT = lift . liftResourceT

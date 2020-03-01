@@ -1,3 +1,9 @@
+# ChangeLog for resourcet
+
+## 1.2.3
+
+* Support `unliftio-core` 0.2.0.0
+
 ## 1.2.2
 
 * Add `MonadFail` instance for `ResourceT`.
