@@ -9,7 +9,7 @@
 {-# LANGUAGE ConstraintKinds #-}
 -- | Allocate resources which are guaranteed to be released.
 --
--- For more information, see <https://www.fpcomplete.com/user/snoyberg/library-documentation/resourcet>.
+-- For more information, see <https://github.com/snoyberg/conduit/tree/master/resourcet#readme>.
 --
 -- One point to note: all register cleanup actions live in the @IO@ monad, not
 -- the main monad. This allows both more efficient code, and for monads to be
