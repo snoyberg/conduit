@@ -176,13 +176,12 @@ runGeneralTCPServerTLS config app = withRunInIO $ \run ->
 -- | run a server un-crypted but also pass a call-back to trigger a StartTLS handshake
 -- on the underlying connection
 --
--- example usage :
---  @
---  runTCPServerStartTLS serverConfig $ (appData,startTLS) -> do
---    abortTLS <- doSomethingInClear appData
---    unless (abortTLS) $ startTls $ appDataTls -> do
---      doSomethingSSL appDataTls
---  @
+-- Sample usage:
+-- 
+-- > runTCPServerStartTLS serverConfig $ \(appData,startTLS) -> do
+-- >   abortTLS <- doSomethingInClear appData
+-- >   unless abortTLS $ startTls $ \appDataTls -> do
+-- >     doSomethingSSL appDataTls
 runTCPServerStartTLS :: MonadUnliftIO m => TLSConfig -> GeneralApplicationStartTLS m () -> m ()
 runTCPServerStartTLS TLSConfig{..} app = withRunInIO $ \run -> do
     creds <- readCreds tlsCertData
