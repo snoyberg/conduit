@@ -5,6 +5,7 @@
 module Data.Conduit.Process.Typed
   ( -- * Conduit specific stuff
     createSink
+  , createSinkClose
   , createSource
     -- * Running a process with logging
   , withLoggedProcess_
@@ -23,7 +24,7 @@ import qualified Data.ByteString.Lazy as BL
 import Data.IORef (IORef, newIORef, readIORef, modifyIORef)
 import Control.Exception (throwIO, catch)
 import Control.Concurrent.Async (concurrently)
-import System.IO (hSetBuffering, BufferMode (NoBuffering))
+import System.IO (hSetBuffering, BufferMode (NoBuffering), hClose)
 
 -- | Provide input to a process by writing to a conduit.
 --
@@ -31,6 +32,15 @@ import System.IO (hSetBuffering, BufferMode (NoBuffering))
 createSink :: MonadIO m => StreamSpec 'STInput (ConduitM S.ByteString o m ())
 createSink =
   (\h -> liftIO (hSetBuffering h NoBuffering) >> CB.sinkHandle h)
+  `fmap` createPipe
+
+-- | Like 'createSink', but includes a function that can be used to close the
+-- pipe, indicating to the child process that there is no more data.
+--
+-- @since 1.2.1
+createSinkClose :: (MonadIO m, MonadIO n) => StreamSpec 'STInput (ConduitM S.ByteString o m (), n ())
+createSinkClose =
+  (\h -> (liftIO (hSetBuffering h NoBuffering) >> CB.sinkHandle h, liftIO (hClose h)))
   `fmap` createPipe
 
 -- | Read output from a process by read from a conduit.

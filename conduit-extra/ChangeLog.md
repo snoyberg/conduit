@@ -1,5 +1,9 @@
 # ChangeLog for conduit-extra
 
+## 1.3.5
+
+* Add `createSinkClose`
+
 ## 1.3.4
 
 * Use `MonadUnliftIO`-generalized versions of `withProcess`-style functions now provided by `typed-process`
