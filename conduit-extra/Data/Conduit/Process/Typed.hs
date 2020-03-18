@@ -66,26 +66,6 @@ createSourceLogged ref =
     )
     `fmap` createPipe
 
--- | Same as 'P.withProcess', but generalized to 'MonadUnliftIO'.
---
--- @since 1.2.1
-withProcess
-  :: MonadUnliftIO m
-  => ProcessConfig stdin stdout stderr
-  -> (Process stdin stdout stderr -> m a)
-  -> m a
-withProcess pc f = withRunInIO $ \run -> P.withProcess pc (run . f)
-
--- | Same as 'P.withProcess_', but generalized to 'MonadUnliftIO'.
---
--- @since 1.2.1
-withProcess_
-  :: MonadUnliftIO m
-  => ProcessConfig stdin stdout stderr
-  -> (Process stdin stdout stderr -> m a)
-  -> m a
-withProcess_ pc f = withRunInIO $ \run -> P.withProcess_ pc (run . f)
-
 -- | Run a process, throwing an exception on a failure exit code. This
 -- will store all output from stdout and stderr in memory for better
 -- error messages. Note that this will require unbounded memory usage,
