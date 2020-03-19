@@ -992,7 +992,7 @@ mapInput f f' (ConduitT c0) = ConduitT $ \rest -> let
 
 -- | Apply a monadic action to all the input values of a @ConduitT@.
 --
--- Since 1.3.1.3
+-- Since 1.3.2
 mapInputM :: Monad m
           => (i1 -> m i2) -- ^ map initial input to new input
           -> (i2 -> m (Maybe i1)) -- ^ map new leftovers to initial leftovers
