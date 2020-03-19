@@ -11,8 +11,9 @@ module Data.Conduit.Internal
 
 import           Data.Conduit.Internal.Conduit hiding (await,
                                                 awaitForever, bracketP,
-                                                leftover, mapInput, mapOutput,
-                                                mapOutputMaybe, transPipe,
+                                                leftover, mapInput, mapInputM,
+                                                mapOutput, mapOutputMaybe,
+                                                transPipe,
                                                 yield, yieldM)
 import           Data.Conduit.Internal.Pipe
 import           Data.Conduit.Internal.Fusion

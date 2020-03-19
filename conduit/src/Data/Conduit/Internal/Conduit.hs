@@ -72,6 +72,7 @@ module Data.Conduit.Internal.Conduit
     , Data.Conduit.Internal.Conduit.mapOutput
     , Data.Conduit.Internal.Conduit.mapOutputMaybe
     , Data.Conduit.Internal.Conduit.mapInput
+    , Data.Conduit.Internal.Conduit.mapInputM
     , zipSinks
     , zipSources
     , zipSourcesApp
@@ -987,6 +988,20 @@ mapInput f f' (ConduitT c0) = ConduitT $ \rest -> let
     go (Done r) = rest r
     go (PipeM mp) = PipeM $ liftM go mp
     go (Leftover p i) = maybe id (flip Leftover) (f' i) (go p)
+    in go (c0 Done)
+
+-- | Apply a monadic action to all the input values of a @ConduitT@.
+mapInputM :: Monad m
+          => (i1 -> m i2) -- ^ map initial input to new input
+          -> (i2 -> m (Maybe i1)) -- ^ map new leftovers to initial leftovers
+          -> ConduitT i2 o m r
+          -> ConduitT i1 o m r
+mapInputM f f' (ConduitT c0) = ConduitT $ \rest -> let
+    go (HaveOutput p o) = HaveOutput (go p) o
+    go (NeedInput p c)  = NeedInput (\i -> PipeM $ go . p <$> f i) (go . c)
+    go (Done r)         = rest r
+    go (PipeM mp)       = PipeM $ fmap go mp
+    go (Leftover p i)   = PipeM $ (\x -> maybe id (flip Leftover) x (go p)) <$> f' i
     in go (c0 Done)
 
 -- | The connect-and-resume operator. This does not close the @Source@, but
