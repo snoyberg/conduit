@@ -26,7 +26,11 @@ import Control.Exception (throwIO, catch)
 import Control.Concurrent.Async (concurrently)
 import System.IO (hSetBuffering, BufferMode (NoBuffering), hClose)
 
--- | Provide input to a process by writing to a conduit.
+-- | Provide input to a process by writing to a conduit. The sink provided here
+-- will leave the pipe to the child open after the stream ends. This allows the
+-- sink to be used multiple times, but may result in surprising behavior. You
+-- may prefer 'createSinkClose', see
+-- <https://github.com/snoyberg/conduit/issues/434>.
 --
 -- @since 1.2.1
 createSink :: MonadIO m => StreamSpec 'STInput (ConduitM S.ByteString o m ())
@@ -34,13 +38,13 @@ createSink =
   (\h -> liftIO (hSetBuffering h NoBuffering) >> CB.sinkHandle h)
   `fmap` createPipe
 
--- | Like 'createSink', but includes a function that can be used to close the
--- pipe, indicating to the child process that there is no more data.
+-- | Like 'createSink', but closes the pipe to the child process as soon as it
+-- runs out of data.
 --
--- @since 1.2.1
-createSinkClose :: (MonadIO m, MonadIO n) => StreamSpec 'STInput (ConduitM S.ByteString o m (), n ())
+-- @since 1.3.5
+createSinkClose :: MonadIO m => StreamSpec 'STInput (ConduitM S.ByteString o m ())
 createSinkClose =
-  (\h -> (liftIO (hSetBuffering h NoBuffering) >> CB.sinkHandle h, liftIO (hClose h)))
+  (\h -> liftIO (hSetBuffering h NoBuffering) >> CB.sinkHandle h >> liftIO (hClose h))
   `fmap` createPipe
 
 -- | Read output from a process by read from a conduit.
