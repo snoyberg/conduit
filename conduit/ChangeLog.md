@@ -1,5 +1,9 @@
 # ChangeLog for conduit
 
+## 1.3.2
+
+* Add `mapInputM` [#435](https://github.com/snoyberg/conduit/pull/435)
+
 ## 1.3.1.2
 
 * More eagerly emit groups in `chunksOf` [#427](https://github.com/snoyberg/conduit/pull/427)

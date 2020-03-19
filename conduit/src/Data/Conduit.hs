@@ -57,6 +57,7 @@ module Data.Conduit
     , mapOutput
     , mapOutputMaybe
     , mapInput
+    , mapInputM
     , mergeSource
     , passthroughSink
     , sourceToList
