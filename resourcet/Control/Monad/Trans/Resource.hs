@@ -32,6 +32,7 @@ module Control.Monad.Trans.Resource
     , joinResourceT
       -- * Registering/releasing
     , allocate
+    , allocate_
     , register
     , release
     , unprotect
@@ -105,6 +106,22 @@ allocate :: MonadResource m
          -> (a -> IO ()) -- ^ free resource
          -> m (ReleaseKey, a)
 allocate a = liftResourceT . allocateRIO a
+
+-- | Perform some allocation where the return value is not required, and
+-- automatically register a cleanup action.
+--
+-- @allocate_@ is to @allocate@ as @bracket_@ is to @bracket@
+--
+-- This is almost identical to calling the allocation and then
+-- @register@ing the release action, but this properly handles masking of
+-- asynchronous exceptions.
+--
+-- @since 1.2.4
+allocate_ :: MonadResource m
+          => IO a -- ^ allocate
+          -> IO () -- ^ free resource
+          -> m ReleaseKey
+allocate_ a = fmap fst . allocate a . const
 
 -- | Perform asynchronous exception masking.
 --
