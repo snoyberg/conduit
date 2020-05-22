@@ -94,13 +94,21 @@ with.
 {-# LANGUAGE ExtendedDefaultRules #-}
 import Conduit
 
+take10List :: IO ()
+take10List = print
+    $ take 10 [1..]
+
+take10Conduit :: IO ()
+take10Conduit = print $ runConduitPure
+    $ yieldMany [1..] .| takeC 10 .| sinkList
+
 main :: IO ()
 main = do
     putStrLn "List version:"
-    print $ take 10 [1..]
+    take10List
     putStrLn ""
     putStrLn "Conduit version:"
-    print $ runConduitPure $ yieldMany [1..] .| takeC 10 .| sinkList
+    take10Conduit
 ```
 
 Our list function is pretty straightforward: create an infinite list
@@ -140,18 +148,25 @@ yet. Let's build up a slightly more complex pipeline:
 {-# LANGUAGE ExtendedDefaultRules #-}
 import Conduit
 
+complicatedList :: IO ()
+complicatedList = print
+    $ takeWhile (< 18) $ map (* 2) $ take 10 [1..]
+
+complicatedConduit :: IO ()
+complicatedConduit = print $ runConduitPure
+     $ yieldMany [1..]
+    .| takeC 10
+    .| mapC (* 2)
+    .| takeWhileC (< 18)
+    .| sinkList
+
 main :: IO ()
 main = do
     putStrLn "List version:"
-    print $ takeWhile (< 18) $ map (* 2) $ take 10 [1..]
+    complicatedList
     putStrLn ""
     putStrLn "Conduit version:"
-    print $ runConduitPure
-          $ yieldMany [1..]
-         .| takeC 10
-         .| mapC (* 2)
-         .| takeWhileC (< 18)
-         .| sinkList
+    complicatedConduit
 ```
 
 Nothing more magical going on, we're just looking at more
@@ -166,18 +181,25 @@ value individually.
 {-# LANGUAGE ExtendedDefaultRules #-}
 import Conduit
 
+complicatedList :: IO ()
+complicatedList = mapM_ print
+    $ takeWhile (< 18) $ map (* 2) $ take 10 [1..]
+
+complicatedConduit :: IO ()
+complicatedConduit = runConduit
+     $ yieldMany [1..]
+    .| takeC 10
+    .| mapC (* 2)
+    .| takeWhileC (< 18)
+    .| mapM_C print
+
 main :: IO ()
 main = do
     putStrLn "List version:"
-    mapM_ print $ takeWhile (< 18) $ map (* 2) $ take 10 [1..]
+    complicatedList
     putStrLn ""
     putStrLn "Conduit version:"
-    runConduit
-          $ yieldMany [1..]
-         .| takeC 10
-         .| mapC (* 2)
-         .| takeWhileC (< 18)
-         .| mapM_C print
+    complicatedConduit
 ```
 
 For the list version, all we've done is added `mapM_` at the
@@ -216,18 +238,25 @@ magic x = do
     putStrLn $ "I'm doing magic with " ++ show x
     return $ x * 2
 
+magicalList :: IO ()
+magicalList =
+    mapM magic (take 10 [1..]) >>= mapM_ print . takeWhile (< 18)
+
+magicalConduit :: IO ()
+magicalConduit = runConduit
+     $ yieldMany [1..]
+    .| takeC 10
+    .| mapMC magic
+    .| takeWhileC (< 18)
+    .| mapM_C print
+
 main :: IO ()
 main = do
     putStrLn "List version:"
-    mapM magic (take 10 [1..]) >>= mapM_ print . takeWhile (< 18)
+    magicalList
     putStrLn ""
     putStrLn "Conduit version:"
-    runConduit
-          $ yieldMany [1..]
-         .| takeC 10
-         .| mapMC magic
-         .| takeWhileC (< 18)
-         .| mapM_C print
+    magicalConduit
 ```
 
 Notice how different the list version looks: we needed to break out
