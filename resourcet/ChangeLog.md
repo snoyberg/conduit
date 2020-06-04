@@ -2,7 +2,7 @@
 
 ## 1.2.4.1
 
-* Document risk of using `forkIO` within a `ResourceT`
+* Document risk of using `forkIO` within a `ResourceT` [#441](https://github.com/snoyberg/conduit/pull/441)
 
 ## 1.2.4
 
