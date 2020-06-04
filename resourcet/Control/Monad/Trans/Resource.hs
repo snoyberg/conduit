@@ -265,6 +265,10 @@ resourceForkWith g (ResourceT f) =
 --
 -- This is defined as @resourceForkWith forkIO@.
 --
+-- Note: Using regular 'forkIO' inside of a 'ResourceT' is inherently unsafe.
+-- Using it is likely to lead to 'InvalidAccess' exceptions ("The mutable state is being accessed after cleanup").
+-- Use this function, or other concurrency mechanisms like 'concurrently' or 'race', instead.
+--
 -- @since 0.3.0
 resourceForkIO :: MonadUnliftIO m => ResourceT m () -> ResourceT m ThreadId
 resourceForkIO = resourceForkWith forkIO

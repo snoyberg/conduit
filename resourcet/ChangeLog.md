@@ -1,5 +1,13 @@
 # ChangeLog for resourcet
 
+## 1.2.4.1
+
+* Document risk of using `forkIO` within a `ResourceT`
+
+## 1.2.4
+
+* Add `allocate_` [#437](https://github.com/snoyberg/conduit/pull/437)
+
 ## 1.2.3
 
 * Support `unliftio-core` 0.2.0.0
