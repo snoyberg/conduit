@@ -268,7 +268,7 @@ resourceForkWith g (ResourceT f) =
 -- Note: Using regular 'forkIO' inside of a 'ResourceT' is inherently unsafe,
 -- since the forked thread may try access the resources of the parent after they are cleaned up.
 -- When you use 'resourceForkIO' or 'resourceForkWith', 'ResourceT' is made aware of the new thread, and will only cleanup resources when all threads finish.
--- Other concurrency mechanisms, like 'concurrently' or 'race' are safe to use.
+-- Other concurrency mechanisms, like 'concurrently' or 'race', are safe to use.
 --
 -- If you encounter 'InvalidAccess' exceptions ("The mutable state is being accessed after cleanup"),
 -- use of 'forkIO' is a possible culprit.
