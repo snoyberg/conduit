@@ -13,6 +13,7 @@ Homepage:            http://github.com/snoyberg/conduit
 extra-source-files:  ChangeLog.md, README.md
 
 Library
+  default-language:    Haskell2010
   Exposed-modules:     Control.Monad.Trans.Resource
                        Control.Monad.Trans.Resource.Internal
                        Data.Acquire
@@ -28,6 +29,7 @@ Library
   ghc-options:     -Wall
 
 test-suite test
+    default-language:    Haskell2010
     hs-source-dirs: test
     main-is: main.hs
     type: exitcode-stdio-1.0
