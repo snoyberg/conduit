@@ -8,7 +8,7 @@ Author:              Michael Snoyman
 Maintainer:          michael@snoyman.com
 Category:            Data, Conduit
 Build-type:          Simple
-Cabal-version:       >=1.8
+Cabal-version:       >=1.10
 Homepage:            http://github.com/snoyberg/conduit
 extra-source-files:  ChangeLog.md, README.md
 
