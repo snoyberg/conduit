@@ -70,8 +70,8 @@ instance MonadIO Acquire where
 mkAcquire :: IO a -- ^ acquire the resource
           -> (a -> IO ()) -- ^ free the resource
           -> Acquire a
-mkAcquire create free = Acquire $ \restore -> do
-    x <- restore create
+mkAcquire create free = Acquire $ \_ -> do
+    x <- create
     return $! Allocated x (const $ free x)
 
 -- | Same as 'mkAcquire', but the cleanup function will be informed of /how/
@@ -83,8 +83,8 @@ mkAcquireType
     :: IO a -- ^ acquire the resource
     -> (a -> ReleaseType -> IO ()) -- ^ free the resource
     -> Acquire a
-mkAcquireType create free = Acquire $ \restore -> do
-    x <- restore create
+mkAcquireType create free = Acquire $ \_ -> do
+    x <- create
     return $! Allocated x (free x)
 
 -- | Allocate the given resource and provide it to the provided function. The

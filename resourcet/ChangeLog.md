@@ -1,5 +1,9 @@
 # ChangeLog for resourcet
 
+## 1.2.4.2
+
+* Mask exceptions in `Acquire` allocation action
+
 ## 1.2.4.1
 
 * Document risk of using `forkIO` within a `ResourceT` [#441](https://github.com/snoyberg/conduit/pull/441)
