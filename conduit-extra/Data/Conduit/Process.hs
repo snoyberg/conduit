@@ -6,6 +6,9 @@
 -- | A full tutorial for this module is available at:
 -- <https://github.com/snoyberg/conduit/blob/master/PROCESS.md>.
 --
+-- Some utilities in this module require the threaded runtime because they use
+-- 'System.Process.waitForProcess' internally.
+--
 -- Note that this is a very thin layer around the @Data.Streaming.Process@ module. In particular, it:
 --
 -- * Provides orphan instances for conduit
@@ -82,6 +85,8 @@ instance (r ~ (), r' ~ (), MonadIO m, MonadIO n, o ~ ByteString) => OutputSink (
 -- terminated. This behavior is different from 'sourceProcessWithStreams' due
 -- to historical reasons.
 --
+-- Requires the threaded runtime.
+--
 -- Since 1.1.2
 sourceProcessWithConsumer :: MonadIO m
                           => CreateProcess
@@ -96,6 +101,8 @@ sourceProcessWithConsumer cp consumer = do
 
 -- | Like @sourceProcessWithConsumer@ but providing the command to be run as
 -- a @String@.
+--
+-- Requires the threaded runtime.
 --
 -- Since 1.1.2
 sourceCmdWithConsumer :: MonadIO m
@@ -119,6 +126,8 @@ sourceCmdWithConsumer cmd = sourceProcessWithConsumer (shell cmd)
 --
 -- IO is required because the streams are run concurrently
 -- using the <https://hackage.haskell.org/package/async async> package
+--
+-- Requires the threaded runtime.
 --
 -- @since 1.1.12
 sourceProcessWithStreams
@@ -148,6 +157,8 @@ sourceProcessWithStreams cp producerStdin consumerStdout consumerStderr =
 -- | Like @sourceProcessWithStreams@ but providing the command to be run as
 -- a @String@.
 --
+-- Requires the threaded runtime.
+--
 -- @since 1.1.12
 sourceCmdWithStreams
   :: MonadUnliftIO m
@@ -160,6 +171,8 @@ sourceCmdWithStreams cmd = sourceProcessWithStreams (shell cmd)
 
 -- | Same as 'withCheckedProcess', but kills the child process in the case of
 -- an exception being thrown by the provided callback function.
+--
+-- Requires the threaded runtime.
 --
 -- @since 1.1.11
 withCheckedProcessCleanup
