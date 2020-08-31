@@ -1819,7 +1819,7 @@ chunksOfExactlyE :: (Monad m, Seq.IsSequence seq) => Seq.Index seq -> ConduitT s
 chunksOfExactlyE chunkSize = await >>= maybe (return ()) start
     where
         start b
-            | onull b = chunksOfE chunkSize
+            | onull b = chunksOfExactlyE chunkSize
             | Seq.lengthIndex b < chunkSize = continue (Seq.lengthIndex b) [b]
             | otherwise = let (first,rest) = Seq.splitAt chunkSize b in
                             yield first >> start rest
