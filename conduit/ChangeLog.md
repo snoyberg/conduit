@@ -1,5 +1,9 @@
 # ChangeLog for conduit
 
+## 1.3.2.1
+
+* Fix isChunksForExactlyE [#445](https://github.com/snoyberg/conduit/issues/445) [#446](https://github.com/snoyberg/conduit/pull/446)
+
 ## 1.3.2
 
 * Add `mapInputM` [#435](https://github.com/snoyberg/conduit/pull/435)

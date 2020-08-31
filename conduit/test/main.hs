@@ -716,8 +716,8 @@ main = hspec $ do
         describe "WriterT" $
             it "pass" $
                 let writer = W.pass $ do
-                    W.tell [1 :: Int]
-                    pure ((), (2:))
+                      W.tell [1 :: Int]
+                      pure ((), (2:))
                 in execWriter (runConduit writer) `shouldBe` [2, 1]
 
     describe "Data.Conduit.Lift" $ do
