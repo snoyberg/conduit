@@ -85,8 +85,6 @@ test-suite test
                    , transformers-base
                    , directory
                    , filepath
-    if !impl(ghc >= 7.8)
-        build-depends: bytestring-builder
     ghc-options:     -Wall
     if os(windows)
         cpp-options: -DWINDOWS
@@ -111,8 +109,6 @@ benchmark blaze
                   , gauge
                   , bytestring
                   , transformers
-    if !impl(ghc >= 7.8)
-        build-depends: bytestring-builder
     main-is:        blaze.hs
     ghc-options:    -Wall -O2 -rtsopts
 
