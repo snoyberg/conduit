@@ -73,7 +73,6 @@ test-suite test
 
                    , async
                    , attoparsec
-                   , bytestring-builder
                    , bytestring
                    , exceptions
                    , process
@@ -109,7 +108,6 @@ benchmark blaze
                   , conduit-extra
                   , gauge
                   , bytestring
-                  , bytestring-builder
                   , transformers
     main-is:        blaze.hs
     ghc-options:    -Wall -O2 -rtsopts
