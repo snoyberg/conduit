@@ -15,8 +15,8 @@
 -- sort of \"black box\", where there is no introspection of the contained
 -- elements. Values such as @ByteString@ and @Text@ will likely need to be
 -- treated specially to deal with their contents properly (@Word8@ and @Char@,
--- respectively). See the "Data.Conduit.Binary" and "Data.Conduit.Text"
--- modules.
+-- respectively). See the @Data.Conduit.Binary@ and @Data.Conduit.Text@
+-- modules in the @conduit-extra@ package.
 module Data.Conduit.List
     ( -- * Sources
       sourceList
