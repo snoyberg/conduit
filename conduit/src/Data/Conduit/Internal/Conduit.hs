@@ -728,12 +728,13 @@ connect = ($$)
 -- Note that you have to 'sealConduitT' it first.
 --
 -- Since 1.3.3
-uncons :: forall m o conduit. (Monad m, conduit ~ SealedConduitT () o m ())
-       => conduit -> m (Maybe (o, conduit))
-uncons (SealedConduitT p) = fmap (fmap (second SealedConduitT)) $ go p
+uncons :: Monad m
+       => SealedConduitT () o m ()
+       -> m (Maybe (o, SealedConduitT () o m ()))
+uncons (SealedConduitT p) = go p
   where
     -- This function is the same as @Pipe.uncons@ but it ignores leftovers.
-    go (HaveOutput p o) = pure $ Just (o, p)
+    go (HaveOutput p o) = pure $ Just (o, SealedConduitT p)
     go (NeedInput _ c) = go $ c ()
     go (Done ()) = pure Nothing
     go (PipeM mp) = mp >>= go
@@ -744,12 +745,13 @@ uncons (SealedConduitT p) = fmap (fmap (second SealedConduitT)) $ go p
 -- Note that you have to 'sealConduitT' it first.
 --
 -- Since 1.3.3
-unconsE :: forall m o r conduit. (Monad m, conduit ~ SealedConduitT () o m r)
-       => conduit -> m (Either r (o, conduit))
-unconsE (SealedConduitT p) = fmap (fmap (second SealedConduitT)) $ go p
+unconsE :: Monad m
+        => SealedConduitT () o m r
+        -> m (Either r (o, SealedConduitT () o m r))
+unconsE (SealedConduitT p) = go p
   where
     -- This function is the same as @Pipe.unconsE@ but it ignores leftovers.
-    go (HaveOutput p o) = pure $ Right (o, p)
+    go (HaveOutput p o) = pure $ Right (o, SealedConduitT p)
     go (NeedInput _ c) = go $ c ()
     go (Done r) = pure $ Left r
     go (PipeM mp) = mp >>= go

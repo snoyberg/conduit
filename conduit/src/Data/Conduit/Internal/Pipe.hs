@@ -276,8 +276,9 @@ leftover = Leftover (Done ())
 -- | Split a pipe into head and tail.
 --
 -- Since 1.3.3
-uncons :: forall m o pipe. (Monad m, pipe ~ Pipe Void () o () m ())
-       => pipe -> m (Maybe (o, pipe))
+uncons :: Monad m
+       => Pipe Void () o () m ()
+       -> m (Maybe (o, Pipe Void () o () m ()))
 uncons = go
   where
     go (HaveOutput p o) = pure $ Just (o, p)
@@ -289,8 +290,9 @@ uncons = go
 -- | Split a pipe into head and tail or return its result if it is done.
 --
 -- Since 1.3.3
-unconsE :: forall m o r pipe. (Monad m, pipe ~ Pipe Void () o () m r)
-        => pipe -> m (Either r (o, pipe))
+unconsE :: Monad m
+        => Pipe Void () o () m r
+        -> m (Either r (o, Pipe Void () o () m r))
 unconsE = go
   where
     go (HaveOutput p o) = pure $ Right (o, p)
