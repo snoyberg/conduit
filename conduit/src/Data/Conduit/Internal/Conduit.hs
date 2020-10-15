@@ -38,6 +38,8 @@ module Data.Conduit.Internal.Conduit
     , runConduitRes
     , fuse
     , connect
+    , uncons
+    , unconsE
       -- ** Composition
     , connectResume
     , connectResumeConduit
@@ -101,12 +103,13 @@ import Control.Monad.State.Class(MonadState(..))
 import Control.Monad.Trans.Class (MonadTrans (lift))
 import Control.Monad.IO.Unlift (MonadIO (liftIO), MonadUnliftIO, withRunInIO)
 import Control.Monad.Primitive (PrimMonad, PrimState, primitive)
+import Data.Bifunctor (second)
 import Data.Functor.Identity (Identity, runIdentity)
 import Data.Void (Void, absurd)
 import Data.Monoid (Monoid (mappend, mempty))
 import Data.Semigroup (Semigroup ((<>)))
 import Control.Monad.Trans.Resource
-import Data.Conduit.Internal.Pipe hiding (yield, mapOutput, leftover, yieldM, await, awaitForever, bracketP)
+import Data.Conduit.Internal.Pipe hiding (yield, mapOutput, leftover, yieldM, await, awaitForever, bracketP, uncons, unconsE)
 import qualified Data.Conduit.Internal.Pipe as CI
 import Control.Monad (forever)
 import Data.Traversable (Traversable (..))
@@ -719,6 +722,38 @@ connect :: Monad m
         -> ConduitT a Void m r
         -> m r
 connect = ($$)
+
+-- | Split a conduit into head and tail.
+--
+-- Note that you have to 'sealConduitT' it first.
+--
+-- Since 1.3.3
+uncons :: forall m o conduit. (Monad m, conduit ~ SealedConduitT () o m ())
+       => conduit -> m (Maybe (o, conduit))
+uncons (SealedConduitT p) = fmap (fmap (second SealedConduitT)) $ go p
+  where
+    -- This function is the same as @Pipe.uncons@ but it ignores leftovers.
+    go (HaveOutput p o) = pure $ Just (o, p)
+    go (NeedInput _ c) = go $ c ()
+    go (Done ()) = pure Nothing
+    go (PipeM mp) = mp >>= go
+    go (Leftover p ()) = go p
+
+-- | Split a coundit into head and tail or return its result if it is done.
+--
+-- Note that you have to 'sealConduitT' it first.
+--
+-- Since 1.3.3
+unconsE :: forall m o r conduit. (Monad m, conduit ~ SealedConduitT () o m r)
+       => conduit -> m (Either r (o, conduit))
+unconsE (SealedConduitT p) = fmap (fmap (second SealedConduitT)) $ go p
+  where
+    -- This function is the same as @Pipe.unconsE@ but it ignores leftovers.
+    go (HaveOutput p o) = pure $ Right (o, p)
+    go (NeedInput _ c) = go $ c ()
+    go (Done r) = pure $ Left r
+    go (PipeM mp) = mp >>= go
+    go (Leftover p ()) = go p
 
 -- | Named function synonym for '.|'
 --

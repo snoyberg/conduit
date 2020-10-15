@@ -14,6 +14,7 @@ import           Data.Conduit.Internal.Conduit hiding (await,
                                                 leftover, mapInput, mapInputM,
                                                 mapOutput, mapOutputMaybe,
                                                 transPipe,
-                                                yield, yieldM)
+                                                yield, yieldM,
+                                                uncons, unconsE)
 import           Data.Conduit.Internal.Pipe
 import           Data.Conduit.Internal.Fusion

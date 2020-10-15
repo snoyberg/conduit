@@ -43,6 +43,8 @@ module Data.Conduit.List
     , foldMapM
     , foldM
     , mapM_
+    , uncons
+    , unconsE
       -- * Conduits
       -- ** Pure
     , map
@@ -95,6 +97,7 @@ import Prelude
 import Data.Monoid (Monoid, mempty, mappend)
 import qualified Data.Foldable as F
 import Data.Conduit
+import Data.Conduit.Internal.Conduit (uncons, unconsE)
 import Data.Conduit.Internal.Fusion
 import Data.Conduit.Internal.List.Stream
 import qualified Data.Conduit.Internal as CI
