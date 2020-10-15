@@ -740,7 +740,7 @@ unconsM (SealedConduitT p) = go p
     go (PipeM mp) = mp >>= go
     go (Leftover p ()) = go p
 
--- | Split a coundit into head and tail or return its result if it is done.
+-- | Split a conduit into head and tail or return its result if it is done.
 --
 -- Note that you have to 'sealConduitT' it first.
 --

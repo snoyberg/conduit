@@ -196,7 +196,7 @@ uncons :: SealedConduitT () o Identity ()
        -> Maybe (o, SealedConduitT () o Identity ())
 uncons = runIdentity . unconsM
 
--- | Split a pure coundit into head and tail or return its result if it is done.
+-- | Split a pure conduit into head and tail or return its result if it is done.
 -- This is equivalent to @runIdentity . unconsEitherM@.
 --
 -- Note that you have to 'sealConduitT' it first.
