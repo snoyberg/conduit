@@ -166,12 +166,12 @@ main = hspec $ do
             let y = DL.unfoldr f seed
             x `shouldBe` y
 
-    describe "unconsM" $ do
+    describe "uncons" $ do
         prop "folds to list" $ \xs ->
           let src = C.sealConduitT $ CL.sourceList xs in
-          (xs :: [Int]) == DL.unfoldr (runIdentity . CL.unconsM) src
+          (xs :: [Int]) == DL.unfoldr CL.uncons src
 
-    describe "unconsEitherM" $ do
+    describe "unconsEither" $ do
         let
           eitherToMaybe :: Either l a -> Maybe a
           eitherToMaybe (Left _) = Nothing
@@ -179,7 +179,7 @@ main = hspec $ do
         prop "folds outputs" $ \xs ->
           let c = CL.sourceList xs .| CL.mapAccum (\a s -> (s + a, a)) 0 in
           let sealed = C.sealConduitT c in
-          (xs :: [Int]) == DL.unfoldr (eitherToMaybe . runIdentity . CL.unconsEitherM) sealed
+          (xs :: [Int]) == DL.unfoldr (eitherToMaybe . CL.unconsEither) sealed
 
         let
           waitForLeft :: (b -> Either l (a, b)) -> b -> l
@@ -189,7 +189,7 @@ main = hspec $ do
         prop "returns result" $ \xs ->
           let c = CL.sourceList xs .| CL.mapAccum (\a s -> (s + a, a)) 0 in
           let sealed = C.sealConduitT c in
-          sum (xs :: [Int]) == waitForLeft (runIdentity . CL.unconsEitherM) sealed
+          sum (xs :: [Int]) == waitForLeft CL.unconsEither sealed
 
     describe "Monoid instance for Source" $ do
         it "mappend" $ do

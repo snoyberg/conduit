@@ -33,6 +33,8 @@ module Data.Conduit.List
       -- ** Pure
     , fold
     , foldMap
+    , uncons
+    , unconsEither
     , take
     , drop
     , head
@@ -42,9 +44,9 @@ module Data.Conduit.List
       -- ** Monadic
     , foldMapM
     , foldM
-    , mapM_
     , unconsM
     , unconsEitherM
+    , mapM_
       -- * Conduits
       -- ** Pure
     , map
@@ -101,6 +103,7 @@ import Data.Conduit.Internal.Conduit (unconsM, unconsEitherM)
 import Data.Conduit.Internal.Fusion
 import Data.Conduit.Internal.List.Stream
 import qualified Data.Conduit.Internal as CI
+import Data.Functor.Identity (Identity (runIdentity))
 import Control.Monad (when, (<=<), liftM, void)
 import Control.Monad.Trans.Class (lift)
 
@@ -182,6 +185,26 @@ unfoldEitherMC f =
             Right (a, seed') -> yield a >> go seed'
             Left r -> return r
 STREAMING(unfoldEitherM, unfoldEitherMC, unfoldEitherMS, f seed)
+
+-- | Split a pure conduit into head and tail.
+-- This is equivalent to @runIdentity . unconsM@.
+--
+-- Note that you have to 'sealConduitT' it first.
+--
+-- Since 1.3.3
+uncons :: SealedConduitT () o Identity ()
+       -> Maybe (o, SealedConduitT () o Identity ())
+uncons = runIdentity . unconsM
+
+-- | Split a pure coundit into head and tail or return its result if it is done.
+-- This is equivalent to @runIdentity . unconsEitherM@.
+--
+-- Note that you have to 'sealConduitT' it first.
+--
+-- Since 1.3.3
+unconsEither :: SealedConduitT () o Identity r
+             -> Either r (o, SealedConduitT () o Identity r)
+unconsEither = runIdentity . unconsEitherM
 
 -- | Yield the values from the list.
 --
