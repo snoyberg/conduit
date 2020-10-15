@@ -24,6 +24,7 @@ import qualified Data.List.Split as DLS (chunksOf)
 import Control.Monad.ST (runST)
 import Data.Monoid
 import qualified Data.IORef as I
+import Data.Tuple (swap)
 import Control.Monad.Trans.Resource (allocate, resourceForkIO)
 import Control.Concurrent (threadDelay, killThread)
 import Control.Monad.IO.Class (liftIO)
@@ -51,6 +52,16 @@ import qualified Spec
 equivToList :: Eq b => ([a] -> [b]) -> ConduitT a b Identity () -> [a] -> Bool
 equivToList f conduit xs =
   f xs == runConduitPure (CL.sourceList xs .| conduit .| CL.consume)
+
+-- | Check that two conduits produce the same outputs and return the same result.
+bisimilarTo :: (Eq a, Eq r) => ConduitT () a Identity r -> ConduitT () a Identity r -> Bool
+left `bisimilarTo` right =
+    C.runConduitPure (toListRes left) == C.runConduitPure (toListRes right)
+  where
+    -- | Sink a conduit into a list and return it alongside the result.
+    -- So it is, essentially, @sinkList@ plus result.
+    toListRes :: Monad m => ConduitT () a m r -> ConduitT () Void m ([a], r)
+    toListRes cond = swap <$> C.fuseBoth cond CL.consume
 
 
 main :: IO ()
@@ -171,25 +182,22 @@ main = hspec $ do
           let src = C.sealConduitT $ CL.sourceList xs in
           (xs :: [Int]) == DL.unfoldr CL.uncons src
 
+        prop "works with unfold" $ \xs ->
+          let src = CL.sourceList xs in
+          CL.unfold CL.uncons (C.sealConduitT src) `bisimilarTo` (src :: ConduitT () Int Identity ())
+
     describe "unconsEither" $ do
         let
           eitherToMaybe :: Either l a -> Maybe a
           eitherToMaybe (Left _) = Nothing
           eitherToMaybe (Right a) = Just a
-        prop "folds outputs" $ \xs ->
-          let c = CL.sourceList xs .| CL.mapAccum (\a s -> (s + a, a)) 0 in
-          let sealed = C.sealConduitT c in
-          (xs :: [Int]) == DL.unfoldr (eitherToMaybe . CL.unconsEither) sealed
+        prop "folds outputs to list" $ \xs ->
+          let src = C.sealConduitT $ CL.sourceList xs in
+          (xs :: [Int]) == DL.unfoldr (eitherToMaybe . CL.unconsEither) src
 
-        let
-          waitForLeft :: (b -> Either l (a, b)) -> b -> l
-          waitForLeft f x = case f x of
-            Left l -> l
-            Right (_a, b) -> waitForLeft f b
-        prop "returns result" $ \xs ->
-          let c = CL.sourceList xs .| CL.mapAccum (\a s -> (s + a, a)) 0 in
-          let sealed = C.sealConduitT c in
-          sum (xs :: [Int]) == waitForLeft CL.unconsEither sealed
+        prop "works with unfoldEither" $ \(xs, r) ->
+          let src = CL.sourceList xs *> pure r in
+          CL.unfoldEither CL.unconsEither (C.sealConduitT src) `bisimilarTo` (src :: ConduitT () Int Identity Int)
 
     describe "Monoid instance for Source" $ do
         it "mappend" $ do
