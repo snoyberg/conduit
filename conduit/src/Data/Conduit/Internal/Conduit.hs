@@ -38,8 +38,8 @@ module Data.Conduit.Internal.Conduit
     , runConduitRes
     , fuse
     , connect
-    , uncons
-    , unconsE
+    , unconsM
+    , unconsEitherM
       -- ** Composition
     , connectResume
     , connectResumeConduit
@@ -109,7 +109,7 @@ import Data.Void (Void, absurd)
 import Data.Monoid (Monoid (mappend, mempty))
 import Data.Semigroup (Semigroup ((<>)))
 import Control.Monad.Trans.Resource
-import Data.Conduit.Internal.Pipe hiding (yield, mapOutput, leftover, yieldM, await, awaitForever, bracketP, uncons, unconsE)
+import Data.Conduit.Internal.Pipe hiding (yield, mapOutput, leftover, yieldM, await, awaitForever, bracketP, unconsM, unconsEitherM)
 import qualified Data.Conduit.Internal.Pipe as CI
 import Control.Monad (forever)
 import Data.Traversable (Traversable (..))
@@ -728,12 +728,12 @@ connect = ($$)
 -- Note that you have to 'sealConduitT' it first.
 --
 -- Since 1.3.3
-uncons :: Monad m
-       => SealedConduitT () o m ()
-       -> m (Maybe (o, SealedConduitT () o m ()))
-uncons (SealedConduitT p) = go p
+unconsM :: Monad m
+        => SealedConduitT () o m ()
+        -> m (Maybe (o, SealedConduitT () o m ()))
+unconsM (SealedConduitT p) = go p
   where
-    -- This function is the same as @Pipe.uncons@ but it ignores leftovers.
+    -- This function is the same as @Pipe.unconsM@ but it ignores leftovers.
     go (HaveOutput p o) = pure $ Just (o, SealedConduitT p)
     go (NeedInput _ c) = go $ c ()
     go (Done ()) = pure Nothing
@@ -745,12 +745,12 @@ uncons (SealedConduitT p) = go p
 -- Note that you have to 'sealConduitT' it first.
 --
 -- Since 1.3.3
-unconsE :: Monad m
-        => SealedConduitT () o m r
-        -> m (Either r (o, SealedConduitT () o m r))
-unconsE (SealedConduitT p) = go p
+unconsEitherM :: Monad m
+              => SealedConduitT () o m r
+              -> m (Either r (o, SealedConduitT () o m r))
+unconsEitherM (SealedConduitT p) = go p
   where
-    -- This function is the same as @Pipe.unconsE@ but it ignores leftovers.
+    -- This function is the same as @Pipe.unconsEitherM@ but it ignores leftovers.
     go (HaveOutput p o) = pure $ Right (o, SealedConduitT p)
     go (NeedInput _ c) = go $ c ()
     go (Done r) = pure $ Left r

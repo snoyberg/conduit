@@ -18,8 +18,8 @@ module Data.Conduit.Internal.Pipe
     , yield
     , yieldM
     , leftover
-    , uncons
-    , unconsE
+    , unconsM
+    , unconsEitherM
       -- ** Finalization
     , bracketP
       -- ** Composition
@@ -276,10 +276,10 @@ leftover = Leftover (Done ())
 -- | Split a pipe into head and tail.
 --
 -- Since 1.3.3
-uncons :: Monad m
-       => Pipe Void () o () m ()
-       -> m (Maybe (o, Pipe Void () o () m ()))
-uncons = go
+unconsM :: Monad m
+        => Pipe Void () o () m ()
+        -> m (Maybe (o, Pipe Void () o () m ()))
+unconsM = go
   where
     go (HaveOutput p o) = pure $ Just (o, p)
     go (NeedInput _ c) = go $ c ()
@@ -290,10 +290,10 @@ uncons = go
 -- | Split a pipe into head and tail or return its result if it is done.
 --
 -- Since 1.3.3
-unconsE :: Monad m
-        => Pipe Void () o () m r
-        -> m (Either r (o, Pipe Void () o () m r))
-unconsE = go
+unconsEitherM :: Monad m
+              => Pipe Void () o () m r
+              -> m (Either r (o, Pipe Void () o () m r))
+unconsEitherM = go
   where
     go (HaveOutput p o) = pure $ Right (o, p)
     go (NeedInput _ c) = go $ c ()
