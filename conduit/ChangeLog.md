@@ -1,5 +1,9 @@
 # ChangeLog for conduit
 
+## 1.3.3
+
+* Add `uncons`, `unconsM`, `unconsEither`, `unconsEitherM`.
+
 ## 1.3.2.1
 
 * Fix isChunksForExactlyE [#445](https://github.com/snoyberg/conduit/issues/445) [#446](https://github.com/snoyberg/conduit/pull/446)

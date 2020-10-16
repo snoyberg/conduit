@@ -38,6 +38,8 @@ module Data.Conduit.Internal.Conduit
     , runConduitRes
     , fuse
     , connect
+    , unconsM
+    , unconsEitherM
       -- ** Composition
     , connectResume
     , connectResumeConduit
@@ -106,7 +108,7 @@ import Data.Void (Void, absurd)
 import Data.Monoid (Monoid (mappend, mempty))
 import Data.Semigroup (Semigroup ((<>)))
 import Control.Monad.Trans.Resource
-import Data.Conduit.Internal.Pipe hiding (yield, mapOutput, leftover, yieldM, await, awaitForever, bracketP)
+import Data.Conduit.Internal.Pipe hiding (yield, mapOutput, leftover, yieldM, await, awaitForever, bracketP, unconsM, unconsEitherM)
 import qualified Data.Conduit.Internal.Pipe as CI
 import Control.Monad (forever)
 import Data.Traversable (Traversable (..))
@@ -719,6 +721,40 @@ connect :: Monad m
         -> ConduitT a Void m r
         -> m r
 connect = ($$)
+
+-- | Split a conduit into head and tail.
+--
+-- Note that you have to 'sealConduitT' it first.
+--
+-- Since 1.3.3
+unconsM :: Monad m
+        => SealedConduitT () o m ()
+        -> m (Maybe (o, SealedConduitT () o m ()))
+unconsM (SealedConduitT p) = go p
+  where
+    -- This function is the same as @Pipe.unconsM@ but it ignores leftovers.
+    go (HaveOutput p o) = pure $ Just (o, SealedConduitT p)
+    go (NeedInput _ c) = go $ c ()
+    go (Done ()) = pure Nothing
+    go (PipeM mp) = mp >>= go
+    go (Leftover p ()) = go p
+
+-- | Split a conduit into head and tail or return its result if it is done.
+--
+-- Note that you have to 'sealConduitT' it first.
+--
+-- Since 1.3.3
+unconsEitherM :: Monad m
+              => SealedConduitT () o m r
+              -> m (Either r (o, SealedConduitT () o m r))
+unconsEitherM (SealedConduitT p) = go p
+  where
+    -- This function is the same as @Pipe.unconsEitherM@ but it ignores leftovers.
+    go (HaveOutput p o) = pure $ Right (o, SealedConduitT p)
+    go (NeedInput _ c) = go $ c ()
+    go (Done r) = pure $ Left r
+    go (PipeM mp) = mp >>= go
+    go (Leftover p ()) = go p
 
 -- | Named function synonym for '.|'
 --

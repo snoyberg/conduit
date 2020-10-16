@@ -18,6 +18,8 @@ module Data.Conduit.Internal.Pipe
     , yield
     , yieldM
     , leftover
+    , unconsM
+    , unconsEitherM
       -- ** Finalization
     , bracketP
       -- ** Composition
@@ -270,6 +272,34 @@ leftover :: l -> Pipe l i o u m ()
 leftover = Leftover (Done ())
 {-# INLINE [1] leftover #-}
 {-# RULES "conduit: leftover l >> p" forall l (p :: Pipe l i o u m r). leftover l >> p = Leftover p l #-}
+
+-- | Split a pipe into head and tail.
+--
+-- Since 1.3.3
+unconsM :: Monad m
+        => Pipe Void () o () m ()
+        -> m (Maybe (o, Pipe Void () o () m ()))
+unconsM = go
+  where
+    go (HaveOutput p o) = pure $ Just (o, p)
+    go (NeedInput _ c) = go $ c ()
+    go (Done ()) = pure Nothing
+    go (PipeM mp) = mp >>= go
+    go (Leftover _ i) = absurd i
+
+-- | Split a pipe into head and tail or return its result if it is done.
+--
+-- Since 1.3.3
+unconsEitherM :: Monad m
+              => Pipe Void () o () m r
+              -> m (Either r (o, Pipe Void () o () m r))
+unconsEitherM = go
+  where
+    go (HaveOutput p o) = pure $ Right (o, p)
+    go (NeedInput _ c) = go $ c ()
+    go (Done r) = pure $ Left r
+    go (PipeM mp) = mp >>= go
+    go (Leftover _ i) = absurd i
 
 -- | Bracket a pipe computation between allocation and release of a resource.
 -- We guarantee, via the @MonadResource@ context, that the resource
