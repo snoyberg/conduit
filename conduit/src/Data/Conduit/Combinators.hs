@@ -62,6 +62,7 @@ module Data.Conduit.Combinators
     , foldlE
     , foldMap
     , foldMapE
+    , foldWhile
     , all
     , allE
     , any
