@@ -1755,6 +1755,22 @@ mapAccumWhileC f =
 {-# INLINE mapAccumWhileC #-}
 STREAMING(mapAccumWhile, mapAccumWhileC, mapAccumWhileS, f s)
 
+
+-- | Specialized version of 'mapAccumWhile' that does not provide values downstream.
+--
+-- Subject to fusion
+--
+-- @since TODO
+foldWhile :: Monad m => (a -> s -> Either e s) -> s -> C.ConduitT a o m (Either e s)
+foldWhile f = loop
+  where
+    loop !s = C.await >>= maybe (pure $ Right s) go
+      where
+        go a = either (pure . Left $!) loop $ f a s
+{-# INLINE foldWhile #-}
+STREAMING(foldWhile)
+
+
 -- | 'concatMap' with an accumulator.
 --
 -- Subject to fusion
