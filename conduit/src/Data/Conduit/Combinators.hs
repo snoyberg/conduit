@@ -1762,14 +1762,13 @@ STREAMING(mapAccumWhile, mapAccumWhileC, mapAccumWhileS, f s)
 -- Subject to fusion
 --
 -- @since 1.3.4
-foldWhile, foldWhileC :: Monad m => (a -> s -> Either e s) -> s -> ConduitT a o m (Either e s)
-foldWhileC f = loop
+foldWhile :: Monad m => (a -> s -> Either e s) -> s -> ConduitT a o m (Either e s)
+foldWhile f = loop
   where
-    loop !s = await >>= maybe (pure $ Right s) go
+    loop !s = await >>= maybe (return $ Right s) go
       where
-        go a = either (pure . Left $!) loop $ f a s
-{-# INLINE foldWhileC #-}
-STREAMING(foldWhile, foldWhileC, foldWhileS, f s)
+        go a = either (return . Left $!) loop $ f a s
+{-# INLINE foldWhile #-}
 
 
 -- | 'concatMap' with an accumulator.
