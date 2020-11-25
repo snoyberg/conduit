@@ -1759,8 +1759,6 @@ STREAMING(mapAccumWhile, mapAccumWhileC, mapAccumWhileS, f s)
 
 -- | Specialized version of 'mapAccumWhile' that does not provide values downstream.
 --
--- Subject to fusion
---
 -- @since 1.3.4
 foldWhile :: Monad m => (a -> s -> Either e s) -> s -> ConduitT a o m (Either e s)
 foldWhile f = loop
