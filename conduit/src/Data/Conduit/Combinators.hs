@@ -62,6 +62,7 @@ module Data.Conduit.Combinators
     , foldlE
     , foldMap
     , foldMapE
+    , foldWhile
     , all
     , allE
     , any
@@ -1754,6 +1755,19 @@ mapAccumWhileC f =
         go a = either (return $!) (\(s', b) -> yield b >> loop s') $ f a s
 {-# INLINE mapAccumWhileC #-}
 STREAMING(mapAccumWhile, mapAccumWhileC, mapAccumWhileS, f s)
+
+
+-- | Specialized version of 'mapAccumWhile' that does not provide values downstream.
+--
+-- @since 1.3.4
+foldWhile :: Monad m => (a -> s -> Either e s) -> s -> ConduitT a o m (Either e s)
+foldWhile f = loop
+  where
+    loop !s = await >>= maybe (return $ Right s) go
+      where
+        go a = either (return . Left $!) loop $ f a s
+{-# INLINE foldWhile #-}
+
 
 -- | 'concatMap' with an accumulator.
 --

@@ -1,5 +1,9 @@
 # ChangeLog for conduit
 
+## 1.3.4
+
+* Add `foldWhile` [#453](https://github.com/snoyberg/conduit/issues/453) [#456](https://github.com/snoyberg/conduit/pull/456).
+
 ## 1.3.3
 
 * Add `uncons`, `unconsM`, `unconsEither`, `unconsEitherM`.
