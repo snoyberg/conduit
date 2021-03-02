@@ -1,5 +1,9 @@
 # ChangeLog for conduit
 
+## 1.3.4.1
+
+* Library and tests compile and run with GHC 9.0.1 [#455](https://github.com/snoyberg/conduit/pull/455)
+
 ## 1.3.4
 
 * Add `foldWhile` [#453](https://github.com/snoyberg/conduit/issues/453) [#456](https://github.com/snoyberg/conduit/pull/456).

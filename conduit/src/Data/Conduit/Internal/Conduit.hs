@@ -360,7 +360,7 @@ conduitToPipe =
 -- | Generalize a 'Source' to a 'Producer'.
 --
 -- Since 1.0.0
-toProducer :: Monad m => Source m a -> Producer m a
+toProducer :: Monad m => Source m a -> ConduitT i a m ()
 toProducer (ConduitT c0) = ConduitT $ \rest -> let
     go (HaveOutput p o) = HaveOutput (go p) o
     go (NeedInput _ c) = go (c ())
