@@ -10,7 +10,7 @@ module Data.Acquire.Internal
     , Allocated (..)
     , with
     , mkAcquire
-    , ReleaseType (..)
+    , ReleaseType (.., ReleaseException)
     , mkAcquireType
     ) where
 
