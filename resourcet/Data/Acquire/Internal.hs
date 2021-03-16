@@ -4,6 +4,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE PatternSynonyms #-}
 module Data.Acquire.Internal
     ( Acquire (..)
     , Allocated (..)
@@ -16,7 +17,7 @@ module Data.Acquire.Internal
 import Control.Applicative (Applicative (..))
 import Control.Monad.IO.Unlift (MonadIO (..), MonadUnliftIO, withRunInIO)
 import qualified Control.Exception as E
-import Data.Typeable (Typeable)
+import Data.Typeable (Typeable, typeOf)
 import Control.Monad (liftM, ap)
 import qualified Control.Monad.Catch as C ()
 
@@ -25,8 +26,22 @@ import qualified Control.Monad.Catch as C ()
 -- @since 1.1.2
 data ReleaseType = ReleaseEarly
                  | ReleaseNormal
-                 | ReleaseException
-    deriving (Show, Read, Eq, Ord, Enum, Bounded, Typeable)
+                 | ReleaseExceptionWith E.SomeException
+    deriving (Show)
+
+instance Eq ReleaseType where
+    ReleaseEarly == ReleaseEarly = True
+    ReleaseNormal == ReleaseNormal = True
+    ReleaseExceptionWith (E.SomeException e0) == ReleaseExceptionWith (E.SomeException e1) =
+        case typeOf e0 == typeOf e1 of
+            True ->
+                show e0 == show e1
+            False ->
+                False
+    _ == _ =
+        False
+
+pattern ReleaseException <- ReleaseExceptionWith _
 
 data Allocated a = Allocated !a !(ReleaseType -> IO ())
 
@@ -56,7 +71,9 @@ instance Monad Acquire where
     Acquire f >>= g' = Acquire $ \restore -> do
         Allocated x free1 <- f restore
         let Acquire g = g' x
-        Allocated y free2 <- g restore `E.onException` free1 ReleaseException
+        Allocated y free2 <- g restore `E.catch` \e -> do
+            free1 (ReleaseExceptionWith e)
+            E.throwIO e
         return $! Allocated y (\rt -> free2 rt `E.finally` free1 rt)
 
 instance MonadIO Acquire where
@@ -99,6 +116,8 @@ with :: MonadUnliftIO m
      -> m b
 with (Acquire f) g = withRunInIO $ \run -> E.mask $ \restore -> do
     Allocated x free <- f restore
-    res <- restore (run (g x)) `E.onException` free ReleaseException
+    res <- restore (run (g x)) `E.catch` \e -> do
+        free (ReleaseExceptionWith e)
+        E.throwIO e
     free ReleaseNormal
     return res
