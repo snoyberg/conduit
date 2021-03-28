@@ -571,7 +571,6 @@ Or with `foldMC`:
 #!/usr/bin/env stack
 -- stack script --resolver lts-12.21
 import Conduit
-import Data.Monoid (Product (..))
 
 magic :: Int -> Int -> IO Int
 magic total i = do
