@@ -66,17 +66,33 @@ instance MonadIO Acquire where
 
 -- | Create an @Acquire@ value using the given allocate and free functions.
 --
+-- To acquire and free the resource in an arbitrary monad with `MonadUnliftIO`,
+-- do the following:
+--
+-- > acquire <- withRunInIO $ \runInIO ->
+-- >   return $ mkAcquire (runInIO create) (runInIO . free)
+--
+-- Note that this is only safe if the Acquire is run and freed within the same
+-- monadic scope it was created in.
+--
 -- @since 1.1.0
 mkAcquire :: IO a -- ^ acquire the resource
           -> (a -> IO ()) -- ^ free the resource
           -> Acquire a
-mkAcquire create free = Acquire $ \_ -> do
-    x <- create
-    return $! Allocated x (const $ free x)
+mkAcquire create free = mkAcquireType create (\a _ -> free a)
 
 -- | Same as 'mkAcquire', but the cleanup function will be informed of /how/
 -- cleanup was initiated. This allows you to distinguish, for example, between
 -- normal and exceptional exits.
+--
+-- To acquire and free the resource in an arbitrary monad with `MonadUnliftIO`,
+-- do the following:
+--
+-- > acquire <- withRunInIO $ \runInIO ->
+-- >   return $ mkAcquireType (runInIO create) (\a -> runInIO . free a)
+--
+-- Note that this is only safe if the Acquire is run and freed within the same
+-- monadic scope it was created in.
 --
 -- @since 1.1.2
 mkAcquireType
