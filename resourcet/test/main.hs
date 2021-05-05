@@ -4,7 +4,7 @@
 import           Control.Concurrent
 import           Control.Exception            (Exception, MaskingState (MaskedInterruptible),
                                                getMaskingState, throwIO, try, fromException)
-import           Control.Exception            (SomeException, handle)
+import           Control.Exception            (SomeException, handle, toException)
 import           Control.Monad                (unless, void)
 import qualified Control.Monad.Catch
 import           Control.Monad.IO.Class       (liftIO)
@@ -102,7 +102,7 @@ main = hspec $ do
                 Left Dummy <- try $ runResourceT $ do
                     (_releaseKey, ()) <- allocateAcquire acq
                     liftIO $ throwIO Dummy
-                readIORef ref >>= (`shouldBe` Just ReleaseException)
+                readIORef ref >>= (`shouldBe` Just (ReleaseExceptionWith (toException Dummy)))
         describe "with" $ do
             it "normal" $ do
                 ref <- newIORef Nothing
@@ -113,7 +113,7 @@ main = hspec $ do
                 ref <- newIORef Nothing
                 let acq = mkAcquireType (return ()) $ \() -> writeIORef ref . Just
                 Left Dummy <- try $ with acq $ const $ throwIO Dummy
-                readIORef ref >>= (`shouldBe` Just ReleaseException)
+                readIORef ref >>= (`shouldBe` Just (ReleaseExceptionWith (toException Dummy)))
     describe "runResourceTChecked" $ do
         it "catches exceptions" $ do
             eres <- try $ runResourceTChecked $ void $ register $ throwIO Dummy
