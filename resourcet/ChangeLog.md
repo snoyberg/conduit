@@ -1,5 +1,10 @@
 # ChangeLog for resourcet
 
+
+## 1.2.4.3
+
+* Fix a space leak when using `forever` with `ResourceT`. [#470](https://github.com/snoyberg/conduit/pull/470)
+
 ## 1.2.4.2
 
 * Mask exceptions in `Acquire` allocation action
