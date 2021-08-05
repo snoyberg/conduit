@@ -1,11 +1,9 @@
-resolver: lts-13.6
+resolver: lts-18.5
 packages:
 - cereal-conduit
 - conduit
 - conduit-extra
 - network-conduit-tls
 - resourcet
-extra-deps:
-- typed-process-0.2.6.0
 nix:
   packages: [zlib]
