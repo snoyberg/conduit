@@ -220,6 +220,10 @@ instance Applicative m => Applicative (ResourceT m) where
     pure = ResourceT . const . pure
     ResourceT mf <*> ResourceT ma = ResourceT $ \r ->
         mf r <*> ma r
+    ResourceT mf *> ResourceT ma = ResourceT $ \r ->
+        mf r *> ma r
+    ResourceT mf <* ResourceT ma = ResourceT $ \r ->
+        mf r <* ma r
 
 -- | Since 1.1.5
 instance Alternative m => Alternative (ResourceT m) where
