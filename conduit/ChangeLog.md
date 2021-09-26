@@ -1,5 +1,9 @@
 # ChangeLog for conduit
 
+## 1.3.4.2
+
+* Fix GHC 9.2 build [#473](https://github.com/snoyberg/conduit/pull/473)
+
 ## 1.3.4.1
 
 * Library and tests compile and run with GHC 9.0.1 [#455](https://github.com/snoyberg/conduit/pull/455)
