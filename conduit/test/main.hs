@@ -264,7 +264,7 @@ main = hspec $ do
             x <- runConduitRes $
                 CI.ConduitT
                     ((CI.unConduitT (CL.sourceList [1..10]) CI.Done
-                    CI.>+> CI.injectLeftovers ((`CI.unConduitT` CI.Done) $ CL.map (* 2))) >>=)
+                    CI.>+> CI.injectLeftovers ((\c -> c `CI.unConduitT` CI.Done) $ CL.map (* 2))) >>=)
                     .| CL.fold (+) 0
             x `shouldBe` 2 * sum [1..10 :: Int]
 
@@ -580,8 +580,8 @@ main = hspec $ do
             y <- runConduit $ CL.sourceList [1..10 :: Int] .| CL.fold (+) 0
             x `shouldBe` y
         it' "right identity" $ do
-            x <- CI.runPipe $ mapM_ CI.yield [1..10 :: Int] CI.>+> (CI.injectLeftovers $ (`CI.unConduitT` CI.Done) $ CL.fold (+) 0) CI.>+> CI.idP
-            y <- CI.runPipe $ mapM_ CI.yield [1..10 :: Int] CI.>+> (CI.injectLeftovers $ (`CI.unConduitT` CI.Done) $ CL.fold (+) 0)
+            x <- CI.runPipe $ mapM_ CI.yield [1..10 :: Int] CI.>+> (CI.injectLeftovers $ (\c -> c `CI.unConduitT` CI.Done) $ CL.fold (+) 0) CI.>+> CI.idP
+            y <- CI.runPipe $ mapM_ CI.yield [1..10 :: Int] CI.>+> (CI.injectLeftovers $ (\c -> c `CI.unConduitT` CI.Done) $ CL.fold (+) 0)
             x `shouldBe` y
 
     describe "generalizing" $ do
@@ -630,7 +630,7 @@ main = hspec $ do
     describe "injectLeftovers" $ do
         it "works" $ do
             let src = mapM_ CI.yield [1..10 :: Int]
-                conduit = CI.injectLeftovers $ (`CI.unConduitT` CI.Done) $ C.awaitForever $ \i -> do
+                conduit = CI.injectLeftovers $ (\c -> c `CI.unConduitT` CI.Done) $ C.awaitForever $ \i -> do
                     js <- CL.take 2
                     mapM_ C.leftover $ reverse js
                     C.yield i
