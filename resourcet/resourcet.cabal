@@ -24,7 +24,7 @@ Library
                      , transformers             >= 0.4
                      , mtl                      >= 2.0          && < 2.3
                      , exceptions               (== 0.8.* || == 0.10.*)
-                     , unliftio-core
+                     , unliftio-core >= 0.1.1.0
                      , primitive
   ghc-options:     -Wall
 
