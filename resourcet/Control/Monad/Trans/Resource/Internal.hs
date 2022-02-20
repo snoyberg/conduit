@@ -64,6 +64,7 @@ import qualified Data.IORef as I
 import Data.Typeable
 import Data.Word(Word)
 import Data.Acquire.Internal (ReleaseType (..))
+import Control.Monad.Base
 
 -- | A @Monad@ which allows for safe resource allocation. In theory, any monad
 -- transformer stack which includes a @ResourceT@ can be an instance of
@@ -255,6 +256,9 @@ instance MonadTrans ResourceT where
 
 instance MonadIO m => MonadIO (ResourceT m) where
     liftIO = lift . liftIO
+
+instance MonadBase IO m => MonadBase IO (ResourceT m) where
+  liftBase = lift . liftBase
 
 -- | @since 1.1.10
 instance MonadUnliftIO m => MonadUnliftIO (ResourceT m) where

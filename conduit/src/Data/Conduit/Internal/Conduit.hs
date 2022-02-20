@@ -112,6 +112,7 @@ import Data.Conduit.Internal.Pipe hiding (yield, mapOutput, leftover, yieldM, aw
 import qualified Data.Conduit.Internal.Pipe as CI
 import Control.Monad (forever)
 import Data.Traversable (Traversable (..))
+import Control.Monad.Base
 
 -- | Core datatype of the conduit package. This type represents a general
 -- component which can consume a stream of input values @i@, produce a stream
@@ -163,6 +164,9 @@ instance MonadThrow m => MonadThrow (ConduitT i o m) where
 instance MonadIO m => MonadIO (ConduitT i o m) where
     liftIO = lift . liftIO
     {-# INLINE liftIO #-}
+
+instance MonadBase IO m => MonadBase IO (ConduitT i o m) where
+  liftBase = lift . liftBase
 
 instance MonadReader r m => MonadReader r (ConduitT i o m) where
     ask = lift ask
