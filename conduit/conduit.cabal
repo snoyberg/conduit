@@ -56,6 +56,8 @@ Library
                      , text
                      , filepath
                      , directory
+                     , containers
+                     , async
 
   if os(windows)
     build-depends:     Win32
@@ -96,6 +98,7 @@ test-suite conduit-test
                    , silently
                    , filepath
                    , unliftio >= 0.2.4.0
+                   , async
     ghc-options:     -Wall
 
   if os(windows)

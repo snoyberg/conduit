@@ -198,6 +198,8 @@ module Data.Conduit.Combinators
     , mapAccumS
     , peekForever
     , peekForeverE
+    , concurrentMap
+    , InvalidConcurrencyLimitException (..)
     ) where
 
 -- BEGIN IMPORTS
@@ -211,8 +213,10 @@ import qualified Data.ByteString as S
 import qualified Data.ByteString.Lazy as BL
 import           Data.ByteString.Lazy.Internal (defaultChunkSize)
 import           Control.Applicative         (Alternative(..), (<$>))
-import           Control.Exception           (catch, throwIO, finally, bracket, try, evaluate)
+import           Control.Exception           (catch, throwIO, finally, bracket, try, evaluate, Exception)
 import           Control.Category            (Category (..))
+import qualified Control.Concurrent.Async    as Async
+import           Control.Concurrent.MVar
 import           Control.Monad               (unless, when, (>=>), liftM, forever)
 import           Control.Monad.IO.Unlift     (MonadIO (..), MonadUnliftIO, withRunInIO)
 import           Control.Monad.Primitive     (PrimMonad, PrimState, unsafePrimToPrim)
@@ -225,6 +229,7 @@ import           Data.IORef
 import           Data.Maybe                  (fromMaybe, isNothing, isJust)
 import           Data.Monoid                 (Monoid (..))
 import           Data.MonoTraversable
+import qualified Data.Sequence               as Sequence
 import qualified Data.Sequences              as Seq
 import qualified Data.Vector.Generic         as V
 import qualified Data.Vector.Generic.Mutable as VM
@@ -2554,3 +2559,85 @@ peekForeverE inner =
         case mx of
             Nothing -> return ()
             Just _ -> inner >> loop
+
+-- | Thrown by 'concurrentMap' when the given concurrency is not positive.
+--
+-- @since 1.3.4.3
+data InvalidConcurrencyLimitException = InvalidConcurrencyLimitException deriving (Eq, Show)
+
+instance Exception InvalidConcurrencyLimitException
+
+-- | Apply an IO transformation to all values in a stream with limited
+-- concurrency.
+--
+-- Order is preserved by using a FIFO queue and head-of-line blocking.
+--
+-- The number of values awaited but not yet yielded is bounded by the
+-- concurrency limit so that resource usage remains fixed, even on infinite
+-- streams.
+--
+-- Output values are yielded promptly.
+--
+-- Throws 'InvalidConcurrencyLimitException' when the given concurrency is not
+-- positive.
+--
+-- @since 1.3.4.3
+concurrentMap :: (MonadIO m, MonadResource m, MonadThrow m) => Int -> (i -> IO o) -> ConduitT i o m ()
+concurrentMap concurrencyLimit process = do
+    unless (concurrencyLimit > 0) (throwM InvalidConcurrencyLimitException)
+
+    workersMVar <- liftIO $ newMVar Sequence.empty
+
+    let yieldCompleted = do
+          workers <- liftIO $ readMVar workersMVar
+          case workers of
+            Sequence.Empty -> return ()
+            (worker Sequence.:<| others) -> do
+              maybeResult <- liftIO (Async.poll worker)
+              case maybeResult of
+                Nothing -> return ()
+                Just result -> do
+                  _ <- liftIO $ swapMVar workersMVar others
+                  case result of
+                    Left e -> throwM (Async.ExceptionInLinkedThread worker e)
+                    Right output -> do
+                      yield output
+                      yieldCompleted
+
+    let maybeYield = do
+          workers <- liftIO $ readMVar workersMVar
+          case workers of
+            Sequence.Empty -> return False
+            (worker Sequence.:<| rest) -> do
+              result <- liftIO $ Async.waitCatch worker
+              case result of
+                Left e -> throwM (Async.ExceptionInLinkedThread worker e)
+                Right output -> do
+                  _ <- liftIO $ swapMVar workersMVar rest
+                  yield output
+                  return True
+
+    let yieldWhenFull = do
+          workers <- liftIO $ readMVar workersMVar
+          when (Sequence.length workers == concurrencyLimit) $ do
+            yielded <- maybeYield
+            unless yielded $ throwM InvalidConcurrencyLimitException
+
+    let spawn input = liftIO $ modifyMVar_ workersMVar $ \workers -> do
+          worker <- Async.async $ process input
+          Async.link worker
+          return $ workers Sequence.|> worker
+
+    let drain = do
+          yielded <- maybeYield
+          when yielded drain
+
+    let waitForInput = do
+          maybeInput <- await
+          case maybeInput of
+            Just input -> yieldWhenFull >> yieldCompleted >> spawn input >> waitForInput
+            Nothing -> drain
+
+    let noop = return ()
+    let cancelWorkers _ = readMVar workersMVar >>= Prelude.mapM_ Async.cancel
+    bracketP noop cancelWorkers (\_ -> waitForInput)

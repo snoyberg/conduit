@@ -180,6 +180,8 @@ module Data.Conduit.Combinators.Unqualified
     , CC.mapAccumS
     , CC.peekForever
     , CC.peekForeverE
+    , CC.concurrentMap
+    , CC.InvalidConcurrencyLimitException (..)
     ) where
 
 -- BEGIN IMPORTS
