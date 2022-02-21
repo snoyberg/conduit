@@ -44,7 +44,7 @@ import qualified Data.ByteString.Char8 as S8
 import qualified Data.ByteString.Lazy.Char8 as L8
 import qualified StreamSpec
 import GHC.IO (catchAny)
-import Control.Exception (fromException)
+import Control.Exception (fromException, Exception, SomeException, catch)
 import UnliftIO.Exception (pureTry, stringException)
 import Control.Concurrent.Async (ExceptionInLinkedThread (..))
 import Control.Concurrent.MVar
@@ -657,15 +657,10 @@ spec = do
         res2 <- runConduit $ yieldMany strs .| peekForeverE (lineC $ foldC >>= yield) .| sinkList
         res2 `shouldBe` res1
     describe "concurrentMap" $ do
-        let boom = stringException "boom"
-        let isBoom e = maybe False (== boom) $ fromException e
-        let isLinkedBoom e = case fromException e of
-                Nothing -> False
-                Just (ExceptionInLinkedThread _ inner) -> isBoom inner
         let block = newEmptyMVar >>= takeMVar :: IO ()
         it "propagates exceptions" $ do
-            let go = runConduitRes $ yield () .| concurrentMap 10 (\_ -> throwM boom) .| sinkNull
-            go `shouldThrow` isLinkedBoom
+            let go = runConduitRes $ yield (throwM Boom) .| concurrentMap 10 id .| sinkNull
+            go `shouldThrow` (== Boom)
         it "rejects invalid concurrency" $ do
             let go = runConduitRes $ yield () .| concurrentMap 0 return .| sinkNull
             go `shouldThrow` (== InvalidConcurrencyLimitException)
@@ -678,11 +673,10 @@ spec = do
             ready <- newEmptyMVar
             killed <- newEmptyMVar
             let source = do
-                    yield $ (putMVar ready () >> block) `catchAny` (\_ -> putMVar killed ())
-                    liftIO $ takeMVar ready
-                    yield $ throwM boom
+                    yield $ takeMVar ready >> throwM Boom
+                    yield $ (putMVar ready () >> block) `catchAny` \_ -> putMVar killed ()
             let go = runConduitRes $ source .| concurrentMap 10 id .| sinkNull
-            go `shouldThrow` isLinkedBoom
+            go `shouldThrow` (== Boom)
             takeMVar killed
         it "kills all workers upon an exception in the conduit" $ do
             ready <- newEmptyMVar
@@ -690,11 +684,14 @@ spec = do
             let source = do
                     yield $ (putMVar ready () >> block) `catchAny` (\_ -> putMVar killed ())
                     liftIO $ takeMVar ready
-                    throwM boom
+                    throwM Boom
             let go = runConduitRes $ source .| concurrentMap 10 id .| sinkNull
-            go `shouldThrow` isBoom
+            go `shouldThrow` (== Boom)
             takeMVar killed
     StreamSpec.spec
+
+data Boom = Boom deriving (Eq, Show)
+instance Exception Boom
 
 evenInt :: Int -> Bool
 evenInt = even

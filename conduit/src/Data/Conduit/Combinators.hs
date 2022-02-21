@@ -213,7 +213,7 @@ import qualified Data.ByteString as S
 import qualified Data.ByteString.Lazy as BL
 import           Data.ByteString.Lazy.Internal (defaultChunkSize)
 import           Control.Applicative         (Alternative(..), (<$>))
-import           Control.Exception           (catch, throwIO, finally, bracket, try, evaluate, Exception)
+import           Control.Exception           (catch, throwIO, finally, bracket, try, evaluate, Exception, SomeException)
 import           Control.Category            (Category (..))
 import qualified Control.Concurrent.Async    as Async
 import           Control.Concurrent.MVar
@@ -2576,6 +2576,12 @@ instance Exception InvalidConcurrencyLimitException
 -- concurrency limit so that resource usage remains fixed, even on infinite
 -- streams.
 --
+-- Exceptions in IO transformations propagate to the main thread, and all
+-- workers are canceled when the conduit hits an exception. Exceptions in the IO
+-- transformation are held until they reaches the head of the queue and
+-- execution re-enters this function after awaiting an input value or yielding
+-- an output value.
+--
 -- Output values are yielded promptly.
 --
 -- Throws 'InvalidConcurrencyLimitException' when the given concurrency is not
@@ -2599,10 +2605,8 @@ concurrentMap concurrencyLimit process = do
                 Just result -> do
                   _ <- liftIO $ swapMVar workersMVar others
                   case result of
-                    Left e -> throwM (Async.ExceptionInLinkedThread worker e)
-                    Right output -> do
-                      yield output
-                      yieldCompleted
+                    Left e -> throwM e
+                    Right output -> yield output >> yieldCompleted
 
     let maybeYield = do
           workers <- liftIO $ readMVar workersMVar
@@ -2611,7 +2615,7 @@ concurrentMap concurrencyLimit process = do
             (worker Sequence.:<| rest) -> do
               result <- liftIO $ Async.waitCatch worker
               case result of
-                Left e -> throwM (Async.ExceptionInLinkedThread worker e)
+                Left e -> throwM e
                 Right output -> do
                   _ <- liftIO $ swapMVar workersMVar rest
                   yield output
@@ -2625,7 +2629,6 @@ concurrentMap concurrencyLimit process = do
 
     let spawn input = liftIO $ modifyMVar_ workersMVar $ \workers -> do
           worker <- Async.async $ process input
-          Async.link worker
           return $ workers Sequence.|> worker
 
     let drain = do
