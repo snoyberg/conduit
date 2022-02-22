@@ -213,7 +213,7 @@ import qualified Data.ByteString as S
 import qualified Data.ByteString.Lazy as BL
 import           Data.ByteString.Lazy.Internal (defaultChunkSize)
 import           Control.Applicative         (Alternative(..), (<$>))
-import           Control.Exception           (catch, throwIO, finally, bracket, try, evaluate, Exception, SomeException)
+import           Control.Exception           (catch, throwIO, finally, bracket, try, evaluate, uninterruptibleMask, Exception, SomeException)
 import           Control.Category            (Category (..))
 import qualified Control.Concurrent.Async    as Async
 import           Control.Concurrent.MVar
@@ -2628,9 +2628,15 @@ concurrentMap concurrencyLimit process = do
             yielded <- maybeYield
             unless yielded $ throwM InvalidConcurrencyLimitException
 
-    let spawn input = liftIO $ modifyMVar_ workersMVar $ \workers -> do
-          worker <- Async.async $ process input
-          return $ workers Sequence.|> worker
+    let spawn input = liftIO $ do
+          -- Mask to prevent asynchronous exceptions from interrupting the MVar
+          -- update and leaking the thread.
+          uninterruptibleMask $ \restore -> do
+            modifyMVar_ workersMVar $ \workers -> do
+              worker <- Async.async $ restore $ process input
+              -- 💥 An asynchronous exception here is blocked until after the
+              -- MVar modification completes.
+              return $ workers Sequence.|> worker
 
     let drain = do
           yielded <- maybeYield
