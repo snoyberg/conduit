@@ -36,7 +36,6 @@ import Data.Sequences.Lazy
 import Data.Textual.Encoding
 #endif
 import qualified Data.NonNull as NN
-import System.IO.Silently (hCapture)
 import GHC.IO.Handle (hDuplicateTo)
 import qualified Data.ByteString as S
 import Data.ByteString.Builder (byteString, toLazyByteString)
@@ -342,20 +341,6 @@ spec = do
         runConduitRes $ yield contents .| sinkIOHandle open
         res <- S.readFile fp
         res `shouldBe` contents
-    prop "print" $ \vals -> do
-        let expected = Prelude.unlines $ map showInt vals
-        (actual, ()) <- hCapture [IO.stdout] $ runConduit $ yieldMany vals .| printC
-        actual `shouldBe` expected
-#ifndef WINDOWS
-    prop "stdout" $ \ (vals :: [String]) -> do
-        let expected = concat vals
-        (actual, ()) <- hCapture [IO.stdout] $ runConduit $ yieldMany (map T.pack vals) .| encodeUtf8C .| stdoutC
-        actual `shouldBe` expected
-    prop "stderr" $ \ (vals :: [String]) -> do
-        let expected = concat vals
-        (actual, ()) <- hCapture [IO.stderr] $ runConduit $ yieldMany (map T.pack vals) .| encodeUtf8C .| stderrC
-        actual `shouldBe` expected
-#endif
     prop "map" $ \input ->
         runConduitPure (yieldMany input .| mapC succChar .| sinkList)
         `shouldBe` map succChar input
