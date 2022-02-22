@@ -2578,11 +2578,12 @@ instance Exception InvalidConcurrencyLimitException
 --
 -- Exceptions in IO transformations propagate to the main thread, and all
 -- workers are canceled when the conduit hits an exception. Exceptions in the IO
--- transformation are held until they reaches the head of the queue and
--- execution re-enters this function after awaiting an input value or yielding
--- an output value.
+-- transformation are held until they reach the head of the queue and execution
+-- re-enters this function.
 --
--- Output values are yielded promptly.
+-- Output values are yielded promptly. That is, once an IO transformation
+-- completes, the output value will be yielded before this function awaits more
+-- input.
 --
 -- Throws 'InvalidConcurrencyLimitException' when the given concurrency is not
 -- positive.
