@@ -85,6 +85,7 @@ test-suite test
                    , transformers-base
                    , directory
                    , filepath
+    build-tool-depends: hspec-discover:hspec-discover
     ghc-options:     -Wall
     if os(windows)
         cpp-options: -DWINDOWS
