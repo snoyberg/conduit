@@ -1,5 +1,9 @@
 # ChangeLog for conduit-extra
 
+## 1.3.6
+
+* Add support for `transformers-0.6`
+
 ## 1.3.5
 
 * Add `createSinkClose`

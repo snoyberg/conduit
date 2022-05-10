@@ -21,9 +21,11 @@ import Control.Monad.Trans.Class (lift)
 import Control.Monad.IO.Unlift (MonadIO, liftIO, MonadUnliftIO, withUnliftIO, unliftIO)
 
 import Control.Monad.Trans.Identity ( IdentityT)
-import Control.Monad.Trans.List     ( ListT    )
-import Control.Monad.Trans.Maybe    ( MaybeT   )
+#if !MIN_VERSION_transformers(0,6,0)
 import Control.Monad.Trans.Error    ( ErrorT, Error)
+import Control.Monad.Trans.List     ( ListT    )
+#endif
+import Control.Monad.Trans.Maybe    ( MaybeT   )
 import Control.Monad.Trans.Reader   ( ReaderT  )
 import Control.Monad.Trans.State    ( StateT   )
 import Control.Monad.Trans.Writer   ( WriterT  )
@@ -100,9 +102,11 @@ instance MonadActive (Lazy.ST s) where
 #define GO(T) instance MonadActive m => MonadActive (T m) where monadActive = lift monadActive
 #define GOX(X, T) instance (X, MonadActive m) => MonadActive (T m) where monadActive = lift monadActive
 GO(IdentityT)
-GO(ListT)
-GO(MaybeT)
+#if !MIN_VERSION_transformers(0,6,0)
 GOX(Error e, ErrorT e)
+GO(ListT)
+#endif
+GO(MaybeT)
 GO(ReaderT r)
 GO(StateT s)
 GOX(Monoid w, WriterT w)

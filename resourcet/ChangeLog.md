@@ -1,5 +1,8 @@
 # ChangeLog for resourcet
 
+## 1.2.5
+
+* Support `transformers-0.6` / `mtl-2.3`
 
 ## 1.2.4.3
 
