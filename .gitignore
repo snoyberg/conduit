@@ -1,5 +1,6 @@
 *.swp
 dist/
+dist-newstyle/
 conduit/tmp
 conduit/tmp2
 conduit-extra/tmp
