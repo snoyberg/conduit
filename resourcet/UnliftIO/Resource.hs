@@ -5,6 +5,7 @@ module UnliftIO.Resource
   ( -- * UnliftIO variants
     runResourceT
   , liftResourceT
+  , allocateU
     -- * Reexports
   , module Control.Monad.Trans.Resource
   ) where
@@ -25,3 +26,14 @@ runResourceT m = withRunInIO $ \run -> Res.runResourceT $ Res.transResourceT run
 -- @since 1.1.10
 liftResourceT :: MonadIO m => ResourceT IO a -> ResourceT m a
 liftResourceT (ResourceT f) = ResourceT $ liftIO . f
+
+-- | Unlifted 'allocate'.
+--
+-- @since 1.2.6
+allocateU
+  :: (MonadUnliftIO m, MonadResource m)
+  => m a
+  -> (a -> m ())
+  -> m (ReleaseKey, a)
+allocateU alloc free = withRunInIO $ \run ->
+  run $ allocate (run alloc) (run . free)

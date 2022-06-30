@@ -1,5 +1,9 @@
 # ChangeLog for resourcet
 
+## 1.2.6
+
+* Add `allocateU` [#490](https://github.com/snoyberg/conduit/pull/490)
+
 ## 1.2.5
 
 * Support `transformers-0.6` / `mtl-2.3`
