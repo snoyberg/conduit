@@ -2431,7 +2431,7 @@ reuseBuffer (Buffer fpbuf _ _ ope) = Buffer fpbuf p0 p0 ope
 -- Under the surface, this function uses a number of tricks to get high
 -- performance. For more information on both usage and implementation,
 -- please see:
--- <https://www.fpcomplete.com/user/snoyberg/library-documentation/vectorbuilder>
+-- <https://www.schoolofhaskell.com/user/snoyberg/library-documentation/vectorbuilder>
 --
 -- @since 1.3.0
 vectorBuilder :: (PrimMonad m, PrimMonad n, V.Vector v e, PrimState m ~ PrimState n)
