@@ -463,7 +463,7 @@ STREAMING(map, mapC, mapS, f)
 {-
 {-# RULES "conduit: source/map fusion .|" forall f src. src .| map f = mapFuseRight src f #-}
 
-mapFuseRight :: Monad m => Source m a -> (a -> b) -> Source m b
+mapFuseRight :: Monad m => ConduitT () a m () -> (a -> b) -> ConduitT () b m ()
 mapFuseRight src f = CIC.mapOutput f src
 {-# INLINE mapFuseRight #-}
 -}

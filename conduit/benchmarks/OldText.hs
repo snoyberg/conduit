@@ -77,7 +77,7 @@ instance Show Codec where
 -- | Emit each line separately
 --
 -- Since 0.4.1
-lines :: Monad m => Conduit T.Text m T.Text
+lines :: Monad m => ConduitT T.Text T.Text m ()
 lines =
     loop id
   where
@@ -107,7 +107,7 @@ lines =
 -- user input (e.g. a file upload) because we can't be sure that
 -- user input won't have extraordinarily large lines which would
 -- require large amounts of memory if consumed.
-linesBounded :: MonadThrow m => Int -> Conduit T.Text m T.Text
+linesBounded :: MonadThrow m => Int -> ConduitT T.Text T.Text m ()
 linesBounded maxLineLen =
     loop 0 id
   where
@@ -140,7 +140,7 @@ linesBounded maxLineLen =
 -- not capable of representing an input character, an exception will be thrown.
 --
 -- Since 0.3.0
-encode :: MonadThrow m => Codec -> Conduit T.Text m B.ByteString
+encode :: MonadThrow m => Codec -> ConduitT T.Text B.ByteString m ()
 encode codec = CL.mapM $ \t -> do
     let (bs, mexc) = codecEncode codec t
     maybe (return bs) (monadThrow . fst) mexc
@@ -150,7 +150,7 @@ encode codec = CL.mapM $ \t -> do
 -- not capable of decoding an input byte sequence, an exception will be thrown.
 --
 -- Since 0.3.0
-decode :: MonadThrow m => Codec -> Conduit B.ByteString m T.Text
+decode :: MonadThrow m => Codec -> ConduitT B.ByteString T.Text m ()
 decode codec =
     loop id
   where
@@ -380,7 +380,7 @@ maybeDecode (a, b) = case tryEvaluate a of
 -- Since 1.0.8
 takeWhile :: Monad m
           => (Char -> Bool)
-          -> Conduit T.Text m T.Text
+          -> ConduitT T.Text T.Text m ()
 takeWhile p =
     loop
   where
@@ -396,7 +396,7 @@ takeWhile p =
 -- Since 1.0.8
 dropWhile :: Monad m
           => (Char -> Bool)
-          -> Consumer T.Text m ()
+          -> ConduitT T.Text o m ()
 dropWhile p =
     loop
   where
@@ -410,7 +410,7 @@ dropWhile p =
 -- |
 --
 -- Since 1.0.8
-take :: Monad m => Int -> Conduit T.Text m T.Text
+take :: Monad m => Int -> ConduitT T.Text T.Text m ()
 take =
     loop
   where
@@ -427,7 +427,7 @@ take =
 -- |
 --
 -- Since 1.0.8
-drop :: Monad m => Int -> Consumer T.Text m ()
+drop :: Monad m => Int -> ConduitT T.Text o m ()
 drop =
     loop
   where
@@ -463,8 +463,8 @@ foldLines f =
 --
 -- Since 1.0.8
 withLine :: Monad m
-         => Sink T.Text m a
-         -> Consumer T.Text m (Maybe a)
+         => ConduitT T.Text Void m a
+         -> ConduitT T.Text o m (Maybe a)
 withLine consumer = toConsumer $ do
     mx <- CL.peek
     case mx of

@@ -18,7 +18,7 @@ import           Data.Sequences.Lazy
 import qualified Data.Text as T
 import           Prelude
 
-maximumC :: (Monad m, Ord a) => Consumer a m (Maybe a)
+maximumC :: (Monad m, Ord a) => ConduitT a o m (Maybe a)
 maximumC =
     await >>= maybe (return Nothing) loop
   where
@@ -27,13 +27,13 @@ maximumC =
 
 allC :: Monad m
      => (a -> Bool)
-     -> Consumer a m Bool
+     -> ConduitT a o m Bool
 allC f = fmap isNothing $ C.find (Prelude.not . f)
 {-# INLINE allC #-}
 
 allOld :: Monad m
        => (a -> Bool)
-       -> Consumer a m Bool
+       -> ConduitT a o m Bool
 allOld f =
     loop
   where
@@ -60,14 +60,14 @@ foldMaybeNull f macc mono =
 foldC :: Monad m
       => (b -> a -> b)
       -> b
-      -> Consumer a m b
+      -> ConduitT a o m b
 foldC f =
     loop
   where
     loop !accum = await >>= maybe (return accum) (loop . f accum)
 {-# INLINE foldC #-}
 
-maximumEOld :: (Monad m, Seq.OrdSequence seq) => Consumer seq m (Maybe (Element seq))
+maximumEOld :: (Monad m, Seq.OrdSequence seq) => ConduitT seq o m (Maybe (Element seq))
 maximumEOld =
     start
   where

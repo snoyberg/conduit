@@ -12,7 +12,7 @@ import qualified Data.Conduit.List as CL
 import Data.Text.StreamDecoding
 import Data.Text.Encoding (decodeUtf8)
 
-lengthT :: Monad m => Consumer T.Text m Int
+lengthT :: Monad m => ConduitT T.Text o m Int
 lengthT = CL.fold (\x y -> x + T.length y) 0
 
 main :: IO ()
