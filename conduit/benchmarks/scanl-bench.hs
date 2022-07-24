@@ -8,7 +8,7 @@ import Data.Functor.Identity
 test name f =
     bench name $ flip nf 200 $ \i -> runIdentity (replicateM_ i (yield ()) $= f (\_ _ -> ((), Nothing)) () $= CL.catMaybes $$ CL.sinkNull)
 
-cScanl :: Monad m => (a -> s -> (s, b)) -> s -> Conduit a m b
+cScanl :: Monad m => (a -> s -> (s, b)) -> s -> ConduitT a b m ()
 cScanl step = loop where
     loop state =
         do ma <- await
@@ -16,7 +16,7 @@ cScanl step = loop where
              Nothing -> return ()
              Just a -> let ~(newState, b) = step a state in yield b >> loop newState
 
-scanlOrig :: Monad m => (a -> s -> (s,b)) -> s -> Conduit a m b
+scanlOrig :: Monad m => (a -> s -> (s,b)) -> s -> ConduitT a b m ()
 scanlOrig f =
     loop
   where
@@ -25,7 +25,7 @@ scanlOrig f =
         go a = case f a s of
                  (s',b) -> yield b >> loop s'
 
-scanlOrigTweaked :: Monad m => (a -> s -> (s,b)) -> s -> Conduit a m b
+scanlOrigTweaked :: Monad m => (a -> s -> (s,b)) -> s -> ConduitT a b m ()
 scanlOrigTweaked f =
     loop
   where

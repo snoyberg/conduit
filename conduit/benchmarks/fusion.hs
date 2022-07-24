@@ -10,11 +10,11 @@ import           Data.Monoid
 
 foldMapC :: (Monad m, Monoid b)
          => (a -> b)
-         -> Consumer a m b
+         -> ConduitT a o m b
 foldMapC f = let combiner accum = mappend accum . f in CL.fold combiner mempty
 {-# INLINE foldMapC #-}
 
-groupByC :: Monad m => (a -> a -> Bool) -> Conduit a m [a]
+groupByC :: Monad m => (a -> a -> Bool) -> ConduitT a [a] m ()
 groupByC f =
     start
   where

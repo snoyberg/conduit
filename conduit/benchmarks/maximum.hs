@@ -25,14 +25,14 @@ std dev              18.15 ps   (13.74 ps .. 25.97 ps)
 -}
 
 -- Old definition
-maximum1 :: (Monad m, Ord a) => Consumer a m (Maybe a)
+maximum1 :: (Monad m, Ord a) => ConduitT a o m (Maybe a)
 maximum1 =
     await >>= maybe (return Nothing) loop
   where
     loop prev = await >>= maybe (return $ Just prev) (loop . max prev)
 {-# INLINE [0] maximum1 #-}
 
-maximum2 :: (Monad m, Ord a) => Consumer a m (Maybe a)
+maximum2 :: (Monad m, Ord a) => ConduitT a o m (Maybe a)
 maximum2 = C.foldl1 max
 {-# INLINE [0] maximum2 #-}
 
