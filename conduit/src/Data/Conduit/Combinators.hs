@@ -198,6 +198,7 @@ module Data.Conduit.Combinators
     , mapAccumS
     , peekForever
     , peekForeverE
+    , delay
     ) where
 
 -- BEGIN IMPORTS
@@ -213,6 +214,7 @@ import           Data.ByteString.Lazy.Internal (defaultChunkSize)
 import           Control.Applicative         (Alternative(..), (<$>))
 import           Control.Exception           (catch, throwIO, finally, bracket, try, evaluate)
 import           Control.Category            (Category (..))
+import           Control.Concurrent          (threadDelay)
 import           Control.Monad               (unless, when, (>=>), liftM, forever)
 import           Control.Monad.IO.Unlift     (MonadIO (..), MonadUnliftIO, withRunInIO)
 import           Control.Monad.Primitive     (PrimMonad, PrimState, unsafePrimToPrim)
@@ -2554,3 +2556,11 @@ peekForeverE inner =
         case mx of
             Nothing -> return ()
             Just _ -> inner >> loop
+
+-- | Delays the emission of values for a given number of microseconds.
+--
+-- @since 1.3.5
+delay :: MonadIO m => Int -> ConduitT a a m ()
+delay n = awaitForever $ \v -> do
+  liftIO $ threadDelay n
+  yield v

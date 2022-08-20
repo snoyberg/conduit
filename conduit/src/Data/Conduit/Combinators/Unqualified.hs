@@ -180,6 +180,7 @@ module Data.Conduit.Combinators.Unqualified
     , CC.mapAccumS
     , CC.peekForever
     , CC.peekForeverE
+    , CC.delay
     ) where
 
 -- BEGIN IMPORTS

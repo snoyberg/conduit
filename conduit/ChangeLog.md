@@ -1,5 +1,9 @@
 # ChangeLog for conduit
 
+## 1.3.5
+
+* Add `delay` [#481](https://github.com/snoyberg/conduit/issues/481)
+
 ## 1.3.4.2
 
 * Fix GHC 9.2 build [#473](https://github.com/snoyberg/conduit/pull/473)

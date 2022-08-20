@@ -7,10 +7,11 @@ module Spec (spec) where
 
 import Conduit
 import Prelude hiding (FilePath)
-import Data.Maybe (listToMaybe)
+import Data.Maybe (listToMaybe, isNothing)
 import Data.Conduit.Combinators (slidingWindow, chunksOfE, chunksOfExactlyE)
 import Data.List (intersperse, sort, find, mapAccumL)
 import Safe (tailSafe)
+import System.CPUTime (getCPUTime)
 import System.FilePath (takeExtension, (</>))
 import Test.Hspec
 import Test.Hspec.QuickCheck
@@ -21,7 +22,7 @@ import Data.IORef
 import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as VU
 import qualified Data.Vector.Storable as VS
-import Control.Monad (liftM)
+import Control.Monad (liftM, when, void)
 import Control.Monad.ST (runST)
 import Control.Monad.Trans.Writer
 import qualified System.IO as IO
@@ -637,6 +638,16 @@ spec = do
         res1 <- runConduit $ yieldMany strs .| linesUnboundedC .| sinkList
         res2 <- runConduit $ yieldMany strs .| peekForeverE (lineC $ foldC >>= yield) .| sinkList
         res2 `shouldBe` res1
+    it "delay" $ do
+        let duration = 100000 :: Int
+        elapsed <- runConduit $ yield () .| delay duration .| do
+            start <- liftIO $ getCPUTime
+            mValue <- await
+            void $ when (isNothing mValue) $
+                error "expected 'Just ()'"
+            end <- liftIO $ getCPUTime
+            return (end - start)
+        elapsed `shouldSatisfy` (>= (toInteger duration))
     StreamSpec.spec
 
 evenInt :: Int -> Bool
