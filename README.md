@@ -1003,7 +1003,7 @@ There are two semi-advanced concepts to get across in this example:
    when you use `runConduitPure`, the complete pipeline cannot be
    expected any input (it must have an input of type `()`). Adding
    `return () .|` says "we're connecting you to an empty upstream
-   component" so satisfy the type system.
+   component" to satisfy the type system.
 
 ## Evaluation strategy
 
