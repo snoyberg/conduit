@@ -4,19 +4,21 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE PatternSynonyms #-}
 module Data.Acquire.Internal
     ( Acquire (..)
     , Allocated (..)
     , with
     , mkAcquire
-    , ReleaseType (..)
+    , ReleaseType (.., ReleaseException)
     , mkAcquireType
+    , DeprecatedReleaseExceptionPlaceholder
     ) where
 
 import Control.Applicative (Applicative (..))
 import Control.Monad.IO.Unlift (MonadIO (..), MonadUnliftIO, withRunInIO)
 import qualified Control.Exception as E
-import Data.Typeable (Typeable)
+import Data.Typeable (Typeable, typeOf)
 import Control.Monad (liftM, ap)
 import qualified Control.Monad.Catch as C ()
 
@@ -25,8 +27,34 @@ import qualified Control.Monad.Catch as C ()
 -- @since 1.1.2
 data ReleaseType = ReleaseEarly
                  | ReleaseNormal
-                 | ReleaseException
-    deriving (Show, Read, Eq, Ord, Enum, Bounded, Typeable)
+                 | ReleaseException' E.SomeException
+    deriving (Show, Typeable)
+
+-- | Treats 'E.SomeException's as equal when they wrap the same type and 'show' the same.
+instance Eq ReleaseType where
+    ReleaseEarly == ReleaseEarly = True
+    ReleaseNormal == ReleaseNormal = True
+    ReleaseException' (E.SomeException e0) == ReleaseException' (E.SomeException e1) =
+        case typeOf e0 == typeOf e1 of
+            True ->
+                show e0 == show e1
+            False ->
+                False
+    _ == _ =
+        False
+
+-- | Fake 'E.Exception' to use with the deprecated 'ReleaseException' pattern.
+data DeprecatedReleaseExceptionPlaceholder = DeprecatedReleaseExceptionPlaceholder
+     deriving (Show)
+
+instance E.Exception DeprecatedReleaseExceptionPlaceholder
+
+{-# COMPLETE ReleaseEarly, ReleaseNormal, ReleaseException #-}
+{-# DEPRECATED ReleaseException "Use ReleaseException'" #-}
+pattern ReleaseException :: ReleaseType
+pattern ReleaseException <- ReleaseException' _
+  where
+    ReleaseException = ReleaseException' (E.toException DeprecatedReleaseExceptionPlaceholder)
 
 data Allocated a = Allocated !a !(ReleaseType -> IO ())
 
@@ -56,7 +84,7 @@ instance Monad Acquire where
     Acquire f >>= g' = Acquire $ \restore -> do
         Allocated x free1 <- f restore
         let Acquire g = g' x
-        Allocated y free2 <- g restore `E.onException` free1 ReleaseException
+        Allocated y free2 <- g restore `E.catch` (\e -> free1 (ReleaseException' e) >> E.throwIO e)
         return $! Allocated y (\rt -> free2 rt `E.finally` free1 rt)
 
 instance MonadIO Acquire where
@@ -115,6 +143,6 @@ with :: MonadUnliftIO m
      -> m b
 with (Acquire f) g = withRunInIO $ \run -> E.mask $ \restore -> do
     Allocated x free <- f restore
-    res <- restore (run (g x)) `E.onException` free ReleaseException
+    res <- restore (run (g x)) `E.catch` (\e -> free (ReleaseException' e) >> E.throwIO e)
     free ReleaseNormal
     return res

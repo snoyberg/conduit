@@ -206,13 +206,13 @@ runResourceTChecked = runResourceT
 bracket_ :: MonadUnliftIO m
          => IO () -- ^ allocate
          -> IO () -- ^ normal cleanup
-         -> IO () -- ^ exceptional cleanup
+         -> (E.SomeException -> IO ()) -- ^ exceptional cleanup
          -> m a
          -> m a
 bracket_ alloc cleanupNormal cleanupExc inside =
     withRunInIO $ \run -> E.mask $ \restore -> do
         alloc
-        res <- restore (run inside) `E.onException` cleanupExc
+        res <- restore (run inside) `E.catch` (\e -> cleanupExc e >> E.throwIO e)
         cleanupNormal
         return res
 
@@ -254,11 +254,11 @@ resourceForkWith g (ResourceT f) =
     bracket_
         (stateAlloc r)
         (return ())
-        (return ())
+        (const $ return ())
         (g $ bracket_
             (return ())
             (stateCleanup ReleaseNormal r)
-            (stateCleanup ReleaseException r)
+            (\e -> stateCleanup (ReleaseException' e) r)
             (restore $ run $ f r))
 
 -- | Launch a new reference counted resource context using @forkIO@.
