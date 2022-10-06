@@ -148,6 +148,8 @@ instance Applicative (ConduitT i o m) where
     {-# INLINE pure #-}
     (<*>) = ap
     {-# INLINE (<*>) #-}
+    (*>) = (>>)
+    {-# INLINE (*>) #-}
 
 instance Monad (ConduitT i o m) where
     return = pure
