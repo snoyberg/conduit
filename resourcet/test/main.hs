@@ -4,7 +4,7 @@
 import           Control.Concurrent
 import           Control.Exception            (Exception, MaskingState (MaskedInterruptible),
                                                getMaskingState, throwIO, try, fromException)
-import           Control.Exception            (SomeException, handle, toException)
+import           Control.Exception            (SomeException, handle)
 import           Control.Monad                (unless, void)
 import qualified Control.Monad.Catch
 import           Control.Monad.IO.Class       (liftIO)
@@ -88,32 +88,32 @@ main = hspec $ do
                 runResourceT $ do
                     (releaseKey, ()) <- allocateAcquire acq
                     release releaseKey
-                readIORef ref >>= (`shouldBe` Just ReleaseEarly)
+                readIORef ref >>= (`shouldSatisfy` just releaseEarly)
             it "normal" $ do
                 ref <- newIORef Nothing
                 let acq = mkAcquireType (return ()) $ \() -> writeIORef ref . Just
                 runResourceT $ do
                     (_releaseKey, ()) <- allocateAcquire acq
                     return ()
-                readIORef ref >>= (`shouldBe` Just ReleaseNormal)
+                readIORef ref >>= (`shouldSatisfy` just releaseNormal)
             it "exception" $ do
                 ref <- newIORef Nothing
                 let acq = mkAcquireType (return ()) $ \() -> writeIORef ref . Just
                 Left Dummy <- try $ runResourceT $ do
                     (_releaseKey, ()) <- allocateAcquire acq
                     liftIO $ throwIO Dummy
-                readIORef ref >>= (`shouldBe` Just (ReleaseException' (toException Dummy)))
+                readIORef ref >>= (`shouldSatisfy` just (releaseException dummy))
         describe "with" $ do
             it "normal" $ do
                 ref <- newIORef Nothing
                 let acq = mkAcquireType (return ()) $ \() -> writeIORef ref . Just
                 with acq $ const $ return ()
-                readIORef ref >>= (`shouldBe` Just ReleaseNormal)
+                readIORef ref >>= (`shouldSatisfy` just releaseNormal)
             it "exception" $ do
                 ref <- newIORef Nothing
                 let acq = mkAcquireType (return ()) $ \() -> writeIORef ref . Just
                 Left Dummy <- try $ with acq $ const $ throwIO Dummy
-                readIORef ref >>= (`shouldBe` Just (ReleaseException' (toException Dummy)))
+                readIORef ref >>= (`shouldSatisfy` just (releaseException dummy))
     describe "runResourceTChecked" $ do
         it "catches exceptions" $ do
             eres <- try $ runResourceTChecked $ void $ register $ throwIO Dummy
@@ -149,3 +149,26 @@ instance Exception Dummy
 data Dummy2 = Dummy2
     deriving (Show, Typeable)
 instance Exception Dummy2
+
+-- Helpers needed due to lack of 'Eq' on 'ReleaseType'
+
+releaseEarly :: ReleaseType -> Bool
+releaseEarly ReleaseEarly = True
+releaseEarly _ = False
+
+releaseNormal :: ReleaseType -> Bool
+releaseNormal ReleaseNormal = True
+releaseNormal _ = False
+
+releaseException :: (Exception e) => Selector e -> ReleaseType -> Bool
+releaseException sel (ReleaseException' se) = case fromException se of
+                         Just e -> sel e
+                         Nothing -> False
+releaseException _ _ = False
+
+just :: (a -> Bool) -> Maybe a -> Bool
+just sel (Just x) = sel x
+just _ Nothing = False
+
+dummy :: Selector Dummy
+dummy Dummy = True

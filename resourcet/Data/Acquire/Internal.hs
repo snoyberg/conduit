@@ -18,7 +18,7 @@ module Data.Acquire.Internal
 import Control.Applicative (Applicative (..))
 import Control.Monad.IO.Unlift (MonadIO (..), MonadUnliftIO, withRunInIO)
 import qualified Control.Exception as E
-import Data.Typeable (Typeable, typeOf)
+import Data.Typeable (Typeable)
 import Control.Monad (liftM, ap)
 import qualified Control.Monad.Catch as C ()
 
@@ -29,19 +29,6 @@ data ReleaseType = ReleaseEarly
                  | ReleaseNormal
                  | ReleaseException' E.SomeException
     deriving (Show, Typeable)
-
--- | Treats 'E.SomeException's as equal when they wrap the same type and 'show' the same.
-instance Eq ReleaseType where
-    ReleaseEarly == ReleaseEarly = True
-    ReleaseNormal == ReleaseNormal = True
-    ReleaseException' (E.SomeException e0) == ReleaseException' (E.SomeException e1) =
-        case typeOf e0 == typeOf e1 of
-            True ->
-                show e0 == show e1
-            False ->
-                False
-    _ == _ =
-        False
 
 -- | Fake 'E.Exception' to use with the deprecated 'ReleaseException' pattern.
 data DeprecatedReleaseExceptionPlaceholder = DeprecatedReleaseExceptionPlaceholder
