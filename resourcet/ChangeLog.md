@@ -1,5 +1,12 @@
 # ChangeLog for resourcet
 
+## 1.3.0
+
+* Include the exception in ReleaseTypes indicating exceptional exit.
+
+  Only backwards-incompatible in code relying on instances of ReleaseType
+  other than Show.
+
 ## 1.2.6
 
 * Add `allocateU` [#490](https://github.com/snoyberg/conduit/pull/490)
