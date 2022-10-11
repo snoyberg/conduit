@@ -12,7 +12,6 @@ module Data.Acquire.Internal
     , mkAcquire
     , ReleaseType (.., ReleaseException)
     , mkAcquireType
-    , DeprecatedReleaseExceptionPlaceholder
     ) where
 
 import Control.Applicative (Applicative (..))
@@ -30,18 +29,10 @@ data ReleaseType = ReleaseEarly
                  | ReleaseException' E.SomeException
     deriving (Show, Typeable)
 
--- | Fake 'E.Exception' to use with the deprecated 'ReleaseException' pattern.
-data DeprecatedReleaseExceptionPlaceholder = DeprecatedReleaseExceptionPlaceholder
-     deriving (Show)
-
-instance E.Exception DeprecatedReleaseExceptionPlaceholder
-
 {-# COMPLETE ReleaseEarly, ReleaseNormal, ReleaseException #-}
 {-# DEPRECATED ReleaseException "Use ReleaseException'" #-}
 pattern ReleaseException :: ReleaseType
 pattern ReleaseException <- ReleaseException' _
-  where
-    ReleaseException = ReleaseException' (E.toException DeprecatedReleaseExceptionPlaceholder)
 
 data Allocated a = Allocated !a !(ReleaseType -> IO ())
 

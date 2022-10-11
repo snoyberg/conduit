@@ -5,7 +5,7 @@
 * Include the exception in ReleaseTypes indicating exceptional exit.
 
   Only backwards-incompatible in code relying on instances of ReleaseType
-  other than Show.
+  other than Show, or constructing ReleaseException directly.
 
 ## 1.2.6
 

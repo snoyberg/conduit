@@ -65,7 +65,6 @@ module Data.Acquire
     , mkAcquireType
     , allocateAcquire
     , ReleaseType (..)
-    , DeprecatedReleaseExceptionPlaceholder
     ) where
 
 import Control.Monad.Trans.Resource.Internal
