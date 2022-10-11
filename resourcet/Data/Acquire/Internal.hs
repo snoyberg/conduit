@@ -30,7 +30,7 @@ data ReleaseType = ReleaseEarly
     deriving (Show, Typeable)
 
 {-# COMPLETE ReleaseEarly, ReleaseNormal, ReleaseException #-}
-{-# DEPRECATED ReleaseException "Use ReleaseExceptionWith" #-}
+{-# DEPRECATED ReleaseException "Use `ReleaseExceptionWith`, which has the exception in the constructor. This pattern synonym hides the exception and can obscure problems." #-}
 pattern ReleaseException :: ReleaseType
 pattern ReleaseException <- ReleaseExceptionWith _
 
