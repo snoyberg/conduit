@@ -161,7 +161,7 @@ releaseNormal ReleaseNormal = True
 releaseNormal _ = False
 
 releaseException :: (Exception e) => Selector e -> ReleaseType -> Bool
-releaseException sel (ReleaseException' se) = case fromException se of
+releaseException sel (ReleaseExceptionWith se) = case fromException se of
                          Just e -> sel e
                          Nothing -> False
 releaseException _ _ = False

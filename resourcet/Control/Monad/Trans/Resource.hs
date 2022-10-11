@@ -258,7 +258,7 @@ resourceForkWith g (ResourceT f) =
         (g $ bracket_
             (return ())
             (stateCleanup ReleaseNormal r)
-            (\e -> stateCleanup (ReleaseException' e) r)
+            (\e -> stateCleanup (ReleaseExceptionWith e) r)
             (restore $ run $ f r))
 
 -- | Launch a new reference counted resource context using @forkIO@.

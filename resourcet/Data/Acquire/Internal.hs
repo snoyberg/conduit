@@ -26,13 +26,13 @@ import qualified Control.Monad.Catch as C ()
 -- @since 1.1.2
 data ReleaseType = ReleaseEarly
                  | ReleaseNormal
-                 | ReleaseException' E.SomeException
+                 | ReleaseExceptionWith E.SomeException
     deriving (Show, Typeable)
 
 {-# COMPLETE ReleaseEarly, ReleaseNormal, ReleaseException #-}
-{-# DEPRECATED ReleaseException "Use ReleaseException'" #-}
+{-# DEPRECATED ReleaseException "Use ReleaseExceptionWith" #-}
 pattern ReleaseException :: ReleaseType
-pattern ReleaseException <- ReleaseException' _
+pattern ReleaseException <- ReleaseExceptionWith _
 
 data Allocated a = Allocated !a !(ReleaseType -> IO ())
 
@@ -62,7 +62,7 @@ instance Monad Acquire where
     Acquire f >>= g' = Acquire $ \restore -> do
         Allocated x free1 <- f restore
         let Acquire g = g' x
-        Allocated y free2 <- g restore `E.catch` (\e -> free1 (ReleaseException' e) >> E.throwIO e)
+        Allocated y free2 <- g restore `E.catch` (\e -> free1 (ReleaseExceptionWith e) >> E.throwIO e)
         return $! Allocated y (\rt -> free2 rt `E.finally` free1 rt)
 
 instance MonadIO Acquire where
@@ -121,6 +121,6 @@ with :: MonadUnliftIO m
      -> m b
 with (Acquire f) g = withRunInIO $ \run -> E.mask $ \restore -> do
     Allocated x free <- f restore
-    res <- restore (run (g x)) `E.catch` (\e -> free (ReleaseException' e) >> E.throwIO e)
+    res <- restore (run (g x)) `E.catch` (\e -> free (ReleaseExceptionWith e) >> E.throwIO e)
     free ReleaseNormal
     return res

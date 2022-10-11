@@ -387,7 +387,7 @@ stateCleanupChecked morig istate = E.mask_ $ do
     try :: IO () -> IO (Maybe SomeException)
     try io = fmap (either Just (\() -> Nothing)) (E.try io)
 
-    rtype = maybe ReleaseNormal ReleaseException' morig
+    rtype = maybe ReleaseNormal ReleaseExceptionWith morig
 
 -- Note that this returns values in reverse order, which is what we
 -- want in the specific case of this function.
