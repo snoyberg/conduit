@@ -132,7 +132,6 @@ benchmark optimize-201408
                   , hspec
                   , mwc-random
                   , gauge
-                  , kan-extensions
     main-is:        optimize-201408.hs
     ghc-options:    -Wall -O2 -rtsopts
 
