@@ -54,6 +54,7 @@ module Control.Monad.Trans.Resource
     , closeInternalState
       -- * Reexport
     , MonadThrow (..)
+    , MonadCatch (..)
     ) where
 
 import qualified Data.IntMap as IntMap
@@ -65,7 +66,7 @@ import Control.Monad.Trans.Resource.Internal
 
 import Control.Concurrent (ThreadId, forkIO)
 
-import Control.Monad.Catch (MonadThrow, throwM)
+import Control.Monad.Catch (MonadThrow (..), MonadCatch (..))
 import Data.Acquire.Internal (ReleaseType (..))
 
 
