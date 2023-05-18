@@ -1366,7 +1366,7 @@ divide-by-zero error. You'd probably in practice want to make
 
 Another real world example of `ZipSink` is when you want to both
 consume a file and calculate its cryptographic hash. Working with the
-`cryponite` and `cryptonite-conduit` libraries:
+`cryptonite` and `cryptonite-conduit` libraries:
 
 ```haskell
 #!/usr/bin/env stack
