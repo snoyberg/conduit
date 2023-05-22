@@ -59,6 +59,9 @@ module Data.Conduit.List
     , chunksOf
     , groupBy
     , groupOn1
+#if MIN_VERSION_base(4,9,0)
+    , groupOn
+#endif
     , isolate
     , filter
       -- ** Monadic
@@ -95,6 +98,9 @@ import Prelude
     )
 import Data.Monoid (Monoid, mempty, mappend)
 import qualified Data.Foldable as F
+#if MIN_VERSION_base(4,9,0)
+import Data.List.NonEmpty (NonEmpty ((:|)))
+#endif
 import Data.Conduit
 import Data.Conduit.Internal.Conduit (unconsM, unconsEitherM)
 import Data.Conduit.Internal.Fusion
@@ -767,6 +773,14 @@ groupOn1C f =
             | f x == f y = loop (rest . (y:)) x
             | otherwise  = yield (x, rest []) >> loop id y
 STREAMING(groupOn1, groupOn1C, groupOn1S, f)
+
+#if MIN_VERSION_base(4,9,0)
+-- | Like 'groupOn1', but returning a 'NonEmpty' structure.
+groupOn :: (Monad m, Eq b)
+        => (a -> b)
+        -> ConduitT a (NonEmpty a) m ()
+groupOn f = groupOn1 f .| map (Prelude.uncurry (:|))
+#endif
 
 -- | Ensure that the inner sink consumes no more than the given number of
 -- values. Note this this does /not/ ensure that the sink consumes all of those
