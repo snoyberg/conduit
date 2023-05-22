@@ -776,6 +776,8 @@ STREAMING(groupOn1, groupOn1C, groupOn1S, f)
 
 #if MIN_VERSION_base(4,9,0)
 -- | Like 'groupOn1', but returning a 'NonEmpty' structure.
+--
+-- @since 1.3.5
 groupOn :: (Monad m, Eq b)
         => (a -> b)
         -> ConduitT a (NonEmpty a) m ()

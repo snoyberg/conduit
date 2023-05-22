@@ -1,5 +1,9 @@
 # ChangeLog for conduit
 
+## 1.3.5
+
+* Add `groupOn`
+
 ## 1.3.4.3
 
 * Fix space leak in `*>` [#496](https://github.com/snoyberg/conduit/issues/496) [#497](https://github.com/snoyberg/conduit/pull/497)
