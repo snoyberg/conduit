@@ -16,9 +16,9 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
         resolver:
         #- nightly
+        - lts-20
+        - lts-19
         - lts-18
-        - lts-16
-        - lts-14
 
     steps:
       - name: Clone project
