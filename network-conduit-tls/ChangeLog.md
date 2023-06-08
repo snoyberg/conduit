@@ -1,3 +1,7 @@
+## 1.4.0
+
+* Migrate to crypton
+
 ## 1.3.2
 
 * Use the recommended SSL versions from TLS

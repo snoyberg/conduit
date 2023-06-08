@@ -3,10 +3,59 @@
 # For more information, please see the documentation at:
 #   https://docs.haskellstack.org/en/stable/lock_files
 
-packages: []
+packages:
+- completed:
+    hackage: crypton-0.31@sha256:c0e4aa081bd65d1cb415358ec43e83e7fe703c83b633243a89162bd6eb865850,18286
+    pantry-tree:
+      sha256: 0d73be1794796e4c87e1a20198109ec7364eee8c54dd6cf6c4d202f1f6ca3ac0
+      size: 23320
+  original:
+    hackage: crypton-0.31
+- completed:
+    hackage: crypton-connection-0.3.1@sha256:4d0958537197956b536ea91718b1749949757022532f50b8f683290056a19021,1581
+    pantry-tree:
+      sha256: e35ac3a35611afab9fafac633d0c4e6328b9cce4c8262378671d6c5a739e7e70
+      size: 394
+  original:
+    hackage: crypton-connection-0.3.1
+- completed:
+    hackage: crypton-x509-1.7.6@sha256:c567657a705b6d6521f9dd2de999bf530d618ec00f3b939df76a41fb0fe94281,2339
+    pantry-tree:
+      sha256: 729e7db8dfc0a8b43e08bbd8d1387c9065e39beda6ac39e0fb9f10140810a3eb
+      size: 1080
+  original:
+    hackage: crypton-x509-1.7.6
+- completed:
+    hackage: crypton-x509-store-1.6.9@sha256:422b9b9f87a7382c66385d047615b16fc86a68c08ea22b1e0117c143a2d44050,1750
+    pantry-tree:
+      sha256: 87654d130a7f987ee139c821a1be45736d18df9fa4cb1142c4e054d3802338f3
+      size: 406
+  original:
+    hackage: crypton-x509-store-1.6.9
+- completed:
+    hackage: crypton-x509-system-1.6.7@sha256:023ed573d82983bc473a37a89e0434a085b413be9f68d07e085361056afd4637,1532
+    pantry-tree:
+      sha256: c0ca49e6a9537f3fdb7b47c5cfe93f7d744a369bf9d089f3c668b9c2d97402b7
+      size: 399
+  original:
+    hackage: crypton-x509-system-1.6.7
+- completed:
+    hackage: crypton-x509-validation-1.6.12@sha256:85989721b64be4b90de9f66ef641c26f57575cffed1a50d707065fb60176f386,2227
+    pantry-tree:
+      sha256: d4a0135f11218614fcd912cffaf54de8f749caca8696380e2589cbcfd64cc681
+      size: 639
+  original:
+    hackage: crypton-x509-validation-1.6.12
+- completed:
+    hackage: tls-1.7.0@sha256:fa82e9ca8fd887b66fba8433b3ba1db4e5e047fe7c815707f06209679d04177b,5566
+    pantry-tree:
+      sha256: 7521091021ecbbbf9b46c2fdb08f9e449eddcebf3a3922f76d23baca5db83b4f
+      size: 4897
+  original:
+    hackage: tls-1.7.0
 snapshots:
 - completed:
+    sha256: 22d24d0dacad9c1450b9a174c28d203f9bb482a2a8da9710a2f2a9f4afee2887
     size: 585817
     url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/lts/18/5.yaml
-    sha256: 22d24d0dacad9c1450b9a174c28d203f9bb482a2a8da9710a2f2a9f4afee2887
   original: lts-18.5
