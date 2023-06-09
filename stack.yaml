@@ -7,3 +7,15 @@ packages:
 - resourcet
 nix:
   packages: [zlib]
+extra-deps:
+- crypton-0.31
+- crypton-connection-0.3.1
+- crypton-x509-1.7.6
+- crypton-x509-store-1.6.9
+- crypton-x509-system-1.6.7
+- crypton-x509-validation-1.6.12
+- tls-1.7.0
+drop-packages:
+- cryptonite
+- x509
+- connection

@@ -1,5 +1,5 @@
 name:                network-conduit-tls
-version:             1.3.2
+version:             1.4.0
 synopsis:            Create TLS-aware network code with conduits
 description:         Uses the tls package for a pure-Haskell implementation.
 homepage:            https://github.com/snoyberg/conduit
@@ -9,10 +9,11 @@ author:              Michael Snoyman
 maintainer:          michael@snoyman.com
 category:            Network
 build-type:          Simple
-cabal-version:       >=1.8
+cabal-version:       >=1.10
 extra-source-files:  README.md ChangeLog.md
 
 library
+  default-language:   Haskell2010
   exposed-modules:    Data.Conduit.Network.TLS
                       Data.Conduit.Network.TLS.Internal
   build-depends:      base            >= 4.12     && < 5
@@ -22,19 +23,20 @@ library
                     , conduit         >= 1.3
                     , network
                     , transformers
-                    , connection
+                    , crypton-connection
                     , streaming-commons >= 0.1.12
                     , unliftio-core
                     , data-default-class
 
 test-suite test
+    default-language:   Haskell2010
     hs-source-dirs: test
     main-is: main.hs
     type: exitcode-stdio-1.0
     cpp-options:   -DTEST
     build-depends:   conduit
                    , conduit-extra
-                   , connection
+                   , crypton-connection
                    , base
                    , mtl
                    , network-conduit-tls
