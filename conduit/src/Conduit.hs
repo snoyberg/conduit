@@ -20,6 +20,7 @@ module Conduit
     , MonadIO (..)
     , MonadTrans (..)
     , MonadThrow (..)
+    , MonadCatch (..)
     , MonadUnliftIO (..)
     , PrimMonad (..)
       -- * ResourceT
@@ -39,5 +40,5 @@ import Control.Monad.Primitive (PrimMonad (..), PrimState)
 import Data.Conduit.Lift
 import Data.Conduit.Combinators.Unqualified
 import Data.Functor.Identity (Identity (..))
-import Control.Monad.Trans.Resource (MonadResource, MonadThrow (..), runResourceT, ResourceT)
+import Control.Monad.Trans.Resource (MonadResource, MonadThrow (..), MonadCatch (..), runResourceT, ResourceT)
 import Data.Acquire hiding (with)
