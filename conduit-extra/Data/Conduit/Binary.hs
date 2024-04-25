@@ -321,7 +321,8 @@ sinkCacheLength = do
         (\(fp, h) -> IO.hClose h `finally` removeFile fp)
     len <- sinkHandleLen h
     liftIO $ IO.hClose h
-    return (len, CC.sourceFile fp >> release releaseKey)
+    cleanup <- fromMaybe (pure ()) <$> unprotect releaseKey
+    return (len, CC.sourceFile fp >> void (register cleanup))
   where
     sinkHandleLen :: MonadResource m => IO.Handle -> ConduitT S.ByteString o m Word64
     sinkHandleLen h =
