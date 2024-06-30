@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE CPP #-}
 import Test.HUnit
 import Data.Conduit
 import Data.Conduit.Network (appSource, appSink)
@@ -7,6 +8,9 @@ import Control.Concurrent (forkIO, threadDelay, killThread)
 import qualified Network.Connection as NC
 import qualified Data.ByteString as BS
 
+#if MIN_VERSION_crypton_connection(0,4,0)
+import qualified Data.Default.Class
+#endif
 
 testKeyRaw :: BS.ByteString
 testKeyRaw = "-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEAwAU371YZKOVON+S/TpNERcSbe5vWk0kdodR/cC7iwQ40ukO6\nIH7H40THVAWQwlD6kasRdsxcsk+KcOpoBgivw9izJ7ggBp7reFe8mJRp2qMGyK+n89ZRHNlVWl1qSAC/o0A1ldvyfZ2X4nNYHVAFqwhPSsFTxQgxORJbL7qdKy1tirqg\nWpHQMgK6dQJjOEEhrMKmOC2q6l9vbTYuAghDsdtbbEc8FWWVeExiIj8RopPY9+if\nj3BoXxp4WhfiDWmnnBWp71oJIfB1uziLV6PJdA1nKfVbPUeAM0wCFFUCbrjaxdg3\n4RenckCZIJwDo+ff/OSpKynrwznunZW847m2lwIDAQABAoIBAEqjPKS5MLpmt0qe\njYX7VDRSQaWAY52IdA4tTQPMFbO40+H65WQwI35Bg8EzEJuXYm4wsm8c7IMay9Ms\nKhb+VWOo3ap4tWodZ6W1ZMdiGOs1JzPmoz/ydEDkcXrYiLFIKTVJhgqkHdOZ6CnL\nb9qk+i8K4ddK4kbZ8lgevHcG8ISRTV2B8dRc3iohGJ0F6VlL62GnjbExjegsUs4N\n4Ozy8xI4oxlKdZcgutBkfPqdJOWixWPnMXf0PtJVFMzKzVujZlupoonqUUGn51c6\nTVVXAh1pcF0XrmKNscuODFMwBtVfIrfNf/iL1KvIIlKFbUSb/Yu9/9KBvLmfKdxf\nyrtvNBECgYEA5rRdd8IaskROgQxRTJagZn39Sl6oBVFLQ+fy0LGXV3bDbgl7myx8\nOtkKiTMHGT8g6JWv5NMWUgGSZBkMnZSQ/QCtbCxpuDjajxY2GVKU+1EbJjPccuWH\nTnopBuss6WiDbI/Jl9JjPBmhs8EsuAgAOo9yPzgs6SLiMfUwWKkPRdUCgYEA1RMH\nhhKUULqE+/xF214aUqcIk38BCw9g9Uo0pGp4cIfA8iuRachZGsbRpDQyaGRWL+4A\n9hOLPdV2ey6TvNcP/7H6dXrvj4TXLqrxPC2ne2zawqeCkqigxq8Rk55pBF5c52Xz\nX5Rie98TC++gf+fyUTIUS4OqMLg4q1Erk23g5LsCgYEApZg3MtvXj7ep5cUyodfI\nYGj0oyoYTmDQtnhJ+PRQHk637kbOO06OCSt6/YnsAXono+q1q3i8n7ZTHphATuex\nvnh7ApdKdxoP/v7BbCGzoETSSPSWur34BiN3SWkK/qqvEwCOgfRYmG4JfF4fPCU6\nDM6kAa7PxbPtSlClGC6ZMNUCgYEAwp+tIaPa4ZpdWiXmUSe1d4Wm6cL6WvXjJGpx\nhzTRakg1z35IRo2ABltQpmIfIQd1SjZlnl/fsc1HeeDjhXwT2wTgt2phY4B9ZN0z\nmDpDXxPhBigntnpc0N6ceXAakKj4x0xybv2Er4zlQuPQgMSGq+/IZemQDQxYhvOP\nkAyvfX0CgYBEVKvhcXQ9ETmEsk0FxPvpS9CtWXaNWItVzC/z3+mrU2B5JPcBQF72\nBsuoupeq52S+SGH7el5Xp2AoLXjZYsQ9S0t76p6G3lE/cHmnc/QNt4kT6oe5mpv1\nYXIo3/044Cbw2FEkEaj0iucagYCoqhlZTFN8aR6dXFTmvU+k6VP7pg==\n-----END RSA PRIVATE KEY-----"
@@ -25,7 +29,12 @@ clientConfig :: TLSClientConfig
 clientConfig = tlsClientConfig 4242 "127.0.0.1"
 
 clientConfigNoCA :: TLSClientConfig
-clientConfigNoCA = clientConfig {tlsClientTLSSettings = NC.TLSSettingsSimple True False False}
+clientConfigNoCA = clientConfig
+  { tlsClientTLSSettings = NC.TLSSettingsSimple True False False
+#if MIN_VERSION_crypton_connection(0,4,0)
+      Data.Default.Class.def
+#endif
+  }
 
 testSimpleServerClient :: IO ()
 testSimpleServerClient = do

@@ -1,3 +1,7 @@
+## 1.4.0.1
+
+* Fix test suite for crypton-connection 0.4 [#512](https://github.com/snoyberg/conduit/issues/512)
+
 ## 1.4.0
 
 * Migrate to crypton
