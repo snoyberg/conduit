@@ -1,5 +1,9 @@
 # ChangeLog for conduit
 
+## 1.3.6
+
+* Avoid dropping upstream items in `mergeSource` [#513](https://github.com/snoyberg/conduit/pull/513)
+
 ## 1.3.5
 
 * Add `groupOn`
