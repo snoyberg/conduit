@@ -613,7 +613,7 @@ mergeSource = loop . sealConduitT
         go a = do
           (src1, mi) <- lift $ src0 $$++ await
           case mi of
-            Nothing -> return ()
+            Nothing -> leftover a
             Just i  -> yield (i, a) >> loop src1
 
 
