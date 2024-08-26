@@ -704,6 +704,12 @@ main = hspec $ do
                 withShortAlphaIndex = CI.mergeSource (CL.sourceList ["A", "B", "C"])
             output <- runConduit $ src .| withShortAlphaIndex .| CL.consume
             output `shouldBe` [("A", 1), ("B", 2), ("C", 3)]
+        it "does not drop upstream items" $ do
+            let num = CL.sourceList [1 .. 10 :: Int]
+            let chr = CL.sourceList ['a' .. 'c']
+            (output, remainder) <- runConduit $ num .| liftA2 (,) (CI.mergeSource chr .| CL.consume) CL.consume
+            output `shouldBe` [('a', 1), ('b', 2), ('c', 3)]
+            remainder `shouldBe` [4 .. 10]
 
     describe "passthroughSink" $ do
         it "works" $ do
