@@ -32,7 +32,7 @@ import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Writer (execWriter, tell, runWriterT)
 import Control.Monad.Trans.State (evalStateT, get, put)
 import qualified Control.Monad.Writer as W
-import Control.Applicative (pure, (<$>), (<*>))
+import Control.Applicative (pure, (<$>), (<*>), liftA2)
 import qualified Control.Monad.Catch as Catch
 import Data.Functor.Identity (Identity,runIdentity)
 import Control.Monad (forever, void)
