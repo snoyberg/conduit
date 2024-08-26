@@ -32,7 +32,7 @@ import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Writer (execWriter, tell, runWriterT)
 import Control.Monad.Trans.State (evalStateT, get, put)
 import qualified Control.Monad.Writer as W
-import Control.Applicative (pure, (<$>), (<*>))
+import Control.Applicative (pure, (<$>), (<*>), liftA2)
 import qualified Control.Monad.Catch as Catch
 import Data.Functor.Identity (Identity,runIdentity)
 import Control.Monad (forever, void)
@@ -704,6 +704,12 @@ main = hspec $ do
                 withShortAlphaIndex = CI.mergeSource (CL.sourceList ["A", "B", "C"])
             output <- runConduit $ src .| withShortAlphaIndex .| CL.consume
             output `shouldBe` [("A", 1), ("B", 2), ("C", 3)]
+        it "does not drop upstream items" $ do
+            let num = CL.sourceList [1 .. 10 :: Int]
+            let chr = CL.sourceList ['a' .. 'c']
+            (output, remainder) <- runConduit $ num .| liftA2 (,) (CI.mergeSource chr .| CL.consume) CL.consume
+            output `shouldBe` [('a', 1), ('b', 2), ('c', 3)]
+            remainder `shouldBe` [4 .. 10]
 
     describe "passthroughSink" $ do
         it "works" $ do
