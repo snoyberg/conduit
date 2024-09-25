@@ -162,6 +162,17 @@ instance MonadFail m => MonadFail (ConduitT i o m) where
 instance MonadThrow m => MonadThrow (ConduitT i o m) where
     throwM = lift . throwM
 
+instance MonadCatch m => MonadCatch (ConduitT i o m) where
+    catch (ConduitT c0) f = ConduitT $ \rest ->
+        let go (HaveOutput p o) = HaveOutput (go p) o
+            go (NeedInput p c) = NeedInput (\i -> go (p i)) (\u -> go (c u))
+            go (Done x) = rest x
+            go (PipeM mp) =
+              PipeM $ catch (liftM go mp) $ \e -> do
+                return $ unConduitT (f e) rest
+            go (Leftover p i) = Leftover (go p) i
+         in go (c0 Done)
+
 instance MonadIO m => MonadIO (ConduitT i o m) where
     liftIO = lift . liftIO
     {-# INLINE liftIO #-}
