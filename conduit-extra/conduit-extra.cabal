@@ -1,6 +1,6 @@
 Cabal-version:       >=1.10
 Name:                conduit-extra
-Version:             1.3.6
+Version:             1.3.7
 Synopsis:            Batteries included conduit: adapters for common libraries.
 Description:
     The conduit package itself maintains relative small dependencies. The purpose of this package is to collect commonly used utility functions wrapping other library dependencies, without depending on heavier-weight dependencies. The basic idea is that this package should only depend on haskell-platform packages and conduit.
@@ -28,12 +28,11 @@ Library
                        Data.Conduit.Lazy
                        Data.Conduit.Network
                        Data.Conduit.Network.UDP
+                       Data.Conduit.Network.Unix
                        Data.Conduit.Process
                        Data.Conduit.Process.Typed
                        Data.Conduit.Text
                        Data.Conduit.Zlib
-  if !os(windows)
-      Exposed-modules: Data.Conduit.Network.Unix
 
   if arch(x86_64) || arch(i386)
       -- These architectures are able to perform unaligned memory accesses
@@ -55,7 +54,7 @@ Library
                      , process
                      , resourcet                >= 1.1
                      , stm
-                     , streaming-commons        >= 0.1.16
+                     , streaming-commons        >= 0.2.3.0
                      , unliftio-core
                      , typed-process            >= 0.2.6
 
