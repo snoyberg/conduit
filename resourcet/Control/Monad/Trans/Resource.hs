@@ -188,10 +188,11 @@ release' istate key act = E.mask_ $ do
 --
 -- @since 0.3.0
 runResourceT :: MonadUnliftIO m => ResourceT m a -> m a
-runResourceT action = do
-    (a, cleanup) <- evalResourceT action
-    liftIO cleanup
-    pure a
+runResourceT action = withRunInIO $ \run -> do
+    E.mask_ $ do
+        (a, cleanup) <- run $ evalResourceT action
+        cleanup
+        pure a
 
 -- | Like 'runResourceT', but this one does *not* run the cleanup action
 -- when the block exits. Instead, the cleanup action is provided for the
