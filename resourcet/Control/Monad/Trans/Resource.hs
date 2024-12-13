@@ -200,7 +200,7 @@ runResourceT action = withRunInIO $ \run -> do
 -- and you should only use this if you are doing something moderately
 -- cursed.
 --
--- @since TODO
+-- @since 1.3.1
 evalResourceT :: MonadUnliftIO m => ResourceT m a -> m (a, IO ())
 evalResourceT (ResourceT r) = withRunInIO $ \run -> do
     istate <- createInternalState

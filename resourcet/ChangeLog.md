@@ -1,5 +1,9 @@
 # ChangeLog for resourcet
 
+## 1.3.1
+
+* Add `evalResourceT` which allows you to defer running the finalizer cleanup. [#517](https://github.com/snoyberg/conduit/pull/517)
+
 ## 1.3.0
 
 * Include the exception in ReleaseTypes indicating exceptional exit.
