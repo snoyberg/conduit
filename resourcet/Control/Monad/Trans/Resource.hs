@@ -191,7 +191,7 @@ runResourceT :: MonadUnliftIO m => ResourceT m a -> m a
 runResourceT action = withRunInIO $ \run -> do
     E.mask_ $ do
         (a, cleanup) <- run $ evalResourceT action
-        cleanup
+        run cleanup
         pure a
 
 -- | Like 'runResourceT', but this one does *not* run the cleanup action
@@ -201,7 +201,7 @@ runResourceT action = withRunInIO $ \run -> do
 -- cursed.
 --
 -- @since 1.3.1
-evalResourceT :: MonadUnliftIO m => ResourceT m a -> m (a, IO ())
+evalResourceT :: MonadUnliftIO m => ResourceT m a -> m (a, m ())
 evalResourceT (ResourceT r) = withRunInIO $ \run -> do
     istate <- createInternalState
     E.mask $ \restore -> do
@@ -209,7 +209,7 @@ evalResourceT (ResourceT r) = withRunInIO $ \run -> do
             stateCleanupChecked (Just e) istate
             E.throwIO e
 
-        return (res, stateCleanupChecked Nothing istate)
+        return (res, liftIO $ stateCleanupChecked Nothing istate)
 
 -- | Backwards compatible alias for 'runResourceT'.
 --
