@@ -47,6 +47,13 @@ packages:
   original:
     hackage: crypton-x509-validation-1.6.12
 - completed:
+    hackage: streaming-commons-0.2.3.0@sha256:68d5f3daa6caa7cc7d659094a03d543021df5ec4737b67e63ffa4541ac0aae10,4841
+    pantry-tree:
+      sha256: 66a00daed951de5a26118dac7e34c72ee32f33ddcd3a50981d80b4dd244992b4
+      size: 2374
+  original:
+    hackage: streaming-commons-0.2.3.0
+- completed:
     hackage: tls-1.7.0@sha256:fa82e9ca8fd887b66fba8433b3ba1db4e5e047fe7c815707f06209679d04177b,5566
     pantry-tree:
       sha256: 7521091021ecbbbf9b46c2fdb08f9e449eddcebf3a3922f76d23baca5db83b4f
