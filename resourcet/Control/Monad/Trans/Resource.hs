@@ -21,6 +21,7 @@ module Control.Monad.Trans.Resource
     , ReleaseKey
       -- * Unwrap
     , runResourceT
+    , evalResourceT
       -- ** Check cleanup exceptions
     , runResourceTChecked
     , ResourceCleanupException (..)
@@ -187,14 +188,28 @@ release' istate key act = E.mask_ $ do
 --
 -- @since 0.3.0
 runResourceT :: MonadUnliftIO m => ResourceT m a -> m a
-runResourceT (ResourceT r) = withRunInIO $ \run -> do
+runResourceT action = withRunInIO $ \run -> do
+    E.mask_ $ run $ do
+        (a, cleanup) <- evalResourceT action
+        cleanup
+        pure a
+
+-- | Like 'runResourceT', but this one does *not* run the cleanup action
+-- when the block exits. Instead, the cleanup action is provided for the
+-- user to call themselves. This is very likely to drop the cleanup action
+-- and you should only use this if you are doing something moderately
+-- cursed.
+--
+-- @since 1.3.1
+evalResourceT :: MonadUnliftIO m => ResourceT m a -> m (a, m ())
+evalResourceT (ResourceT r) = withRunInIO $ \run -> do
     istate <- createInternalState
     E.mask $ \restore -> do
         res <- restore (run (r istate)) `E.catch` \e -> do
             stateCleanupChecked (Just e) istate
             E.throwIO e
-        stateCleanupChecked Nothing istate
-        return res
+
+        return (res, liftIO $ stateCleanupChecked Nothing istate)
 
 -- | Backwards compatible alias for 'runResourceT'.
 --
