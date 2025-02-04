@@ -7,7 +7,8 @@
 module Data.Conduit
     ( -- * Core interface
       -- ** Types
-      ConduitT
+      ConduitT(..)
+    , Pipe(..)
       -- *** Deprecated
     , Source
     , Conduit
@@ -101,6 +102,7 @@ module Data.Conduit
     ) where
 
 import Data.Conduit.Internal.Conduit
+import Data.Conduit.Internal.Pipe (Pipe(..))
 import Data.Void (Void)
 import Data.Functor.Identity (Identity, runIdentity)
 import Control.Monad.Trans.Resource (ResourceT, runResourceT)
