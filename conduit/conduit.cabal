@@ -98,8 +98,8 @@ test-suite conduit-test
                    , unliftio >= 0.2.4.0
     ghc-options:     -Wall
 
-  if os(windows)
-    cpp-options:     -DWINDOWS
+    if os(windows)
+      cpp-options:     -DWINDOWS
 
 --test-suite doctests
 --    hs-source-dirs: test
