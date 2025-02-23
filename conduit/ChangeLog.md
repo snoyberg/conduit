@@ -1,5 +1,9 @@
 # ChangeLog for conduit
 
+## 1.3.6.1
+
+* Forward compatibility with `-Wnoncanonical-monad-instances` becoming an error
+
 ## 1.3.6
 
 * Avoid dropping upstream items in `mergeSource` [#513](https://github.com/snoyberg/conduit/pull/513)

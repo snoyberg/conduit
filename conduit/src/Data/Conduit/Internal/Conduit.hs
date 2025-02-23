@@ -148,7 +148,7 @@ instance Applicative (ConduitT i o m) where
     {-# INLINE pure #-}
     (<*>) = ap
     {-# INLINE (<*>) #-}
-    (*>) = (>>)
+    x *> y = x >>= \_ -> y
     {-# INLINE (*>) #-}
 
 instance Monad (ConduitT i o m) where
