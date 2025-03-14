@@ -1,0 +1,15 @@
+resolver: lts-22.43
+packages:
+- cereal-conduit
+- conduit
+- conduit-extra
+- network-conduit-tls
+- resourcet
+nix:
+  packages: [zlib]
+extra-deps:
+- streaming-commons-0.2.3.0
+drop-packages:
+- cryptonite
+- x509
+- connection
