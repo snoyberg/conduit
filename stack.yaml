@@ -1,4 +1,4 @@
-resolver: lts-18.5
+resolver: lts-21.25
 packages:
 - cereal-conduit
 - conduit
@@ -8,7 +8,7 @@ packages:
 nix:
   packages: [zlib]
 extra-deps:
-- crypton-0.31
+# - crypton-0.31
 - crypton-connection-0.3.1
 - crypton-x509-1.7.6
 - crypton-x509-store-1.6.9
