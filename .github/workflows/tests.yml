@@ -2,9 +2,15 @@ name: Tests
 
 on:
     pull_request:
+        branches:
+        - master
     push:
         branches:
         - master
+
+defaults:
+  run:
+    shell: bash
 
 jobs:
   build:
@@ -13,23 +19,31 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        resolver:
-        #- nightly
-        - lts-20
-        - lts-19
-        - lts-18
+        os: [ubuntu-latest]
+        ghc: ['9.10', '9.8', '9.6', '9.4']
+        include:
+        - os: macos-latest
+          ghc: '9.10'
+        - os: windows-latest
+          ghc: '9.10'
 
     steps:
       - name: Clone project
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
-      - name: Build and run tests
-        shell: bash
-        run: |
-            set -ex
-            mkdir -p ../_newstack
-            #stack upgrade --force-download --local-bin-path ../_newstack
-            #../_newstack/stack --version
-            #../_newstack/stack test --fast --no-terminal --resolver=${{ matrix.resolver }}
-            stack test --fast --no-terminal --resolver=${{ matrix.resolver }}
+      - name: Setup Haskell
+        uses: haskell-actions/setup@v2
+        with:
+          ghc-version: ${{ matrix.ghc }}
+          stack-version: latest
+          enable-stack: true
+          cabal-update: false
+
+      - name: Build dependencies
+        run: stack test --stack-yaml=stack-${{ matrix.ghc }}.yaml --dependencies-only
+
+      - name: Build
+        run: stack test --stack-yaml=stack-${{ matrix.ghc }}.yaml --no-run-tests
+
+      - name: Test
+        run: stack test --stack-yaml=stack-${{ matrix.ghc }}.yaml

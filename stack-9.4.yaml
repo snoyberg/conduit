@@ -8,7 +8,6 @@ packages:
 nix:
   packages: [zlib]
 extra-deps:
-# - crypton-0.31
 - crypton-connection-0.3.1
 - crypton-x509-1.7.6
 - crypton-x509-store-1.6.9

@@ -1,0 +1,9 @@
+resolver: lts-23.14
+packages:
+- cereal-conduit
+- conduit
+- conduit-extra
+- network-conduit-tls
+- resourcet
+nix:
+  packages: [zlib]
