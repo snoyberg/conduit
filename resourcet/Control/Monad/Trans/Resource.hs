@@ -186,15 +186,33 @@ release' istate key act = E.mask_ $ do
 -- exception.
 --
 -- @since 0.3.0
+
 runResourceT :: MonadUnliftIO m => ResourceT m a -> m a
 runResourceT (ResourceT r) = withRunInIO $ \run -> do
     istate <- createInternalState
     E.mask $ \restore -> do
-        res <- restore (run (r istate)) `E.catch` \e -> do
-            stateCleanupChecked (Just e) istate
-            E.throwIO e
+        res <- restore (run (r istate)) `catchNoPropagate'` \eWithContext -> do
+            stateCleanupChecked (Just $ E.toException eWithContext) istate
+            rethrowIO' eWithContext
         stateCleanupChecked Nothing istate
         return res
+
+-- Compatibility wrappers around exception context handling for base >= 4.21
+#if MIN_VERSION_base(4,21,0)
+-- With base >= 4.21, it behaves exactly as catchNoPropagate and rethrowIO
+catchNoPropagate' :: IO a -> (E.ExceptionWithContext E.SomeException -> IO a) -> IO a
+catchNoPropagate' = E.catchNoPropagate
+
+rethrowIO' :: E.ExceptionWithContext E.SomeException -> IO a
+rethrowIO' = E.rethrowIO
+#else
+-- With base < 4.21, it uses catch and throwIO
+catchNoPropagate' :: IO a -> (E.SomeException -> IO a) -> IO a
+catchNoPropagate' action handler = E.catch action handler
+
+rethrowIO' :: E.Exception e => e -> IO a
+rethrowIO' exc = E.throwIO exc
+#endif
 
 -- | Backwards compatible alias for 'runResourceT'.
 --
@@ -212,7 +230,7 @@ bracket_ :: MonadUnliftIO m
 bracket_ alloc cleanupNormal cleanupExc inside =
     withRunInIO $ \run -> E.mask $ \restore -> do
         alloc
-        res <- restore (run inside) `E.catch` (\e -> cleanupExc e >> E.throwIO e)
+        res <- restore (run inside) `catchNoPropagate'` (\e -> cleanupExc (E.toException e) >> rethrowIO' e)
         cleanupNormal
         return res
 
