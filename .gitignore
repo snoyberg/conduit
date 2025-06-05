@@ -12,3 +12,9 @@ tarballs/
 .stack-work/
 *~
 *#
+
+# No nix & direnv setup
+flake.nix
+flake.lock
+.envrc
+.direnv
