@@ -5,6 +5,7 @@ module Data.Conduit.ProcessSpec (spec, main) where
 import Test.Hspec
 import Test.Hspec.QuickCheck (prop)
 import Data.Conduit
+import qualified Data.Conduit.Combinators as CC
 import qualified Data.Conduit.List as CL
 import Data.Conduit.Process
 import Control.Concurrent.Async (concurrently)
@@ -77,6 +78,14 @@ spec = describe "Data.Conduit.Process" $ do
                              CL.consume -- stdout
                              CL.consume -- stderr
                 `shouldReturn` (ExitSuccess, [mystr], [])
+    it "gracefully handles closed stdin" $ do
+        let blob = L.iterate (+1) 0
+            blobHead = L.toStrict $ L.take 10000 blob
+        sourceCmdWithStreams "head -c 10000"
+                             (CC.sourceLazy blob)
+                             (L.toStrict <$> CC.sinkLazy) -- stdout
+                             CL.consume -- stderr
+                `shouldReturn` (ExitSuccess, blobHead, [])
 #endif
     it "blocking vs non-blocking" $ do
         (ClosedStream, ClosedStream, ClosedStream, cph) <- streamingProcess (shell "sleep 1")

@@ -1,5 +1,9 @@
 # ChangeLog for conduit-extra
 
+## 1.3.8
+
+* Gracefully handle when a subprocess started using `Data.Conduit.Process.sourceProcessWithStreams` closes its stdin. Fixes [#523](https://github.com/snoyberg/conduit/issues/523)
+
 ## 1.3.7
 
 * Allow Data.Conduit.Network.Unix on Windows [#518](https://github.com/snoyberg/conduit/pull/518)
