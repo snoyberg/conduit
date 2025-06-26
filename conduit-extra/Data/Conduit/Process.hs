@@ -39,7 +39,8 @@ import Data.Conduit.Binary (sourceHandle, sinkHandle, sinkHandleBuilder, sinkHan
 import Data.ByteString (ByteString)
 import Data.ByteString.Builder (Builder)
 import Control.Concurrent.Async (runConcurrently, Concurrently(..))
-import Control.Exception (onException, throwIO, finally, bracket)
+import Control.Exception (onException, throwIO, finally, bracket, catch)
+import System.IO.Error (ioeGetErrorType, isResourceVanishedErrorType)
 #if (__GLASGOW_HASKELL__ < 710)
 import Control.Applicative ((<$>), (<*>))
 #endif
@@ -143,16 +144,24 @@ sourceProcessWithStreams cp producerStdin consumerStdout consumerStderr =
      , (sourceStdout, closeStdout)
      , (sourceStderr, closeStderr)
      , sph) <- streamingProcess cp
+    let safeSinkStdin = sinkStdin `catchC` ignoreStdinClosed
+        safeCloseStdin = closeStdin `catch` ignoreStdinClosed
     (_, resStdout, resStderr) <-
       runConcurrently (
         (,,)
-        <$> Concurrently ((unliftIO u $ runConduit $ producerStdin .| sinkStdin) `finally` closeStdin)
+        <$> Concurrently ((unliftIO u $ runConduit $ producerStdin .| safeSinkStdin) `finally` safeCloseStdin)
         <*> Concurrently (unliftIO u $ runConduit $ sourceStdout .| consumerStdout)
         <*> Concurrently (unliftIO u $ runConduit $ sourceStderr .| consumerStderr))
       `finally` (closeStdout >> closeStderr)
       `onException` terminateStreamingProcess sph
     ec <- waitForStreamingProcess sph
     return (ec, resStdout, resStderr)
+  where
+    ignoreStdinClosed :: forall m. (MonadIO m) => IOError -> m ()
+    ignoreStdinClosed e =
+      if isResourceVanishedErrorType (ioeGetErrorType e)
+        then pure ()
+        else liftIO (throwIO e)
 
 -- | Like @sourceProcessWithStreams@ but providing the command to be run as
 -- a @String@.
