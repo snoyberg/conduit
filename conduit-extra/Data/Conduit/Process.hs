@@ -41,9 +41,6 @@ import Data.ByteString.Builder (Builder)
 import Control.Concurrent.Async (runConcurrently, Concurrently(..))
 import Control.Exception (onException, throwIO, finally, bracket, catch)
 import System.IO.Error (ioeGetErrorType, isResourceVanishedErrorType)
-#if (__GLASGOW_HASKELL__ < 710)
-import Control.Applicative ((<$>), (<*>))
-#endif
 
 instance (r ~ (), MonadIO m, i ~ ByteString) => InputSource (ConduitM i o m r) where
     isStdStream = (\(Just h) -> hSetBuffering h NoBuffering $> sinkHandle h, Just CreatePipe)

@@ -11,11 +11,7 @@ import Foreign.C.String (CString)
 import Foreign.Ptr (castPtr)
 import Foreign.Marshal.Alloc (mallocBytes, free)
 import Foreign.ForeignPtr       (ForeignPtr, withForeignPtr)
-#if __GLASGOW_HASKELL__ >= 704
 import Foreign.C.Types (CInt (..))
-#else
-import Foreign.C.Types (CInt)
-#endif
 import Foreign.C.Error (throwErrnoIfMinus1Retry)
 import Foreign.Ptr (Ptr)
 import Data.Bits (Bits, (.|.))

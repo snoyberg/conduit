@@ -35,9 +35,6 @@ import qualified Control.Monad.Trans.RWS.Strict    as Strict ( RWST   )
 import qualified Control.Monad.Trans.State.Strict  as Strict ( StateT )
 import qualified Control.Monad.Trans.Writer.Strict as Strict ( WriterT )
 
-#if (__GLASGOW_HASKELL__ < 710)
-import Data.Monoid (Monoid)
-#endif
 import Control.Monad.ST (ST)
 import qualified Control.Monad.ST.Lazy as Lazy
 import Data.Functor.Identity (Identity)
