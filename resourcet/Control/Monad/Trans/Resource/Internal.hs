@@ -180,23 +180,7 @@ transResourceT f (ResourceT mx) = ResourceT (\r -> f (mx r))
 --
 -- Since 0.3.0
 newtype ResourceT m a = ResourceT { unResourceT :: I.IORef ReleaseMap -> m a }
-#if __GLASGOW_HASKELL__ >= 707
         deriving Typeable
-#else
-instance Typeable1 m => Typeable1 (ResourceT m) where
-    typeOf1 = goType undefined
-      where
-        goType :: Typeable1 m => m a -> ResourceT m a -> TypeRep
-        goType m _ =
-            mkTyConApp
-#if __GLASGOW_HASKELL__ >= 704
-                (mkTyCon3 "resourcet" "Control.Monad.Trans.Resource" "ResourceT")
-#else
-                (mkTyCon "Control.Monad.Trans.Resource.ResourceT")
-#endif
-                [ typeOf1 m
-                ]
-#endif
 
 -- | Indicates either an error in the library, or misuse of it (e.g., a
 -- @ResourceT@'s state is accessed after being released).

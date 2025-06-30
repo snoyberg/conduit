@@ -73,9 +73,6 @@ import Control.Monad.Trans.Resource (allocate, release, MonadThrow (..))
 import Control.Monad.Trans.Class (lift)
 import qualified System.IO as IO
 import Data.Word (Word8, Word64)
-#if (__GLASGOW_HASKELL__ < 710)
-import Control.Applicative ((<$>))
-#endif
 import System.Directory (getTemporaryDirectory, removeFile)
 import Data.ByteString.Lazy.Internal (defaultChunkSize)
 import Data.ByteString.Internal (ByteString (PS), accursedUnutterablePerformIO)

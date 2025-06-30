@@ -2,6 +2,7 @@
 
 ## Unreleased (patch)
 
+* Removed CPP for GHC <7.10
 * Correctly set `base` lower bound to `>= 4.14` (GHC 8.10)
 
 ## 1.3.8
