@@ -1,5 +1,9 @@
 # ChangeLog for conduit-extra
 
+## Unreleased (patch)
+
+* Correctly set `base` lower bound to `>= 4.14` (GHC 8.10)
+
 ## 1.3.8
 
 * Gracefully handle when a subprocess started using `Data.Conduit.Process.sourceProcessWithStreams` closes its stdin. Fixes [#523](https://github.com/snoyberg/conduit/issues/523)
